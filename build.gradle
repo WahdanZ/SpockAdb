@@ -25,10 +25,18 @@ compileTestKotlin {
 intellij {
     version '2018.2.2'
     plugins 'android'
+    pluginName 'SpockAdb'
     alternativeIdePath '/Applications/Android Studio.app'
+    intellij.updateSinceUntilBuild false //Disables updating since-build attribute in plugin.xml
+
 }
 patchPluginXml {
     changeNotes """
-      Add change notes here.<br>
-      <em>most HTML tags may be used</em>"""
+       Plugin Helps you to have full control of your project
+        -Navigate to current active activity in your IDE
+        -Navigate to current active fragments
+        -Clear application data
+        -Enable and Disable Permissions of your application
+        =Kill Application
+        =Restart or Reopen Application """
 }

@@ -3,16 +3,10 @@ import com.android.ddmlib.IDevice
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import javax.swing.*
-import com.intellij.testFramework.LightPlatformTestCase.getProject
-import com.intellij.openapi.actionSystem.impl.SimpleDataContext
-import com.intellij.ui.popup.PopupFactoryImpl
-import com.intellij.openapi.ui.popup.ListPopup
-import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import spock.adb.premission.PermissionDialog
 
 
-class AdbViewer( private val  adbController: AdbController
+class SpockAdbViewer(private val  adbController: AdbController
 ) : SimpleToolWindowPanel(true) {
     private lateinit var panel1: JPanel
     private lateinit var rootPanel: JPanel
@@ -20,8 +14,7 @@ class AdbViewer( private val  adbController: AdbController
     private lateinit var currentActivityButton: JButton
     private lateinit var currentFragmentButton: JButton
     private lateinit var clearAppDataButton: JButton
-    private lateinit var revokePremissionButton: JButton
-    private lateinit var grantPremissionButton: JButton
+    private lateinit var premissionButton: JButton
     private lateinit var restartAppButton: JButton
     private lateinit var killAppButton: JButton
     private lateinit var errorMessageLable: JLabel
@@ -61,10 +54,16 @@ class AdbViewer( private val  adbController: AdbController
                 adbController.clearAppData(device,::showSuccess,::showError)
             }
         }
-        revokePremissionButton.addActionListener {
-            val dialog = PermissionDialog(adbController)
-            dialog.pack()
-            dialog.isVisible = true
+        premissionButton.addActionListener { _ ->
+            selectedIDevice?.let {device->
+               adbController.getApplicationPermissions(device,{
+                   val dialog = PermissionDialog(device,adbController,it)
+                   dialog.pack()
+                   dialog.isVisible = true
+
+               },::error)
+
+           }
 
         }
 

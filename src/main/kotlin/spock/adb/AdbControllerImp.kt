@@ -116,7 +116,10 @@ class AdbControllerImp(
         block: (devices: List<PermissionListItem>) -> Unit,
         error: (message: String) -> Unit
     ) {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        execute({
+            val applicationID = getApplicationID(device)
+           block( GetApplicationPermission().execute(applicationID, project, device))
+        }, error)
     }
 
     override fun revokePermission(
@@ -125,7 +128,11 @@ class AdbControllerImp(
         success: (message: String) -> Unit,
         error: (message: String) -> Unit
     ) {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        execute({
+            val applicationID = getApplicationID(device)
+            RevokePermissionCommand().execute(applicationID,permissionListItem, project, device)
+            success("application $applicationID data cleared")
+        }, error)
     }
 
     override fun grantPermission(
@@ -134,7 +141,11 @@ class AdbControllerImp(
         success: (message: String) -> Unit,
         error: (message: String) -> Unit
     ) {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        execute({
+            val applicationID = getApplicationID(device)
+            GrantPermissionCommand().execute(applicationID,permissionListItem, project, device)
+            success("application $applicationID data cleared")
+        }, error)
     }
 
     private fun execute(execute: () -> Unit, error: (message: String) -> Unit) {

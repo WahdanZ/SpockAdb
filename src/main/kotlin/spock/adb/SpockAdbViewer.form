@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<form xmlns="http://www.intellij.com/uidesigner/form/" version="1" bind-to-class="spock.adb.AdbViewer">
+<form xmlns="http://www.intellij.com/uidesigner/form/" version="1" bind-to-class="spock.adb.SpockAdbViewer">
   <grid id="27dc6" layout-manager="GridBagLayout">
     <constraints>
       <xy x="20" y="20" width="514" height="400"/>
@@ -73,28 +73,6 @@
               <text value="Clear Application Data"/>
             </properties>
           </component>
-          <component id="4f649" class="javax.swing.JButton" binding="revokePremissionButton">
-            <constraints>
-              <grid row="6" column="0" row-span="1" col-span="2" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
-            </constraints>
-            <properties>
-              <text value="Revoke Premission"/>
-            </properties>
-          </component>
-          <component id="766bf" class="javax.swing.JButton" binding="grantPremissionButton">
-            <constraints>
-              <grid row="6" column="5" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
-            </constraints>
-            <properties>
-              <text value="Grant Premission"/>
-            </properties>
-          </component>
-          <component id="158a4" class="javax.swing.JSeparator">
-            <constraints>
-              <grid row="6" column="2" row-span="1" col-span="3" vsize-policy="2" hsize-policy="6" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
-            </constraints>
-            <properties/>
-          </component>
           <component id="125d7" class="javax.swing.JButton" binding="restartAppButton">
             <constraints>
               <grid row="7" column="0" row-span="1" col-span="2" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
@@ -110,6 +88,20 @@
             <properties>
               <text value="Kill Application"/>
             </properties>
+          </component>
+          <component id="4f649" class="javax.swing.JButton" binding="premissionButton">
+            <constraints>
+              <grid row="6" column="0" row-span="1" col-span="6" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties>
+              <text value="Revoke / Grant Premission"/>
+            </properties>
+          </component>
+          <component id="158a4" class="javax.swing.JSeparator">
+            <constraints>
+              <grid row="7" column="2" row-span="1" col-span="3" vsize-policy="2" hsize-policy="6" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties/>
           </component>
         </children>
       </grid>

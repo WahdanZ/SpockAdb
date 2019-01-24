@@ -1,12 +1,17 @@
 <idea-plugin>
     <id>com.wahdan.com.wahdan.spockAdb</id>
-    <name>Plugin display name here</name>
-    <vendor email="support@yourcompany.com" url="http://www.yourcompany.com">YourCompany</vendor>
-
-    <description><![CDATA[
-    Enter short description for your plugin here.<br>
-    <em>most HTML tags may be used</em>
-    ]]></description>
+    <name>Spock ADB</name>
+    <vendor email="ahmed.wahdan@outlook.com" url="http://github.com/WahdanZ">Spock Adb</vendor>
+<version>1.0.0</version>
+    <description><![CDATA[ Plugin Helps you to have full control of your project
+        -Navigate to current active activity in your IDE
+        -Navigate to current active fragments
+        -Clear application data
+        -Enable and Disable Permissions of your application
+        =Kill Application
+        =Restart or Reopen Application ]]>
+    </description>
+    <idea-version since-build="181"/>
 
     <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/plugin_compatibility.html
          on how to target different products -->
@@ -19,7 +24,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <!-- Add your extensions here -->
             <!-- Add your extensions here -->
-        <toolWindow anchor="left" canCloseContents="false" id="Adb Plus Plus"
+        <toolWindow anchor="left" canCloseContents="false" id="Spock ADB"
                     factoryClass="spock.AdbDrawerViewer" secondary="true" />
     </extensions>
 
