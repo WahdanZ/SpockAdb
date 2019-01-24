@@ -7,12 +7,12 @@ group 'com.wahdan'
 version '1.0'
 
 repositories {
+    jcenter()
     mavenCentral()
 }
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    compile "org.koin:koin-core:1.0.2"
 
 }
 
