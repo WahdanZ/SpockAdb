@@ -1,3 +1,4 @@
+
 # SpockAdb
  Plugin Helps you to have full control of your project
 
@@ -9,6 +10,13 @@
  -  Enable and Disable Permissions of your application  -Kill Application  
  - Kill or
    Reopen Application
+
+## Download
+
+https://plugins.jetbrains.com/plugin/11591-spock-adb
+
+## Demo
+
 
 [![IMAGE ALT TEXT HERE](http://img.youtube.com/vi/x_WX_Pznqos/0.jpg)](http://www.youtube.com/watch?v=x_WX_Pznqos)
 
