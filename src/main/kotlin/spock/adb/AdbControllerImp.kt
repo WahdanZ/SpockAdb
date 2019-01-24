@@ -152,7 +152,7 @@ class AdbControllerImp(
         try {
             execute.invoke()
         } catch (e: Exception) {
-            error(e.message.toString())
+            error(e.message ?: "not found")
         }
     }
 

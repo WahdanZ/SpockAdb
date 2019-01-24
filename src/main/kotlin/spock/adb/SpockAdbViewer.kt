@@ -1,6 +1,8 @@
 package spock.adb
 import com.android.ddmlib.IDevice
-import com.intellij.openapi.ui.Messages
+import com.intellij.notification.NotificationDisplayType
+import com.intellij.notification.NotificationGroup
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import javax.swing.*
 import spock.adb.premission.PermissionDialog
@@ -82,12 +84,21 @@ class SpockAdbViewer(private val  adbController: AdbController
     }
 
     private fun showError(message:String){
-        Messages.showErrorDialog(message,"Spock ADB")
+        val noti = NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true)
+        noti.createNotification("Spock ADB",
+            message,
+            NotificationType.ERROR,
+            null
+        ).notify(null)
 
     }
     private fun showSuccess(message: String){
-        Messages.showInfoMessage( message,"Spock ADB")
-
+        val nomi =   NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true)
+        nomi.createNotification("Spock ADB",
+            message,
+            NotificationType.INFORMATION,
+            null
+        ).notify(null)
     }
 
 }
