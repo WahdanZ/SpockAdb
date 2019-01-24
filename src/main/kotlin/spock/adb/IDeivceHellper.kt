@@ -5,24 +5,22 @@ import java.util.concurrent.TimeUnit
 
 
 fun IDevice.killApp(applicationID: String?, seconds: Long) {
-    executeShellCommand("am force-stop $applicationID", ShellOutputReceiver(), seconds, TimeUnit.SECONDS)
+    val shellOutputReceiver = ShellOutputReceiver()
+    executeShellCommand("am force-stop $applicationID", shellOutputReceiver, seconds, TimeUnit.SECONDS)
+    shellOutputReceiver
 }
 
-fun IDevice.isAppInstall(applicationID: String?, error: (message: String) -> Unit):Boolean{
+fun IDevice.isAppInstall(applicationID: String?):Boolean{
     val shellOutputReceiver = ShellOutputReceiver()
     executeShellCommand("pm list packages $applicationID", shellOutputReceiver, 15L, TimeUnit.SECONDS)
-    return if (!shellOutputReceiver.toString().isEmpty()) true
-    else{
-        error("$applicationID is not installed on $name")
-        false
-    }
+    return !shellOutputReceiver.toString().isEmpty()
 }
 
  fun IDevice.startActivity(activity: String) {
     executeShellCommand("am start -n $activity", ShellOutputReceiver(),15L, TimeUnit.SECONDS)
 }
-fun IDevice.clearAppData(applicationID: String?) {
-    executeShellCommand("pm clear $applicationID", ShellOutputReceiver(),15L, TimeUnit.SECONDS)
+fun IDevice.clearAppData(applicationID: String?,seconds: Long) {
+    executeShellCommand("pm clear $applicationID", ShellOutputReceiver(),seconds, TimeUnit.SECONDS)
 }
 fun IDevice.getDefaultActivityForApplication(packageName: String?):String {
     val  outputReceiver = ShellOutputReceiver()

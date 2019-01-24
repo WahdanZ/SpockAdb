@@ -6,12 +6,10 @@ import javax.swing.*
 import com.intellij.testFramework.LightPlatformTestCase.getProject
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.ui.popup.PopupFactoryImpl
-import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.ui.popup.ListPopup
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.openapi.ui.popup.PopupStep
-import com.intellij.openapi.ui.popup.util.BaseListPopupStep
+import spock.adb.premission.PermissionDialog
 
 
 class AdbViewer( private val  adbController: AdbController
@@ -40,12 +38,12 @@ class AdbViewer( private val  adbController: AdbController
 
         currentActivityButton.addActionListener {
             selectedIDevice?.let { device ->
-                adbController.currentActivity(device,::showError)
+                adbController.currentActivity(device,::showSuccess,::showError)
             }
         }
         currentFragmentButton.addActionListener {
             selectedIDevice?.let {device->
-                adbController.currentFragment(device,::showError)
+                adbController.currentFragment(device,::showSuccess,::showError)
             }
         }
         restartAppButton.addActionListener {
@@ -64,7 +62,9 @@ class AdbViewer( private val  adbController: AdbController
             }
         }
         revokePremissionButton.addActionListener {
-
+            val dialog = PermissionDialog(adbController)
+            dialog.pack()
+            dialog.isVisible = true
 
         }
 
@@ -83,22 +83,12 @@ class AdbViewer( private val  adbController: AdbController
     }
 
     private fun showError(message:String){
-        Messages.showErrorDialog("Spock ADB",message)
+        Messages.showErrorDialog(message,"Spock ADB")
 
     }
     private fun showSuccess(message: String){
-        Messages.showInfoMessage("Spock ADB", message)
+        Messages.showInfoMessage( message,"Spock ADB")
 
-    }
-    fun getPopupStep(): ListPopup {
-        val connectionGroup = DefaultActionGroup()
-
-      return  PopupFactoryImpl.getInstance().createActionGroupPopup(
-            "Hll",
-            connectionGroup,
-            SimpleDataContext.getProjectContext(getProject()),
-            JBPopupFactory.ActionSelectionAid.NUMBERING,
-            true)
     }
 
 }
