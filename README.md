@@ -9,3 +9,5 @@
  -  Enable and Disable Permissions of your application  -Kill Application  
  - Kill or
    Reopen Application
+
+[![IMAGE ALT TEXT HERE](http://img.youtube.com/vi/x_WX_Pznqos/0.jpg)](http://www.youtube.com/watch?v=x_WX_Pznqos)
