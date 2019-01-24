@@ -7,5 +7,5 @@
  -  Navigate to current  active fragments 
  -  Clear application data 
  -  Enable and Disable Permissions of your application  -Kill Application  
- - Restart or
+ - Kill or
    Reopen Application
