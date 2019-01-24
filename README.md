@@ -1,4 +1,5 @@
 
+
 # SpockAdb
  Plugin Helps you to have full control of your project
 
@@ -7,13 +8,15 @@
  - Navigate to current active activity in your IDE
  -  Navigate to current  active fragments 
  -  Clear application data 
- -  Enable and Disable Permissions of your application  -Kill Application  
+ -  Enable and Disable Permissions of your application
  - Kill or
    Reopen Application
 
 ## Download
 
 https://plugins.jetbrains.com/plugin/11591-spock-adb
+**Download from disk:**
+https://plugins.jetbrains.com/plugin/download?rel=true&updateId=54517
 
 ## Demo
 
