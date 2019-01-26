@@ -4,8 +4,8 @@ import com.intellij.notification.NotificationDisplayType
 import com.intellij.notification.NotificationGroup
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.ui.SimpleToolWindowPanel
-import javax.swing.*
 import spock.adb.premission.PermissionDialog
+import javax.swing.*
 
 
 class SpockAdbViewer(private val  adbController: AdbController
@@ -16,9 +16,10 @@ class SpockAdbViewer(private val  adbController: AdbController
     private lateinit var currentActivityButton: JButton
     private lateinit var currentFragmentButton: JButton
     private lateinit var clearAppDataButton: JButton
-    private lateinit var premissionButton: JButton
+    private lateinit var permissionButton: JButton
     private lateinit var restartAppButton: JButton
     private lateinit var killAppButton: JButton
+    private lateinit var activitiesBackStackButton: JButton
     private lateinit var errorMessageLable: JLabel
     private lateinit var devices: List<IDevice>
     private var selectedIDevice: IDevice? = null
@@ -30,7 +31,11 @@ class SpockAdbViewer(private val  adbController: AdbController
         devicesListComboBox.addItemListener {
             selectedIDevice = devices[devicesListComboBox.selectedIndex]
         }
-
+        activitiesBackStackButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.currentBackStack(device, ::showSuccess, ::showError)
+            }
+        }
         currentActivityButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.currentActivity(device,::showSuccess,::showError)
@@ -56,7 +61,8 @@ class SpockAdbViewer(private val  adbController: AdbController
                 adbController.clearAppData(device,::showSuccess,::showError)
             }
         }
-        premissionButton.addActionListener { _ ->
+
+        permissionButton.addActionListener {
             selectedIDevice?.let {device->
                adbController.getApplicationPermissions(device,{
                    val dialog = PermissionDialog(device,adbController,it)

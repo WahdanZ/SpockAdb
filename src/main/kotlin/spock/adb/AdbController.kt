@@ -5,6 +5,7 @@ import spock.adb.premission.PermissionListItem
 
 interface AdbController {
     fun connectedDevices(block: (devices:List<IDevice>) -> Unit,error:(message:String)->Unit)
+    fun currentBackStack(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit)
     fun currentActivity(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun currentFragment(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun killApp(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)

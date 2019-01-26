@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'com.wahdan'
-version '1.0'
+version '1.0.1'
 
 repositories {
     jcenter()
@@ -32,15 +32,65 @@ intellij {
 }
 patchPluginXml {
     changeNotes """
-       Plugin Helps you to have full control of your project
-       
-        -Navigate to current active activity in your IDE
-        
-        -Navigate to current active fragments
-        
-        -Clear application data
-        
-        -Enable and Disable Permissions of your application
-        =Kill Application
-        =Restart or Reopen Application """
+      <html><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dd</title>
+  <link rel="stylesheet" href="https://stackedit.io/style.css">
+</head>
+
+<body class="stackedit">
+  <div class="stackedit__left">
+    <div class="stackedit__toc">
+      
+<ul>
+<li><a href="#spockadb">SpockAdb</a>
+<ul>
+<li><a href="#features">Features</a></li>
+<li><a href="#download">Download</a></li>
+<li><a href="#demo">Demo</a></li>
+</ul>
+</li>
+</ul>
+
+    </div>
+  </div>
+  <div class="stackedit__right">
+    <div class="stackedit__html">
+      <h1 id="spockadb">SpockAdb</h1>
+<p>Plugin Helps you to have full control of your project</p>
+<h2 id="features"><strong>Features</strong></h2>
+<ul>
+<li>Navigate to current active activity in your IDE</li>
+<li>Navigate to current  active fragments</li>
+<li>Clear application data</li>
+<li>Enable and Disable Permissions of your application  -Kill Application</li>
+<li>Kill or<br>
+Reopen Application</li>
+</ul>
+<h2 id="download">Download</h2>
+<p><a href="https://plugins.jetbrains.com/plugin/11591-spock-adb">https://plugins.jetbrains.com/plugin/11591-spock-adb</a></p>
+<h2 id="demo">Demo</h2>
+<p><a href="http://www.youtube.com/watch?v=x_WX_Pznqos"><img src="http://img.youtube.com/vi/x_WX_Pznqos/0.jpg" alt="IMAGE ALT TEXT HERE"></a></p>
+<pre><code>Copyright 2019 Ahmed Wahdan
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+</code></pre>
+
+    </div>
+  </div>
+
+
+
+</body></html> """
 }   

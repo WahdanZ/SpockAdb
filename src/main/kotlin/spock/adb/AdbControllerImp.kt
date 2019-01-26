@@ -20,6 +20,7 @@ class AdbControllerImp(
     init {
         AndroidDebugBridge.addDeviceChangeListener(this)
     }
+
     private fun getApplicationID(device: IDevice) =
         GetApplicationIDCommand().execute(Any(), project, device).toString()
 
@@ -40,6 +41,19 @@ class AdbControllerImp(
 
     }
 
+    override fun currentBackStack(
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        val activitiesClass =
+            GetBackStackCommand().execute(Any(), project, device)
+        val list = JBList(activitiesClass.mapIndexed
+        { index, className -> "$index-$className" })
+        showClassPopup("Activities", list, activitiesClass.map { it.psiClassByNameFromProjct(project) })
+
+    }
+
     override fun currentActivity(
         device: IDevice,
         success: (message: String) -> Unit,
@@ -48,8 +62,9 @@ class AdbControllerImp(
 
         execute({
             val activity =
-                GetActivityCommand().execute(Any(), project, device) ?: throw NotFoundException("Class Not Found")
-            activity.openIn(project)
+                GetActivityCommand().execute(Any(), project, device) ?: throw NotFoundException("No activities found")
+            activity.psiClassByNameFromProjct(project)?.openIn(project)
+                ?: throw NotFoundException("class $activity  Not Found")
         }, error)
     }
 
@@ -64,24 +79,14 @@ class AdbControllerImp(
                 GetFragmentsCommand().execute(Any(), project, device) ?: throw NotFoundException("Class Not Found")
             if (fragmentsClass.size > 1) {
                 val list = JBList(fragmentsClass.map { it1 -> it1.toString().split(":").lastOrNull() })
-                showClassPopup(list, fragmentsClass)
+                showClassPopup("Fragments", list, fragmentsClass.map { it?.psiClassByNameFromCache(project) })
             } else {
-                fragmentsClass[0]!!.openIn(project)
+                fragmentsClass.firstOrNull()?.let {
+                    it.psiClassByNameFromCache(project)?.openIn(project)
+                        ?: throw NotFoundException("Class $it Not Found")
+                }
             }
         }, error)
-    }
-
-    private fun showClassPopup(
-        list: JBList<String?>,
-        fragmentsClass: List<PsiClass?>
-    ) {
-        PopupChooserBuilder<String>(list).apply {
-            this.setTitle("Chose Fragment")
-            this.setItemChoosenCallback {
-                fragmentsClass.getOrNull(list.selectedIndex)?.openIn(project)
-            }
-            this.createPopup().showCenteredInCurrentWindow(project)
-        }
     }
 
     override fun killApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
@@ -101,7 +106,6 @@ class AdbControllerImp(
     }
 
 
-
     override fun clearAppData(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
         execute({
             val applicationID = getApplicationID(device)
@@ -118,7 +122,7 @@ class AdbControllerImp(
     ) {
         execute({
             val applicationID = getApplicationID(device)
-           block( GetApplicationPermission().execute(applicationID, project, device))
+            block(GetApplicationPermission().execute(applicationID, project, device))
         }, error)
     }
 
@@ -130,7 +134,7 @@ class AdbControllerImp(
     ) {
         execute({
             val applicationID = getApplicationID(device)
-            RevokePermissionCommand().execute(applicationID,permissionListItem, project, device)
+            RevokePermissionCommand().execute(applicationID, permissionListItem, project, device)
             success("application $applicationID data cleared")
         }, error)
     }
@@ -143,7 +147,7 @@ class AdbControllerImp(
     ) {
         execute({
             val applicationID = getApplicationID(device)
-            GrantPermissionCommand().execute(applicationID,permissionListItem, project, device)
+            GrantPermissionCommand().execute(applicationID, permissionListItem, project, device)
             success("application $applicationID data cleared")
         }, error)
     }
@@ -156,6 +160,25 @@ class AdbControllerImp(
         }
     }
 
+    private fun showClassPopup(
+        title: String,
+        list: JBList<String?>,
+        classes: List<PsiClass?>
+    ) {
+        PopupChooserBuilder<String>(list).apply {
+            this.setTitle(title)
+            this.setItemChoosenCallback {
+                classes.getOrNull(list.selectedIndex)?.openIn(project)
+            }
+            this.createPopup().showCenteredInCurrentWindow(project)
+        }
+    }
 
 }
+
+
+
+
+
+
 
