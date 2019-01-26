@@ -9,27 +9,35 @@ import spock.adb.isMarshmallow
 import spock.adb.premission.PermissionListItem
 import java.util.concurrent.TimeUnit
 
-class GetApplicationPermission:Command<String,List<PermissionListItem>> {
+class GetApplicationPermission : Command<String, List<PermissionListItem>> {
 
     override fun execute(p: String, project: Project, device: IDevice): List<PermissionListItem> {
         if (device.isMarshmallow()) {
             if (device.isAppInstall(p)) {
                 val shellOutputReceiver = ShellOutputReceiver()
-                val ps = mutableMapOf<String,Boolean>()
-                device.executeShellCommand("dumpsys package $p", shellOutputReceiver, 15L, TimeUnit.SECONDS)
-                shellOutputReceiver.toString().split("\n").map { it.trim() }.filter {
-                    it.contains(".permission.") }.distinct().forEach{
-                    convertPermissionToMap(it, ps)
-                }
-              return  ps.map { PermissionListItem(it.key,it.value) }
+                val ps = mutableMapOf<String, Boolean>()
+                device.executeShellCommand(
+                    "dumpsys package $p  | grep permission",
+                    shellOutputReceiver,
+                    15L,
+                    TimeUnit.SECONDS
+                )
+                shellOutputReceiver.toString().split("\n")
+                    .map { it.trim() }
+                    .filter { it.contains(".permission.") }
+                    .distinct()
+                    .forEach { convertPermissionToMap(it, ps) }
+
+                return ps.map { PermissionListItem(it.key, it.value) }
                     .filter {
-                        dangerousPermissions.find { dangerousPermission->
-                            dangerousPermission.contains(it.permission.split(".").getOrElse(2){"any"}) } != null
+                        dangerousPermissions.find { dangerousPermission ->
+                            dangerousPermission.contains(it.permission.split(".").getOrElse(2) { "any" })
+                        } != null
                     }
                     .toList()
-            }
-        }
-
+            } else
+                throw NotFoundException("Application $p not installed")
+        } else
             throw NotFoundException("All Permissions Denied Device Bazinga!! Your Device before Marshmallow ")
 
     }
@@ -43,7 +51,8 @@ class GetApplicationPermission:Command<String,List<PermissionListItem>> {
         ps[permission] = grant
     }
 
-    val dangerousPermissions  = listOf("READ_CALENDAR",
+    private val dangerousPermissions = listOf(
+        "READ_CALENDAR",
         "WRITE_CALENDAR",
         "CAMERA",
         "READ_CONTACTS",
@@ -68,6 +77,7 @@ class GetApplicationPermission:Command<String,List<PermissionListItem>> {
         "RECEIVE_WAP_PUSH",
         "RECEIVE_MMS",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE")
+        "WRITE_EXTERNAL_STORAGE"
+    )
 
 }

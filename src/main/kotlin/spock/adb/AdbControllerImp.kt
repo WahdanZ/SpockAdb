@@ -122,7 +122,11 @@ class AdbControllerImp(
     ) {
         execute({
             val applicationID = getApplicationID(device)
-            block(GetApplicationPermission().execute(applicationID, project, device))
+            val permissions = GetApplicationPermission().execute(applicationID, project, device)
+            if (permissions.isNotEmpty())
+                block(permissions)
+            else
+                error("Your Application Doesn't Require any of Runtime Permissions ")
         }, error)
     }
 

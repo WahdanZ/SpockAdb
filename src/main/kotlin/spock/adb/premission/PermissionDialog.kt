@@ -1,7 +1,6 @@
 package spock.adb.premission
 
 import com.android.ddmlib.IDevice
-import com.intellij.openapi.ui.Messages
 import spock.adb.AdbController
 import java.awt.Component
 import java.awt.event.*
@@ -14,7 +13,6 @@ class PermissionDialog(
     private val permissionList: List<PermissionListItem>
 ) : JDialog() {
     private lateinit var contentPane: JPanel
-    private lateinit var buttonOK: JButton
     private lateinit var jList: JList<PermissionListItem>
 
     init {
@@ -68,21 +66,15 @@ class PermissionDialog(
 
     private fun handelPermissionSelection(device: IDevice, permissionListItem: PermissionListItem){
         if(permissionListItem.isSelected) {
-            adaPermission.grantPermission(device, permissionListItem, ::showSuccess, ::showSuccess)
+            adaPermission.grantPermission(device, permissionListItem, ::print, ::error)
         }else{
-            adaPermission.revokePermission(device, permissionListItem, ::showSuccess, ::showSuccess)
+            adaPermission.revokePermission(device, permissionListItem, ::print, ::error)
 
         }
 
     }
-    private fun showError(message:String){
-        Messages.showErrorDialog(message,"Spock ADB")
 
-    }
-    private fun showSuccess(message: String){
-        println(message)
-    }
-    internal class CheckListRenderer : JCheckBox(), ListCellRenderer<Any> {
+    class CheckListRenderer : JCheckBox(), ListCellRenderer<Any> {
         override fun getListCellRendererComponent(
             list: JList<*>, value: Any,
             index: Int, isSelected: Boolean, hasFocus: Boolean
