@@ -6,7 +6,7 @@ import spock.adb.ShellOutputReceiver
 import java.util.concurrent.TimeUnit
 
 class GetBackStackCommand : Command<Any, List<String?>> {
-    override fun execute(p: Any, project: Project, device: IDevice): List<String> {
+    override fun execute(p: Any, project: Project, device: IDevice): List<String?> {
         val shellOutputReceiver = ShellOutputReceiver()
         device.executeShellCommand(
             "dumpsys activity activities | sed -En -e '/Running activities/,/Run #0/p'",

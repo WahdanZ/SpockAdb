@@ -6,11 +6,11 @@
 ## **Features**
 
  - Navigate to current active activity in your IDE
+ -  Current BackStack Activities 
  -  Navigate to current  active fragments 
  -  Clear application data 
  -  Enable and Disable Permissions of your application
- - Kill or
-   Reopen Application
+ - Kill or Restart Application
 
 ## Download
 

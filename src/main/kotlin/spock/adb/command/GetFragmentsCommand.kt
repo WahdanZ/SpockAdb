@@ -5,24 +5,24 @@ import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
 import java.util.concurrent.TimeUnit
 
-class GetFragmentsCommand : Command<Any, List<String?>?> {
-    override fun execute(p: Any, project: Project, device: IDevice): List<String?>? {
+class GetFragmentsCommand : Command<String, List<String?>?> {
+    override fun execute(p: String, project: Project, device: IDevice): List<String?>? {
         val shellOutputReceiver = ShellOutputReceiver()
         device.executeShellCommand("dumpsys activity top", shellOutputReceiver, 15L, TimeUnit.SECONDS)
-       return  getCurrentFragmentsFromLog(shellOutputReceiver)
+        return getCurrentFragmentsFromLog(shellOutputReceiver)
 
 
     }
 
-    private fun getCurrentFragmentsFromLog(shellOutputReceiver: ShellOutputReceiver):List<String>? {
-        return shellOutputReceiver.toString().split("Added Fragments:").lastOrNull()?.split("\n")
-            ?.filter {
-                it.contains("#")
-            }?.map {
-                it.split("{").first()
-                    .split(" ")
-                    .last()
-            }?.filter { !it.contains(".") }?.distinct()
+    private fun getCurrentFragmentsFromLog(shellOutputReceiver: ShellOutputReceiver): List<String>? {
+        val task = shellOutputReceiver.toString().split("TASK").lastOrNull()
+        val addedFragments = if (task?.contains("NavHostFragment") == true)
+            task.split("Added Fragments:")[2]
+        else task?.split("Added Fragments:")?.lastOrNull()
+        return addedFragments?.lines()?.map { it.trim() }
+            ?.filter { (it.startsWith("#") && !it.contains("BackStackEntry")) }
+            ?.map { it.split("{").first().split(" ").last() }?.distinct()
+
     }
 
 }

@@ -62,7 +62,7 @@ class SpockAdbViewer(private val  adbController: AdbController
             }
         }
 
-        permissionButton.addActionListener { it ->
+        permissionButton.addActionListener {
             selectedIDevice?.let {device->
                adbController.getApplicationPermissions(device,{
                    val dialog = PermissionDialog(device,adbController,it)

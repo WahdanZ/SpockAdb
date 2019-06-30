@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'com.wahdan'
-version '1.0.1'
+version '1.0.2'
 
 repositories {
     jcenter()
@@ -45,11 +45,6 @@ patchPluginXml {
       
 <ul>
 <li><a href="#spockadb">SpockAdb</a>
-<ul>
-<li><a href="#features">Features</a></li>
-<li><a href="#download">Download</a></li>
-<li><a href="#demo">Demo</a></li>
-</ul>
 </li>
 </ul>
 
@@ -62,11 +57,11 @@ patchPluginXml {
 <h2 id="features"><strong>Features</strong></h2>
 <ul>
 <li>Navigate to current active activity in your IDE</li>
+<li>show current back satck  </li>
 <li>Navigate to current  active fragments</li>
 <li>Clear application data</li>
 <li>Enable and Disable Permissions of your application  -Kill Application</li>
-<li>Kill or<br>
-Reopen Application</li>
+<li>Kill or Reopen Application</li>
 </ul>
 <h2 id="download">Download</h2>
 <p><a href="https://plugins.jetbrains.com/plugin/11591-spock-adb">https://plugins.jetbrains.com/plugin/11591-spock-adb</a></p>
@@ -89,8 +84,6 @@ limitations under the License.
 
     </div>
   </div>
-
-
 
 </body></html> """
 }   

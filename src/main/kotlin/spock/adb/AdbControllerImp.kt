@@ -50,7 +50,7 @@ class AdbControllerImp(
             GetBackStackCommand().execute(Any(), project, device)
         val list = JBList(activitiesClass.mapIndexed
         { index, className -> "$index-$className" })
-        showClassPopup("Activities", list, activitiesClass.map { it.psiClassByNameFromProjct(project) })
+        showClassPopup("Activities", list, activitiesClass.map { it?.psiClassByNameFromProjct(project) })
 
     }
 
@@ -75,10 +75,13 @@ class AdbControllerImp(
         error: (message: String) -> Unit
     ) {
         execute({
+            val applicationID = getApplicationID(device)
+
             val fragmentsClass =
-                GetFragmentsCommand().execute(Any(), project, device) ?: throw NotFoundException("Class Not Found")
+                GetFragmentsCommand().execute(applicationID, project, device)
+                    ?: throw NotFoundException("Class Not Found")
             if (fragmentsClass.size > 1) {
-                val list = JBList(fragmentsClass.map { it1 -> it1.toString().split(":").lastOrNull() })
+                val list = JBList(fragmentsClass.map { it1 -> it1.toString().split(":").lastOrNull() ?: "" })
                 showClassPopup("Fragments", list, fragmentsClass.map { it?.psiClassByNameFromCache(project) })
             } else {
                 fragmentsClass.firstOrNull()?.let {
@@ -166,7 +169,7 @@ class AdbControllerImp(
 
     private fun showClassPopup(
         title: String,
-        list: JBList<String?>,
+        list: JBList<String>,
         classes: List<PsiClass?>
     ) {
         PopupChooserBuilder<String>(list).apply {
