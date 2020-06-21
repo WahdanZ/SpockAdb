@@ -16,6 +16,7 @@ class SpockAdbViewer(private val  adbController: AdbController
     private lateinit var currentActivityButton: JButton
     private lateinit var currentFragmentButton: JButton
     private lateinit var clearAppDataButton: JButton
+    private lateinit var refresh: JButton
     private lateinit var permissionButton: JButton
     private lateinit var restartAppButton: JButton
     private lateinit var killAppButton: JButton
@@ -27,7 +28,9 @@ class SpockAdbViewer(private val  adbController: AdbController
     init {
         setContent(rootPanel)
         updateDevicesList()
-
+        refresh.addActionListener {
+            updateDevicesList()
+        }
         devicesListComboBox.addItemListener {
             selectedIDevice = devices[devicesListComboBox.selectedIndex]
         }
@@ -80,7 +83,7 @@ class SpockAdbViewer(private val  adbController: AdbController
     private fun updateDevicesList() {
         adbController.connectedDevices({ devices->
             this.devices = devices
-            selectedIDevice = this.devices.getOrElse(devices.indexOf(selectedIDevice)){this.devices.getOrNull(0)}
+            selectedIDevice = this.devices.getOrElse(devices.indexOf(selectedIDevice)) { this.devices.getOrNull(0) }
             devicesListComboBox.model = DefaultComboBoxModel<String>(
                 devices.map { device ->
                     device.name

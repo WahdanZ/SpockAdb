@@ -26,15 +26,15 @@ class AdbControllerImp(
 
     override fun connectedDevices(block: (devices: List<IDevice>) -> Unit, error: (message: String) -> Unit) {
         updateDeviceList = block
-        updateDeviceList?.invoke(debugBridge?.devices?.toList() as List<IDevice>)
+        updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
     }
 
     override fun deviceConnected(iDevice: IDevice) {
-        updateDeviceList?.invoke(debugBridge?.devices?.toList() as List<IDevice>)
+        updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
     }
 
     override fun deviceDisconnected(iDevice: IDevice) {
-        updateDeviceList?.invoke(debugBridge?.devices?.toList() as List<IDevice>)
+        updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
     }
 
     override fun deviceChanged(iDevice: IDevice, i: Int) {

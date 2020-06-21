@@ -16,8 +16,7 @@
 
 https://plugins.jetbrains.com/plugin/11591-spock-adb
 
-**Download from disk:**
-https://plugins.jetbrains.com/plugin/download?rel=true&updateId=54517
+
 
 ## Demo
 
