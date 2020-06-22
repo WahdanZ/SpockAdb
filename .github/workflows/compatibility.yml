@@ -30,9 +30,6 @@ jobs:
         uses: ChrisCarini/intellij-platform-plugin-verifier-action@latest
         with:
           ide-versions: |
-            ideaIC:2020.1
-            ideaIU:2018.3
-            ideaIU:2019.2
             android
       - name: Get log file path and print contents
         run: |
