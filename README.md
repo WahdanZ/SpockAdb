@@ -1,5 +1,4 @@
 
-
 # SpockAdb
  Plugin Helps you to have full control of your project
  [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/WahdanZ/SpockAdb/JetBrains%20Plugin%20CI?logo=GitHub&style=flat-square)](https://github.com/WahdanZ/SpockAdb/actions?query=workflow%3A%22JetBrains+Plugin+CI%22)
