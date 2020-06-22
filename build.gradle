@@ -28,7 +28,6 @@ intellij {
     pluginName 'SpockAdb'
     updateSinceUntilBuild false
     plugins 'android','java'
-    localPath '/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/193.6514223/Android Studio.app'
 }
 publishPlugin {
     username intellijPublishUsername
