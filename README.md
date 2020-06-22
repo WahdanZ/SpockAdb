@@ -1,5 +1,5 @@
 
-# SpockAdb  [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/WahdanZ/SpockAdb/JetBrains%20Plugin%20CI?logo=GitHub&style=flat-square)](https://github.com/WahdanZ/SpockAdb/actions?query=workflow%3A%22JetBrains+Plugin+CI%22)[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/WahdanZ/SpockAdb/IntelliJ%20Plugin%20Compatibility?label=IntelliJ%20Plugin%20Compatibility&logo=GitHub&style=flat-square)](https://github.com/WahdanZ/SpockAdb/actions?query=workflow%3A%22IntelliJ+Plugin+Compatibility%22)
+# SpockAdb  [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/WahdanZ/SpockAdb/JetBrains%20Plugin%20CI?logo=GitHub&style=flat-square)](https://github.com/WahdanZ/SpockAdb/actions?query=workflow%3A%22JetBrains+Plugin+CI%22) [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/WahdanZ/SpockAdb/IntelliJ%20Plugin%20Compatibility?label=IntelliJ%20Plugin%20Compatibility&logo=GitHub&style=flat-square)](https://github.com/WahdanZ/SpockAdb/actions?query=workflow%3A%22IntelliJ+Plugin+Compatibility%22)
 
 Plugin Helps you to have full control of your project
  
