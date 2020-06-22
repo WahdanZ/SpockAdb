@@ -27,7 +27,7 @@ compileTestKotlin {
 intellij {
     pluginName 'SpockAdb'
     updateSinceUntilBuild false
-    plugins 'android','java'
+    plugins = ['android','java']
 }
 
 // The below will surface warnings as errors - I want
@@ -53,11 +53,12 @@ if (System.getenv('IS_CI') != "True") {
     // Because this contains the username and password, this file is also included in .gitignore file.
   //  apply from: 'jetbrainsCredentials.gradle'
 
+
     publishPlugin {
-    username intellijPublishUsername
-    password intellijPublishPassword
-    //    token intellijPluginPublishToken
+        token intellijPublishToken
     }
+
+
 
     task checkJetBrainsCreds {
         doLast {

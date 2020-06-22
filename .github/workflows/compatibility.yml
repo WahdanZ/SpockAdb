@@ -31,9 +31,8 @@ jobs:
         with:
           ide-versions: |
             ideaIC:2020.1
-            ideaIU:2020.1
-            ideaIC:LATEST-EAP-SNAPSHOT
             ideaIU:LATEST-EAP-SNAPSHOT
+            android
       - name: Get log file path and print contents
         run: |
           echo "The log file path is: ${{steps.verify.outputs.verification-output-log-filename}}" ;

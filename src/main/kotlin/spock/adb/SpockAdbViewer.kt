@@ -1,4 +1,5 @@
 package spock.adb
+
 import com.android.ddmlib.IDevice
 import com.intellij.notification.NotificationDisplayType
 import com.intellij.notification.NotificationGroup
@@ -8,7 +9,8 @@ import spock.adb.premission.PermissionDialog
 import javax.swing.*
 
 
-class SpockAdbViewer(private val  adbController: AdbController
+class SpockAdbViewer(
+    private val adbController: AdbController
 ) : SimpleToolWindowPanel(true) {
     private lateinit var panel1: JPanel
     private lateinit var rootPanel: JPanel
@@ -41,47 +43,47 @@ class SpockAdbViewer(private val  adbController: AdbController
         }
         currentActivityButton.addActionListener {
             selectedIDevice?.let { device ->
-                adbController.currentActivity(device,::showSuccess,::showError)
+                adbController.currentActivity(device, ::showSuccess, ::showError)
             }
         }
         currentFragmentButton.addActionListener {
-            selectedIDevice?.let {device->
-                adbController.currentFragment(device,::showSuccess,::showError)
+            selectedIDevice?.let { device ->
+                adbController.currentFragment(device, ::showSuccess, ::showError)
             }
         }
         restartAppButton.addActionListener {
-            selectedIDevice?.let {device->
-                adbController.restartApp(device,::showSuccess,::showError)
+            selectedIDevice?.let { device ->
+                adbController.restartApp(device, ::showSuccess, ::showError)
             }
         }
         killAppButton.addActionListener {
-            selectedIDevice?.let {device->
-                adbController.killApp(device,::showSuccess,::showError)
+            selectedIDevice?.let { device ->
+                adbController.killApp(device, ::showSuccess, ::showError)
             }
         }
         clearAppDataButton.addActionListener {
-            selectedIDevice?.let {device->
-                adbController.clearAppData(device,::showSuccess,::showError)
+            selectedIDevice?.let { device ->
+                adbController.clearAppData(device, ::showSuccess, ::showError)
             }
         }
 
         permissionButton.addActionListener {
-            selectedIDevice?.let {device->
-               adbController.getApplicationPermissions(device,{
-                   val dialog = PermissionDialog(device,adbController,it)
-                   dialog.pack()
-                   dialog.isVisible = true
+            selectedIDevice?.let { device ->
+                adbController.getApplicationPermissions(device, {
+                    val dialog = PermissionDialog(device, adbController, it)
+                    dialog.pack()
+                    dialog.isVisible = true
 
-               }, ::showError)
+                }, ::showError)
 
-           }
+            }
 
         }
 
     }
 
     private fun updateDevicesList() {
-        adbController.connectedDevices({ devices->
+        adbController.connectedDevices({ devices ->
             this.devices = devices
             selectedIDevice = this.devices.getOrElse(devices.indexOf(selectedIDevice)) { this.devices.getOrNull(0) }
             devicesListComboBox.model = DefaultComboBoxModel<String>(
@@ -89,21 +91,26 @@ class SpockAdbViewer(private val  adbController: AdbController
                     device.name
                 }.toTypedArray()
             )
-        },::showError)
+        }, ::showError)
     }
 
-    private fun showError(message:String){
-        val noti = NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true)
-        noti.createNotification("Spock ADB",
+    private fun showError(message: String) {
+        val noti = NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true,
+            "", null, "Spock Adb")
+        noti.createNotification(
+            "Spock ADB",
             message,
             NotificationType.ERROR,
             null
         ).notify(null)
 
     }
-    private fun showSuccess(message: String){
-        val nomi =   NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true)
-        nomi.createNotification("Spock ADB",
+
+    private fun showSuccess(message: String) {
+        val nomi = NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true,
+            "", null, "Spock Adb")
+        nomi.createNotification(
+            "Spock ADB",
             message,
             NotificationType.INFORMATION,
             null
