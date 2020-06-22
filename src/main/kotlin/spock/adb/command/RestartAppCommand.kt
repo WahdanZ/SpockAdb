@@ -2,7 +2,7 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import javassist.NotFoundException
+
 import spock.adb.*
 
 class RestartAppCommand:Command<String,Unit> {
@@ -13,10 +13,10 @@ class RestartAppCommand:Command<String,Unit> {
             if (activity.isNotEmpty()) {
                 device.startActivity(activity)
             } else {
-                throw NotFoundException("No Default Activity Found")
+                throw Exception("No Default Activity Found")
             }
         }
         else
-            throw NotFoundException("Application $p not installed" )
+            throw Exception("Application $p not installed" )
     }
 }

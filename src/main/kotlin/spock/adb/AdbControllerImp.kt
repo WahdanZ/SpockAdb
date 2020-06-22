@@ -6,7 +6,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBList
-import javassist.NotFoundException
+
 import spock.adb.command.*
 import spock.adb.premission.PermissionListItem
 
@@ -62,9 +62,9 @@ class AdbControllerImp(
 
         execute({
             val activity =
-                GetActivityCommand().execute(Any(), project, device) ?: throw NotFoundException("No activities found")
+                GetActivityCommand().execute(Any(), project, device) ?: throw Exception("No activities found")
             activity.psiClassByNameFromProjct(project)?.openIn(project)
-                ?: throw NotFoundException("class $activity  Not Found")
+                ?: throw Exception("class $activity  Not Found")
         }, error)
     }
 
@@ -79,14 +79,14 @@ class AdbControllerImp(
 
             val fragmentsClass =
                 GetFragmentsCommand().execute(applicationID, project, device)
-                    ?: throw NotFoundException("Class Not Found")
+                    ?: throw Exception("Class Not Found")
             if (fragmentsClass.size > 1) {
                 val list = JBList(fragmentsClass.map { it1 -> it1.toString().split(":").lastOrNull() ?: "" })
                 showClassPopup("Fragments", list, fragmentsClass.map { it?.psiClassByNameFromCache(project) })
             } else {
                 fragmentsClass.firstOrNull()?.let {
                     it.psiClassByNameFromCache(project)?.openIn(project)
-                        ?: throw NotFoundException("Class $it Not Found")
+                        ?: throw Exception("Class $it Not Found")
                 }
             }
         }, error)

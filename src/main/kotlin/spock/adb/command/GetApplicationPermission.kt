@@ -2,7 +2,7 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import javassist.NotFoundException
+
 import spock.adb.ShellOutputReceiver
 import spock.adb.isAppInstall
 import spock.adb.isMarshmallow
@@ -36,9 +36,9 @@ class GetApplicationPermission : Command<String, List<PermissionListItem>> {
                     }
                     .toList()
             } else
-                throw NotFoundException("Application $p not installed")
+                throw Exception("Application $p not installed")
         } else
-            throw NotFoundException("All Permissions Denied Device Bazinga!! Your Device before Marshmallow ")
+            throw Exception("All Permissions Denied Device Bazinga!! Your Device before Marshmallow ")
 
     }
 
