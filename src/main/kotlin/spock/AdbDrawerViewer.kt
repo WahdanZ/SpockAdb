@@ -12,7 +12,7 @@ class AdbDrawerViewer : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
     val adbController:AdbController = AdbControllerImp(project, AndroidSdkUtils.getDebugBridge(project))
         val contentManager = toolWindow.contentManager
-            val content = contentManager.factory.createContent(SpockAdbViewer(adbController), null, false)
+            val content = contentManager.factory.createContent(SpockAdbViewer(adbController,project), null, false)
             contentManager.addContent(content)
     }
 }

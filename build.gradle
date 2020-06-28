@@ -5,7 +5,7 @@ plugins {
 }
 
 group 'com.wahdan'
-version '1.0.3'
+version '1.0.5'
 
 repositories {
     jcenter()
@@ -25,40 +25,17 @@ compileTestKotlin {
 }
 
 intellij {
+    localPath '/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/193.6514223/Android Studio.app'
     pluginName 'SpockAdb'
     updateSinceUntilBuild false
     plugins = ['android','java']
 }
 
-// The below will surface warnings as errors - I want
-// this in the project to allow us to catch deprecation
-// notices early and often.
-tasks.withType(JavaCompile){
-    options.compilerArgs.addAll(['-Xlint:all',
-                                 '-Xlint:-options',
-                                 '-Xlint:-rawtypes',
-                                 '-Xlint:-processing',
-                                 '-Xlint:-path', // Ignore JBR SDK manifest element warnings
-                                 '-proc:none',
-                                 '-Werror',
-                                 '-Xlint:-classfile']) //ignore warnings from dependencies
-}
-
 if (System.getenv('IS_CI') != "True") {
-    // The below file (jetbrainsCredentials.gradle) should contain the below:
-    //    project.ext.set("intellijPublishUsername", "YOUR_USERNAME_HERE")
-    //    project.ext.set("intellijPublishPassword", "YOUR_PASSWORD_HERE")
-    //    project.ext.set("intellijPluginPublishToken", "YOUR_TOKEN_HERE")
-    //
-    // Because this contains the username and password, this file is also included in .gitignore file.
-  //  apply from: 'jetbrainsCredentials.gradle'
-
 
     publishPlugin {
         token intellijPublishToken
     }
-
-
 
     task checkJetBrainsCreds {
         doLast {

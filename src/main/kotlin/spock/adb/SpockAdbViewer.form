@@ -23,15 +23,6 @@
         </properties>
         <border type="none"/>
         <children>
-          <component id="4cd8e" class="javax.swing.JLabel" binding="errorMessageLable">
-            <constraints>
-              <grid row="1" column="5" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
-            </constraints>
-            <properties>
-              <font size="9"/>
-              <text value=""/>
-            </properties>
-          </component>
           <vspacer id="6253e">
             <constraints>
               <grid row="9" column="5" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2" indent="0" use-parent-layout="false"/>
@@ -91,7 +82,7 @@
           </component>
           <component id="158a4" class="javax.swing.JSeparator">
             <constraints>
-              <grid row="8" column="2" row-span="1" col-span="3" vsize-policy="2" hsize-policy="6" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
+              <grid row="8" column="4" row-span="1" col-span="1" vsize-policy="2" hsize-policy="6" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
             </constraints>
             <properties/>
           </component>
@@ -111,16 +102,25 @@
               <text value="Open Current Activity"/>
             </properties>
           </component>
-          <component id="86947" class="javax.swing.JButton" binding="refresh">
+          <component id="86947" class="javax.swing.JButton" binding="wifiDebug">
             <constraints>
               <grid row="0" column="6" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="0" indent="0" use-parent-layout="false"/>
             </constraints>
             <properties>
               <horizontalAlignment value="0"/>
-              <icon value="refresh.png"/>
-              <text value=""/>
+              <icon value="wifi-16.png"/>
+              <text value="debug"/>
               <verticalAlignment value="0"/>
               <verticalTextPosition value="0"/>
+            </properties>
+          </component>
+          <component id="a72ab" class="javax.swing.JButton" binding="adbWifi">
+            <constraints>
+              <grid row="1" column="0" row-span="1" col-span="6" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties>
+              <icon value="wifi-16.png"/>
+              <text value="Connect Device Using IP"/>
             </properties>
           </component>
         </children>

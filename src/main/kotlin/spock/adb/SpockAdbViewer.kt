@@ -4,13 +4,15 @@ import com.android.ddmlib.IDevice
 import com.intellij.notification.NotificationDisplayType
 import com.intellij.notification.NotificationGroup
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import spock.adb.premission.PermissionDialog
 import javax.swing.*
-
+import com.intellij.openapi.ui.Messages
 
 class SpockAdbViewer(
-    private val adbController: AdbController
+    private val adbController: AdbController,
+    private val project: Project
 ) : SimpleToolWindowPanel(true) {
     private lateinit var panel1: JPanel
     private lateinit var rootPanel: JPanel
@@ -23,18 +25,44 @@ class SpockAdbViewer(
     private lateinit var restartAppButton: JButton
     private lateinit var killAppButton: JButton
     private lateinit var activitiesBackStackButton: JButton
-    private lateinit var errorMessageLable: JLabel
+    private lateinit var adbWifi: JButton
+    private lateinit var wifiDebug: JButton
     private lateinit var devices: List<IDevice>
     private var selectedIDevice: IDevice? = null
+    private val notifier: NotificationGroup by lazy {
+        NotificationGroup("Spock_ADB",
+            NotificationDisplayType.BALLOON, true)
+    }
+
 
     init {
         setContent(rootPanel)
         updateDevicesList()
-        refresh.addActionListener {
-            updateDevicesList()
+        wifiDebug.isEnabled = false
+        wifiDebug.isVisible = false
+        val deviceSelected = { x:Boolean->
+            wifiDebug.isEnabled = x
         }
+        adbWifi.isVisible = false
+        adbWifi.addActionListener{
+            val ip = Messages.showInputDialog(
+                "Enter You Android Device IP address",
+                "Spock Adb- Device connect over Wifi",
+                null,
+                "192.168.1.20",
+                IPAddressInputValidator()
+            )
+            ip?.let { adbController.connectDeviceOverIp(ip = ip, success = ::showSuccess, error = ::showError) }
+
+        }
+
+//        refresh.addActionListener {
+//            adbController.refresh()
+//            updateDevicesList()
+//        }
         devicesListComboBox.addItemListener {
             selectedIDevice = devices[devicesListComboBox.selectedIndex]
+            deviceSelected(true)
         }
         activitiesBackStackButton.addActionListener {
             selectedIDevice?.let { device ->
@@ -80,6 +108,7 @@ class SpockAdbViewer(
 
         }
 
+
     }
 
     private fun updateDevicesList() {
@@ -95,26 +124,22 @@ class SpockAdbViewer(
     }
 
     private fun showError(message: String) {
-        val noti = NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true,
-            "", null, "Spock Adb")
-        noti.createNotification(
+        notifier.createNotification(
             "Spock ADB",
             message,
             NotificationType.ERROR,
             null
-        ).notify(null)
+        ).notify(project)
 
     }
 
     private fun showSuccess(message: String) {
-        val nomi = NotificationGroup("Spock ADB", NotificationDisplayType.BALLOON, true,
-            "", null, "Spock Adb")
-        nomi.createNotification(
+        notifier.createNotification(
             "Spock ADB",
             message,
             NotificationType.INFORMATION,
             null
-        ).notify(null)
+        ).notify(project)
     }
 
 }
