@@ -1,11 +1,14 @@
 package spock.adb
 
 import com.android.ddmlib.AndroidDebugBridge
+import com.android.ddmlib.Client
 import com.android.ddmlib.IDevice
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBList
+import org.jetbrains.android.sdk.AndroidSdkUtils
 
 import spock.adb.command.*
 import spock.adb.premission.PermissionListItem
@@ -13,17 +16,24 @@ import spock.adb.premission.PermissionListItem
 class AdbControllerImp(
     private val project: Project,
     private val debugBridge: AndroidDebugBridge?
-) : AdbController, AndroidDebugBridge.IDeviceChangeListener {
+) : AdbController, AndroidDebugBridge.IDeviceChangeListener      {
 
     private var updateDeviceList: ((List<IDevice>) -> Unit)? = null
 
     init {
         AndroidDebugBridge.addDeviceChangeListener(this)
+
     }
 
     private fun getApplicationID(device: IDevice) =
         GetApplicationIDCommand().execute(Any(), project, device).toString()
 
+    override fun refresh() {
+        AndroidDebugBridge.removeDeviceChangeListener(this)
+        AndroidDebugBridge.addDeviceChangeListener(this)
+
+
+    }
     override fun connectedDevices(block: (devices: List<IDevice>) -> Unit, error: (message: String) -> Unit) {
         updateDeviceList = block
         updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
@@ -159,6 +169,13 @@ class AdbControllerImp(
         }, error)
     }
 
+    override fun connectDeviceOverIp(ip: String, success: (message: String) -> Unit, error: (message: String) -> Unit) {
+       execute({ConnectDeviceOverIPCommand().execute(ip,project)
+           success("connected to $ip")
+       },error)
+
+    }
+
     private fun execute(execute: () -> Unit, error: (message: String) -> Unit) {
         try {
             execute.invoke()
@@ -180,6 +197,9 @@ class AdbControllerImp(
             this.createPopup().showCenteredInCurrentWindow(project)
         }
     }
+
+
+
 
 }
 
