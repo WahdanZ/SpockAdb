@@ -31,6 +31,8 @@ jobs:
         with:
           ide-versions: |
             ideaIC:2020.1
+            ideaIC:2018.1
+            ideaIC:2019.1
             ideaIU:LATEST-EAP-SNAPSHOT
             android
       - name: Get log file path and print contents
