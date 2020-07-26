@@ -4,12 +4,12 @@ import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 
 import spock.adb.isAppInstall
-import spock.adb.killApp
+import spock.adb.forceKillApp
 
-class KillAppCommand:Command<String,Unit> {
+class ForceKillAppCommand:Command<String,Unit> {
     override fun execute(p: String, project: Project, device: IDevice) {
         if (device.isAppInstall(p))
-            device.killApp(p, 15L)
+            device.forceKillApp(p, 15L)
         else
             throw Exception("Application $p not installed" )
     }

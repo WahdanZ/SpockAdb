@@ -58,18 +58,18 @@
           </component>
           <component id="125d7" class="javax.swing.JButton" binding="restartAppButton">
             <constraints>
-              <grid row="8" column="0" row-span="1" col-span="2" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+              <grid row="8" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
             </constraints>
             <properties>
               <text value="Restart Application"/>
             </properties>
           </component>
-          <component id="3e9f0" class="javax.swing.JButton" binding="killAppButton">
+          <component id="3e9f0" class="javax.swing.JButton" binding="forceKillAppButton">
             <constraints>
               <grid row="8" column="5" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
             </constraints>
             <properties>
-              <text value="Kill Application"/>
+              <text value="Force Kill Application"/>
             </properties>
           </component>
           <component id="4f649" class="javax.swing.JButton" binding="permissionButton">

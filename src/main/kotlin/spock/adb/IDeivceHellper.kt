@@ -7,7 +7,7 @@ import spock.adb.command.ShowTapsState
 import java.util.concurrent.TimeUnit
 
 
-fun IDevice.killApp(applicationID: String?, seconds: Long) {
+fun IDevice.forceKillApp(applicationID: String?, seconds: Long) {
     val shellOutputReceiver = ShellOutputReceiver()
     executeShellCommand("am force-stop $applicationID", shellOutputReceiver, seconds, TimeUnit.SECONDS)
 }
