@@ -80,3 +80,9 @@ fun IDevice.getAnimatorDurationScale(): String {
     executeShellCommand("settings get global animator_duration_scale", shellOutputReceiver,15L, TimeUnit.SECONDS)
     return shellOutputReceiver.toString()
 }
+
+fun IDevice.isAppInForeground(applicationID: String?):Boolean{
+    val shellOutputReceiver = ShellOutputReceiver()
+    executeShellCommand("dumpsys activity recents | grep 'Recent #0' | cut -d= -f2 | sed 's| .*||' | cut -d '/' -f1", shellOutputReceiver, 15L, TimeUnit.SECONDS)
+    return shellOutputReceiver.toString().equals(applicationID, true)
+}

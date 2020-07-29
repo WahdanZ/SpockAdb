@@ -27,6 +27,7 @@ class SpockAdbViewer(
     private lateinit var permissionButton: JButton
     private lateinit var restartAppButton: JButton
     private lateinit var forceKillAppButton: JButton
+    private lateinit var testProcessDeathButton: JButton
     private lateinit var activitiesBackStackButton: JButton
     private lateinit var adbWifi: JButton
     private lateinit var wifiDebug: JButton
@@ -155,6 +156,11 @@ class SpockAdbViewer(
         forceKillAppButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.forceKillApp(device, ::showSuccess, ::showError)
+            }
+        }
+        testProcessDeathButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.testProcessDeath(device, ::showSuccess, ::showError)
             }
         }
         clearAppDataButton.addActionListener {

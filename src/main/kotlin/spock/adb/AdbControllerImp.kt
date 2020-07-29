@@ -102,6 +102,14 @@ class AdbControllerImp(
         }, error)
     }
 
+    override fun testProcessDeath(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
+        execute({
+            val applicationID = getApplicationID(device)
+            ProcessDeathCommand().execute(applicationID, project, device)
+            success("application $applicationID killed. App launched.")
+        }, error)
+    }
+
     override fun restartApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
         execute({
             val applicationID = getApplicationID(device)
