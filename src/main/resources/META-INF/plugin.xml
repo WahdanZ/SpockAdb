@@ -17,7 +17,7 @@
 
         -Restart or Reopen Application ]]>
     </description>
-    <idea-version since-build="181"/>
+    <idea-version since-build="193"/>
 
     <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/plugin_compatibility.html
          on how to target different products -->
@@ -28,11 +28,13 @@
     <depends>org.jetbrains.android</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Add your extensions here -->
-            <!-- Add your extensions here -->
-        <toolWindow anchor="left" canCloseContents="false" id="Spock ADB"
-                    factoryClass="spock.AdbDrawerViewer" secondary="true" />
+        <toolWindow anchor="left" canCloseContents="false" id="Spock ADB" factoryClass="spock.AdbDrawerViewer"
+                    secondary="true"/>
     </extensions>
+
+    <projectListeners>
+        <listener class="spock.adb.SpockAdbViewer" topic="com.intellij.openapi.wm.ex.ToolWindowManagerListener" />
+    </projectListeners>
 
     <actions>
         <!-- Add your actions here -->

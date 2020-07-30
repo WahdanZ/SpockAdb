@@ -1,14 +1,11 @@
 package spock.adb
 
 import com.android.ddmlib.AndroidDebugBridge
-import com.android.ddmlib.Client
 import com.android.ddmlib.IDevice
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBList
-import org.jetbrains.android.sdk.AndroidSdkUtils
 
 import spock.adb.command.*
 import spock.adb.premission.PermissionListItem
@@ -22,7 +19,6 @@ class AdbControllerImp(
 
     init {
         AndroidDebugBridge.addDeviceChangeListener(this)
-
     }
 
     private fun getApplicationID(device: IDevice) =
@@ -31,9 +27,8 @@ class AdbControllerImp(
     override fun refresh() {
         AndroidDebugBridge.removeDeviceChangeListener(this)
         AndroidDebugBridge.addDeviceChangeListener(this)
-
-
     }
+
     override fun connectedDevices(block: (devices: List<IDevice>) -> Unit, error: (message: String) -> Unit) {
         updateDeviceList = block
         updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
@@ -61,7 +56,6 @@ class AdbControllerImp(
         val list = JBList(activitiesClass.mapIndexed
         { index, className -> "$index-$className" })
         showClassPopup("Activities", list, activitiesClass.map { it?.psiClassByNameFromProjct(project) })
-
     }
 
     override fun currentActivity(
@@ -69,7 +63,6 @@ class AdbControllerImp(
         success: (message: String) -> Unit,
         error: (message: String) -> Unit
     ) {
-
         execute({
             val activity =
                 GetActivityCommand().execute(Any(), project, device) ?: throw Exception("No activities found")
@@ -77,7 +70,6 @@ class AdbControllerImp(
                 ?: throw Exception("class $activity  Not Found")
         }, error)
     }
-
 
     override fun currentFragment(
         device: IDevice,
@@ -118,7 +110,6 @@ class AdbControllerImp(
         }, error)
     }
 
-
     override fun clearAppData(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
         execute({
             val applicationID = getApplicationID(device)
@@ -126,7 +117,6 @@ class AdbControllerImp(
             success("application $applicationID data cleared")
         }, error)
     }
-
 
     override fun getApplicationPermissions(
         device: IDevice,
@@ -173,7 +163,75 @@ class AdbControllerImp(
        execute({ConnectDeviceOverIPCommand().execute(ip,project)
            success("connected to $ip")
        },error)
+    }
 
+    override fun enableDisableDontKeepActivities(
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = EnableDisableDontKeepActivitiesCommand().execute(Any(), project, device)
+            success(result)
+        }, error)
+    }
+
+    override fun enableDisableShowTaps(
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = EnableDisableShowTapsCommand().execute(Any(), project, device)
+            success(result)
+        }, error)
+    }
+
+    override fun enableDisableShowLayoutBounds(
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = EnableDisableShowLayoutBoundsCommand().execute(Any(), project, device)
+            success(result)
+        }, error)
+    }
+
+    override fun setWindowAnimatorScale(
+        scale: String,
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = WindowAnimatorScaleCommand().execute(scale, project, device)
+            success(result)
+        }, error)
+    }
+
+    override fun setTransitionAnimatorScale(
+        scale: String,
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = TransitionAnimatorScaleCommand().execute(scale, project, device)
+            success(result)
+        }, error)
+    }
+
+    override fun setAnimatorDurationScale(
+        scale: String,
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = AnimatorDurationScaleCommand().execute(scale, project, device)
+            success(result)
+        }, error)
     }
 
     private fun execute(execute: () -> Unit, error: (message: String) -> Unit) {
@@ -197,15 +255,4 @@ class AdbControllerImp(
             this.createPopup().showCenteredInCurrentWindow(project)
         }
     }
-
-
-
-
 }
-
-
-
-
-
-
-
