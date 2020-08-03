@@ -25,7 +25,10 @@ compileTestKotlin {
 }
 
 intellij {
-    localPath '/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/193.6514223/Android Studio.app'
+  if (System.getenv('IS_CI') != "True") {
+
+        localPath '/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/193.6514223/Android Studio.app'
+    }
     pluginName 'SpockAdb'
     updateSinceUntilBuild false
     plugins = ['android','java']
