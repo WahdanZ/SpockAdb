@@ -2,9 +2,9 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
+import java.util.concurrent.TimeUnit
 import spock.adb.ShellOutputReceiver
 import spock.adb.areDontKeepActivitiesEnabled
-import java.util.concurrent.TimeUnit
 
 class EnableDisableDontKeepActivitiesCommand : Command<Any, String> {
 

@@ -2,9 +2,9 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
+import java.util.concurrent.TimeUnit
 import spock.adb.ShellOutputReceiver
 import spock.adb.areShowTapsEnabled
-import java.util.concurrent.TimeUnit
 
 class EnableDisableShowTapsCommand : Command<Any, String> {
 

@@ -6,14 +6,13 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBList
-
 import spock.adb.command.*
 import spock.adb.premission.PermissionListItem
 
 class AdbControllerImp(
     private val project: Project,
     private val debugBridge: AndroidDebugBridge?
-) : AdbController, AndroidDebugBridge.IDeviceChangeListener      {
+) : AdbController, AndroidDebugBridge.IDeviceChangeListener {
 
     private var updateDeviceList: ((List<IDevice>) -> Unit)? = null
 
@@ -42,9 +41,7 @@ class AdbControllerImp(
         updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
     }
 
-    override fun deviceChanged(iDevice: IDevice, i: Int) {
-
-    }
+    override fun deviceChanged(iDevice: IDevice, i: Int) {}
 
     override fun currentBackStack(
         device: IDevice,
@@ -160,9 +157,9 @@ class AdbControllerImp(
     }
 
     override fun connectDeviceOverIp(ip: String, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-       execute({ConnectDeviceOverIPCommand().execute(ip,project)
+       execute({ ConnectDeviceOverIPCommand().execute(ip, project)
            success("connected to $ip")
-       },error)
+       }, error)
     }
 
     override fun enableDisableDontKeepActivities(

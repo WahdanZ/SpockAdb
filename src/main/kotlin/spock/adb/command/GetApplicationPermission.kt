@@ -2,12 +2,11 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-
+import java.util.concurrent.TimeUnit
 import spock.adb.ShellOutputReceiver
 import spock.adb.isAppInstall
 import spock.adb.isMarshmallow
 import spock.adb.premission.PermissionListItem
-import java.util.concurrent.TimeUnit
 
 class GetApplicationPermission : Command<String, List<PermissionListItem>> {
 
@@ -37,9 +36,9 @@ class GetApplicationPermission : Command<String, List<PermissionListItem>> {
                     .toList()
             } else
                 throw Exception("Application $p not installed")
-        } else
+        } else {
             throw Exception("All Permissions Denied Device Bazinga!! Your Device before Marshmallow ")
-
+        }
     }
 
     private fun convertPermissionToMap(
@@ -79,5 +78,4 @@ class GetApplicationPermission : Command<String, List<PermissionListItem>> {
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
     )
-
 }

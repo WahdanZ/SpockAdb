@@ -2,8 +2,8 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import spock.adb.ShellOutputReceiver
 import java.util.concurrent.TimeUnit
+import spock.adb.ShellOutputReceiver
 
 class TransitionAnimatorScaleCommand : Command<String, String> {
 

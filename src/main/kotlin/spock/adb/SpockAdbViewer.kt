@@ -5,14 +5,13 @@ import com.intellij.notification.NotificationDisplayType
 import com.intellij.notification.NotificationGroup
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.SimpleToolWindowPanel
-import spock.adb.premission.PermissionDialog
-import javax.swing.*
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
-import spock.adb.command.*
 import java.awt.event.ActionEvent
+import javax.swing.*
+import spock.adb.command.*
+import spock.adb.premission.PermissionDialog
 
 class SpockAdbViewer(
     private val project: Project
@@ -108,11 +107,11 @@ class SpockAdbViewer(
 
         wifiDebug.isEnabled = false
         wifiDebug.isVisible = false
-        val deviceSelected = { x:Boolean->
+        val deviceSelected = { x: Boolean ->
             wifiDebug.isEnabled = x
         }
         adbWifi.isVisible = false
-        adbWifi.addActionListener{
+        adbWifi.addActionListener {
             val ip = Messages.showInputDialog(
                 "Enter You Android Device IP address",
                 "Spock Adb- Device connect over Wifi",
@@ -121,7 +120,6 @@ class SpockAdbViewer(
                 IPAddressInputValidator()
             )
             ip?.let { adbController.connectDeviceOverIp(ip = ip, success = ::showSuccess, error = ::showError) }
-
         }
 
 //        refresh.addActionListener {
@@ -169,7 +167,6 @@ class SpockAdbViewer(
                     val dialog = PermissionDialog(device, adbController, it)
                     dialog.pack()
                     dialog.isVisible = true
-
                 }, ::showError)
             }
         }
@@ -273,13 +270,3 @@ class SpockAdbViewer(
 //        }
 //    }
 }
-
-
-
-
-
-
-
-
-
-
