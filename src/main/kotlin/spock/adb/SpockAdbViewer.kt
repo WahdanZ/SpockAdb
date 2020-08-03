@@ -264,14 +264,14 @@ class SpockAdbViewer(
         ).notify(project)
     }
 
-    override fun toolWindowShown(id: String, toolWindow: ToolWindow) {
-        super.toolWindowShown(id, toolWindow)
-        (toolWindow.component.components.first() as? SpockAdbViewer)?.run {
-            removeDeveloperOptionsListeners()
-            setDeveloperOptionsValues()
-            setDeveloperOptionsListeners()
-        }
-    }
+//    override fun toolWindowShown(id: String, toolWindow: ToolWindow) {
+//        super.toolWindowShown(id, toolWindow)
+//        (toolWindow.component.components.first() as? SpockAdbViewer)?.run {
+//            removeDeveloperOptionsListeners()
+//            setDeveloperOptionsValues()
+//            setDeveloperOptionsListeners()
+//        }
+//    }
 }
 
 
