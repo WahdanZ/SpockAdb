@@ -94,11 +94,19 @@ class AdbControllerImp(
         }, error)
     }
 
-    override fun killApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
+    override fun forceKillApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
         execute({
             val applicationID = getApplicationID(device)
-            KillAppCommand().execute(applicationID, project, device)
-            success("application $applicationID killed")
+            ForceKillAppCommand().execute(applicationID, project, device)
+            success("application $applicationID force killed")
+        }, error)
+    }
+
+    override fun testProcessDeath(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
+        execute({
+            val applicationID = getApplicationID(device)
+            ProcessDeathCommand().execute(applicationID, project, device)
+            success("application $applicationID killed. App launched.")
         }, error)
     }
 
@@ -175,7 +183,6 @@ class AdbControllerImp(
             success(result)
         }, error)
     }
-
     override fun enableDisableShowTaps(
         device: IDevice,
         success: (message: String) -> Unit,

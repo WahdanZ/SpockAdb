@@ -7,7 +7,7 @@ import spock.adb.command.ShowTapsState
 import java.util.concurrent.TimeUnit
 
 
-fun IDevice.killApp(applicationID: String?, seconds: Long) {
+fun IDevice.forceKillApp(applicationID: String?, seconds: Long) {
     val shellOutputReceiver = ShellOutputReceiver()
     executeShellCommand("am force-stop $applicationID", shellOutputReceiver, seconds, TimeUnit.SECONDS)
 }
@@ -79,4 +79,10 @@ fun IDevice.getAnimatorDurationScale(): String {
     val shellOutputReceiver = ShellOutputReceiver()
     executeShellCommand("settings get global animator_duration_scale", shellOutputReceiver,15L, TimeUnit.SECONDS)
     return shellOutputReceiver.toString()
+}
+
+fun IDevice.isAppInForeground(applicationID: String?):Boolean{
+    val shellOutputReceiver = ShellOutputReceiver()
+    executeShellCommand("dumpsys activity recents | grep 'Recent #0' | cut -d= -f2 | sed 's| .*||' | cut -d '/' -f1", shellOutputReceiver, 15L, TimeUnit.SECONDS)
+    return shellOutputReceiver.toString().equals(applicationID, true)
 }
