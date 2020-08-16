@@ -64,14 +64,6 @@
               <text value="Restart Application"/>
             </properties>
           </component>
-          <component id="3e9f0" class="javax.swing.JButton" binding="forceKillAppButton">
-            <constraints>
-              <grid row="8" column="5" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
-            </constraints>
-            <properties>
-              <text value="Force Kill Application"/>
-            </properties>
-          </component>
           <component id="4f649" class="javax.swing.JButton" binding="permissionButton">
             <constraints>
               <grid row="7" column="0" row-span="1" col-span="6" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
@@ -79,12 +71,6 @@
             <properties>
               <text value="Revoke / Grant Premission"/>
             </properties>
-          </component>
-          <component id="158a4" class="javax.swing.JSeparator">
-            <constraints>
-              <grid row="8" column="4" row-span="1" col-span="1" vsize-policy="2" hsize-policy="6" anchor="0" fill="3" indent="0" use-parent-layout="false"/>
-            </constraints>
-            <properties/>
           </component>
           <component id="e0a85" class="javax.swing.JButton" binding="activitiesBackStackButton">
             <constraints>
@@ -252,6 +238,23 @@
             </constraints>
             <properties>
               <text value="Test Process Death"/>
+            </properties>
+          </component>
+          <component id="3e9f0" class="javax.swing.JButton" binding="forceKillAppButton">
+            <constraints>
+              <grid row="9" column="5" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties>
+              <text value="Force Kill Application"/>
+            </properties>
+          </component>
+          <component id="da614" class="javax.swing.JButton" binding="restartAppWithDebuggerButton">
+            <constraints>
+              <grid row="8" column="5" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties>
+              <margin top="10" left="0" bottom="10" right="0"/>
+              <text value="&lt;html&gt;&lt;center&gt;Restart Application&lt;br&gt;With Debugger&lt;/center&gt;&lt;/html&gt;"/>
             </properties>
           </component>
         </children>

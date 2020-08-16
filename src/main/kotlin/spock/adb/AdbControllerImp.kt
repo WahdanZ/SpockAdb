@@ -118,6 +118,14 @@ class AdbControllerImp(
         }, error)
     }
 
+    override fun restartAppWithDebugger(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
+        execute({
+            val applicationID = getApplicationID(device)
+            RestartAppWithDebuggerCommand().execute(applicationID, project, device)
+            success("application $applicationID Restarted with debugger")
+        }, error)
+    }
+
     override fun clearAppData(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
         execute({
             val applicationID = getApplicationID(device)

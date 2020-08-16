@@ -12,6 +12,7 @@ interface AdbController {
     fun forceKillApp(device: IDevice, success:(message:String)->Unit, error:(message:String)->Unit)
     fun testProcessDeath(device: IDevice, success:(message:String)->Unit, error:(message:String)->Unit)
     fun restartApp(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
+    fun restartAppWithDebugger(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun clearAppData(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun getApplicationPermissions(device: IDevice,block: (devices:List<PermissionListItem>) -> Unit,error:(message:String)->Unit)
     fun revokePermission(device: IDevice, permissionListItem: PermissionListItem, success:(message:String)->Unit, error:(message:String)->Unit)

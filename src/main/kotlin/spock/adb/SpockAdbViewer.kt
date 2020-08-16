@@ -26,6 +26,7 @@ class SpockAdbViewer(
     private lateinit var refresh: JButton
     private lateinit var permissionButton: JButton
     private lateinit var restartAppButton: JButton
+    private lateinit var restartAppWithDebuggerButton: JButton
     private lateinit var forceKillAppButton: JButton
     private lateinit var testProcessDeathButton: JButton
     private lateinit var activitiesBackStackButton: JButton
@@ -151,6 +152,11 @@ class SpockAdbViewer(
         restartAppButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.restartApp(device, ::showSuccess, ::showError)
+            }
+        }
+        restartAppWithDebuggerButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.restartAppWithDebugger(device, ::showSuccess, ::showError)
             }
         }
         forceKillAppButton.addActionListener {
