@@ -134,6 +134,22 @@ class AdbControllerImp(
         }, error)
     }
 
+    override fun clearAppDataAndRestart(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
+        execute({
+            val applicationID = getApplicationID(device)
+            ClearAppDataAndRestartCommand().execute(applicationID, project, device)
+            success("application $applicationID data cleared and restarted")
+        }, error)
+    }
+
+    override fun uninstallApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
+        execute({
+            val applicationID = getApplicationID(device)
+            UninstallAppCommand().execute(applicationID, project, device)
+            success("application $applicationID uninstalled")
+        }, error)
+    }
+
     override fun getApplicationPermissions(
         device: IDevice,
         block: (devices: List<PermissionListItem>) -> Unit,

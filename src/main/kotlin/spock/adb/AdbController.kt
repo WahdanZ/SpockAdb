@@ -14,6 +14,8 @@ interface AdbController {
     fun restartApp(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun restartAppWithDebugger(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun clearAppData(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
+    fun clearAppDataAndRestart(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
+    fun uninstallApp(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun getApplicationPermissions(device: IDevice,block: (devices:List<PermissionListItem>) -> Unit,error:(message:String)->Unit)
     fun revokePermission(device: IDevice, permissionListItem: PermissionListItem, success:(message:String)->Unit, error:(message:String)->Unit)
     fun grantPermission(device: IDevice, permissionListItem: PermissionListItem, success:(message:String)->Unit, error:(message:String)->Unit)
