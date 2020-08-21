@@ -5,18 +5,19 @@ import com.intellij.notification.NotificationDisplayType
 import com.intellij.notification.NotificationGroup
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.SimpleToolWindowPanel
-import spock.adb.premission.PermissionDialog
-import javax.swing.*
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.ex.ToolWindowManagerEx
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import spock.adb.command.*
+import spock.adb.premission.PermissionDialog
 import java.awt.event.ActionEvent
+import javax.swing.*
 
 class SpockAdbViewer(
     private val project: Project
-) : SimpleToolWindowPanel(true), ToolWindowManagerListener {
+) : SimpleToolWindowPanel(true) {
     private lateinit var panel1: JPanel
     private lateinit var rootPanel: JPanel
     private lateinit var devicesListComboBox: JComboBox<String>
@@ -100,6 +101,7 @@ class SpockAdbViewer(
 
     init {
         setContent(rootPanel)
+        setToolWindowListener()
     }
 
     fun initPlugin(adbController: AdbController) {
@@ -270,12 +272,24 @@ class SpockAdbViewer(
         ).notify(project)
     }
 
-    override fun toolWindowShown(id: String, toolWindow: ToolWindow) {
-        super.toolWindowShown(id, toolWindow)
-        (toolWindow.component.components.first() as? SpockAdbViewer)?.run {
-            removeDeveloperOptionsListeners()
-            setDeveloperOptionsValues()
-            setDeveloperOptionsListeners()
-        }
+    private fun setToolWindowListener() {
+        ToolWindowManager
+            .getInstance(project)
+            ?.run {
+                val toolWindow = getToolWindow("Spock ADB")
+
+                if (toolWindow != null) {
+                    (this as? ToolWindowManagerEx)?.addToolWindowManagerListener(object : ToolWindowManagerListener {
+                        override fun stateChanged() {
+                            super.stateChanged()
+                            if (toolWindow.isVisible) {
+                                removeDeveloperOptionsListeners()
+                                setDeveloperOptionsValues()
+                                setDeveloperOptionsListeners()
+                            }
+                        }
+                    })
+                }
+            }
     }
 }
