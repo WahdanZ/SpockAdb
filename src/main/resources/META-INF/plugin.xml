@@ -32,10 +32,6 @@
                     secondary="true"/>
     </extensions>
 
-    <projectListeners>
-        <listener class="spock.adb.SpockAdbViewer" topic="com.intellij.openapi.wm.ex.ToolWindowManagerListener" />
-    </projectListeners>
-
     <actions>
         <!-- Add your actions here -->
     </actions>
