@@ -38,7 +38,7 @@ class GetApplicationPermission : Command<String, List<PermissionListItem>> {
             } else
                 throw Exception("Application $p not installed")
         } else
-            throw Exception("All Permissions Denied Device Bazinga!! Your Device before Marshmallow ")
+            throw Exception("Bazinga!! Your Device is before Marshmallow. No need to explicitly handle permissions")
 
     }
 
@@ -80,4 +80,8 @@ class GetApplicationPermission : Command<String, List<PermissionListItem>> {
         "WRITE_EXTERNAL_STORAGE"
     )
 
+    enum class PermissionOperation(val operationResult: String) {
+        GRANT("granted"),
+        REVOKE("revoked")
+    }
 }
