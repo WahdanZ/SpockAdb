@@ -23,9 +23,12 @@ class SpockAdbViewer(
     private lateinit var currentActivityButton: JButton
     private lateinit var currentFragmentButton: JButton
     private lateinit var clearAppDataButton: JButton
+    private lateinit var clearAppDataAndRestartButton: JButton
+    private lateinit var uninstallAppButton: JButton
     private lateinit var refresh: JButton
     private lateinit var permissionButton: JButton
     private lateinit var restartAppButton: JButton
+    private lateinit var restartAppWithDebuggerButton: JButton
     private lateinit var forceKillAppButton: JButton
     private lateinit var testProcessDeathButton: JButton
     private lateinit var activitiesBackStackButton: JButton
@@ -153,6 +156,11 @@ class SpockAdbViewer(
                 adbController.restartApp(device, ::showSuccess, ::showError)
             }
         }
+        restartAppWithDebuggerButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.restartAppWithDebugger(device, ::showSuccess, ::showError)
+            }
+        }
         forceKillAppButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.forceKillApp(device, ::showSuccess, ::showError)
@@ -166,6 +174,16 @@ class SpockAdbViewer(
         clearAppDataButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.clearAppData(device, ::showSuccess, ::showError)
+            }
+        }
+        clearAppDataAndRestartButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.clearAppDataAndRestart(device, ::showSuccess, ::showError)
+            }
+        }
+        uninstallAppButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.uninstallApp(device, ::showSuccess, ::showError)
             }
         }
 
