@@ -8,5 +8,3 @@ class GetActivityCommand : Command<Any, String?> {
         return GetBackStackCommand().execute(p, project, device).firstOrNull()
     }
 }
-
-

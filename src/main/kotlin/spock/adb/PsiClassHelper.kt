@@ -7,7 +7,6 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
 
-
 fun PsiClass.openIn(project: Project) {
     OpenFileDescriptor(project, this.containingFile.virtualFile, 1, 0).navigateInEditor(project, false)
 }

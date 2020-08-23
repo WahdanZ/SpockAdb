@@ -4,17 +4,30 @@
 ![JetBrains IntelliJ plugins](https://img.shields.io/jetbrains/plugin/d/11591-spock-adb) 
 
 # SpockAdb 
-Plugin Helps you to have full control of your project
- 
-## **Features**
+<!-- Plugin description -->
+Plugin Helps you to have full control of your project and device.
+<!-- Plugin description end -->
 
+
+
+## **Features**
  - Navigate to current active activity in your IDE
  -  Current BackStack Activities 
  -  Navigate to current  active fragments 
  -  Clear application data 
  -  Enable and Disable Permissions of your application
  - Kill or Restart Application
+- Restart app with debugger 
+- Uninstall and Clear App Data and Restart
+- Toggle "Show Taps" setting;
+- Toggle "Show Layout Bounds" setting;
+- Toggle "Don't Keep Activities" setting;
+- Adds option to Grant or Revoke all app permissions at once.
 
+- Change scale of:
+    - Window Animation;
+    - Transition Animation;
+    - Animator Duration.
 ## Download
 
 https://plugins.jetbrains.com/plugin/11591-spock-adb
