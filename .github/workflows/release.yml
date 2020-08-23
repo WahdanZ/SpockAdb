@@ -5,6 +5,12 @@ name: Release
 on:
   release:
     types: [prereleased, released]
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
 
 jobs:
 
