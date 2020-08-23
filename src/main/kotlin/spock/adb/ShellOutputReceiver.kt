@@ -2,7 +2,6 @@ package spock.adb
 
 import com.android.ddmlib.IShellOutputReceiver
 
-
 class ShellOutputReceiver : IShellOutputReceiver {
 
     private val builder = StringBuilder()
@@ -22,6 +21,5 @@ class ShellOutputReceiver : IShellOutputReceiver {
 
     override fun flush() {}
 
-    override fun isCancelled()= false
-
+    override fun isCancelled() = false
 }

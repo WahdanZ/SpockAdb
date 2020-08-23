@@ -1,9 +1,10 @@
+
 package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import spock.adb.ShellOutputReceiver
 import java.util.concurrent.TimeUnit
+import spock.adb.ShellOutputReceiver
 
 class GetBackStackCommand : Command<Any, List<String?>> {
     override fun execute(p: Any, project: Project, device: IDevice): List<String?> {
@@ -28,6 +29,5 @@ class GetBackStackCommand : Command<Any, List<String?>> {
                 else
                     it.substringAfter("/")
             }
-
     }
 }

@@ -2,16 +2,14 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import spock.adb.ShellOutputReceiver
 import java.util.concurrent.TimeUnit
+import spock.adb.ShellOutputReceiver
 
 class GetFragmentsCommand : Command<String, List<String?>?> {
     override fun execute(p: String, project: Project, device: IDevice): List<String?>? {
         val shellOutputReceiver = ShellOutputReceiver()
         device.executeShellCommand("dumpsys activity top", shellOutputReceiver, 15L, TimeUnit.SECONDS)
         return getCurrentFragmentsFromLog(shellOutputReceiver)
-
-
     }
 
     private fun getCurrentFragmentsFromLog(shellOutputReceiver: ShellOutputReceiver): List<String>? {
@@ -22,7 +20,5 @@ class GetFragmentsCommand : Command<String, List<String?>?> {
         return addedFragments?.lines()?.map { it.trim() }
             ?.filter { (it.startsWith("#") && !it.contains("BackStackEntry")) }
             ?.map { it.split("{").first().split(" ").last() }?.distinct()
-
     }
-
 }
