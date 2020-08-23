@@ -8,7 +8,7 @@ plugins {
     // Kotlin support
     id("org.jetbrains.kotlin.jvm") version "1.3.72"
     // gradle-intellij-plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
-    id("org.jetbrains.intellij") version "0.4.21"
+    id("org.jetbrains.intellij") version "0.4.2"
     id("org.jetbrains.changelog") version "0.4.0"
     // detekt linter - read more: https://detekt.github.io/detekt/kotlindsl.html
     id("io.gitlab.arturbosch.detekt") version "1.10.0"
@@ -34,6 +34,8 @@ repositories {
 }
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
+    implementation("org.jooq:joor-java-8:0.9.7")
+
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.10.0")
 }
 
@@ -43,7 +45,8 @@ intellij {
     type = platformType
     downloadSources = platformDownloadSources.toBoolean()
     updateSinceUntilBuild = true
-    localPath = "/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/193.6514223/Android Studio.app"
+
+    localPath = "/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/193.6626763/Android Studio.app"
     setPlugins("android", "java")
     // localPath ("/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/193.6514223/Android Studio.app")
 }
@@ -80,11 +83,20 @@ tasks {
         untilBuild(pluginUntilBuild)
 
         // Extract the <!-- Plugin description --> section from README.md and provide for the plugin's manifest
-        pluginDescription(closure {
-            File("./README.md").readText().lines().run {
-                subList(indexOf("<!-- Plugin description -->") + 1, indexOf("<!-- Plugin description end -->"))
-            }.joinToString("\n").run { markdownToHTML(this) }
-        })
+        // Extract the <!-- Plugin description --> section from README.md and provide for the plugin's manifest
+        pluginDescription(
+            closure {
+                File("./README.md").readText().lines().run {
+                    val start = "<!-- Plugin description -->"
+                    val end = "<!-- Plugin description end -->"
+
+                    if (!containsAll(listOf(start, end))) {
+                        throw GradleException("Plugin description section not found in README.md file:\n$start ... $end")
+                    }
+                    subList(indexOf(start) + 1, indexOf(end))
+                }.joinToString("\n").run { markdownToHTML(this) }
+            }
+        )
 
         // Get the latest available change notes from the changelog file
         changeNotes(closure {

@@ -3,9 +3,13 @@
 # Spock Adb Changelog
 ## [1.0.7]
 ### Added
+- Restart app with debugger 
+- Uninstall and Clear App Data and Restart
 - Toggle "Show Taps" setting;
 - Toggle "Show Layout Bounds" setting;
 - Toggle "Don't Keep Activities" setting;
+- Adds option to Grant or Revoke all app permissions at once.
+
 - Change scale of:
     - Window Animation;
     - Transition Animation;
