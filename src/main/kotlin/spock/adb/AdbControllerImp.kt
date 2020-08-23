@@ -165,6 +165,32 @@ class AdbControllerImp(
         }, error)
     }
 
+    override fun grantOrRevokeAllPermissions(
+        device: IDevice,
+        permissionOperation: GetApplicationPermission.PermissionOperation,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        getApplicationPermissions(
+            device,
+            { permissionsList ->
+                val applicationID = getApplicationID(device)
+
+                val operation: (PermissionListItem) -> Unit = when (permissionOperation) {
+                    GetApplicationPermission.PermissionOperation.GRANT ->
+                        { permission -> GrantPermissionCommand().execute(applicationID, permission, project, device) }
+                    GetApplicationPermission.PermissionOperation.REVOKE ->
+                        { permission -> RevokePermissionCommand().execute(applicationID, permission, project, device) }
+                }
+
+                permissionsList
+                    .forEach { permission -> operation(permission) }
+                    .also { success("All permissions ${permissionOperation.operationResult}") }
+            },
+            { errorMessage -> error(errorMessage) }
+        )
+    }
+
     override fun revokePermission(
         device: IDevice,
         permissionListItem: PermissionListItem,
@@ -174,7 +200,7 @@ class AdbControllerImp(
         execute({
             val applicationID = getApplicationID(device)
             RevokePermissionCommand().execute(applicationID, permissionListItem, project, device)
-            success("application $applicationID data cleared")
+            success("permission $permissionListItem revoked")
         }, error)
     }
 
@@ -187,7 +213,7 @@ class AdbControllerImp(
         execute({
             val applicationID = getApplicationID(device)
             GrantPermissionCommand().execute(applicationID, permissionListItem, project, device)
-            success("application $applicationID data cleared")
+            success("permission $permissionListItem granted")
         }, error)
     }
 

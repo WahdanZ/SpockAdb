@@ -28,6 +28,8 @@ class SpockAdbViewer(
     private lateinit var uninstallAppButton: JButton
     private lateinit var refresh: JButton
     private lateinit var permissionButton: JButton
+    private lateinit var grantAllPermissionsButton: JButton
+    private lateinit var revokeAllPermissionsButton: JButton
     private lateinit var restartAppButton: JButton
     private lateinit var restartAppWithDebuggerButton: JButton
     private lateinit var forceKillAppButton: JButton
@@ -199,6 +201,26 @@ class SpockAdbViewer(
                 }, ::showError)
             }
         }
+        grantAllPermissionsButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.grantOrRevokeAllPermissions(
+                    device,
+                    GetApplicationPermission.PermissionOperation.GRANT,
+                    ::showSuccess,
+                    ::showError
+                )
+            }
+        }
+        revokeAllPermissionsButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.grantOrRevokeAllPermissions(
+                    device,
+                    GetApplicationPermission.PermissionOperation.REVOKE,
+                    ::showSuccess,
+                    ::showError
+                )
+            }
+        }
     }
 
     private fun updateDevicesList() {
@@ -293,7 +315,7 @@ class SpockAdbViewer(
     private fun setToolWindowListener() {
         ToolWindowManager
             .getInstance(project)
-            ?.run {
+            .run {
                 val toolWindow = getToolWindow("Spock ADB")
 
                 if (toolWindow != null) {

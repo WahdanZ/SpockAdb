@@ -1,6 +1,7 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
+import spock.adb.command.GetApplicationPermission
 import spock.adb.premission.PermissionListItem
 
 interface AdbController {
@@ -17,6 +18,7 @@ interface AdbController {
     fun clearAppDataAndRestart(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun uninstallApp(device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun getApplicationPermissions(device: IDevice,block: (devices:List<PermissionListItem>) -> Unit,error:(message:String)->Unit)
+    fun grantOrRevokeAllPermissions(device: IDevice, permissionOperation: GetApplicationPermission.PermissionOperation, success: (message: String) -> Unit, error: (message: String) -> Unit)
     fun revokePermission(device: IDevice, permissionListItem: PermissionListItem, success:(message:String)->Unit, error:(message:String)->Unit)
     fun grantPermission(device: IDevice, permissionListItem: PermissionListItem, success:(message:String)->Unit, error:(message:String)->Unit)
     fun connectDeviceOverIp(ip:String, success:(message:String)->Unit, error:(message:String)->Unit)
