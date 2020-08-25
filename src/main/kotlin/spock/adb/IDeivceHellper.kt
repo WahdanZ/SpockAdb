@@ -3,6 +3,8 @@ package spock.adb
 import com.android.ddmlib.IDevice
 import java.util.concurrent.TimeUnit
 import spock.adb.command.DontKeepActivitiesState
+import spock.adb.command.Network
+import spock.adb.command.NetworkState
 import spock.adb.command.ShowLayoutBoundsState
 import spock.adb.command.ShowTapsState
 
@@ -96,4 +98,11 @@ fun IDevice.isAppInForeground(applicationID: String?):Boolean{
     val shellOutputReceiver = ShellOutputReceiver()
     executeShellCommand("dumpsys activity recents | grep 'Recent #0' | cut -d= -f2 | sed 's| .*||' | cut -d '/' -f1", shellOutputReceiver, 15L, TimeUnit.SECONDS)
     return shellOutputReceiver.toString().equals(applicationID, true)
+}
+
+fun IDevice.getNetworkState(network: Network): NetworkState {
+    val outputReceiver = ShellOutputReceiver()
+    executeShellCommand("settings get global ${network.networkSettingIdentifier}", outputReceiver, 15L, TimeUnit.SECONDS)
+
+    return NetworkState.getState(outputReceiver.toString())
 }
