@@ -30,4 +30,5 @@ interface AdbController {
     fun setTransitionAnimatorScale(scale: String, device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun setAnimatorDurationScale(scale: String, device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun toggleNetwork(device: IDevice, network: Network, success: (message: String) -> Unit, error: (message: String) -> Unit)
+    fun inputOnDevice(input: String, device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit)
 }

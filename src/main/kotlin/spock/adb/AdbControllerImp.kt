@@ -300,6 +300,18 @@ class AdbControllerImp(
         }, error)
     }
 
+    override fun inputOnDevice(
+        input: String,
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = InputOnDeviceCommand().execute(input, project, device)
+            success(result)
+        }, error)
+    }
+
     private fun execute(execute: () -> Unit, error: (message: String) -> Unit) {
         try {
             execute.invoke()
