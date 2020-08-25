@@ -3,29 +3,6 @@
 # Spock Adb Changelog
 ## [Unreleased]
 ### Added
-
-### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
-## [1.0.7]
-### Added
-
-### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
-## [1.0.7]
 - Restart app with debugger 
 - Uninstall and Clear App Data and Restart
 - Toggle "Show Taps" setting;
@@ -37,6 +14,15 @@
     - Window Animation;
     - Transition Animation;
     - Animator Duration.
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
     
 ## [1.0.0]
 ### Added
