@@ -2,6 +2,7 @@ package spock.adb
 
 import com.android.ddmlib.IDevice
 import spock.adb.command.GetApplicationPermission
+import spock.adb.command.Network
 import spock.adb.premission.PermissionListItem
 
 interface AdbController {
@@ -28,4 +29,6 @@ interface AdbController {
     fun setWindowAnimatorScale(scale: String, device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun setTransitionAnimatorScale(scale: String, device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
     fun setAnimatorDurationScale(scale: String, device: IDevice,success:(message:String)->Unit,error:(message:String)->Unit)
+    fun toggleNetwork(device: IDevice, network: Network, success: (message: String) -> Unit, error: (message: String) -> Unit)
+    fun inputOnDevice(input: String, device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit)
 }

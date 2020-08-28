@@ -44,6 +44,10 @@ class SpockAdbViewer(
     private lateinit var windowAnimatorScaleComboBox: JComboBox<String>
     private lateinit var transitionAnimatorScaleComboBox: JComboBox<String>
     private lateinit var animatorDurationScaleComboBox: JComboBox<String>
+    private lateinit var wifiToggle: JButton
+    private lateinit var mobileDataToggle: JButton
+    private lateinit var inputOnDeviceTextField: JTextField
+    private lateinit var inputOnDeviceButton: JButton
     private var selectedIDevice: IDevice? = null
     private val notifier: NotificationGroup by lazy {
         NotificationGroup("Spock_ADB",
@@ -221,6 +225,22 @@ class SpockAdbViewer(
                 )
             }
         }
+        wifiToggle.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.toggleNetwork(device, Network.WIFI, ::showSuccess, ::showError)
+            }
+        }
+        mobileDataToggle.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.toggleNetwork(device, Network.MOBILE, ::showSuccess, ::showError)
+            }
+        }
+        inputOnDeviceButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.inputOnDevice(inputOnDeviceTextField.text, device, ::showSuccess, ::showError)
+            }
+        }
+        inputOnDeviceTextField.addActionListener { inputOnDeviceButton.doClick() }
     }
 
     private fun updateDevicesList() {

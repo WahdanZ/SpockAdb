@@ -288,6 +288,30 @@ class AdbControllerImp(
         }, error)
     }
 
+    override fun toggleNetwork(
+        device: IDevice,
+        network: Network,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = ToggleNetworkCommand().execute(network, project, device)
+            success(result)
+        }, error)
+    }
+
+    override fun inputOnDevice(
+        input: String,
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        execute({
+            val result = InputOnDeviceCommand().execute(input, project, device)
+            success(result)
+        }, error)
+    }
+
     private fun execute(execute: () -> Unit, error: (message: String) -> Unit) {
         try {
             execute.invoke()
