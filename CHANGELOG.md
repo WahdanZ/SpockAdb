@@ -3,6 +3,18 @@
 # Spock Adb Changelog
 ## [Unreleased]
 ### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+## [1.0.8]
+### Added
 - Toggle on/off WiFi or mobile data
 - Add text to be input on the device.
 ### Changed
