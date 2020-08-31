@@ -7,6 +7,7 @@ import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBList
 import spock.adb.command.*
+import spock.adb.models.ActivityData
 import spock.adb.premission.PermissionListItem
 
 class AdbControllerImp(
@@ -48,11 +49,23 @@ class AdbControllerImp(
         success: (message: String) -> Unit,
         error: (message: String) -> Unit
     ) {
-        val activitiesClass =
-            GetBackStackCommand().execute(Any(), project, device)
-        val list = JBList(activitiesClass.mapIndexed
-        { index, className -> "$index-$className" })
-        showClassPopup("Activities", list, activitiesClass.map { it?.psiClassByNameFromProjct(project) })
+        val activitiesList = mutableListOf<String>()
+        val activitiesClass: List<ActivityData> = GetBackStackCommand().execute(Any(), project, device)
+
+        activitiesClass.forEachIndexed { index, activityData ->
+            activitiesList.add("\t$index-${activityData.appPackage}")
+
+            activityData.activitiesList.forEachIndexed { activityIndex, activity ->
+                activitiesList.add("\t\t\t\t$activityIndex-${activity}")
+            }
+        }
+
+        val list = JBList(activitiesList)
+        showClassPopup(
+            "Activities",
+            list,
+            activitiesList.map { it.trim().substringAfter("-").psiClassByNameFromProjct(project) }
+        )
     }
 
     override fun currentActivity(

@@ -5,6 +5,6 @@ import com.intellij.openapi.project.Project
 
 class GetActivityCommand : Command<Any, String?> {
     override fun execute(p: Any, project: Project, device: IDevice): String? {
-        return GetBackStackCommand().execute(p, project, device).firstOrNull()
+        return GetBackStackCommand().execute(p, project, device).firstOrNull()?.activitiesList?.first()
     }
 }
