@@ -8,6 +8,7 @@ import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBList
 import spock.adb.command.*
 import spock.adb.models.ActivityData
+import spock.adb.models.FragmentData
 import spock.adb.premission.PermissionListItem
 
 class AdbControllerImp(
@@ -89,17 +90,33 @@ class AdbControllerImp(
         execute({
             val applicationID = getApplicationID(device)
 
-            val fragmentsClass =
-                GetFragmentsCommand().execute(applicationID, project, device)
-                    ?: throw Exception("Class Not Found")
+            val fragmentsClass = GetFragmentsCommand().execute(applicationID, project, device)
+
             if (fragmentsClass.size > 1) {
-                val list = JBList(fragmentsClass.map { it1 -> it1.toString().split(":").lastOrNull() ?: "" })
-                showClassPopup("Fragments", list, fragmentsClass.map { it?.psiClassByNameFromCache(project) })
-            } else {
-                fragmentsClass.firstOrNull()?.let {
-                    it.psiClassByNameFromCache(project)?.openIn(project)
-                        ?: throw Exception("Class $it Not Found")
+                val fragmentsList = mutableListOf<String>()
+
+                fragmentsClass.forEachIndexed { index, fragmentData ->
+                    fragmentsList.add("\t$index-${fragmentData.fragment}")
+
+                    addInnerFragmentsToList(fragmentData, fragmentsList)
                 }
+
+                val list = JBList(fragmentsList)
+                showClassPopup(
+                    "Fragments",
+                    list,
+                    fragmentsList.map { it.trim().substringAfter("-").psiClassByNameFromCache(project) }
+                )
+            } else {
+                fragmentsClass
+                    .firstOrNull()
+                    ?.let {
+                        it
+                            .fragment
+                            .psiClassByNameFromCache(project)
+                            ?.openIn(project)
+                            ?: throw Exception("Class $it Not Found")
+                    }
             }
         }, error)
     }
@@ -344,6 +361,17 @@ class AdbControllerImp(
                 classes.getOrNull(list.selectedIndex)?.openIn(project)
             }
             this.createPopup().showCenteredInCurrentWindow(project)
+        }
+    }
+
+    private fun addInnerFragmentsToList(
+        fragmentData: FragmentData,
+        fragmentsList: MutableList<String>,
+        indent: String = "\t\t\t\t"
+    ) {
+        fragmentData.innerFragments.forEachIndexed { fragmentIndex, innerFragmentData ->
+            fragmentsList.add("$indent$fragmentIndex-${innerFragmentData.fragment}")
+            addInnerFragmentsToList(innerFragmentData, fragmentsList, "\t\t\t\t$indent")
         }
     }
 }
