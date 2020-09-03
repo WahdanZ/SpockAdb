@@ -5,6 +5,18 @@
 ### Added
 
 ### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+## [1.0.9]
+### Added
+
+### Changed
 - The activity stack now shows activities by app package. This way, the user can clearly see to what package, the activity belongs to.
 - The fragment stack can now show nested fragments and follows the same display rules as the activity stack command.
 ### Deprecated
