@@ -10,18 +10,13 @@ import spock.adb.SpockAdbViewer
 
 class AdbDrawerViewer : ToolWindowFactory {
 
-    private var spockAdbViewer: SpockAdbViewer? = null
-
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val adbController: AdbController = AdbControllerImp(project, AndroidSdkUtils.getDebugBridge(project))
         val contentManager = toolWindow.contentManager
 
-        if (spockAdbViewer == null) {
-            spockAdbViewer = SpockAdbViewer(project)
-            spockAdbViewer?.initPlugin(adbController)
+        with(SpockAdbViewer(project)) {
+            initPlugin(adbController)
+            contentManager.addContent(contentManager.factory.createContent(this, null, false))
         }
-
-        val content = contentManager.factory.createContent(spockAdbViewer, null, false)
-        contentManager.addContent(content)
     }
 }
