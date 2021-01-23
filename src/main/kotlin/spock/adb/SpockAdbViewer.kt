@@ -109,7 +109,7 @@ class SpockAdbViewer(
     }
 
     init {
-        setContent(rootPanel)
+        setContent(JScrollPane(rootPanel))
         setToolWindowListener()
     }
 
