@@ -8,7 +8,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.openapi.wm.ex.ToolWindowManagerEx
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import spock.adb.command.*
 import spock.adb.premission.PermissionDialog
@@ -333,22 +332,23 @@ class SpockAdbViewer(
     }
 
     private fun setToolWindowListener() {
+
         ToolWindowManager
             .getInstance(project)
             .run {
                 val toolWindow = getToolWindow("Spock ADB")
-
                 if (toolWindow != null) {
-                    (this as? ToolWindowManagerEx)?.addToolWindowManagerListener(object : ToolWindowManagerListener {
-                        override fun stateChanged() {
-                            super.stateChanged()
-                            if (toolWindow.isVisible) {
-                                removeDeveloperOptionsListeners()
-                                setDeveloperOptionsValues()
-                                setDeveloperOptionsListeners()
+                    project.messageBus.connect()
+                        .subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
+                            override fun stateChanged() {
+                                super.stateChanged()
+                                if (toolWindow.isVisible) {
+                                    removeDeveloperOptionsListeners()
+                                    setDeveloperOptionsValues()
+                                    setDeveloperOptionsListeners()
+                                }
                             }
-                        }
-                    })
+                        })
                 }
             }
     }
