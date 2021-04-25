@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import org.joor.Reflect
 import org.joor.Reflect.on
 
+
 class Debugger(private val project: Project, private val device: IDevice, private val packageName: String) {
 
     fun attach() {
@@ -46,7 +47,7 @@ class TerminateRunSession(
     override fun getCurrentImplementation() {
         val pid = selectedClient.clientData.pid
         // find if there are any active run sessions to the same client, and terminate them if so
-        for (handler in ExecutionManager.getInstance(project).runningProcesses) {
+        for (handler in ExecutionManager.getInstance(project).getRunningProcesses()) {
             if (handler is AndroidProcessHandler) {
                 val client = handler.getClient(selectedClient.device)
                 if (client != null && client.clientData.pid == pid) {
@@ -90,7 +91,7 @@ class AttachToClient(
     private val client: Client
 ) : BackwardCompatibleGetter<Unit>() {
     override fun getCurrentImplementation() {
-        androidDebugger.attachToClient(project, client)
+        androidDebugger.attachToClient(project, client, null)
     }
 
     override fun getPreviousImplementation() {
@@ -102,7 +103,7 @@ private class RunningProcessesGetter(
     val project: Project
 ) : BackwardCompatibleGetter<Array<ProcessHandler>>() {
     override fun getCurrentImplementation(): Array<ProcessHandler> {
-        return ExecutionManager.getInstance(project).runningProcesses
+        return ExecutionManager.getInstance(project).getRunningProcesses()
     }
 
     override fun getPreviousImplementation(): Array<ProcessHandler> {

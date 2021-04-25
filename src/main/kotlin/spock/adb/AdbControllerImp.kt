@@ -5,11 +5,14 @@ import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import spock.adb.command.*
 import spock.adb.models.ActivityData
+import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
 import spock.adb.premission.PermissionListItem
+
 
 class AdbControllerImp(
     private val project: Project,
@@ -51,7 +54,7 @@ class AdbControllerImp(
         error: (message: String) -> Unit
     ) {
         val activitiesList = mutableListOf<String>()
-        val activitiesClass: List<ActivityData> = GetBackStackCommand().execute(Any(), project, device)
+        val activitiesClass: List<BackStackData> = GetBackStackCommand().execute(Any(), project, device)
 
         activitiesClass.forEachIndexed { index, activityData ->
             activitiesList.add("\t$index-${activityData.appPackage}")
@@ -69,6 +72,43 @@ class AdbControllerImp(
         )
     }
 
+    override fun currentApplicationBackStack(
+        device: IDevice,
+        success: (message: String) -> Unit,
+        error: (message: String) -> Unit
+    ) {
+        val applicationID = getApplicationID(device)
+
+        val activitiesList: MutableList<String>
+        val activitiesClass: List<ActivityData> =
+            GetApplicationBackStackCommand().execute(applicationID, project, device)
+
+        activitiesList = activitiesClass.map { listOf(it.activity) + it.fragment }.flatten().toMutableList()
+
+        val list = JBList(activitiesList)
+        list.installCellRenderer { o: Any ->
+            var title = o.toString()
+            title = if (!o.toString().contains('.'))
+                "  |--$title"
+            else
+                title.split('.').lastOrNull() ?: ""
+            val label = JBLabel(title)
+            label
+        }
+        PopupChooserBuilder(list).apply {
+            this.setTitle("Activities")
+            this.setItemChoosenCallback {
+                val current = activitiesList.getOrNull(list.selectedIndex)
+                current?.let {
+                    if (it.contains('.'))
+                        it.psiClassByNameFromProjct(project)?.openIn(project)
+                    else
+                        it.psiClassByNameFromCache(project)?.openIn(project)
+                }
+            }
+            this.createPopup().showCenteredInCurrentWindow(project)
+        }
+    }
     override fun currentActivity(
         device: IDevice,
         success: (message: String) -> Unit,
@@ -355,7 +395,7 @@ class AdbControllerImp(
         list: JBList<String>,
         classes: List<PsiClass?>
     ) {
-        PopupChooserBuilder<String>(list).apply {
+        PopupChooserBuilder(list).apply {
             this.setTitle(title)
             this.setItemChoosenCallback {
                 classes.getOrNull(list.selectedIndex)?.openIn(project)

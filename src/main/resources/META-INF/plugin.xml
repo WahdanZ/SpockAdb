@@ -2,7 +2,7 @@
     <id>com.wahdan.com.wahdan.spockAdb</id>
     <name>Spock ADB</name>
     <vendor email="ahmed.wahdan@outlook.com" url="http://github.com/WahdanZ">Spock Adb</vendor>
-    <version>1.0.6</version>
+    <version>1.0.9</version>
     <description><![CDATA[ Plugin Helps you to have full control of your project
 
         -Navigate to current active activity in your IDE
@@ -17,20 +17,23 @@
 
         -Restart or Reopen Application ]]>
     </description>
-    <idea-version since-build="203"/>
 
     <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/plugin_compatibility.html
          on how to target different products -->
     <!-- uncomment to enable plugin in all products
     <depends>com.intellij.modules.lang</depends>
     -->
-    <depends>com.intellij.modules.java</depends>
-    <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.android</depends>
+    <depends>com.intellij.modules.androidstudio</depends>
 
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationService serviceImplementation="spock.adb.AppSettingService"/>
+    </extensions>
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow anchor="right" canCloseContents="false" id="Spock ADB" factoryClass="spock.AdbDrawerViewer"
                     secondary="true"/>
+        <notificationGroup id="SpockNG" displayType="BALLOON" key="notification.group.name"/>
+
     </extensions>
 
     <actions>

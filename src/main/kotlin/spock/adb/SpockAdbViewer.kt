@@ -1,8 +1,8 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
-import com.intellij.notification.NotificationDisplayType
 import com.intellij.notification.NotificationGroup
+import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -34,6 +34,7 @@ class SpockAdbViewer(
     private lateinit var forceKillAppButton: JButton
     private lateinit var testProcessDeathButton: JButton
     private lateinit var activitiesBackStackButton: JButton
+    private lateinit var currentAppBackStackButton: JButton
     private lateinit var adbWifi: JButton
     private lateinit var wifiDebug: JButton
     private lateinit var devices: List<IDevice>
@@ -49,8 +50,7 @@ class SpockAdbViewer(
     private lateinit var inputOnDeviceButton: JButton
     private var selectedIDevice: IDevice? = null
     private val notifier: NotificationGroup by lazy {
-        NotificationGroup("Spock_ADB",
-            NotificationDisplayType.BALLOON, true)
+        NotificationGroupManager.getInstance().getNotificationGroup("SpockNG")!!
     }
 
     private lateinit var adbController: AdbController
@@ -119,11 +119,11 @@ class SpockAdbViewer(
 
         wifiDebug.isEnabled = false
         wifiDebug.isVisible = false
-        val deviceSelected = { x:Boolean->
+        val deviceSelected = { x: Boolean ->
             wifiDebug.isEnabled = x
         }
         adbWifi.isVisible = false
-        adbWifi.addActionListener{
+        adbWifi.addActionListener {
             val ip = Messages.showInputDialog(
                 "Enter You Android Device IP address",
                 "Spock Adb- Device connect over Wifi",
@@ -146,6 +146,11 @@ class SpockAdbViewer(
         activitiesBackStackButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.currentBackStack(device, ::showSuccess, ::showError)
+            }
+        }
+        currentAppBackStackButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.currentApplicationBackStack(device, ::showSuccess, ::showError)
             }
         }
         currentActivityButton.addActionListener {
@@ -246,7 +251,12 @@ class SpockAdbViewer(
         adbController.connectedDevices({ devices ->
             this.devices = devices
             selectedIDevice = this.devices.getOrElse(devices.indexOf(selectedIDevice)) { this.devices.getOrNull(0) }
-            devicesListComboBox.model = DefaultComboBoxModel<String>(
+            AppSettingService.getInstance().run {
+                state?.copy()?.let {
+                    this.loadState(it.copy(selectedDevice = selectedIDevice?.name))
+                }
+            }
+            devicesListComboBox.model = DefaultComboBoxModel(
                 devices.map { device ->
                     device.name
                 }.toTypedArray()
