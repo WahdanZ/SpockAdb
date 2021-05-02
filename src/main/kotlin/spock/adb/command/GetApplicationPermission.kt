@@ -6,12 +6,12 @@ import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
 import spock.adb.isAppInstall
 import spock.adb.isMarshmallow
-import spock.adb.premission.PermissionListItem
+import spock.adb.premission.ListItem
 import java.util.concurrent.TimeUnit
 
-class GetApplicationPermission : Command<String, List<PermissionListItem>> {
+class GetApplicationPermission : Command<String, List<ListItem>> {
 
-    override fun execute(p: String, project: Project, device: IDevice): List<PermissionListItem> {
+    override fun execute(p: String, project: Project, device: IDevice): List<ListItem> {
         if (device.isMarshmallow()) {
             if (device.isAppInstall(p)) {
                 val shellOutputReceiver = ShellOutputReceiver()
@@ -28,7 +28,7 @@ class GetApplicationPermission : Command<String, List<PermissionListItem>> {
                     .distinct()
                     .forEach { convertPermissionToMap(it, ps) }
 
-                return ps.map { PermissionListItem(it.key, it.value) }
+                return ps.map { ListItem(it.key, it.value) }
                     .filter {
                         dangerousPermissions.find { dangerousPermission ->
                             dangerousPermission.contains(it.permission.split(".").getOrElse(2) { "any" })

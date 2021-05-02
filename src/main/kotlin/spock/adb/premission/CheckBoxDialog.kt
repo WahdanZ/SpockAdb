@@ -1,18 +1,15 @@
 package spock.adb.premission
 
-import com.android.ddmlib.IDevice
 import java.awt.Component
 import java.awt.event.*
 import javax.swing.*
-import spock.adb.AdbController
 
-class PermissionDialog(
-    private val device: IDevice,
-    private val adaPermission: AdbController,
-    private val permissionList: List<PermissionListItem>
+class CheckBoxDialog(
+    private val list: List<ListItem>,
+    private val onItemCheck: (item: ListItem) -> Unit,
 ) : JDialog() {
     private lateinit var contentPane: JPanel
-    private lateinit var jList: JList<PermissionListItem>
+    private lateinit var jList: JList<ListItem>
 
     init {
         setContentPane(contentPane)
@@ -32,8 +29,8 @@ class PermissionDialog(
     }
 
     private fun prepareList() {
-        val listModel = DefaultListModel<PermissionListItem>()
-        permissionList.forEach {
+        val listModel = DefaultListModel<ListItem>()
+        list.forEach {
             listModel.addElement(it)
         }
         jList.model = listModel
@@ -41,20 +38,20 @@ class PermissionDialog(
         jList.selectionMode = ListSelectionModel.SINGLE_SELECTION
         jList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(event: MouseEvent) {
-                handelPermissionSelection(event)
+                handelSelection(event)
             }
         })
     //    adaPermission.getApplicationPermissions()
     }
 
-    private fun handelPermissionSelection(event: MouseEvent) {
+    private fun handelSelection(event: MouseEvent) {
         val list = event.source as JList<*>
         val index = list.locationToIndex(event.point) // Get index of item
         // clicked
         val item = list.model
-            .getElementAt(index) as PermissionListItem
+            .getElementAt(index) as ListItem
         item.isSelected = !item.isSelected // Toggle selected state
-        handelPermissionSelection(device, item)
+        onItemCheck(item)
 
         list.repaint(list.getCellBounds(index, index)) // Repaint cell
     }
@@ -63,13 +60,7 @@ class PermissionDialog(
         dispose()
     }
 
-    private fun handelPermissionSelection(device: IDevice, permissionListItem: PermissionListItem) {
-        if (permissionListItem.isSelected) {
-            adaPermission.grantPermission(device, permissionListItem, ::print, ::error)
-        } else {
-            adaPermission.revokePermission(device, permissionListItem, ::print, ::error)
-        }
-    }
+
 
     class CheckListRenderer : JCheckBox(), ListCellRenderer<Any> {
         override fun getListCellRendererComponent(
@@ -80,7 +71,7 @@ class PermissionDialog(
             hasFocus: Boolean
         ): Component {
             isEnabled = list.isEnabled
-            setSelected((value as PermissionListItem).isSelected)
+            setSelected((value as ListItem).isSelected)
             font = list.font
             background = list.background
             foreground = list.foreground
