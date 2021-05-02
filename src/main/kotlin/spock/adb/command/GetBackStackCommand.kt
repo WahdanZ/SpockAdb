@@ -2,11 +2,11 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import spock.adb.models.ActivityData
-import java.util.concurrent.TimeUnit
 import spock.adb.ShellOutputReceiver
+import spock.adb.models.BackStackData
+import java.util.concurrent.TimeUnit
 
-class GetBackStackCommand : Command<Any, List<ActivityData>> {
+class GetBackStackCommand : Command<Any, List<BackStackData>> {
 
     companion object {
         const val ACTIVITY_DELIMITER = "Running activities (most recent first):"
@@ -16,7 +16,7 @@ class GetBackStackCommand : Command<Any, List<ActivityData>> {
         val extractActivityRegex = Regex("(u0\\s[a-zA-Z.]+/)([a-zA-Z.]+)")
     }
 
-    override fun execute(p: Any, project: Project, device: IDevice): List<ActivityData> {
+    override fun execute(p: Any, project: Project, device: IDevice): List<BackStackData> {
         val shellOutputReceiver = ShellOutputReceiver()
         device.executeShellCommand(
             "dumpsys activity activities | sed -En -e '/Running activities/,/Run #0/p'",
@@ -27,7 +27,7 @@ class GetBackStackCommand : Command<Any, List<ActivityData>> {
         return getCurrentRunningActivities(shellOutputReceiver.toString())
     }
 
-    private fun getCurrentRunningActivities(bulkActivitiesData: String): List<ActivityData> {
+    private fun getCurrentRunningActivities(bulkActivitiesData: String): List<BackStackData> {
         lateinit var appPackage: String
 
         return bulkActivitiesData
@@ -36,7 +36,7 @@ class GetBackStackCommand : Command<Any, List<ActivityData>> {
             .mapNotNull { bulkAppData ->
                 appPackage = extractAppRegex.find(bulkAppData)?.groups?.lastOrNull()?.value ?: return@mapNotNull null
 
-                ActivityData(
+                BackStackData(
                     appPackage = appPackage,
                     activitiesList = bulkAppData
                         .lines()

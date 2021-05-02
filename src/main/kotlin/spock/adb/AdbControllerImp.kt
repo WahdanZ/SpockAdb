@@ -2,14 +2,20 @@ package spock.adb
 
 import com.android.ddmlib.AndroidDebugBridge
 import com.android.ddmlib.IDevice
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import spock.adb.command.*
 import spock.adb.models.ActivityData
+import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
-import spock.adb.premission.PermissionListItem
+import spock.adb.notification.CommonNotifier
+import spock.adb.premission.ListItem
+import javax.swing.border.EmptyBorder
+
 
 class AdbControllerImp(
     private val project: Project,
@@ -30,7 +36,7 @@ class AdbControllerImp(
         AndroidDebugBridge.addDeviceChangeListener(this)
     }
 
-    override fun connectedDevices(block: (devices: List<IDevice>) -> Unit, error: (message: String) -> Unit) {
+    override fun connectedDevices(block: (devices: List<IDevice>) -> Unit) {
         updateDeviceList = block
         updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
     }
@@ -46,12 +52,11 @@ class AdbControllerImp(
     override fun deviceChanged(iDevice: IDevice, i: Int) {}
 
     override fun currentBackStack(
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
         val activitiesList = mutableListOf<String>()
-        val activitiesClass: List<ActivityData> = GetBackStackCommand().execute(Any(), project, device)
+        val activitiesClass: List<BackStackData> = GetBackStackCommand().execute(Any(), project, device)
 
         activitiesClass.forEachIndexed { index, activityData ->
             activitiesList.add("\t$index-${activityData.appPackage}")
@@ -69,25 +74,55 @@ class AdbControllerImp(
         )
     }
 
+    override fun currentApplicationBackStack(device: IDevice) {
+        val applicationID = getApplicationID(device)
+        val activitiesList: MutableList<String>
+        val activitiesClass: List<ActivityData> =
+            GetApplicationBackStackCommand().execute(applicationID, project, device)
+        activitiesList = activitiesClass.map { listOf(it.activity) + it.fragment }.flatten().toMutableList()
+        val list = JBList(activitiesList)
+        list.installCellRenderer { o: Any ->
+            var title = o.toString()
+            title = if (!o.toString().contains('.'))
+                "  |--$title (Fragment)"
+            else
+                (title.split('.').lastOrNull() ?: "") + "(Activity)"
+            val label = JBLabel(title)
+            label.border = EmptyBorder(5, 10, 5, 20)
+            label
+        }
+        PopupChooserBuilder(list).apply {
+            this.setTitle("Activities")
+            this.setItemChoosenCallback {
+                val current = activitiesList.getOrNull(list.selectedIndex)
+                current?.let {
+                    if (it.contains('.'))
+                        it.psiClassByNameFromProjct(project)?.openIn(project)
+                    else
+                        it.psiClassByNameFromCache(project)?.openIn(project)
+                }
+            }
+            this.createPopup().showCenteredInCurrentWindow(project)
+        }
+
+    }
     override fun currentActivity(
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val activity =
                 GetActivityCommand().execute(Any(), project, device) ?: throw Exception("No activities found")
             activity.psiClassByNameFromProjct(project)?.openIn(project)
                 ?: throw Exception("class $activity  Not Found")
-        }, error)
+        }
     }
 
     override fun currentFragment(
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val applicationID = getApplicationID(device)
 
             val fragmentsClass = GetFragmentsCommand().execute(applicationID, project, device)
@@ -118,235 +153,229 @@ class AdbControllerImp(
                             ?: throw Exception("Class $it Not Found")
                     }
             }
-        }, error)
+        }
     }
 
-    override fun forceKillApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-        execute({
+    override fun forceKillApp(device: IDevice) {
+        execute {
             val applicationID = getApplicationID(device)
             ForceKillAppCommand().execute(applicationID, project, device)
-            success("application $applicationID force killed")
-        }, error)
+            showSuccess("application $applicationID force killed")
+        }
     }
 
-    override fun testProcessDeath(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-        execute({
+    override fun testProcessDeath(device: IDevice) {
+        execute {
             val applicationID = getApplicationID(device)
             ProcessDeathCommand().execute(applicationID, project, device)
-            success("application $applicationID killed. App launched.")
-        }, error)
+            showSuccess("application $applicationID killed. App launched.")
+        }
     }
 
-    override fun restartApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-        execute({
+    override fun restartApp(device: IDevice) {
+        execute {
             val applicationID = getApplicationID(device)
             RestartAppCommand().execute(applicationID, project, device)
-            success("application $applicationID Restart")
-        }, error)
+            showSuccess("application $applicationID Restart")
+        }
     }
 
-    override fun restartAppWithDebugger(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-        execute({
+    override fun restartAppWithDebugger(device: IDevice) {
+        execute {
             val applicationID = getApplicationID(device)
             RestartAppWithDebuggerCommand().execute(applicationID, project, device)
-            success("application $applicationID Restarted with debugger")
-        }, error)
+            showSuccess("application $applicationID Restarted with debugger")
+        }
     }
 
-    override fun clearAppData(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-        execute({
+    override fun clearAppData(device: IDevice) {
+        execute {
             val applicationID = getApplicationID(device)
             ClearAppDataCommand().execute(applicationID, project, device)
-            success("application $applicationID data cleared")
-        }, error)
+            showSuccess("application $applicationID data cleared")
+        }
     }
 
-    override fun clearAppDataAndRestart(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-        execute({
+    override fun clearAppDataAndRestart(device: IDevice) {
+        execute {
             val applicationID = getApplicationID(device)
             ClearAppDataAndRestartCommand().execute(applicationID, project, device)
-            success("application $applicationID data cleared and restarted")
-        }, error)
+            showSuccess("application $applicationID data cleared and restarted")
+        }
     }
 
-    override fun uninstallApp(device: IDevice, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-        execute({
+    override fun uninstallApp(device: IDevice) {
+        execute {
             val applicationID = getApplicationID(device)
             UninstallAppCommand().execute(applicationID, project, device)
-            success("application $applicationID uninstalled")
-        }, error)
+            showSuccess("application $applicationID uninstalled")
+        }
     }
 
     override fun getApplicationPermissions(
         device: IDevice,
-        block: (devices: List<PermissionListItem>) -> Unit,
-        error: (message: String) -> Unit
+        block: (devices: List<ListItem>) -> Unit,
     ) {
-        execute({
+        execute {
             val applicationID = getApplicationID(device)
             val permissions = GetApplicationPermission().execute(applicationID, project, device)
             if (permissions.isNotEmpty())
                 block(permissions)
             else
                 error("Your Application Doesn't Require any of Runtime Permissions ")
-        }, error)
+        }
     }
 
     override fun grantOrRevokeAllPermissions(
         device: IDevice,
         permissionOperation: GetApplicationPermission.PermissionOperation,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
     ) {
         getApplicationPermissions(
             device,
-            { permissionsList ->
-                val applicationID = getApplicationID(device)
+        ) { permissionsList ->
+            val applicationID = getApplicationID(device)
 
-                val operation: (PermissionListItem) -> Unit = when (permissionOperation) {
-                    GetApplicationPermission.PermissionOperation.GRANT ->
-                        { permission -> GrantPermissionCommand().execute(applicationID, permission, project, device) }
-                    GetApplicationPermission.PermissionOperation.REVOKE ->
-                        { permission -> RevokePermissionCommand().execute(applicationID, permission, project, device) }
-                }
+            val operation: (ListItem) -> Unit = when (permissionOperation) {
+                GetApplicationPermission.PermissionOperation.GRANT ->
+                    { permission -> GrantPermissionCommand().execute(applicationID, permission, project, device) }
+                GetApplicationPermission.PermissionOperation.REVOKE ->
+                    { permission -> RevokePermissionCommand().execute(applicationID, permission, project, device) }
+            }
 
-                permissionsList
-                    .forEach { permission -> operation(permission) }
-                    .also { success("All permissions ${permissionOperation.operationResult}") }
-            },
-            { errorMessage -> error(errorMessage) }
-        )
+            permissionsList
+                .forEach { permission -> operation(permission) }
+                .also { showSuccess("All permissions ${permissionOperation.operationResult}") }
+        }
     }
 
     override fun revokePermission(
         device: IDevice,
-        permissionListItem: PermissionListItem,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
-    ) {
-        execute({
+        listItem: ListItem,
+
+        ) {
+        execute {
             val applicationID = getApplicationID(device)
-            RevokePermissionCommand().execute(applicationID, permissionListItem, project, device)
-            success("permission $permissionListItem revoked")
-        }, error)
+            RevokePermissionCommand().execute(applicationID, listItem, project, device)
+            showSuccess("permission $listItem revoked")
+        }
     }
 
     override fun grantPermission(
         device: IDevice,
-        permissionListItem: PermissionListItem,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
-    ) {
-        execute({
+        listItem: ListItem,
+
+        ) {
+        execute {
             val applicationID = getApplicationID(device)
-            GrantPermissionCommand().execute(applicationID, permissionListItem, project, device)
-            success("permission $permissionListItem granted")
-        }, error)
+            GrantPermissionCommand().execute(applicationID, listItem, project, device)
+            showSuccess("permission $listItem granted")
+        }
     }
 
-    override fun connectDeviceOverIp(ip: String, success: (message: String) -> Unit, error: (message: String) -> Unit) {
-       execute({ ConnectDeviceOverIPCommand().execute(ip, project)
-           success("connected to $ip")
-       }, error)
+    override fun connectDeviceOverIp(ip: String) {
+        execute {
+            ConnectDeviceOverIPCommand().execute(ip, project)
+            showSuccess("connected to $ip")
+        }
     }
 
     override fun enableDisableDontKeepActivities(
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val result = EnableDisableDontKeepActivitiesCommand().execute(Any(), project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
     override fun enableDisableShowTaps(
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val result = EnableDisableShowTapsCommand().execute(Any(), project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
 
     override fun enableDisableShowLayoutBounds(
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val result = EnableDisableShowLayoutBoundsCommand().execute(Any(), project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
 
     override fun setWindowAnimatorScale(
         scale: String,
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val result = WindowAnimatorScaleCommand().execute(scale, project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
 
     override fun setTransitionAnimatorScale(
         scale: String,
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val result = TransitionAnimatorScaleCommand().execute(scale, project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
 
     override fun setAnimatorDurationScale(
         scale: String,
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
+
     ) {
-        execute({
+        execute {
             val result = AnimatorDurationScaleCommand().execute(scale, project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
 
     override fun toggleNetwork(
         device: IDevice,
         network: Network,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
-    ) {
-        execute({
+
+        ) {
+        execute {
             val result = ToggleNetworkCommand().execute(network, project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
 
     override fun inputOnDevice(
         input: String,
-        device: IDevice,
-        success: (message: String) -> Unit,
-        error: (message: String) -> Unit
+        device: IDevice
     ) {
-        execute({
+        execute {
             val result = InputOnDeviceCommand().execute(input, project, device)
-            success(result)
-        }, error)
+            showSuccess(result)
+        }
     }
 
-    private fun execute(execute: () -> Unit, error: (message: String) -> Unit) {
+    private fun showError(message: String) {
+        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.ERROR)
+
+    }
+
+    private fun showSuccess(message: String) {
+        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.INFORMATION)
+    }
+
+    private fun execute(execute: () -> Unit) {
         try {
             execute.invoke()
         } catch (e: Exception) {
-            error(e.message ?: "not found")
+            showError(e.message ?: "not found")
         }
     }
 
@@ -355,7 +384,7 @@ class AdbControllerImp(
         list: JBList<String>,
         classes: List<PsiClass?>
     ) {
-        PopupChooserBuilder<String>(list).apply {
+        PopupChooserBuilder(list).apply {
             this.setTitle(title)
             this.setItemChoosenCallback {
                 classes.getOrNull(list.selectedIndex)?.openIn(project)

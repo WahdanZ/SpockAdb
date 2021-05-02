@@ -11,7 +11,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import org.joor.Reflect
 import org.joor.Reflect.on
-import org.joor.ReflectException
+
 
 class Debugger(private val project: Project, private val device: IDevice, private val packageName: String) {
 
@@ -91,7 +91,7 @@ class AttachToClient(
     private val client: Client
 ) : BackwardCompatibleGetter<Unit>() {
     override fun getCurrentImplementation() {
-        androidDebugger.attachToClient(project, client)
+        androidDebugger.attachToClient(project, client, null)
     }
 
     override fun getPreviousImplementation() {
@@ -131,11 +131,9 @@ abstract class BackwardCompatibleGetter<T> {
     }
 
     private fun isReflectiveException(t: Throwable): Boolean {
-        return t is ClassNotFoundException ||
-                t is NoSuchFieldException ||
+        return t is NoSuchFieldException ||
                 t is LinkageError ||
-                t is NoSuchMethodException ||
-                t is ReflectException
+                t is NoSuchMethodException
     }
 
     abstract fun getCurrentImplementation(): T
@@ -155,5 +153,5 @@ fun waitUntil(timeoutMillis: Long = 30000L, step: Long = 100L, condition: () -> 
 
 fun invokeLater(runnable: () -> Unit) = ApplicationManager.getApplication().invokeLater(runnable)
 
-inline fun <reified T> on(): Reflect = Reflect.on(T::class.java)
+inline fun <reified T> on(): Reflect = on(T::class.java)
 inline fun <reified T> Reflect.asType(): T = this.`as`(T::class.java)

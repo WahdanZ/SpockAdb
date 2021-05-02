@@ -3,7 +3,9 @@
 # Spock Adb Changelog
 ## [Unreleased]
 ### Added
-
+- Get Current App BackStack (Activities and nested fragments)
+- Add Plugins actions ex GetCurrentFragment,RestartApp,etc
+- allow to choose which buttons to show and which not to show
 ### Changed
 
 ### Deprecated
@@ -12,6 +14,9 @@
 
 ### Fixed
 
+- support latest version of AS
+- fix get current fragment
+- fix If two instances of AS are open, the plugin does not work properly
 ### Security
 ## [1.0.9]
 ### Added

@@ -1,3 +1,11 @@
 package spock.adb.command
 
-class GetFragmentsCommandTest
+import org.junit.Test
+
+class GetFragmentsCommandTest {
+
+    @Test
+    fun test() {
+        print("")
+    }
+}

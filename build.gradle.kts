@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.closure
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+fun properties(key: String) = project.findProperty(key).toString()
 
 plugins {
     // Java support
@@ -8,9 +9,9 @@ plugins {
     // Kotlin support
     id("org.jetbrains.kotlin.jvm") version "1.4.0"
     // gradle-intellij-plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
-    id("org.jetbrains.intellij") version "0.4.21"
+    id("org.jetbrains.intellij") version "0.7.2"
     // gradle-changelog-plugin - read more: https://github.com/JetBrains/gradle-changelog-plugin
-    id("org.jetbrains.changelog") version "0.4.0"
+    id("org.jetbrains.changelog") version "1.1.2"
     // detekt linter - read more: https://detekt.github.io/detekt/kotlindsl.html
     // ktlint linter - read more: https://github.com/JLLeitschuh/ktlint-gradle
 //    id("org.jlleitschuh.gradle.ktlint") version "9.3.0"
@@ -48,11 +49,17 @@ intellij {
     type = platformType
     downloadSources = platformDownloadSources.toBoolean()
     updateSinceUntilBuild = true
+    alternativeIdePath =
+        "/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/201.7199119/Android Studio.app"
 
 //  Plugin Dependencies:
 //  https://www.jetbrains.org/intellij/sdk/docs/basics/plugin_structure/plugin_dependencies.html
 //
-    setPlugins("android", "java")
+    val plugins = properties("platformPlugins")
+        .split(',')
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+    setPlugins(*plugins.toTypedArray())
 }
 
 
@@ -79,7 +86,7 @@ tasks {
         // Extract the <!-- Plugin description --> section from README.md and provide for the plugin's manifest
         pluginDescription(
             closure {
-                File("./README.md").readText().lines().run {
+                File(projectDir, "README.md").readText().lines().run {
                     val start = "<!-- Plugin description -->"
                     val end = "<!-- Plugin description end -->"
 
