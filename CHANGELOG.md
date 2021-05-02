@@ -1,7 +1,7 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
 # Spock Adb Changelog
-## [Unreleased]
+## [2.0.0]
 ### Added
 - Get Current App BackStack (Activities and nested fragments)
 - Add Plugins actions ex GetCurrentFragment,RestartApp,etc
