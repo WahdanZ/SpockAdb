@@ -76,7 +76,6 @@ class AdbControllerImp(
 
     override fun currentApplicationBackStack(device: IDevice) {
         val applicationID = getApplicationID(device)
-
         val activitiesList: MutableList<String>
         val activitiesClass: List<ActivityData> =
             GetApplicationBackStackCommand().execute(applicationID, project, device)

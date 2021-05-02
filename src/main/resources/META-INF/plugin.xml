@@ -19,6 +19,7 @@
     </description>
     <change-notes><![CDATA[
        <br>Get Current App BackStack (Activities and nested fragments)</br>
+       <br>allow to choose which buttons to show and which not to show</br>
        <br>Add Plugins actions ex GetCurrentFragment,RestartApp,etc</br>
        <br>Improve plugin ui by enable vertical and horizontal scrolling</br>
        <br>fix get current fragment</br>
@@ -38,7 +39,7 @@
         <applicationService serviceImplementation="spock.adb.AppSettingService"/>
     </extensions>
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow anchor="right" canCloseContents="false" id="Spock ADB" factoryClass="spock.AdbDrawerViewer"
+        <toolWindow anchor="left" canCloseContents="false" id="Spock ADB" factoryClass="spock.AdbDrawerViewer"
                     secondary="true"/>
 
     </extensions>

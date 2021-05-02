@@ -1,6 +1,7 @@
 package spock.adb.premission
 
 import java.awt.Component
+import java.awt.Dimension
 import java.awt.event.*
 import javax.swing.*
 
@@ -35,7 +36,9 @@ class CheckBoxDialog(
         }
         jList.model = listModel
         jList.cellRenderer = CheckListRenderer()
+        jList.size = Dimension(24, 24)
         jList.selectionMode = ListSelectionModel.SINGLE_SELECTION
+
         jList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(event: MouseEvent) {
                 handelSelection(event)
@@ -75,7 +78,7 @@ class CheckBoxDialog(
             font = list.font
             background = list.background
             foreground = list.foreground
-            text = value.permission
+            text = value.name
             return this
         }
     }

@@ -16,6 +16,9 @@ class SpockAdbViewer(
 ) : SimpleToolWindowPanel(true) {
     private lateinit var panel1: JPanel
     private lateinit var rootPanel: JPanel
+    private lateinit var permissionPanel: JPanel
+    private lateinit var networkPanel: JPanel
+    private lateinit var developerPanel: JPanel
     private lateinit var devicesListComboBox: JComboBox<String>
     private lateinit var currentActivityButton: JButton
     private lateinit var currentFragmentButton: JButton
@@ -100,6 +103,11 @@ class SpockAdbViewer(
     init {
         setContent(JScrollPane(rootPanel))
         setToolWindowListener()
+        AppSettingService.getInstance().run {
+            state?.let {
+                updateUi(it)
+            }
+        }
     }
 
     fun initPlugin(adbController: AdbController) {
@@ -107,8 +115,28 @@ class SpockAdbViewer(
 
         updateDevicesList()
 
-        setting.isEnabled = false
-        setting.isVisible = false
+        setting.isEnabled = true
+        setting.isVisible = true
+        setting.addActionListener {
+            AppSettingService.getInstance().run {
+                state?.let {
+                    val dialog = CheckBoxDialog(it.list) { selectedItem ->
+                        println(selectedItem)
+                        this.loadState(it.copy(list = it.list.map { item ->
+                            if (item.name == selectedItem.name)
+                                item.copy(isSelected = selectedItem.isSelected)
+                            else item
+                        }))
+                        updateUi(it)
+                    }
+                    dialog.setLocationRelativeTo(null)
+                    dialog.pack()
+                    dialog.isVisible = true
+                }
+
+            }
+
+        }
         adbWifi.isVisible = false
         adbWifi.addActionListener {
             val ip = Messages.showInputDialog(
@@ -238,6 +266,32 @@ class SpockAdbViewer(
             }
         }
         inputOnDeviceTextField.addActionListener { inputOnDeviceButton.doClick() }
+    }
+
+    private fun updateUi(it: AppSetting) {
+        it.list.map {
+            when (SpockAction.valueOf(it.name.replace(" ", "_"))) {
+                SpockAction.CURRENT_ACTIVITY -> currentActivityButton.isVisible = it.isSelected
+                SpockAction.CURRENT_FRAGMENT -> currentFragmentButton.isVisible = it.isSelected
+                SpockAction.CURRENT_APP_STACK -> currentAppBackStackButton.isVisible = it.isSelected
+                SpockAction.BACK_STACK -> activitiesBackStackButton.isVisible = it.isSelected
+                SpockAction.CLEAR_APP_DATA -> clearAppDataButton.isVisible = it.isSelected
+                SpockAction.CLEAR_APP_DATA_RESTART -> clearAppDataAndRestartButton.isVisible = it.isSelected
+                SpockAction.RESTART -> restartAppButton.isVisible = it.isSelected
+                SpockAction.RESTART_DEBUG -> restartAppWithDebuggerButton.isVisible = it.isSelected
+                SpockAction.TEST_PROCESS_DEATH -> testProcessDeathButton.isVisible = it.isSelected
+                SpockAction.FORCE_KILL -> forceKillAppButton.isVisible = it.isSelected
+                SpockAction.UNINSTALL -> uninstallAppButton.isVisible = it.isSelected
+                SpockAction.TOGGLE_NETWORK -> networkPanel.isVisible = it.isSelected
+                SpockAction.PERMISSIONS -> permissionPanel.isVisible = it.isSelected
+                SpockAction.DEVELOPER_OPTIONS -> developerPanel.isVisible = it.isSelected
+                SpockAction.INPUT -> {
+                    inputOnDeviceButton.isVisible = it.isSelected
+                    inputOnDeviceTextField.isVisible = it.isSelected
+                }
+            }
+            rootPanel.invalidate()
+        }
     }
 
     private fun updateDevicesList() {

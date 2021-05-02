@@ -5,6 +5,7 @@
 ### Added
 - Get Current App BackStack (Activities and nested fragments)
 - Add Plugins actions ex GetCurrentFragment,RestartApp,etc
+- allow to choose which buttons to show and which not to show
 ### Changed
 
 ### Deprecated

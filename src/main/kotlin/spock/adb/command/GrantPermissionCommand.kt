@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 class GrantPermissionCommand : Command2<String, ListItem, Unit> {
     override fun execute(p: String, p2: ListItem, project: Project, device: IDevice) {
         if (device.isAppInstall(p))
-            device.executeShellCommand("pm grant $p ${p2.permission}", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)
+            device.executeShellCommand("pm grant $p ${p2.name}", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)
         else
             throw Exception("Application $p not installed")
     }

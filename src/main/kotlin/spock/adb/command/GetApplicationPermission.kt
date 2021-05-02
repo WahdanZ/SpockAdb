@@ -31,7 +31,7 @@ class GetApplicationPermission : Command<String, List<ListItem>> {
                 return ps.map { ListItem(it.key, it.value) }
                     .filter {
                         dangerousPermissions.find { dangerousPermission ->
-                            dangerousPermission.contains(it.permission.split(".").getOrElse(2) { "any" })
+                            dangerousPermission.contains(it.name.split(".").getOrElse(2) { "any" })
                         } != null
                     }
                     .toList()
