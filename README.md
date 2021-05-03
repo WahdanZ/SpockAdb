@@ -20,23 +20,25 @@ Plugin Helps you to have full control of your project and device.
  - Kill or Restart Application
 - Restart app with debugger 
 - Uninstall and Clear App Data and Restart
-- Toggle "Show Taps" setting;
-- Toggle "Show Layout Bounds" setting;
-- Toggle "Don't Keep Activities" setting;
-- Adds option to Grant or Revoke all app permissions at once.
+ - Toggle "Show Taps" setting;
+ - Toggle "Show Layout Bounds" setting;
+ - Toggle "Don't Keep Activities" setting;
+ - Adds option to Grant or Revoke all app permissions at once.
 
-- Change scale of:
-    - Window Animation;
-    - Transition Animation;
-    - Animator Duration.
+ - Change scale of:
+   - Window Animation;
+   - Transition Animation;
+   - Animator Duration.
+
+## Image
+
+![Screenshot](images/spock_adb.png)
+
 ## Download
 
 https://plugins.jetbrains.com/plugin/11591-spock-adb
 
-
-
 ## Demo
-
 
 [![IMAGE ALT TEXT HERE](http://img.youtube.com/vi/x_WX_Pznqos/0.jpg)](http://www.youtube.com/watch?v=x_WX_Pznqos)
 
