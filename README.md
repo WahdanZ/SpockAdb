@@ -30,7 +30,7 @@ Plugin Helps you to have full control of your project and device.
    - Transition Animation;
    - Animator Duration.
 
-## Image
+## Screenshot
 
 ![Screenshot](images/spock_adb.png)
 
