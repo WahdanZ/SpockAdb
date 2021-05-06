@@ -14,6 +14,8 @@ class GetActivityCommand : Command<Any, String?> {
             15L,
             TimeUnit.SECONDS
         )
-        return shellOutputReceiver.toString().split(" ").find { it.contains("/") }?.replace("/", "")
+        return shellOutputReceiver.toString().split(" ").find { it.contains("/") }
+            ?.replace("/.", ".")
+            ?.replace(Regex(".+/"), "")
     }
 }
