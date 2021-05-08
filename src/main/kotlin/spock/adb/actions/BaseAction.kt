@@ -17,9 +17,12 @@ abstract class BaseAction : AnAction() {
         val controller = AdbControllerImp(this, AndroidSdkUtils.getDebugBridge(this))
         controller.connectedDevices { list ->
             if (list.isNotEmpty())
-                showDeviceList(project = this, list) {
-                    performAction(controller, it)
-                }
+                if(list.size > 1)
+                    showDeviceList(project = this, devices = list) {
+                        performAction(controller, it)
+                    }
+                else
+                    performAction(controller, list[0])
             else
                 showNotifier(project = this, content = "No Devices", type = NotificationType.ERROR)
 
