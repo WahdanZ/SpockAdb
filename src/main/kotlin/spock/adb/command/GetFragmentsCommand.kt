@@ -10,12 +10,13 @@ class GetFragmentsCommand : Command<String, List<FragmentData>> {
 
     override fun execute(p: String, project: Project, device: IDevice): List<FragmentData> {
         val shellOutputReceiver = ShellOutputReceiver()
-        device.executeShellCommand("dumpsys activity $p", shellOutputReceiver, 15L, TimeUnit.SECONDS)
+//        device.executeShellCommand("dumpsys activity $p", shellOutputReceiver, 15L, TimeUnit.SECONDS)
+        device.executeShellCommand("dumpsys activity top", shellOutputReceiver, 15L, TimeUnit.SECONDS)
         return getCurrentFragmentsFromLog(shellOutputReceiver.toString())
     }
 
     private fun getCurrentFragmentsFromLog(dumpsys: String): List<FragmentData> {
-        val bulkTaskDetails = dumpsys.substringAfter("TASK", "")
+        val bulkTaskDetails = dumpsys.substringAfterLast("TASK", "")
 
         return if (bulkTaskDetails.contains("NavHostFragment")) {
             getFragmentsUsingOldMethod(bulkTaskDetails)
@@ -43,14 +44,15 @@ class GetFragmentsCommand : Command<String, List<FragmentData>> {
     private fun getBulkAddedFragmentsDetails(bulkTaskDetails: String): String {
         return bulkTaskDetails
             .substringAfterLast("Added Fragments:", "")
-            .substringBefore("Back Stack", "")
+            .substringBeforeLast("FragmentManager misc state:", "")
+//            .substringBefore("Back Stack", "")
     }
 
-    private fun getAddedFragments(bulkAddedFragmentsDetails: String): List<FragmentData> =
+    private fun getAddedFragments(bulkAddedFragmentsDetails: String): MutableList<FragmentData> =
         bulkAddedFragmentsDetails
             .lines()
             .filter { line -> line.isNotBlank() }
-            .map { line ->
+            .mapTo(mutableListOf()) { line ->
                 FragmentData(
                     line
                         .substringAfter(": ", "")
@@ -61,21 +63,33 @@ class GetFragmentsCommand : Command<String, List<FragmentData>> {
                 )
             }
 
-    private fun getFragments(addedFragments: List<FragmentData>, bulkTaskDetails: String): List<FragmentData> {
+    val visibleHintStr = "mUserVisibleHint="
+    private fun getFragments(addedFragments: MutableList<FragmentData>, bulkTaskDetails: String): List<FragmentData> {
 
         var initDelimiter: String
         var endDelimiter: String
         addedFragments.forEachIndexed { index, fragment ->
             initDelimiter = "${fragment.fragment}{${fragment.fragmentIdentifier}}"
-            endDelimiter = if (index == addedFragments.lastIndex) {
-                "mParent=$initDelimiter"
-            } else "${addedFragments[index + 1].fragment}{${addedFragments[index + 1].fragmentIdentifier}}"
+            endDelimiter = "mParent=$initDelimiter"
 
-            fragment.innerFragments = getAddedFragments(getBulkAddedFragmentsDetails(bulkTaskDetails.substringAfter(initDelimiter, "").substringBefore(endDelimiter, "")))
+            val fragmentStr = bulkTaskDetails.substringAfter(initDelimiter, "").substringBefore(endDelimiter, "")
+
+            if(fragmentStr.contains("{parent=null}")) {
+                fragment.isNullParent = true
+            }
+
+            val visibleIndex = fragmentStr.indexOf(visibleHintStr)
+            if(visibleIndex >= 0) {
+                fragment.isVisible = fragmentStr.substring(visibleIndex + visibleHintStr.length).startsWith("true")
+            }
+
+            fragment.innerFragments = getAddedFragments(getBulkAddedFragmentsDetails(fragmentStr))
             if (fragment.innerFragments.isNotEmpty()) {
                 getFragments(fragment.innerFragments, bulkTaskDetails)
             }
         }
+
+        addedFragments.removeAll { !it.isVisible || it.isNullParent }
 
         return addedFragments
     }
