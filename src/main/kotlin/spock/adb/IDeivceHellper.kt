@@ -106,3 +106,10 @@ fun IDevice.getNetworkState(network: Network): NetworkState {
 
     return NetworkState.getState(outputReceiver.toString())
 }
+
+fun IDevice.getApiVersion(): Int? {
+    val outputReceiver = ShellOutputReceiver()
+    executeShellCommand("getprop ro.build.version.release", outputReceiver, 15L, TimeUnit.SECONDS)
+
+    return outputReceiver.toString().toIntOrNull()
+}
