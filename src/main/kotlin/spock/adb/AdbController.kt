@@ -32,4 +32,5 @@ interface AdbController {
     fun toggleNetwork(device: IDevice, network: Network)
     fun inputOnDevice(input: String, device: IDevice)
     fun openDeveloperOptions(device: IDevice)
+    fun openDeepLink(input: String, device: IDevice)
 }

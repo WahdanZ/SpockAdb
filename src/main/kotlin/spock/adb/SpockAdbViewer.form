@@ -2,14 +2,14 @@
 <form xmlns="http://www.intellij.com/uidesigner/form/" version="1" bind-to-class="spock.adb.SpockAdbViewer">
   <grid id="27dc6" layout-manager="GridBagLayout">
     <constraints>
-      <xy x="20" y="20" width="514" height="814"/>
+      <xy x="20" y="20" width="514" height="1014"/>
     </constraints>
     <properties>
       <enabled value="true"/>
     </properties>
     <border type="none"/>
     <children>
-      <grid id="fe6b7" binding="rootPanel" layout-manager="GridLayoutManager" row-count="17" column-count="7" same-size-horizontally="false" same-size-vertically="false" hgap="-1" vgap="-1">
+      <grid id="fe6b7" binding="rootPanel" layout-manager="GridLayoutManager" row-count="18" column-count="7" same-size-horizontally="false" same-size-vertically="false" hgap="-1" vgap="-1">
         <margin top="10" left="10" bottom="10" right="10"/>
         <constraints>
           <grid row="0" column="0" row-span="1" col-span="1" vsize-policy="3" hsize-policy="3" anchor="0" fill="0" indent="0" use-parent-layout="false"/>
@@ -17,15 +17,15 @@
         </constraints>
         <properties>
           <focusable value="true"/>
-          <minimumSize width="500" height="800"/>
+          <minimumSize width="500" height="900"/>
           <opaque value="true"/>
-          <preferredSize width="500" height="800"/>
+          <preferredSize width="500" height="900"/>
         </properties>
         <border type="none"/>
         <children>
           <vspacer id="6253e">
             <constraints>
-              <grid row="16" column="5" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2" indent="0" use-parent-layout="false"/>
+              <grid row="17" column="5" row-span="1" col-span="1" vsize-policy="6" hsize-policy="1" anchor="0" fill="2" indent="0" use-parent-layout="false"/>
             </constraints>
           </vspacer>
           <component id="43c37" class="javax.swing.JSeparator">
@@ -371,6 +371,22 @@
             <properties>
               <text value="Open Current App BackStack"/>
             </properties>
+          </component>
+          <component id="d0c6b" class="javax.swing.JButton" binding="openDeepLinkButton">
+            <constraints>
+              <grid row="16" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
+            </constraints>
+            <properties>
+              <text value="Open DeepLink"/>
+            </properties>
+          </component>
+          <component id="dd5fc" class="javax.swing.JTextField" binding="openDeepLinkTextField">
+            <constraints>
+              <grid row="16" column="2" row-span="1" col-span="4" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false">
+                <preferred-size width="150" height="-1"/>
+              </grid>
+            </constraints>
+            <properties/>
           </component>
         </children>
       </grid>

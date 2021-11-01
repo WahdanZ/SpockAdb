@@ -106,6 +106,7 @@ class AdbControllerImp(
         }
 
     }
+
     override fun currentActivity(
         device: IDevice
 
@@ -400,6 +401,13 @@ class AdbControllerImp(
     ) {
         execute {
             showSuccess(OpenDeveloperOptionsCommand().execute(project, device))
+        }
+    }
+
+    override fun openDeepLink(input: String, device: IDevice) {
+        execute {
+            val result = OpenDeepLinkCommand().execute(input, project, device)
+            showSuccess(result)
         }
     }
 }
