@@ -48,15 +48,10 @@ class SpockAdbViewer(
     private lateinit var mobileDataToggle: JButton
     private lateinit var inputOnDeviceTextField: JTextField
     private lateinit var inputOnDeviceButton: JButton
+    private lateinit var openDeveloperOptionsButton: JButton
     private var selectedIDevice: IDevice? = null
 
     private lateinit var adbController: AdbController
-
-    private val dontKeepActivitiesActionListener: (ActionEvent) -> Unit = {
-        selectedIDevice?.let { device ->
-            adbController.enableDisableDontKeepActivities(device)
-        }
-    }
 
     private val showTapsActionListener: (ActionEvent) -> Unit = {
         selectedIDevice?.let { device ->
@@ -266,6 +261,11 @@ class SpockAdbViewer(
             }
         }
         inputOnDeviceTextField.addActionListener { inputOnDeviceButton.doClick() }
+        openDeveloperOptionsButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.openDeveloperOptions(device)
+            }
+        }
     }
 
     private fun updateUi(it: AppSetting) {
@@ -308,10 +308,6 @@ class SpockAdbViewer(
     }
 
     private fun removeDeveloperOptionsListeners() {
-        enableDisableDontKeepActivities.actionListeners.forEach {
-            enableDisableDontKeepActivities.removeActionListener(it)
-        }
-
         enableDisableShowTaps.actionListeners.forEach {
             enableDisableShowTaps.removeActionListener(it)
         }
@@ -353,8 +349,6 @@ class SpockAdbViewer(
     }
 
     private fun setDeveloperOptionsListeners() {
-        enableDisableDontKeepActivities.addActionListener(dontKeepActivitiesActionListener)
-
         enableDisableShowTaps.addActionListener(showTapsActionListener)
 
         enableDisableShowLayoutBounds.addActionListener(showLayoutBoundsActionListener)

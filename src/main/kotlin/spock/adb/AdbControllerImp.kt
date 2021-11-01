@@ -279,15 +279,6 @@ class AdbControllerImp(
         }
     }
 
-    override fun enableDisableDontKeepActivities(
-        device: IDevice
-
-    ) {
-        execute {
-            val result = EnableDisableDontKeepActivitiesCommand().execute(Any(), project, device)
-            showSuccess(result)
-        }
-    }
     override fun enableDisableShowTaps(
         device: IDevice
 
@@ -401,6 +392,14 @@ class AdbControllerImp(
         fragmentData.innerFragments.forEachIndexed { fragmentIndex, innerFragmentData ->
             fragmentsList.add("$indent$fragmentIndex-${innerFragmentData.fragment}")
             addInnerFragmentsToList(innerFragmentData, fragmentsList, "\t\t\t\t$indent")
+        }
+    }
+
+    override fun openDeveloperOptions(
+        device: IDevice
+    ) {
+        execute {
+            showSuccess(OpenDeveloperOptionsCommand().execute(project, device))
         }
     }
 }
