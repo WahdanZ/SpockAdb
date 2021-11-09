@@ -5,15 +5,17 @@
 # Spock Adb Changelog
 ## [2.0.1]
 ### Added
+- Added button to open developer options
 
 ### Changed
+- Don't keep activities only shows if setting is enabled or not (although setting seemed to change, the behaviour was maintained)
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
--Adds support for getting the backstack activities in Android 11
+- Adds support for getting the backstack activities in Android 11
 
 ## [2.0.0]
 ### Added
