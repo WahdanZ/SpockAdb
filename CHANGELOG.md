@@ -1,6 +1,20 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
+## [Unreleased]
+
 # Spock Adb Changelog
+## [2.0.1]
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+-Adds support for getting the backstack activities in Android 11
+
 ## [2.0.0]
 ### Added
 - Get Current App BackStack (Activities and nested fragments)
