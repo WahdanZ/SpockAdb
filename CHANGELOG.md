@@ -6,6 +6,7 @@
 ## [2.0.1]
 ### Added
 - Added button to open developer options
+- Added button to open DeepLinks
 
 ### Changed
 - Don't keep activities only shows if setting is enabled or not (although setting seemed to change, the behaviour was maintained)

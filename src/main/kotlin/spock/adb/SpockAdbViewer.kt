@@ -47,7 +47,9 @@ class SpockAdbViewer(
     private lateinit var wifiToggle: JButton
     private lateinit var mobileDataToggle: JButton
     private lateinit var inputOnDeviceTextField: JTextField
+    private lateinit var openDeepLinkTextField: JTextField
     private lateinit var inputOnDeviceButton: JButton
+    private lateinit var openDeepLinkButton: JButton
     private lateinit var openDeveloperOptionsButton: JButton
     private var selectedIDevice: IDevice? = null
 
@@ -266,6 +268,12 @@ class SpockAdbViewer(
                 adbController.openDeveloperOptions(device)
             }
         }
+        openDeepLinkButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.openDeepLink(openDeepLinkTextField.text, device)
+            }
+        }
+        openDeepLinkTextField.addActionListener { openDeepLinkButton.doClick() }
     }
 
     private fun updateUi(it: AppSetting) {
@@ -288,6 +296,10 @@ class SpockAdbViewer(
                 SpockAction.INPUT -> {
                     inputOnDeviceButton.isVisible = it.isSelected
                     inputOnDeviceTextField.isVisible = it.isSelected
+                }
+                SpockAction.DEEP_LINK -> {
+                    openDeepLinkButton.isVisible = it.isSelected
+                    openDeepLinkTextField.isVisible = it.isSelected
                 }
             }
             rootPanel.invalidate()
