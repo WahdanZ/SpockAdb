@@ -105,6 +105,9 @@ tasks {
                 changelog.getLatest().toHTML()
             }
         )
+        changelog {
+            version = pluginVersion
+        }
     }
 
     publishPlugin {

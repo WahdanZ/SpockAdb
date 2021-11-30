@@ -20,15 +20,10 @@ interface AdbController {
     fun clearAppDataAndRestart(device: IDevice)
     fun uninstallApp(device: IDevice)
     fun getApplicationPermissions(device: IDevice, block: (devices: List<ListItem>) -> Unit)
-    fun grantOrRevokeAllPermissions(
-        device: IDevice,
-        permissionOperation: GetApplicationPermission.PermissionOperation,
-    )
-
+    fun grantOrRevokeAllPermissions(device: IDevice, permissionOperation: GetApplicationPermission.PermissionOperation)
     fun revokePermission(device: IDevice, listItem: ListItem)
     fun grantPermission(device: IDevice, listItem: ListItem)
     fun connectDeviceOverIp(ip: String)
-    fun enableDisableDontKeepActivities(device: IDevice)
     fun enableDisableShowTaps(device: IDevice)
     fun enableDisableShowLayoutBounds(device: IDevice)
     fun setWindowAnimatorScale(scale: String, device: IDevice)
@@ -36,4 +31,6 @@ interface AdbController {
     fun setAnimatorDurationScale(scale: String, device: IDevice)
     fun toggleNetwork(device: IDevice, network: Network)
     fun inputOnDevice(input: String, device: IDevice)
+    fun openDeveloperOptions(device: IDevice)
+    fun openDeepLink(input: String, device: IDevice)
 }
