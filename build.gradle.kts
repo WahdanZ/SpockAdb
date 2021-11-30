@@ -15,6 +15,7 @@ plugins {
     // detekt linter - read more: https://detekt.github.io/detekt/kotlindsl.html
     // ktlint linter - read more: https://github.com/JLLeitschuh/ktlint-gradle
 //    id("org.jlleitschuh.gradle.ktlint") version "9.3.0"
+//    kotlin("jvm") version "1.4.0"
 }
 
 // Import variables from gradle.properties file
@@ -111,4 +112,12 @@ tasks {
         token(System.getenv("PUBLISH_TOKEN"))
         channels(pluginVersion.split('-').getOrElse(1) { "default" }.split('.').first())
     }
+}
+val compileKotlin: KotlinCompile by tasks
+compileKotlin.kotlinOptions {
+    jvmTarget = "1.8"
+}
+val compileTestKotlin: KotlinCompile by tasks
+compileTestKotlin.kotlinOptions {
+    jvmTarget = "1.8"
 }
