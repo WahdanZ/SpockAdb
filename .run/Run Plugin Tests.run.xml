@@ -1,0 +1,38 @@
+<component name="ProjectRunConfigurationManager">
+    <configuration default="false" name="Run Tests" type="GradleRunConfiguration" factoryName="Gradle">
+        <log_file alias="idea.log" path="$PROJECT_DIR$/build/idea-sandbox/system/log/idea.log"/>
+        <ExternalSystemSettings>
+            <option name="executionName"/>
+            <option name="externalProjectPath" value="$PROJECT_DIR$"/>
+            <option name="externalSystemIdString" value="GRADLE"/>
+            <option name="scriptParameters" value=""/>
+            <option name="taskDescriptions">
+                <list/>
+            </option>
+            <option name="taskNames">
+                <list>
+                    <option value="check"/>
+                </list>
+            </option>
+            <option name="vmOptions" value=""/>
+        </ExternalSystemSettings>
+        <ExternalSystemDebugServerProcess>true</ExternalSystemDebugServerProcess>
+        <ExternalSystemReattachDebugProcess>true</ExternalSystemReattachDebugProcess>
+        <extension name="com.egoshard.intellij.k8s-runtime-config-plugin">
+            <option name="ENABLED" value="false"/>
+            <entries/>
+        </extension>
+        <extension name="net.ashald.envfile">
+            <option name="IS_ENABLED" value="false"/>
+            <option name="IS_SUBST" value="false"/>
+            <option name="IS_PATH_MACRO_SUPPORTED" value="false"/>
+            <option name="IS_IGNORE_MISSING_FILES" value="false"/>
+            <option name="IS_ENABLE_EXPERIMENTAL_INTEGRATIONS" value="false"/>
+            <ENTRIES>
+                <ENTRY IS_ENABLED="true" PARSER="runconfig"/>
+            </ENTRIES>
+        </extension>
+        <DebugAllEnabled>false</DebugAllEnabled>
+        <method v="2"/>
+    </configuration>
+</component>

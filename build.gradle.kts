@@ -39,6 +39,10 @@ repositories {
 dependencies {
     implementation(kotlin("stdlib-jdk8"))
     implementation("org.jooq:joor-java-8:0.9.7")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:3.2.0")
+    testImplementation("io.mockk:mockk:1.12.0")
+
+
 }
 
 // Configure gradle-intellij-plugin plugin.
@@ -50,7 +54,7 @@ intellij {
     downloadSources = platformDownloadSources.toBoolean()
     updateSinceUntilBuild = true
     alternativeIdePath =
-        "/Users/ahmedwahdan/Library/Application Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/201.7199119/Android Studio.app"
+        "/Applications/Android Studio.app"
 
 //  Plugin Dependencies:
 //  https://www.jetbrains.org/intellij/sdk/docs/basics/plugin_structure/plugin_dependencies.html
