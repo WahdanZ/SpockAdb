@@ -1,6 +1,35 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
+## [Unreleased]
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+## [2.0.1]
+
 # Spock Adb Changelog
+## [2.0.1]
+### Added
+- Added button to open developer options
+- Added button to open DeepLinks
+
+### Changed
+- Don't keep activities only shows if setting is enabled or not (although setting seemed to change, the behaviour was maintained)
+
+### Deprecated
+
+### Removed
+
+### Fixed
+- Adds support for getting the backstack activities in Android 11
+
 ## [2.0.0]
 ### Added
 - Get Current App BackStack (Activities and nested fragments)
