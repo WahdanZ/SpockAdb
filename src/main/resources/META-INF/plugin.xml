@@ -33,7 +33,7 @@
     <depends>com.intellij.modules.lang</depends>
     -->
     <depends>org.jetbrains.android</depends>
-    <depends>com.intellij.modules.androidstudio</depends>
+<!--    <depends>com.intellij.modules.androidstudio</depends>-->
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="spock.adb.AppSettingService"/>

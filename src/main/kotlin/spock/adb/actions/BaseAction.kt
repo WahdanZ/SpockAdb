@@ -27,7 +27,7 @@ abstract class BaseAction : AnAction() {
                 showNotifier(project = this, content = "No Devices", type = NotificationType.ERROR)
 
         }
-    } ?: cancelAction(event)
+    } ?: cancelAction()
 
     private fun showDeviceList(project: Project, devices: List<IDevice>, block: (device: IDevice) -> Unit) {
         val list = JBList(devices.map { it.name })
@@ -41,6 +41,6 @@ abstract class BaseAction : AnAction() {
 
     }
 
-    private fun cancelAction(event: AnActionEvent) {}
+    private fun cancelAction() {}
     abstract fun performAction(controller: AdbController, device: IDevice)
 }

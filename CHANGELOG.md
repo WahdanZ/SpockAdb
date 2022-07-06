@@ -10,9 +10,9 @@
 ### Removed
 
 ### Fixed
+- android studio last version is not working
 
 ### Security
-## [2.0.1]
 
 # Spock Adb Changelog
 ## [2.0.1]
