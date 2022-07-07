@@ -10,6 +10,8 @@
 ### Removed
 
 ### Fixed
+- android studio last version is not working
+
 
 ## [2.0.2]
 ### Added
