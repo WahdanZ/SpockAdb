@@ -2,7 +2,6 @@
 
 ## [Unreleased]
 
-## [2.0.2]
 ### Added
 
 ### Changed
@@ -10,6 +9,11 @@
 ### Deprecated
 
 ### Removed
+
+### Fixed
+
+
+## [2.0.3]
 
 ### Fixed
 - android studio last version is not working
