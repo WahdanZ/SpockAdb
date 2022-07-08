@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+## [2.0.3]
 ### Added
 
 ### Changed
@@ -12,9 +13,7 @@
 
 ### Fixed
 
-
 ## [2.0.3]
-
 ### Fixed
 - android studio last version is not working
 
@@ -27,8 +26,10 @@
 - Added button to open developer options
 - Added button to open DeepLinks
 
+
 ### Changed
 - Don't keep activities only shows if setting is enabled or not (although setting seemed to change, the behaviour was maintained)
+
 
 ### Fixed
 - Adds support for getting the backstack activities in Android 11
@@ -38,6 +39,7 @@
 - Get Current App BackStack (Activities and nested fragments)
 - Add Plugins actions ex GetCurrentFragment,RestartApp,etc
 - allow to choose which buttons to show and which not to show
+
 
 ### Fixed
 - support latest version of AS
