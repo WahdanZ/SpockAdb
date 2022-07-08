@@ -8,7 +8,7 @@ plugins {
     // Kotlin support
     id("org.jetbrains.kotlin.jvm") version "1.6.10"
     // Gradle IntelliJ Plugin
-    id("org.jetbrains.intellij") version "1.4.0"
+    id("org.jetbrains.intellij") version "1.7.0"
     // Gradle Changelog Plugin
     id("org.jetbrains.changelog") version "1.3.1"
     // Gradle Qodana Plugin
@@ -52,19 +52,17 @@ dependencies {
 // Read more: https://github.com/JetBrains/gradle-intellij-plugin
 intellij {
     pluginName.set(properties("pluginName"))
-    version.set(properties("platformVersion"))
+
+   // version.set("191.8026.42")
+    type.set("IC")
     type.set(properties("platformType"))
     downloadSources.set(properties("platformDownloadSources").toBoolean())
     updateSinceUntilBuild.set(false)
-   // localPath.set(properties("androidStudioPath"))
+    localPath.set(properties("androidStudioPath"))
     // Plugin Dependencies. Uses `platformPlugins` property from the gradle.properties file.
     plugins.set(properties("platformPlugins").split(',').map(String::trim).filter(String::isNotEmpty))
 }
 
-//runIde {
-//    // IDE Development Instance (the "Contents" directory is macOS specific):
-//    ideDir.set(file("/Users/wahdanz/Library/Application\\ Support/JetBrains/Toolbox/apps/AndroidStudio/ch-0/212.5712.43.2112.8512546/Android\\ Studio.app/Contents"))
-//}
 
 tasks {
     // Set the compatibility versions to 1.8

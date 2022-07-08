@@ -9,7 +9,8 @@ class GetApplicationIDCommand : Command<Any, String?> {
     override fun execute(p: Any, project: Project, device: IDevice): String? {
         return AndroidUtils.getApplicationFacets(project)
             .getOrNull(0)
-                ?.let { AndroidModuleModel
+                ?.let {
+                    AndroidModuleModel
                     .get(it)?.applicationId }
     }
     }
