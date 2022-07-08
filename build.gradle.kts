@@ -53,12 +53,12 @@ dependencies {
 intellij {
     pluginName.set(properties("pluginName"))
 
-   // version.set("191.8026.42")
+    version.set("191.8026.42")
     type.set("IC")
     type.set(properties("platformType"))
     downloadSources.set(properties("platformDownloadSources").toBoolean())
     updateSinceUntilBuild.set(false)
-    localPath.set(properties("androidStudioPath"))
+   // localPath.set(properties("androidStudioPath"))
     // Plugin Dependencies. Uses `platformPlugins` property from the gradle.properties file.
     plugins.set(properties("platformPlugins").split(',').map(String::trim).filter(String::isNotEmpty))
 }
