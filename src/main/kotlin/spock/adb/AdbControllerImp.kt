@@ -128,20 +128,21 @@ class AdbControllerImp(
 
             val fragmentsClass = GetFragmentsCommand().execute(applicationID, project, device)
 
-            if (fragmentsClass.size > 1) {
+            if (getSize(fragmentsClass) > 1) {
                 val fragmentsList = mutableListOf<String>()
 
                 fragmentsClass.forEachIndexed { index, fragmentData ->
-                    fragmentsList.add("\t$index-${fragmentData.fragment}")
+                    fragmentsList.add("${fragmentData.getListStr(index)}")
 
                     addInnerFragmentsToList(fragmentData, fragmentsList)
                 }
-
+                fragmentsList.reverse()
                 val list = JBList(fragmentsList)
                 showClassPopup(
                     "Fragments",
                     list,
-                    fragmentsList.map { it.trim().substringAfter("-").psiClassByNameFromCache(project) }
+                    fragmentsList.map { it.psiClassByNameFromCache(project) }
+//                    fragmentsList.map { it.trim().substringAfter("-").psiClassByNameFromCache(project) }
                 )
             } else {
                 fragmentsClass
@@ -155,6 +156,16 @@ class AdbControllerImp(
                     }
             }
         }
+    }
+
+    private fun getSize(list: List<FragmentData>): Int {
+        return list.map {
+            1 + if(it.innerFragments.isNotEmpty()) {
+                getSize(it.innerFragments)
+            } else {
+                0
+            }
+        }.sum()
     }
 
     override fun forceKillApp(device: IDevice) {
@@ -388,11 +399,11 @@ class AdbControllerImp(
     private fun addInnerFragmentsToList(
         fragmentData: FragmentData,
         fragmentsList: MutableList<String>,
-        indent: String = "\t\t\t\t"
+        indent: String = ""
     ) {
         fragmentData.innerFragments.forEachIndexed { fragmentIndex, innerFragmentData ->
-            fragmentsList.add("$indent$fragmentIndex-${innerFragmentData.fragment}")
-            addInnerFragmentsToList(innerFragmentData, fragmentsList, "\t\t\t\t$indent")
+            fragmentsList.add("$indent${innerFragmentData.getListStr(fragmentIndex)}")
+            addInnerFragmentsToList(innerFragmentData, fragmentsList, "$indent")
         }
     }
 
