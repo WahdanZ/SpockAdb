@@ -14,7 +14,7 @@ class ProcessDeathCommand : Command<String, Unit> {
             Thread.sleep(2500L) //If we don't add this delay, the following commands executes without the app
             // being on the background thus not working.
 
-            kippAppProcess(device, p)
+            killAppProcess(device, p)
 
             startApplication(device, p)
         } else {
@@ -28,7 +28,7 @@ class ProcessDeathCommand : Command<String, Unit> {
         }
     }
 
-    private fun kippAppProcess(device: IDevice, p: String) =
+    private fun killAppProcess(device: IDevice, p: String) =
         device.executeShellCommand("am kill $p", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)
 
     private fun startApplication(device: IDevice, p: String) {
