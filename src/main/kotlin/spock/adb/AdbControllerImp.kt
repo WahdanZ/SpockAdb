@@ -410,4 +410,10 @@ class AdbControllerImp(
             showSuccess(result)
         }
     }
+
+    override fun openAccounts(device: IDevice) {
+        execute {
+            showSuccess(OpenAccountsCommand().execute(project, device))
+        }
+    }
 }

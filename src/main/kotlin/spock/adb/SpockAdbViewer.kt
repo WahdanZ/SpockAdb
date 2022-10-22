@@ -51,6 +51,7 @@ class SpockAdbViewer(
     private lateinit var inputOnDeviceButton: JButton
     private lateinit var openDeepLinkButton: JButton
     private lateinit var openDeveloperOptionsButton: JButton
+    private lateinit var openAccountsButton: JButton
     private var selectedIDevice: IDevice? = null
 
     private lateinit var adbController: AdbController
@@ -274,6 +275,11 @@ class SpockAdbViewer(
             }
         }
         openDeepLinkTextField.addActionListener { openDeepLinkButton.doClick() }
+        openAccountsButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.openAccounts(device)
+            }
+        }
     }
 
     private fun updateUi(it: AppSetting) {
