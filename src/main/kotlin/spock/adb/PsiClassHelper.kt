@@ -6,6 +6,7 @@ import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
+import org.jetbrains.kotlin.asJava.classes.KtUltraLightClass
 
 fun PsiClass.openIn(project: Project) {
     OpenFileDescriptor(project, this.containingFile.virtualFile, 1, 0).navigateInEditor(project, false)
@@ -14,7 +15,7 @@ fun PsiClass.openIn(project: Project) {
 fun String.psiClassByNameFromCache(project: Project): PsiClass? {
     return PsiShortNamesCache.getInstance(project).getClassesByName(
         this, GlobalSearchScope.allScope(project)
-    ).getOrNull(0)
+    ).firstOrNull { it is KtUltraLightClass }
 }
 
 fun String.psiClassByNameFromProjct(project: Project): PsiClass? {
