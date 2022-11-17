@@ -2,7 +2,7 @@
     <id>com.wahdan.com.wahdan.spockAdb</id>
     <name>Spock ADB</name>
     <vendor email="ahmed.wahdan@outlook.com" url="http://github.com/WahdanZ">Spock Adb</vendor>
-    <version>2.0.1</version>
+    <version>2.0.3-fix</version>
     <description><![CDATA[ Plugin Helps you to have full control of your project
 
         -Navigate to current active activity in your IDE

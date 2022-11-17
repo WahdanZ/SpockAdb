@@ -134,18 +134,18 @@ class SpockAdbViewer(
             }
 
         }
-        adbWifi.isVisible = false
-        adbWifi.addActionListener {
-            val ip = Messages.showInputDialog(
-                "Enter You Android Device IP address",
-                "Spock Adb- Device connect over Wifi",
-                null,
-                "192.168.1.20",
-                IPAddressInputValidator()
-            )
-            ip?.let { adbController.connectDeviceOverIp(ip = ip) }
+       adbWifi.isVisible = false
+//        adbWifi.addActionListener {
+//            val ip = Messages.showInputDialog(
+//                "Enter You Android Device IP address",
+//                "Spock Adb- Device connect over Wifi",
+//                null,
+//                "192.168.1.20",
+//                IPAddressInputValidator()
+//            )
+//            ip?.let { adbController.connectDeviceOverIp(ip = ip) }
 
-        }
+      //  }
 
 //        refresh.addActionListener {
 //            adbController.refresh()
