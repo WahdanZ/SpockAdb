@@ -55,7 +55,8 @@ intellij {
     pluginName.set(properties("pluginName"))
 
 //    version.set("191.8026.42")
-    version.set("213.7172.25")
+//    version.set("213.7172.25")
+    version.set("222.4459.24")
     type.set("IC")
 //    type.set(properties("platformType"))
     downloadSources.set(properties("platformDownloadSources").toBoolean())
