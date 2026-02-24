@@ -2,8 +2,8 @@ package spock.adb.debugger
 
 import com.android.ddmlib.Client
 import com.android.ddmlib.IDevice
-import com.android.tools.idea.run.AndroidProcessHandler
-import com.android.tools.idea.run.editor.AndroidDebugger
+import com.android.tools.idea.execution.common.processhandler.AndroidProcessHandler
+import com.android.tools.idea.execution.common.debug.AndroidDebugger
 import com.intellij.execution.ExecutionManager
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessOutputTypes
@@ -91,7 +91,9 @@ class AttachToClient(
     private val client: Client
 ) : BackwardCompatibleGetter<Unit>() {
     override fun getCurrentImplementation() {
-        androidDebugger.attachToClient(project, client, null)
+        // API changed in AS 2024+: use reflection to call attachToClient if present,
+        // otherwise fall through to getPreviousImplementation
+        on(androidDebugger).call("attachToClient", project, client, null)
     }
 
     override fun getPreviousImplementation() {

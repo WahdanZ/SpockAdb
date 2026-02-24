@@ -5,7 +5,7 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.PopupChooserBuilder
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.components.JBList
 import org.jetbrains.android.sdk.AndroidSdkUtils
 import spock.adb.AdbController
@@ -31,14 +31,14 @@ abstract class BaseAction : AnAction() {
 
     private fun showDeviceList(project: Project, devices: List<IDevice>, block: (device: IDevice) -> Unit) {
         val list = JBList(devices.map { it.name })
-        PopupChooserBuilder(list).apply {
-            this.setTitle("Devices")
-            this.setItemChoosenCallback {
+        JBPopupFactory.getInstance()
+            .createListPopupBuilder(list)
+            .setTitle("Devices")
+            .setItemChosenCallback(Runnable {
                 block(devices[list.selectedIndex])
-            }
-            this.createPopup().showCenteredInCurrentWindow(project)
-        }
-
+            })
+            .createPopup()
+            .showCenteredInCurrentWindow(project)
     }
 
     private fun cancelAction() {}

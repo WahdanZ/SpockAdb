@@ -4,7 +4,7 @@ import com.android.ddmlib.AndroidDebugBridge
 import com.android.ddmlib.IDevice
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.popup.PopupChooserBuilder
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -68,9 +68,9 @@ class AdbControllerImp(
 
         val list = JBList(activitiesList)
         showClassPopup(
-            "Activities",
-            list,
-            activitiesList.map { it.trim().substringAfter("-").psiClassByNameFromProjct(project) }
+            title = "Activities",
+            list = list,
+            classes = activitiesList.map { it.trim().substringAfter("-").psiClassByNameFromProjct(project) }
         )
     }
 
@@ -81,9 +81,9 @@ class AdbControllerImp(
             GetApplicationBackStackCommand().execute(applicationID, project, device)
         activitiesList = activitiesClass.map { listOf(it.activity) + it.fragment }.flatten().toMutableList()
         val list = JBList(activitiesList)
-        list.installCellRenderer { o: Any ->
-            var title = o.toString()
-            title = if (!o.toString().contains('.'))
+        list.cellRenderer = javax.swing.ListCellRenderer { _, value, _, _, _ ->
+            var title = value.toString()
+            title = if (!value.toString().contains('.'))
                 "  |--$title (Fragment)"
             else
                 (title.split('.').lastOrNull() ?: "") + "(Activity)"
@@ -91,9 +91,10 @@ class AdbControllerImp(
             label.border = EmptyBorder(5, 10, 5, 20)
             label
         }
-        PopupChooserBuilder(list).apply {
-            this.setTitle("Activities")
-            this.setItemChoosenCallback {
+        JBPopupFactory.getInstance()
+            .createListPopupBuilder(list)
+            .setTitle("Activities")
+            .setItemChosenCallback(Runnable {
                 val current = activitiesList.getOrNull(list.selectedIndex)
                 current?.let {
                     if (it.contains('.'))
@@ -101,9 +102,9 @@ class AdbControllerImp(
                     else
                         it.psiClassByNameFromCache(project)?.openIn(project)
                 }
-            }
-            this.createPopup().showCenteredInCurrentWindow(project)
-        }
+            })
+            .createPopup()
+            .showCenteredInCurrentWindow(project)
 
     }
 
@@ -376,13 +377,14 @@ class AdbControllerImp(
         list: JBList<String>,
         classes: List<PsiClass?>
     ) {
-        PopupChooserBuilder(list).apply {
-            this.setTitle(title)
-            this.setItemChoosenCallback {
+        JBPopupFactory.getInstance()
+            .createListPopupBuilder(list)
+            .setTitle(title)
+            .setItemChosenCallback(Runnable {
                 classes.getOrNull(list.selectedIndex)?.openIn(project)
-            }
-            this.createPopup().showCenteredInCurrentWindow(project)
-        }
+            })
+            .createPopup()
+            .showCenteredInCurrentWindow(project)
     }
 
     private fun addInnerFragmentsToList(
