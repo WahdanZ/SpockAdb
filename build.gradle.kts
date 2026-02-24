@@ -43,8 +43,6 @@ dependencies {
         bundledPlugin("com.intellij.gradle")
 
         instrumentationTools()
-        pluginVerifier()
-        zipSigner()
     }
 
     implementation("org.jooq:joor:0.9.15")
@@ -106,11 +104,6 @@ intellijPlatform {
         }
     }
 
-    pluginVerification {
-        ides {
-            recommended()
-        }
-    }
 }
 
 // Configure Gradle Changelog Plugin - read more: https://github.com/JetBrains/gradle-changelog-plugin
