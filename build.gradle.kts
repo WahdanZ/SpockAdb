@@ -38,7 +38,7 @@ dependencies {
         androidStudio(androidStudioVersion)
 
         // org.jetbrains.android is NOT bundled with Android Studio — use plugin()
-        plugin("org.jetbrains.android", "243.21565.193")
+        plugin("org.jetbrains.android", "253.29346.240")
 
         // Bundled plugins
         bundledPlugin("com.intellij.java")
