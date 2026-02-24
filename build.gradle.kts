@@ -1,13 +1,11 @@
 import org.jetbrains.changelog.markdownToHTML
-import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 fun properties(key: String) = providers.gradleProperty(key)
 fun environment(key: String) = providers.environmentVariable(key)
 
 plugins {
-    id("java")
-    id("org.jetbrains.kotlin.jvm") version "2.0.21"
-    id("org.jetbrains.intellij.platform") version "2.5.0"
+    id("org.jetbrains.kotlin.jvm") version "2.2.20"
+    id("org.jetbrains.intellij.platform") version "2.10.5"
     id("org.jetbrains.changelog") version "2.2.1"
 }
 
@@ -15,7 +13,6 @@ val pluginGroup: String by project
 val pluginName: String by project
 val pluginVersion: String by project
 val pluginSinceBuild: String by project
-val pluginUntilBuild: String by project
 val androidStudioVersion: String by project
 
 group = pluginGroup
@@ -37,20 +34,20 @@ dependencies {
     intellijPlatform {
         androidStudio(androidStudioVersion)
 
-        // org.jetbrains.android is NOT bundled with Android Studio — use plugin()
-        plugin("org.jetbrains.android", "253.29346.240")
+        // org.jetbrains.android is bundled with Android Studio
+        bundledPlugin("org.jetbrains.android")
 
-        // Bundled plugins
+        // Other bundled plugins
         bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.kotlin")
         bundledPlugin("com.intellij.gradle")
 
+        instrumentationTools()
         pluginVerifier()
         zipSigner()
-        testFramework(TestFrameworkType.Platform)
     }
 
-    implementation("org.jooq:joor-java-8:0.9.7")
+    implementation("org.jooq:joor:0.9.15")
 
     testImplementation("org.mockito.kotlin:mockito-kotlin:4.1.0")
     testImplementation("io.mockk:mockk:1.13.9")
@@ -58,6 +55,7 @@ dependencies {
 
 intellijPlatform {
     instrumentCode = false
+    buildSearchableOptions = false
 
     pluginConfiguration {
         name = pluginName

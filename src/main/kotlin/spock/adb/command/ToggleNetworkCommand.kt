@@ -13,11 +13,11 @@ class ToggleNetworkCommand : Command<Network, String> {
         return when (device.getNetworkState(p)) {
             NetworkState.DISABLED -> {
                 setNetworkState(device, p, NetworkState.ENABLED)
-                "Enabled ${p.name.toLowerCase().capitalize()} network"
+                "Enabled ${p.name.lowercase().replaceFirstChar { it.uppercaseChar() }} network"
             }
             NetworkState.ENABLED -> {
                 setNetworkState(device, p, NetworkState.DISABLED)
-                "Disabled ${p.name.toLowerCase().capitalize()} network"
+                "Disabled ${p.name.lowercase().replaceFirstChar { it.uppercaseChar() }} network"
             }
         }
     }
