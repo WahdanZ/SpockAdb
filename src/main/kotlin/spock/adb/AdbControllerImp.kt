@@ -3,6 +3,7 @@ package spock.adb
 import com.android.ddmlib.AndroidDebugBridge
 import com.android.ddmlib.IDevice
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.psi.PsiClass
@@ -109,18 +110,16 @@ class AdbControllerImp(
         execute {
             val activity =
                 GetActivityCommand().execute(Any(), project, device) ?: throw Exception("No activities found")
-            activity.psiClassByNameFromProjct(project)?.openIn(project)
-                ?: throw Exception("class $activity  Not Found")
+            ApplicationManager.getApplication().invokeLater {
+                activity.psiClassByNameFromProjct(project)?.openIn(project)
+                    ?: showError("class $activity Not Found")
+            }
         }
     }
 
-    override fun currentFragment(
-        device: IDevice
-
-    ) {
+    override fun currentFragment(device: IDevice) {
         execute {
             val applicationID = getApplicationID(device)
-
             val fragmentsClass = GetFragmentsCommand().execute(applicationID, project, device)
 
             if (getSize(fragmentsClass) > 1) {
@@ -128,25 +127,53 @@ class AdbControllerImp(
 
                 fragmentsClass.forEachIndexed { index, fragmentData ->
                     fragmentsList.add(fragmentData.getListStr(index))
-
                     addInnerFragmentsToList(fragmentData, fragmentsList)
                 }
+
                 fragmentsList.reverse()
-                showClassPopup(
-                    "Fragments",
-                    fragmentsList,
-                    fragmentsList.map { it.psiClassByNameFromCache(project) }
-                )
+
+                ApplicationManager.getApplication().invokeLater {
+                    JBPopupFactory.getInstance()
+                        .createPopupChooserBuilder(fragmentsList)
+                        .setTitle("Fragments")
+                        .setItemChosenCallback { selected ->
+
+                            execute {
+                                val psiClass =
+                                    com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
+                                        selected.psiClassByNameFromCache(project)
+                                    }
+
+                                ApplicationManager.getApplication().invokeLater {
+                                    psiClass?.openIn(project)
+                                        ?: CommonNotifier.showNotifier(
+                                            project = project,
+                                            content = "Class $selected Not Found",
+                                            type = NotificationType.ERROR
+                                        )
+                                }
+                            }
+                        }
+                        .createPopup()
+                        .showCenteredInCurrentWindow(project)
+                }
+
             } else {
-                fragmentsClass
-                    .firstOrNull()
-                    ?.let {
-                        it
-                            .fragment
-                            .psiClassByNameFromCache(project)
-                            ?.openIn(project)
-                            ?: throw Exception("Class $it Not Found")
-                    }
+                val fragment = fragmentsClass.firstOrNull()?.fragment
+                    ?: throw Exception("No fragments found")
+
+                val psiClass = com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
+                    fragment.psiClassByNameFromCache(project)
+                }
+
+                ApplicationManager.getApplication().invokeLater {
+                    psiClass?.openIn(project)
+                        ?: CommonNotifier.showNotifier(
+                            project = project,
+                            content = "fragment $fragment Not Found",
+                            type = NotificationType.ERROR
+                        )
+                }
             }
         }
     }
@@ -239,6 +266,7 @@ class AdbControllerImp(
             val operation: (ListItem) -> Unit = when (permissionOperation) {
                 GetApplicationPermission.PermissionOperation.GRANT ->
                     { permission -> GrantPermissionCommand().execute(applicationID, permission, project, device) }
+
                 GetApplicationPermission.PermissionOperation.REVOKE ->
                     { permission -> RevokePermissionCommand().execute(applicationID, permission, project, device) }
             }
@@ -355,19 +383,24 @@ class AdbControllerImp(
     }
 
     private fun showError(message: String) {
-        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.ERROR)
-
+        ApplicationManager.getApplication().invokeLater {
+            CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.ERROR)
+        }
     }
 
     private fun showSuccess(message: String) {
-        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.INFORMATION)
+        ApplicationManager.getApplication().invokeLater {
+            CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.INFORMATION)
+        }
     }
 
-    private fun execute(execute: () -> Unit) {
-        try {
-            execute.invoke()
-        } catch (e: Exception) {
-            showError(e.message ?: "not found")
+    private fun execute(block: () -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                block()
+            } catch (e: Exception) {
+                showError(e.message ?: "not found")
+            }
         }
     }
 
