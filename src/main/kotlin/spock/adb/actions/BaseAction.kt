@@ -6,7 +6,6 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.ui.components.JBList
 import org.jetbrains.android.sdk.AndroidSdkUtils
 import spock.adb.AdbController
 import spock.adb.AdbControllerImp
@@ -30,13 +29,14 @@ abstract class BaseAction : AnAction() {
     } ?: cancelAction()
 
     private fun showDeviceList(project: Project, devices: List<IDevice>, block: (device: IDevice) -> Unit) {
-        val list = JBList(devices.map { it.name })
+        val names = devices.map { it.name }
         JBPopupFactory.getInstance()
-            .createListPopupBuilder(list)
+            .createPopupChooserBuilder(names)
             .setTitle("Devices")
-            .setItemChosenCallback(Runnable {
-                block(devices[list.selectedIndex])
-            })
+            .setItemChosenCallback { selectedName ->
+                val index = names.indexOf(selectedName)
+                if (index >= 0) block(devices[index])
+            }
             .createPopup()
             .showCenteredInCurrentWindow(project)
     }

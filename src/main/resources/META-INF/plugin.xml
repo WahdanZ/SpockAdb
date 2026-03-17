@@ -1,5 +1,5 @@
 <idea-plugin>
-    <id>com.wahdan.spockAdb</id>
+    <id>com.wahdan.com.wahdan.spockAdb</id>
     <name>Spock ADB</name>
     <vendor email="ahmed.wahdan@outlook.com" url="https://github.com/WahdanZ">Spock Adb</vendor>
 

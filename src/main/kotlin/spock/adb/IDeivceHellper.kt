@@ -47,7 +47,9 @@ fun IDevice.getDefaultActivityForApplication(packageName: String?): String {
     return outputReceiver.toString()
 }
 
+@Suppress("DEPRECATION")
 fun IDevice.isMarshmallow() = this.version.apiLevel >= 23
+@Suppress("DEPRECATION")
 fun IDevice.isNougatOrAbove() = this.version.apiLevel >= 24
 
 fun IDevice.areDontKeepActivitiesEnabled(): DontKeepActivitiesState {

@@ -121,7 +121,7 @@ abstract class BackwardCompatibleGetter<T> {
     fun get(): T {
         return try {
             getCurrentImplementation()
-        } catch (error: LinkageError) {
+        } catch (_: LinkageError) {
             getPreviousImplementation()
         } catch (e: Throwable) {
             if (isReflectiveException(e)) {
@@ -155,5 +155,5 @@ fun waitUntil(timeoutMillis: Long = 30000L, step: Long = 100L, condition: () -> 
 
 fun invokeLater(runnable: () -> Unit) = ApplicationManager.getApplication().invokeLater(runnable)
 
+@Suppress("DEPRECATION")
 inline fun <reified T> on(): Reflect = on(T::class.java)
-inline fun <reified T> Reflect.asType(): T = this.`as`(T::class.java)

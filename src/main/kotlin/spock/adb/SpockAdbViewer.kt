@@ -3,7 +3,6 @@ package spock.adb
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
@@ -15,7 +14,6 @@ import javax.swing.*
 class SpockAdbViewer(
     private val project: Project
 ) : SimpleToolWindowPanel(true) {
-    private lateinit var panel1: JPanel
     private lateinit var rootPanel: JPanel
     private lateinit var permissionPanel: JPanel
     private lateinit var networkPanel: JPanel
@@ -26,7 +24,6 @@ class SpockAdbViewer(
     private lateinit var clearAppDataButton: JButton
     private lateinit var clearAppDataAndRestartButton: JButton
     private lateinit var uninstallAppButton: JButton
-    private lateinit var refresh: JButton
     private lateinit var permissionButton: JButton
     private lateinit var grantAllPermissionsButton: JButton
     private lateinit var revokeAllPermissionsButton: JButton
@@ -105,9 +102,7 @@ class SpockAdbViewer(
         setContent(JScrollPane(rootPanel))
         setToolWindowListener()
         AppSettingService.getInstance().run {
-            state?.let {
-                updateUi(it)
-            }
+            updateUi(state)
         }
     }
 
@@ -120,7 +115,7 @@ class SpockAdbViewer(
         setting.isVisible = true
         setting.addActionListener {
             AppSettingService.getInstance().run {
-                state?.let {
+                state.let {
                     val dialog = CheckBoxDialog(it.list) { selectedItem ->
                         println(selectedItem)
                         this.loadState(it.copy(list = it.list.map { item ->
