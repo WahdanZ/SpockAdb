@@ -5,7 +5,7 @@ enum class DontKeepActivitiesState(val state: String) {
     DISABLED("0");
 
     companion object {
-        private val map = values().associateBy(DontKeepActivitiesState::state)
+        private val map = entries.associateBy(DontKeepActivitiesState::state)
         fun getState(value: String) = map[value] ?: DISABLED
     }
 }

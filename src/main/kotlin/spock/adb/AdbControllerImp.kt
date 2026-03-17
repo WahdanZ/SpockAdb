@@ -7,14 +7,13 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBList
+import com.intellij.util.ui.JBUI
 import spock.adb.command.*
 import spock.adb.models.ActivityData
 import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
 import spock.adb.notification.CommonNotifier
 import spock.adb.premission.ListItem
-import javax.swing.border.EmptyBorder
 
 
 class AdbControllerImp(
@@ -66,10 +65,9 @@ class AdbControllerImp(
             }
         }
 
-        val list = JBList(activitiesList)
         showClassPopup(
             title = "Activities",
-            list = list,
+            items = activitiesList,
             classes = activitiesList.map { it.trim().substringAfter("-").psiClassByNameFromProjct(project) }
         )
     }
@@ -80,29 +78,25 @@ class AdbControllerImp(
         val activitiesClass: List<ActivityData> =
             GetApplicationBackStackCommand().execute(applicationID, project, device)
         activitiesList = activitiesClass.map { listOf(it.activity) + it.fragment }.flatten().toMutableList()
-        val list = JBList(activitiesList)
-        list.cellRenderer = javax.swing.ListCellRenderer { _, value, _, _, _ ->
-            var title = value.toString()
-            title = if (!value.toString().contains('.'))
-                "  |--$title (Fragment)"
-            else
-                (title.split('.').lastOrNull() ?: "") + "(Activity)"
-            val label = JBLabel(title)
-            label.border = EmptyBorder(5, 10, 5, 20)
-            label
-        }
         JBPopupFactory.getInstance()
-            .createListPopupBuilder(list)
+            .createPopupChooserBuilder(activitiesList)
             .setTitle("Activities")
-            .setItemChosenCallback(Runnable {
-                val current = activitiesList.getOrNull(list.selectedIndex)
-                current?.let {
-                    if (it.contains('.'))
-                        it.psiClassByNameFromProjct(project)?.openIn(project)
-                    else
-                        it.psiClassByNameFromCache(project)?.openIn(project)
-                }
+            .setRenderer(javax.swing.ListCellRenderer<String> { _, value, _, _, _ ->
+                var title = value.toString()
+                title = if (!value.toString().contains('.'))
+                    "  |--$title (Fragment)"
+                else
+                    (title.split('.').lastOrNull() ?: "") + "(Activity)"
+                val label = JBLabel(title)
+                label.border = JBUI.Borders.empty(5, 10, 5, 20)
+                label
             })
+            .setItemChosenCallback { current ->
+                if (current.contains('.'))
+                    current.psiClassByNameFromProjct(project)?.openIn(project)
+                else
+                    current.psiClassByNameFromCache(project)?.openIn(project)
+            }
             .createPopup()
             .showCenteredInCurrentWindow(project)
 
@@ -129,20 +123,19 @@ class AdbControllerImp(
 
             val fragmentsClass = GetFragmentsCommand().execute(applicationID, project, device)
 
-            if (fragmentsClass.size > 1) {
+            if (getSize(fragmentsClass) > 1) {
                 val fragmentsList = mutableListOf<String>()
 
                 fragmentsClass.forEachIndexed { index, fragmentData ->
-                    fragmentsList.add("\t$index-${fragmentData.fragment}")
+                    fragmentsList.add(fragmentData.getListStr(index))
 
                     addInnerFragmentsToList(fragmentData, fragmentsList)
                 }
-
-                val list = JBList(fragmentsList)
+                fragmentsList.reverse()
                 showClassPopup(
                     "Fragments",
-                    list,
-                    fragmentsList.map { it.trim().substringAfter("-").psiClassByNameFromCache(project) }
+                    fragmentsList,
+                    fragmentsList.map { it.psiClassByNameFromCache(project) }
                 )
             } else {
                 fragmentsClass
@@ -155,6 +148,12 @@ class AdbControllerImp(
                             ?: throw Exception("Class $it Not Found")
                     }
             }
+        }
+    }
+
+    private fun getSize(list: List<FragmentData>): Int {
+        return list.sumOf {
+            1 + if (it.innerFragments.isNotEmpty()) getSize(it.innerFragments) else 0
         }
     }
 
@@ -374,15 +373,15 @@ class AdbControllerImp(
 
     private fun showClassPopup(
         title: String,
-        list: JBList<String>,
+        items: List<String>,
         classes: List<PsiClass?>
     ) {
         JBPopupFactory.getInstance()
-            .createListPopupBuilder(list)
+            .createPopupChooserBuilder(items)
             .setTitle(title)
-            .setItemChosenCallback(Runnable {
-                classes.getOrNull(list.selectedIndex)?.openIn(project)
-            })
+            .setItemChosenCallback { item ->
+                classes.getOrNull(items.indexOf(item))?.openIn(project)
+            }
             .createPopup()
             .showCenteredInCurrentWindow(project)
     }
@@ -390,11 +389,11 @@ class AdbControllerImp(
     private fun addInnerFragmentsToList(
         fragmentData: FragmentData,
         fragmentsList: MutableList<String>,
-        indent: String = "\t\t\t\t"
+        indent: String = ""
     ) {
         fragmentData.innerFragments.forEachIndexed { fragmentIndex, innerFragmentData ->
-            fragmentsList.add("$indent$fragmentIndex-${innerFragmentData.fragment}")
-            addInnerFragmentsToList(innerFragmentData, fragmentsList, "\t\t\t\t$indent")
+            fragmentsList.add("$indent${innerFragmentData.getListStr(fragmentIndex)}")
+            addInnerFragmentsToList(innerFragmentData, fragmentsList, "\t$indent")
         }
     }
 
