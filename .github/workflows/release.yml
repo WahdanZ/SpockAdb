@@ -8,6 +8,9 @@ jobs:
   release:
     name: Publish Plugin
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
 
       - name: Fetch Sources
@@ -40,22 +43,38 @@ jobs:
       - name: Upload Release Asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload ${{ github.event.release.tag_name }} ./build/distributions/*
+        run: gh release upload ${{ github.event.release.tag_name }} ./build/distributions/*.zip --clobber
 
-      - name: Create Pull Request
+      - name: Bump Version and Create Pull Request
         if: ${{ github.event.release.body != '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.event.release.tag_name }}"
-          BRANCH="changelog-update-$VERSION"
+          # Strip the leading 'v' (e.g. v2.1.0 -> 2.1.0)
+          CURRENT="${VERSION#v}"
+
+          # Compute next patch version (e.g. 2.1.0 -> 2.1.1)
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+          NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
+
+          BRANCH="release-post-$CURRENT"
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
-          git checkout -b $BRANCH
-          git commit -am "Changelog update - $VERSION"
-          git push --set-upstream origin $BRANCH
+          git checkout -b "$BRANCH"
+
+          # Update pluginVersion in gradle.properties
+          sed -i "s/^pluginVersion=.*/pluginVersion=$NEXT/" gradle.properties
+
+          # Stage both changelog and version bump
+          git add CHANGELOG.md gradle.properties
+          git commit -m "Release $CURRENT: patch CHANGELOG and bump version to $NEXT"
+          git push --set-upstream origin "$BRANCH"
+
           gh pr create \
-            --title "Changelog update - \`$VERSION\`" \
-            --body "Current pull request contains patched \`CHANGELOG.md\` file for the \`$VERSION\` version." \
+            --title "Post-release: bump version to $NEXT" \
+            --body "After releasing \`$CURRENT\`:\n- Patched \`CHANGELOG.md\` with release notes\n- Bumped \`pluginVersion\` to \`$NEXT\` for the next development cycle" \
             --base master \
-            --head $BRANCH
+            --head "$BRANCH"

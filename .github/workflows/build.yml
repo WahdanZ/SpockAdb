@@ -12,6 +12,7 @@ jobs:
     outputs:
       version: ${{ steps.properties.outputs.version }}
       changelog: ${{ steps.properties.outputs.changelog }}
+      artifact: ${{ steps.artifact.outputs.filename }}
     steps:
 
       - name: Fetch Sources
@@ -65,10 +66,22 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
 
       - name: Fetch Sources
         uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+          cache: gradle
+
+      - name: Build Plugin (for zip attachment)
+        run: ./gradlew buildPlugin
 
       - name: Remove Old Release Drafts
         env:
@@ -82,7 +95,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v${{ needs.build.outputs.version }} \
+          gh release create "v${{ needs.build.outputs.version }}" \
+            ./build/distributions/*.zip \
             --draft \
             --title "v${{ needs.build.outputs.version }}" \
             --notes "${{ needs.build.outputs.changelog }}"

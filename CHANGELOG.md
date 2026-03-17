@@ -2,34 +2,36 @@
 
 ## [Unreleased]
 
-## [2.0.3]
+## [3.0.0]
 ### Added
+- Open Developer Options button in the developer panel
+- Open Deep Link button — fire any URI intent directly from the IDE
+
+### Fixed
+- Activity detection on Android 13+: fallback from `mResumedActivity` to `topResumedActivity`
+- Fragment detection: switch to `dumpsys activity top` and filter by visibility and parent to show only active fragments
+- Threading violations: ADB shell commands now run on a background thread; UI updates posted back to EDT
+- Stale listener bug: developer options listeners are removed before updating combo boxes to prevent duplicate ADB calls
+- Replaced deprecated `createListPopupBuilder` API with `createPopupChooserBuilder`
 
 ### Changed
-
-### Deprecated
-
-### Removed
-
-### Fixed
+- Back stack activity detection on Android 11+: use `grep Hist` instead of legacy `sed` approach
 
 ## [2.0.3]
 ### Fixed
-- android studio last version is not working
+- Android Studio latest version compatibility
 
 ## [2.0.2]
 ### Fixed
-- android studio last version is not working
+- Android Studio latest version compatibility
 
 ## [2.0.1]
 ### Added
 - Added button to open developer options
-- Added button to open DeepLinks
-
+- Added button to open deep links
 
 ### Changed
-- Don't keep activities only shows if setting is enabled or not (although setting seemed to change, the behaviour was maintained)
-
+- Don't Keep Activities only shows if setting is enabled or not (although setting seemed to change, the behaviour was maintained)
 
 ### Fixed
 - Adds support for getting the backstack activities in Android 11
@@ -37,43 +39,39 @@
 ## [2.0.0]
 ### Added
 - Get Current App BackStack (Activities and nested fragments)
-- Add Plugins actions ex GetCurrentFragment,RestartApp,etc
-- allow to choose which buttons to show and which not to show
-
+- Add plugin actions e.g. GetCurrentFragment, RestartApp, etc.
+- Allow choosing which buttons to show
 
 ### Fixed
-- support latest version of AS
-- fix get current fragment
-- fix If two instances of AS are open, the plugin does not work properly
+- Support latest version of Android Studio
+- Fix get current fragment
+- Fix: if two instances of Android Studio are open, the plugin does not work properly
 
 ## [1.0.9]
 ### Changed
-- The activity stack now shows activities by app package. This way, the user can clearly see to what package, the activity belongs to.
-- The fragment stack can now show nested fragments and follows the same display rules as the activity stack command.
+- The activity stack now shows activities by app package so the user can clearly see which package an activity belongs to
+- The fragment stack can now show nested fragments and follows the same display rules as the activity stack command
 
 ## [1.0.8]
 ### Added
-- Toggle on/off WiFi or mobile data
-- Add text to be input on the device.
+- Toggle on/off Wi-Fi or mobile data
+- Add text to be input on the device
 
 ## [1.0.7]
 ### Added
-- Restart app with debugger 
+- Restart app with debugger
 - Uninstall and Clear App Data and Restart
-- Toggle "Show Taps" setting;
-- Toggle "Show Layout Bounds" setting;
-- Toggle "Don't Keep Activities" setting;
-- Adds option to Grant or Revoke all app permissions at once.
-- Change scale of:
-    - Window Animation;
-    - Transition Animation;
-    - Animator Duration.
+- Toggle "Show Taps" setting
+- Toggle "Show Layout Bounds" setting
+- Toggle "Don't Keep Activities" setting
+- Grant or Revoke all app permissions at once
+- Change scale of Window Animation, Transition Animation, and Animator Duration
 
 ## [1.0.0]
 ### Added
-- Navigate to current active activity in your IDE
+- Navigate to current active Activity in your IDE
 - Current BackStack Activities
-- Navigate to current active fragments
+- Navigate to current active Fragments
 - Clear application data
 - Enable and Disable Permissions of your application
 - Kill or Restart Application

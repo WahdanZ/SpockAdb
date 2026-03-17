@@ -1,0 +1,56 @@
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "New plugin version (e.g. 2.2.0)"
+        required: true
+        type: string
+
+jobs:
+  bump:
+    name: Bump plugin version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+
+      - name: Fetch Sources
+        uses: actions/checkout@v4
+
+      - name: Validate version format
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid version format: ${{ inputs.version }}. Expected X.Y.Z"
+            exit 1
+          fi
+
+      - name: Update version in gradle.properties
+        run: |
+          sed -i "s/^pluginVersion=.*/pluginVersion=${{ inputs.version }}/" gradle.properties
+
+      - name: Add Unreleased section to CHANGELOG
+        run: |
+          VERSION="${{ inputs.version }}"
+          # Insert a new [Unreleased] block after the first line of CHANGELOG.md
+          sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [$VERSION]/" CHANGELOG.md
+
+      - name: Commit and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="bump-version-${{ inputs.version }}"
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git checkout -b "$BRANCH"
+          git add gradle.properties CHANGELOG.md
+          git commit -m "Bump version to ${{ inputs.version }}"
+          git push --set-upstream origin "$BRANCH"
+
+          gh pr create \
+            --title "Bump version to ${{ inputs.version }}" \
+            --body "Updates \`pluginVersion\` to \`${{ inputs.version }}\` and adds a new \`[Unreleased]\` section to CHANGELOG.md." \
+            --base master \
+            --head "$BRANCH"
