@@ -52,7 +52,7 @@ dependencies {
 }
 
 intellijPlatform {
-    instrumentCode = false
+    instrumentCode = true
     buildSearchableOptions = false
 
     pluginConfiguration {

@@ -1,6 +1,7 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
@@ -98,6 +99,9 @@ class SpockAdbViewer(
     }
 
     init {
+        // The IntelliJ form compiler generates $$$setupUI$$$() but does not inject the call
+        // into Kotlin constructors (unlike Java). We must invoke it explicitly via reflection.
+        javaClass.getDeclaredMethod("\$\$\$setupUI\$\$\$").invoke(this)
         setContent(JScrollPane(rootPanel))
         setToolWindowListener()
         AppSettingService.getInstance().run {
@@ -342,22 +346,25 @@ class SpockAdbViewer(
     }
 
     private fun setDeveloperOptionsValues() {
-        enableDisableDontKeepActivities.isSelected =
-            selectedIDevice?.areDontKeepActivitiesEnabled() == DontKeepActivitiesState.ENABLED
+        // Read ADB values on the current (background) thread
+        val dontKeepActivities = selectedIDevice?.areDontKeepActivitiesEnabled()
+        val showTaps = selectedIDevice?.areShowTapsEnabled()
+        val showLayoutBounds = selectedIDevice?.areShowLayoutBoundsEnabled()
+        val windowScale = selectedIDevice?.getWindowAnimatorScale()
+        val transitionScale = selectedIDevice?.getTransitionAnimationScale()
+        val durationScale = selectedIDevice?.getAnimatorDurationScale()
 
-        enableDisableShowTaps.isSelected = selectedIDevice?.areShowTapsEnabled() == ShowTapsState.ENABLED
-
-        enableDisableShowLayoutBounds.isSelected =
-            selectedIDevice?.areShowLayoutBoundsEnabled() == ShowLayoutBoundsState.ENABLED
-
-        windowAnimatorScaleComboBox.selectedItem =
-            WindowAnimatorScaleCommand.getWindowAnimatorScaleIndex(selectedIDevice?.getWindowAnimatorScale())
-
-        transitionAnimatorScaleComboBox.selectedItem =
-            TransitionAnimatorScaleCommand.getTransitionAnimatorScaleIndex(selectedIDevice?.getTransitionAnimationScale())
-
-        animatorDurationScaleComboBox.selectedItem =
-            AnimatorDurationScaleCommand.getAnimatorDurationScaleIndex(selectedIDevice?.getAnimatorDurationScale())
+        // Apply to UI components and re-add listeners on the EDT
+        ApplicationManager.getApplication().invokeLater {
+            removeDeveloperOptionsListeners()
+            enableDisableDontKeepActivities.isSelected = dontKeepActivities == DontKeepActivitiesState.ENABLED
+            enableDisableShowTaps.isSelected = showTaps == ShowTapsState.ENABLED
+            enableDisableShowLayoutBounds.isSelected = showLayoutBounds == ShowLayoutBoundsState.ENABLED
+            windowAnimatorScaleComboBox.selectedItem = WindowAnimatorScaleCommand.getWindowAnimatorScaleIndex(windowScale)
+            transitionAnimatorScaleComboBox.selectedItem = TransitionAnimatorScaleCommand.getTransitionAnimatorScaleIndex(transitionScale)
+            animatorDurationScaleComboBox.selectedItem = AnimatorDurationScaleCommand.getAnimatorDurationScaleIndex(durationScale)
+            setDeveloperOptionsListeners()
+        }
     }
 
     private fun setDeveloperOptionsListeners() {
@@ -384,8 +391,9 @@ class SpockAdbViewer(
                             override fun stateChanged() {
                                 if (toolWindow.isVisible) {
                                     removeDeveloperOptionsListeners()
-                                    setDeveloperOptionsValues()
-                                    setDeveloperOptionsListeners()
+                                    ApplicationManager.getApplication().executeOnPooledThread {
+                                        setDeveloperOptionsValues()
+                                    }
                                 }
                             }
                         })

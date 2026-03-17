@@ -34,6 +34,7 @@
         <toolWindow anchor="left"
                     canCloseContents="false"
                     id="Spock ADB"
+                    icon="/icons/spockAdb.svg"
                     factoryClass="spock.AdbDrawerViewer"
                     secondary="true"/>
     </extensions>
