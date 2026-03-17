@@ -2,47 +2,92 @@
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/811387b23aae4a479f842c8a485a820a)](https://app.codacy.com/manual/WahdanZ/SpockAdb?utm_source=github.com&utm_medium=referral&utm_content=WahdanZ/SpockAdb&utm_campaign=Badge_Grade_Dashboard)
 ![Build](https://github.com/WahdanZ/SpockAdb/workflows/Build/badge.svg)
 ![JetBrains IntelliJ Plugins](https://img.shields.io/jetbrains/plugin/v/11591-spock-adb)
-![JetBrains IntelliJ plugins](https://img.shields.io/jetbrains/plugin/d/11591-spock-adb) 
+![JetBrains IntelliJ plugins](https://img.shields.io/jetbrains/plugin/d/11591-spock-adb)
 
-# SpockAdb 
+# Spock ADB
+
 <!-- Plugin description -->
-Plugin Helps you to have full control of your project and device.
+Full control of your Android device directly from Android Studio — no terminal needed.
+
+Spock ADB puts the most common ADB workflows into a single tool window: navigate to the active Activity or Fragment in your editor, manage app lifecycle, toggle developer settings, control permissions, and more — all with one click.
 <!-- Plugin description end -->
 
+---
 
+## Features
 
-## **Features**
- - Navigate to current active activity in your IDE
- -  Current BackStack Activities 
- -  Navigate to current  active fragments 
- -  Clear application data 
- -  Enable and Disable Permissions of your application
- - Kill or Restart Application
-- Restart app with debugger 
-- Uninstall and Clear App Data and Restart
- - Toggle "Show Taps" setting;
- - Toggle "Show Layout Bounds" setting;
- - Toggle "Don't Keep Activities" setting;
- - Adds option to Grant or Revoke all app permissions at once.
+### Navigation
+| Feature | Description |
+|---|---|
+| **Open Current Activity** | Jump directly to the currently visible Activity in your editor |
+| **Open Current Fragment** | Jump directly to the currently visible Fragment (supports nested fragments) |
+| **Current App Back Stack** | View the full back stack of Activities and Fragments for the foreground app |
+| **Back Stack (All Apps)** | View the system-wide Activity back stack across all running apps |
 
- - Change scale of:
-   - Window Animation;
-   - Transition Animation;
-   - Animator Duration.
+### App Lifecycle
+| Feature | Description |
+|---|---|
+| **Restart App** | Stop and relaunch the foreground application |
+| **Restart with Debugger** | Relaunch and immediately attach the debugger |
+| **Test Process Death** | Kill the app process without removing it from recents (tests background restore) |
+| **Force Kill** | Hard kill the application process |
+| **Clear App Data** | Wipe all app data (shared prefs, databases, cache) |
+| **Clear App Data & Restart** | Wipe all app data and immediately relaunch |
+| **Uninstall App** | Remove the application from the device |
+
+### Permissions
+| Feature | Description |
+|---|---|
+| **Revoke / Grant Permission** | Toggle individual runtime permissions via a checkbox dialog |
+| **Grant All** | Grant every declared runtime permission at once |
+| **Revoke All** | Revoke every declared runtime permission at once |
+
+### Developer Options
+| Feature | Description |
+|---|---|
+| **Open Developer Options** | Launch the system Developer Options screen |
+| **Don't Keep Activities** | Read current state of the "Don't Keep Activities" setting |
+| **Show Taps** | Toggle the "Show Taps" developer setting |
+| **Show Layout Bounds** | Toggle the "Show Layout Bounds" developer setting |
+| **Window Animation Scale** | Set window animation scale (0×, 0.5×, 1×, 1.5×, 2×, 5×, 10×) |
+| **Transition Animation Scale** | Set transition animation scale |
+| **Animator Duration Scale** | Set animator duration scale |
+
+### Network
+| Feature | Description |
+|---|---|
+| **Toggle Wi-Fi** | Enable or disable Wi-Fi on the device |
+| **Toggle Mobile Data** | Enable or disable mobile data on the device |
+
+### Utilities
+| Feature | Description |
+|---|---|
+| **Input Text** | Type text into the focused field on the device |
+| **Open Deep Link** | Fire an `android.intent.action.VIEW` intent with any URI |
+
+---
 
 ## Screenshot
 
 ![Screenshot](images/spock_adb.png)
 
-## Download
+---
 
-https://plugins.jetbrains.com/plugin/11591-spock-adb
+## Installation
+
+**JetBrains Marketplace:** [Spock ADB](https://plugins.jetbrains.com/plugin/11591-spock-adb)
+
+Or install directly in Android Studio: `Settings → Plugins → Marketplace → search "Spock ADB"`
+
+---
 
 ## Demo
 
-[![IMAGE ALT TEXT HERE](http://img.youtube.com/vi/x_WX_Pznqos/0.jpg)](http://www.youtube.com/watch?v=x_WX_Pznqos)
+[![Demo video](http://img.youtube.com/vi/x_WX_Pznqos/0.jpg)](http://www.youtube.com/watch?v=x_WX_Pznqos)
 
+---
 
+## License
 
 ```
 Copyright 2019 Ahmed Wahdan
