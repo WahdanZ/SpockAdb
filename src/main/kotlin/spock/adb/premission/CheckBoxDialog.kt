@@ -13,6 +13,7 @@ class CheckBoxDialog(
     private lateinit var jList: JList<ListItem>
 
     init {
+        javaClass.getDeclaredMethod("\$\$\$setupUI\$\$\$").invoke(this)
         setContentPane(contentPane)
         isModal = true
         prepareList()

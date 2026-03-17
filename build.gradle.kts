@@ -1,127 +1,114 @@
 import org.jetbrains.changelog.markdownToHTML
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-fun properties(key: String) = project.findProperty(key).toString()
+
+fun properties(key: String) = providers.gradleProperty(key)
+fun environment(key: String) = providers.environmentVariable(key)
 
 plugins {
-    // Java support
-    id("java")
-    // Kotlin support
-    id("org.jetbrains.kotlin.jvm") version "1.6.10"
-    // Gradle IntelliJ Plugin
-    id("org.jetbrains.intellij") version "1.7.0"
-    // Gradle Changelog Plugin
-    id("org.jetbrains.changelog") version "1.3.1"
-    // Gradle Qodana Plugin
-    id("org.jetbrains.qodana") version "0.1.13"
-    // detekt linter - read more: https://detekt.github.io/detekt/kotlindsl.html
-    // ktlint linter - read more: https://github.com/JLLeitschuh/ktlint-gradle
-//    id("org.jlleitschuh.gradle.ktlint") version "9.3.0"
+    id("org.jetbrains.kotlin.jvm") version "2.2.20"
+    id("org.jetbrains.intellij.platform") version "2.10.5"
+    id("org.jetbrains.changelog") version "2.2.1"
 }
 
-// Import variables from gradle.properties file
 val pluginGroup: String by project
 val pluginName: String by project
 val pluginVersion: String by project
 val pluginSinceBuild: String by project
-val pluginUntilBuild: String by project
-
-val platformType: String by project
-val platformVersion: String by project
-val platformDownloadSources: String by project
+val androidStudioVersion: String by project
 
 group = pluginGroup
 version = pluginVersion
 
+kotlin {
+    jvmToolchain(17)
+}
+
 // Configure project's dependencies
 repositories {
     mavenCentral()
-    jcenter()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
+
 dependencies {
-    implementation(kotlin("stdlib-jdk8"))
-    implementation("org.jooq:joor-java-8:0.9.7")
-//    compileOnly(fileTree("${properties("androidStudioPath")}/plugins/android/lib/"))
- //   compileOnly(fileTree("${properties("androidStudioPath")}/lib"))
-    testImplementation("org.mockito.kotlin:mockito-kotlin:3.2.0")
-    testImplementation("io.mockk:mockk:1.12.0")
+    intellijPlatform {
+        androidStudio(androidStudioVersion)
 
+        // org.jetbrains.android is bundled with Android Studio
+        bundledPlugin("org.jetbrains.android")
 
+        // Other bundled plugins
+        bundledPlugin("com.intellij.java")
+        bundledPlugin("org.jetbrains.kotlin")
+        bundledPlugin("com.intellij.gradle")
+
+        instrumentationTools()
+    }
+
+    implementation("org.jooq:joor:0.9.15")
+
+    testImplementation("org.mockito.kotlin:mockito-kotlin:4.1.0")
+    testImplementation("io.mockk:mockk:1.13.9")
 }
 
-// Configure gradle-intellij-plugin plugin.
-// Read more: https://github.com/JetBrains/gradle-intellij-plugin
-intellij {
-    pluginName.set(properties("pluginName"))
+intellijPlatform {
+    instrumentCode = true
+    buildSearchableOptions = false
 
-    version.set("191.8026.42")
-    type.set("IC")
-    type.set(properties("platformType"))
-    downloadSources.set(properties("platformDownloadSources").toBoolean())
-    updateSinceUntilBuild.set(false)
-   // localPath.set(properties("androidStudioPath"))
-    // Plugin Dependencies. Uses `platformPlugins` property from the gradle.properties file.
-    plugins.set(properties("platformPlugins").split(',').map(String::trim).filter(String::isNotEmpty))
-}
+    pluginConfiguration {
+        name = pluginName
+        version = pluginVersion
 
-
-tasks {
-    // Set the compatibility versions to 1.8
-    withType<JavaCompile> {
-        sourceCompatibility = "1.8"
-        targetCompatibility = "1.8"
-    }
-    listOf("compileKotlin", "compileTestKotlin").forEach {
-        getByName<KotlinCompile>(it) {
-            kotlinOptions.jvmTarget = "1.8"
-        }
-    }
-
-// Configure Gradle Changelog Plugin - read more: https://github.com/JetBrains/gradle-changelog-plugin
-    changelog {
-        version.set(properties("pluginVersion"))
-        groups.set(emptyList())
-    }
-
-// Configure Gradle Qodana Plugin - read more: https://github.com/JetBrains/gradle-qodana-plugin
-    qodana {
-        cachePath.set(projectDir.resolve(".qodana").canonicalPath)
-        reportPath.set(projectDir.resolve("build/reports/inspections").canonicalPath)
-        saveReport.set(true)
-        showReport.set(System.getenv("QODANA_SHOW_REPORT")?.toBoolean() ?: false)
-    }
-
-    patchPluginXml {
-        version.set(properties("pluginVersion"))
-        sinceBuild.set(properties("pluginSinceBuild"))
-        untilBuild.set(properties("pluginUntilBuild"))
-
-        // Extract the <!-- Plugin description --> section from README.md and provide for the plugin's manifest
-        pluginDescription.set(
-            projectDir.resolve("README.md").readText().lines().run {
-                val start = "<!-- Plugin description -->"
-                val end = "<!-- Plugin description end -->"
-
+        description = providers.fileContents(layout.projectDirectory.file("README.md")).asText.map {
+            val start = "<!-- Plugin description -->"
+            val end = "<!-- Plugin description end -->"
+            with(it.lines()) {
                 if (!containsAll(listOf(start, end))) {
                     throw GradleException("Plugin description section not found in README.md:\n$start ... $end")
                 }
-                subList(indexOf(start) + 1, indexOf(end))
-            }.joinToString("\n").run { markdownToHTML(this) }
-        )
+                subList(indexOf(start) + 1, indexOf(end)).joinToString("\n").let(::markdownToHTML)
+            }
+        }
 
-        // Get the latest available change notes from the changelog file
-        changeNotes.set(provider {
-            changelog.run {
-                getOrNull(properties("pluginVersion")) ?: getLatest()
-            }.toHTML()
-        })
+        changeNotes = providers.provider {
+            with(changelog) {
+                renderItem(
+                    getOrNull(pluginVersion) ?: getLatest(),
+                    org.jetbrains.changelog.Changelog.OutputType.HTML,
+                )
+            }
+        }
+
+        ideaVersion {
+            sinceBuild = pluginSinceBuild
+            untilBuild = provider { null }   // open-ended: supports all future builds
+        }
+
+        vendor {
+            name = "Spock Adb"
+            email = "ahmed.wahdan@outlook.com"
+            url = "https://github.com/WahdanZ"
+        }
     }
 
-    publishPlugin {
-        dependsOn("patchChangelog")
-        token.set(System.getenv("PUBLISH_TOKEN"))
-        // pluginVersion is based on the SemVer (https://semver.org) and supports pre-release labels, like 2.1.7-alpha.3
-        // Specify pre-release label to publish the plugin in a custom Release Channel automatically. Read more:
-        // https://plugins.jetbrains.com/docs/intellij/deployment.html#specifying-a-release-channel
-        channels.set(listOf(properties("pluginVersion").split('-').getOrElse(1) { "default" }.split('.').first()))
+    signing {
+        certificateChain = environment("CERTIFICATE_CHAIN")
+        privateKey = environment("PRIVATE_KEY")
+        password = environment("PRIVATE_KEY_PASSWORD")
     }
+
+    publishing {
+        token = environment("PUBLISH_TOKEN")
+        channels = properties("pluginVersion").map {
+            listOf(it.split('-').getOrElse(1) { "default" }.split('.').first())
+        }
+    }
+
+}
+
+// Configure Gradle Changelog Plugin - read more: https://github.com/JetBrains/gradle-changelog-plugin
+changelog {
+    version = pluginVersion
+    groups.set(emptyList())
+    repositoryUrl = "https://github.com/WahdanZ/SpockAdb"
 }

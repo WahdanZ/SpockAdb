@@ -4,3 +4,6 @@
 /.gradle/
 /gradle.properties
 /out/*
+/.claude/*
+/.intellijPlatform/*
+/.kotlin/sessions/*
