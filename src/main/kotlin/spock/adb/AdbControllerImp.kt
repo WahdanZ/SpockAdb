@@ -20,7 +20,7 @@ import spock.adb.premission.ListItem
 class AdbControllerImp(
     private val project: Project,
     private val debugBridge: AndroidDebugBridge?
-) : AdbController, AndroidDebugBridge.IDeviceChangeListener {
+) : AdbController, AndroidDebugBridge.IDeviceChangeListener, com.intellij.openapi.Disposable {
 
     private var updateDeviceList: ((List<IDevice>) -> Unit)? = null
 
@@ -55,52 +55,72 @@ class AdbControllerImp(
         device: IDevice
 
     ) {
-        val activitiesList = mutableListOf<String>()
-        val activitiesClass: List<BackStackData> = GetBackStackCommand().execute(Any(), project, device)
+        // ADB must run on a background thread — wrap everything in execute {}
+        execute {
+            val activitiesList = mutableListOf<String>()
+            val activitiesClass: List<BackStackData> = GetBackStackCommand().execute(Any(), project, device)
 
-        activitiesClass.forEachIndexed { index, activityData ->
-            activitiesList.add("\t$index-${activityData.appPackage}")
+            activitiesClass.forEachIndexed { index, activityData ->
+                activitiesList.add("\t$index-${activityData.appPackage}")
+                activityData.activitiesList.forEachIndexed { activityIndex, activity ->
+                    activitiesList.add("\t\t\t\t$activityIndex-${activity}")
+                }
+            }
 
-            activityData.activitiesList.forEachIndexed { activityIndex, activity ->
-                activitiesList.add("\t\t\t\t$activityIndex-${activity}")
+            // PSI lookups require a ReadAction when called from a background thread
+            val classes = com.intellij.openapi.application.ReadAction.compute<List<PsiClass?>, RuntimeException> {
+                activitiesList.map { it.trim().substringAfter("-").psiClassByNameFromProjct(project) }
+            }
+
+            // Popup creation and display must happen on the EDT
+            ApplicationManager.getApplication().invokeLater {
+                showClassPopup(title = "Activities", items = activitiesList, classes = classes)
             }
         }
-
-        showClassPopup(
-            title = "Activities",
-            items = activitiesList,
-            classes = activitiesList.map { it.trim().substringAfter("-").psiClassByNameFromProjct(project) }
-        )
     }
 
     override fun currentApplicationBackStack(device: IDevice) {
-        val applicationID = getApplicationID(device)
-        val activitiesList: MutableList<String>
-        val activitiesClass: List<ActivityData> =
-            GetApplicationBackStackCommand().execute(applicationID, project, device)
-        activitiesList = activitiesClass.map { listOf(it.activity) + it.fragment }.flatten().toMutableList()
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(activitiesList)
-            .setTitle("Activities")
-            .setRenderer(javax.swing.ListCellRenderer<String> { _, value, _, _, _ ->
-                var title = value.toString()
-                title = if (!value.toString().contains('.'))
-                    "  |--$title (Fragment)"
-                else
-                    (title.split('.').lastOrNull() ?: "") + "(Activity)"
-                val label = JBLabel(title)
-                label.border = JBUI.Borders.empty(5, 10, 5, 20)
-                label
-            })
-            .setItemChosenCallback { current ->
-                if (current.contains('.'))
-                    current.psiClassByNameFromProjct(project)?.openIn(project)
-                else
-                    current.psiClassByNameFromCache(project)?.openIn(project)
-            }
-            .createPopup()
-            .showCenteredInCurrentWindow(project)
+        // ADB must run on a background thread — wrap everything in execute {}
+        execute {
+            val applicationID = getApplicationID(device)
+            val activitiesClass: List<ActivityData> =
+                GetApplicationBackStackCommand().execute(applicationID, project, device)
+            val activitiesList = activitiesClass.map { listOf(it.activity) + it.fragment }.flatten().toMutableList()
 
+            // Popup creation and display must happen on the EDT
+            ApplicationManager.getApplication().invokeLater {
+                JBPopupFactory.getInstance()
+                    .createPopupChooserBuilder(activitiesList)
+                    .setTitle("Activities")
+                    .setRenderer(javax.swing.ListCellRenderer<String> { _, value, _, _, _ ->
+                        var title = value.toString()
+                        title = if (!value.toString().contains('.'))
+                            "  |--$title (Fragment)"
+                        else
+                            (title.split('.').lastOrNull() ?: "") + "(Activity)"
+                        val label = JBLabel(title)
+                        label.border = JBUI.Borders.empty(5, 10, 5, 20)
+                        label
+                    })
+                    .setItemChosenCallback { current ->
+                        // Item chosen callback runs on EDT; dispatch PSI lookup to background
+                        execute {
+                            val psiClass = com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
+                                if (current.contains('.'))
+                                    current.psiClassByNameFromProjct(project)
+                                else
+                                    current.psiClassByNameFromCache(project)
+                            }
+                            ApplicationManager.getApplication().invokeLater {
+                                psiClass?.openIn(project)
+                                    ?: showError("class $current Not Found")
+                            }
+                        }
+                    }
+                    .createPopup()
+                    .showCenteredInCurrentWindow(project)
+            }
+        }
     }
 
     override fun currentActivity(
@@ -110,9 +130,12 @@ class AdbControllerImp(
         execute {
             val activity =
                 GetActivityCommand().execute(Any(), project, device) ?: throw Exception("No activities found")
+            // Resolve PSI on background thread inside ReadAction, then open on EDT
+            val psiClass = com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
+                activity.psiClassByNameFromProjct(project)
+            }
             ApplicationManager.getApplication().invokeLater {
-                activity.psiClassByNameFromProjct(project)?.openIn(project)
-                    ?: showError("class $activity Not Found")
+                psiClass?.openIn(project) ?: showError("class $activity Not Found")
             }
         }
     }
@@ -443,5 +466,10 @@ class AdbControllerImp(
             val result = OpenDeepLinkCommand().execute(input, project, device)
             showSuccess(result)
         }
+    }
+
+    override fun dispose() {
+        AndroidDebugBridge.removeDeviceChangeListener(this)
+        updateDeviceList = null
     }
 }

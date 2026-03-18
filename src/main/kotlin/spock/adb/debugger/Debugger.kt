@@ -23,7 +23,7 @@ class Debugger(private val project: Project, private val device: IDevice, privat
         }
         for (androidDebugger in AndroidDebugger.EP_NAME.extensions) {
             if (androidDebugger.supportsProject(project)) {
-                invokeLater { closeOldSessionAndRun(androidDebugger, device.getClient(packageName) ?: client!!) }
+                invokeLater { closeOldSessionAndRun(androidDebugger, device.getClient(packageName) ?: client ?: return@invokeLater) }
                 break
             }
         }

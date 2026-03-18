@@ -38,7 +38,7 @@ class GetApplicationPermission : Command<String, List<ListItem>> {
             } else
                 throw Exception("Application $p not installed")
         } else
-            throw Exception("Bazinga!! Your Device is before Marshmallow. No need to explicitly handle permissions")
+            throw Exception("Device API level is below Marshmallow. Runtime permissions are not supported on this device.")
 
     }
 

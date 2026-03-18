@@ -17,7 +17,7 @@ class CheckBoxDialog(
         setContentPane(contentPane)
         isModal = true
         prepareList()
-        defaultCloseOperation = WindowConstants.DISPOSE_ON_CLOSE
+        defaultCloseOperation = DISPOSE_ON_CLOSE
         addWindowListener(object : WindowAdapter() {
             override fun windowClosing(e: WindowEvent?) {
                 onCancel()
@@ -45,7 +45,6 @@ class CheckBoxDialog(
                 handelSelection(event)
             }
         })
-    //    adaPermission.getApplicationPermissions()
     }
 
     private fun handelSelection(event: MouseEvent) {

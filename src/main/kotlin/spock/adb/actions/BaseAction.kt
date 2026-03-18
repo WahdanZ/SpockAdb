@@ -11,12 +11,16 @@ import spock.adb.AdbController
 import spock.adb.AdbControllerImp
 import spock.adb.notification.CommonNotifier.Companion.showNotifier
 
+
 abstract class BaseAction : AnAction() {
     override fun actionPerformed(event: AnActionEvent) = event.project?.run {
         val controller = AdbControllerImp(this, AndroidSdkUtils.getDebugBridge(this))
+        // connectedDevices() is synchronous — it immediately invokes the callback with the
+        // current bridge.devices list, so we can dispose right after to remove the
+        // AndroidDebugBridge device-change listener that init() registered.
         controller.connectedDevices { list ->
             if (list.isNotEmpty())
-                if(list.size > 1)
+                if (list.size > 1)
                     showDeviceList(project = this, devices = list) {
                         performAction(controller, it)
                     }
@@ -24,8 +28,8 @@ abstract class BaseAction : AnAction() {
                     performAction(controller, list[0])
             else
                 showNotifier(project = this, content = "No Devices", type = NotificationType.ERROR)
-
         }
+        controller.dispose() // remove the device-change listener; async ADB work is unaffected
     } ?: cancelAction()
 
     private fun showDeviceList(project: Project, devices: List<IDevice>, block: (device: IDevice) -> Unit) {
