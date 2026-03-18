@@ -9,11 +9,9 @@ import java.util.concurrent.TimeUnit
 class GetApplicationBackStackCommand : Command<String, List<ActivityData>> {
 
     companion object {
-        val systemFragments = listOf("ReportFragment", "FragmentManager", "NavHostFragment", "BackStackEntry")
         val currentActiveActivity = Regex("([A-Z])\\w+=true")
         val activityRegex = Regex(" {2}ACTIVITY.*")
         val fragmentRegex = Regex("[a-zA-Z1-9]+\\{[a-z0-9}]")
-        val addedFragmentRegex = Regex("#2: ADD [a-zA-Z1-9]+\\{[a-z0-9}]")
         val removedFragmentRegex = Regex("#1: REMOVE [a-zA-Z1-9]+\\{[a-z0-9}]")
     }
 
@@ -33,9 +31,9 @@ class GetApplicationBackStackCommand : Command<String, List<ActivityData>> {
         val lines = bulkActivitiesData.lines()
         lines.mapIndexed { index, s ->
             if (s.contains(activityRegex)) {
-                val status = currentActiveActivity.find(lines[index + 2])?.value?.split("=")?.firstOrNull()
+                val status = currentActiveActivity.find(lines.getOrNull(index + 2) ?: "")?.value?.split("=")?.firstOrNull()
                     ?: ""
-                val getActivityName = s.split(" ").find { it.contains("/") }!!.replace("/", "")
+                val getActivityName = s.split(" ").find { it.contains("/") }?.replace("/", "") ?: return@mapIndexed
                 tasks.add(
                     ActivityData(
                         activity = getActivityName,
@@ -53,7 +51,6 @@ class GetApplicationBackStackCommand : Command<String, List<ActivityData>> {
                 val removedFragment =
                     removedFragmentRegex.find(s)?.value?.split("{")?.firstOrNull()?.split("REMOVE ")?.lastOrNull()
                 if (removedFragment != null) {
-                    println(removedFragment)
                     tasks[tasks.size - 1] = task.copy(fragment = task.fragment + listOf(removedFragment))
                 }
             }

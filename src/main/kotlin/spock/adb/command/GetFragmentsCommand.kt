@@ -29,8 +29,9 @@ class GetFragmentsCommand : Command<String, List<FragmentData>> {
     }
 
     private fun getFragmentsUsingOldMethod(bulkTaskDetails: String): List<FragmentData> {
-        return bulkTaskDetails
-            .split("Added Fragments:")[2]
+        val parts = bulkTaskDetails.split("Added Fragments:")
+        val section = parts.getOrNull(2) ?: return mutableListOf()
+        return section
             .lines()
             .map { it.trim() }
             .filter { (it.startsWith("#") && !it.contains("BackStackEntry")) }

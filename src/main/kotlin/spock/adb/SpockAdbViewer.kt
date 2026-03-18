@@ -117,7 +117,6 @@ class SpockAdbViewer(
             AppSettingService.getInstance().run {
                 state.let {
                     val dialog = CheckBoxDialog(it.list) { selectedItem ->
-                        println(selectedItem)
                         this.loadState(it.copy(list = it.list.map { item ->
                             if (item.name == selectedItem.name)
                                 item.copy(isSelected = selectedItem.isSelected)
@@ -133,28 +132,9 @@ class SpockAdbViewer(
             }
 
         }
-       adbWifi.isVisible = false
-//        adbWifi.addActionListener {
-//            val ip = Messages.showInputDialog(
-//                "Enter You Android Device IP address",
-//                "Spock Adb- Device connect over Wifi",
-//                null,
-//                "192.168.1.20",
-//                IPAddressInputValidator()
-//            )
-//            ip?.let { adbController.connectDeviceOverIp(ip = ip) }
-
-      //  }
-
-//        refresh.addActionListener {
-//            adbController.refresh()
-//            updateDevicesList()
-//        }
+        adbWifi.isVisible = false
         devicesListComboBox.addItemListener {
             selectedIDevice = devices[devicesListComboBox.selectedIndex]
-
-        }
-        setting.addActionListener {
 
         }
         activitiesBackStackButton.addActionListener {
