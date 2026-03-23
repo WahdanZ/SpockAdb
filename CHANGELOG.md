@@ -22,6 +22,11 @@
 - Fixed exception message `"Bazinga!!"` in `GetApplicationPermission` → professional message
 - Renamed `kippAppProcess` → `killAppProcess` (typo fix) in `ProcessDeathCommand`
 
+### Compatibility
+- Lowered `sinceBuild` from `253` (Panda canary only) to `231` (Hedgehog 2023.1.1), adding support for all stable Android Studio releases from 2023 onward
+- Compile target updated to Android Studio Meerkat (2025.1.1) — latest stable build
+- `untilBuild` remains open-ended so new releases are accepted without a plugin update
+
 ## [3.0.0]
 ### Added
 - Open Developer Options button in the developer panel
