@@ -91,6 +91,34 @@ The general lesson, and the rule for this repository: **lowering `sinceBuild` is
 that must be verified.** Compiling against a newer platform can inject references to APIs
 that do not exist in older ones, without any warning at compile time.
 
+## The second trap: inline platform functions
+
+The same class of problem appears with Kotlin `inline` helpers from the platform. Using the
+idiomatic service lookup:
+
+```kotlin
+fun getInstance(project: Project): SpockAdbService = project.service()
+```
+
+inlines a call to `ServicesKt.serviceNotFoundError`, which does not exist before 2023.3.
+The verifier caught it immediately:
+
+```
+Method SpockAdbService.Companion.getInstance(Project) contains an *invokestatic*
+instruction referencing an unresolved method ServicesKt.serviceNotFoundError(...).
+This can lead to NoSuchMethodError exception at runtime.
+```
+
+Inlining copies the callee's body — including calls to APIs that are private to the
+platform version you compiled against — into your own bytecode. Prefer the non-inline
+equivalent when supporting a wide range:
+
+```kotlin
+project.getService(SpockAdbService::class.java)
+```
+
+Both `SpockAdbService.getInstance` and `AppSettingService.getInstance` do this deliberately.
+
 ## Verification matrix
 
 `./gradlew verifyPlugin` checks these builds. They are the two ends of the supported range

@@ -21,7 +21,28 @@
 - Replaced the deprecated `ToolWindowManagerListener.stateChanged()` override and the deprecated `AndroidVersion.getApiLevel()` call
 - Added `docs/COMPATIBILITY.md` documenting the supported range, the verification matrix and how to change it
 
+### Fixed
+- **EDT freeze**: `AndroidSdkUtils.getDebugBridge()` blocks while ADB starts, and was called both when opening the tool window and inside every menu action — all on the EDT. The bridge is now resolved lazily on a pooled thread
+- **Threading**: device connect/disconnect callbacks arrive on ddmlib threads and mutated the Swing combo box model directly. Device lists are now read off the EDT and delivered on it
+- **Threading**: `grantOrRevokeAllPermissions` would have issued one `pm grant`/`pm revoke` per permission on the EDT; it now runs entirely on a pooled thread
+- **Crash**: selecting in the device combo box indexed straight into the device list, throwing `ArrayIndexOutOfBoundsException` when the model reported index `-1` after the last device disconnected. Also now ignores `DESELECTED` events, which fired the handler twice
+- **Crash**: a persisted setting naming an action that no longer exists made `SpockAction.valueOf` throw from the constructor, preventing the tool window from opening at all. Unknown entries are ignored
+- **Hang**: `ProcessDeathCommand` passed a timeout of `0` to `executeShellCommand`, which means "wait forever" in ddmlib — an unresponsive device hung a pooled thread permanently
+- **Leak**: `project.messageBus.connect()` was called without a parent `Disposable`, so the tool window listener was never released
+- **Leak**: each menu action constructed its own `AdbControllerImp`, registering another global ADB device-change listener, and disposed it immediately after starting async work — cancelling the work before it ran. A single project-scoped `SpockAdbService` now owns the controller
+- **Silent failures**: exceptions were swallowed and surfaced as `e.message ?: "not found"`, so a null-message exception showed the user the words "not found" and left no stack trace anywhere. Failures are now logged to `idea.log` as well as reported
+- **Dishonest success**: `connectDeviceOverIp` reported "connected to $ip" while its command was an empty stub that did nothing
+- **Compatibility**: `project.service<T>()` inlines a call to `ServicesKt.serviceNotFoundError`, absent before 2023.3, which would have thrown `NoSuchMethodError` on the oldest supported builds. Replaced with the non-inline `getService` in both services
+
+### Added
+- `BaseAction` now declares `ActionUpdateThread.BGT` and disables its actions when no project is open
+- Tests for `ShellOutputReceiver` chunking and trailing-newline handling, and for the device state enums
+
+### Removed
+- `GetConnectedDevicesCommand`, which was unused and contained an unchecked cast that would have thrown on a null bridge
+
 ### Changed
+- Device selection is now tracked by serial number rather than object identity, so it survives a device reconnect handing out a new `IDevice` instance
 - Application ID resolution reads through the stable `AndroidModel` interface instead of the Gradle-specific `GradleAndroidModel`, and now prefers application modules over libraries — in a multi-module project the previous code used an arbitrary facet and could resolve the wrong module or none at all
 - A project with no resolvable application ID now reports an actionable message; previously the nullable result was passed through `.toString()`, producing the literal string `"null"` and the misleading error `Application null not installed`
 - ADB output parsing extracted from the command classes into pure functions in `spock.adb.parser` (`ActivityParser`, `BackStackParser`, `ApplicationBackStackParser`, `FragmentDumpParser`), so it can be tested without a connected device

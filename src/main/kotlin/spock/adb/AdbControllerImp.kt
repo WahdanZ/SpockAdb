@@ -4,11 +4,14 @@ import com.android.ddmlib.AndroidDebugBridge
 import com.android.ddmlib.IDevice
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
+import org.jetbrains.android.sdk.AndroidSdkUtils
 import spock.adb.command.*
 import spock.adb.models.ActivityData
 import spock.adb.models.BackStackData
@@ -19,14 +22,42 @@ import spock.adb.premission.ListItem
 
 class AdbControllerImp(
     private val project: Project,
-    private val debugBridge: AndroidDebugBridge?
+    /**
+     * Resolves the ADB bridge. Invoked on a pooled thread, never on the EDT.
+     *
+     * `AndroidSdkUtils.getDebugBridge` blocks while ADB starts, which can take seconds on a
+     * cold start. It was previously called during `createToolWindowContent` and inside
+     * `AnAction.actionPerformed`, both of which run on the EDT, freezing the IDE.
+     */
+    private val debugBridgeProvider: () -> AndroidDebugBridge? = {
+        AndroidSdkUtils.getDebugBridge(project)
+    },
 ) : AdbController, AndroidDebugBridge.IDeviceChangeListener, com.intellij.openapi.Disposable {
 
+    private val log = Logger.getInstance(AdbControllerImp::class.java)
+
+    @Volatile
     private var updateDeviceList: ((List<IDevice>) -> Unit)? = null
 
     init {
         AndroidDebugBridge.addDeviceChangeListener(this)
     }
+
+    private fun devices(): List<IDevice> =
+        runCatching { debugBridgeProvider()?.devices?.toList() }
+            .onFailure { log.warn("Could not read the connected device list from ADB", it) }
+            .getOrNull()
+            .orEmpty()
+
+    /** Device-change callbacks arrive on ddmlib threads; the listener updates Swing. */
+    private fun publishDeviceList() {
+        val block = updateDeviceList ?: return
+        val devices = devices()
+        onEdt { block(devices) }
+    }
+
+    private fun onEdt(block: () -> Unit) =
+        ApplicationManager.getApplication().invokeLater(block) { project.isDisposed }
 
     /**
      * The previous implementation called `.toString()` on a nullable result, so a project
@@ -46,20 +77,33 @@ class AdbControllerImp(
         AndroidDebugBridge.addDeviceChangeListener(this)
     }
 
+    /**
+     * Reads the device list on a pooled thread and delivers it on the EDT.
+     *
+     * This used to run entirely on the caller's thread, which meant the bridge was resolved
+     * on the EDT and — for the connect/disconnect callbacks below — that Swing models were
+     * mutated from a ddmlib thread.
+     */
     override fun connectedDevices(block: (devices: List<IDevice>) -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val devices = devices()
+            onEdt { block(devices) }
+        }
+    }
+
+    override fun observeDevices(block: (devices: List<IDevice>) -> Unit) {
         updateDeviceList = block
-        updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
+        connectedDevices(block)
     }
 
-    override fun deviceConnected(iDevice: IDevice) {
-        updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
-    }
+    override fun deviceConnected(iDevice: IDevice) = publishDeviceList()
 
-    override fun deviceDisconnected(iDevice: IDevice) {
-        updateDeviceList?.invoke(debugBridge?.devices?.toList() ?: listOf())
-    }
+    override fun deviceDisconnected(iDevice: IDevice) = publishDeviceList()
 
-    override fun deviceChanged(iDevice: IDevice, i: Int) {}
+    override fun deviceChanged(iDevice: IDevice, i: Int) {
+        // Only react to state transitions (online/offline), not to every property change.
+        if (i and IDevice.CHANGE_STATE != 0) publishDeviceList()
+    }
 
     override fun currentBackStack(
         device: IDevice
@@ -280,21 +324,31 @@ class AdbControllerImp(
         execute {
             val applicationID = getApplicationID(device)
             val permissions = GetApplicationPermission().execute(applicationID, project, device)
-            if (permissions.isNotEmpty())
-                block(permissions)
-            else
-                error("Your Application Doesn't Require any of Runtime Permissions ")
+            if (permissions.isEmpty()) {
+                error("This application does not declare any runtime permissions.")
+            }
+            // The caller opens a dialog with this list, so it has to arrive on the EDT.
+            onEdt { block(permissions) }
         }
     }
 
+    /**
+     * Runs entirely on a pooled thread.
+     *
+     * This previously reused [getApplicationPermissions], whose callback now delivers on the
+     * EDT because its other caller opens a dialog. Issuing one `pm grant`/`pm revoke` per
+     * permission from there would block the UI thread for the whole batch.
+     */
     override fun grantOrRevokeAllPermissions(
         device: IDevice,
         permissionOperation: GetApplicationPermission.PermissionOperation,
     ) {
-        getApplicationPermissions(
-            device,
-        ) { permissionsList ->
+        execute {
             val applicationID = getApplicationID(device)
+            val permissions = GetApplicationPermission().execute(applicationID, project, device)
+            if (permissions.isEmpty()) {
+                error("This application does not declare any runtime permissions.")
+            }
 
             val operation: (ListItem) -> Unit = when (permissionOperation) {
                 GetApplicationPermission.PermissionOperation.GRANT ->
@@ -304,9 +358,8 @@ class AdbControllerImp(
                     { permission -> RevokePermissionCommand().execute(applicationID, permission, project, device) }
             }
 
-            permissionsList
-                .forEach { permission -> operation(permission) }
-                .also { showSuccess("All permissions ${permissionOperation.operationResult}") }
+            permissions.forEach(operation)
+            showSuccess("All permissions ${permissionOperation.operationResult}")
         }
     }
 
@@ -334,11 +387,15 @@ class AdbControllerImp(
         }
     }
 
+    /**
+     * Not implemented. `ConnectDeviceOverIPCommand` has always been a stub that returns an
+     * empty string, while this method reported "connected to $ip" regardless — claiming
+     * success for something that never happened. The button driving it is hidden in the
+     * tool window, so the path is currently unreachable; it fails honestly rather than
+     * lying if anything reaches it.
+     */
     override fun connectDeviceOverIp(ip: String) {
-        execute {
-            ConnectDeviceOverIPCommand().execute(ip, project)
-            showSuccess("connected to $ip")
-        }
+        showError("Connecting to a device over IP is not implemented yet.")
     }
 
     override fun enableDisableShowTaps(
@@ -415,24 +472,30 @@ class AdbControllerImp(
         }
     }
 
-    private fun showError(message: String) {
-        ApplicationManager.getApplication().invokeLater {
-            CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.ERROR)
-        }
+    private fun showError(message: String) = onEdt {
+        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.ERROR)
     }
 
-    private fun showSuccess(message: String) {
-        ApplicationManager.getApplication().invokeLater {
-            CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.INFORMATION)
-        }
+    private fun showSuccess(message: String) = onEdt {
+        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.INFORMATION)
     }
 
+    /**
+     * Runs [block] on a pooled thread, reporting failures to the user *and* the IDE log.
+     *
+     * The previous version discarded the exception entirely and showed `e.message ?: "not
+     * found"`, so a null-message exception surfaced to the user as the word "not found"
+     * with no stack trace recorded anywhere.
+     */
     private fun execute(block: () -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 block()
+            } catch (e: ProcessCanceledException) {
+                throw e
             } catch (e: Exception) {
-                showError(e.message ?: "not found")
+                log.warn("Spock ADB command failed", e)
+                showError(e.message?.takeIf { it.isNotBlank() } ?: "${e.javaClass.simpleName} — see idea.log")
             }
         }
     }

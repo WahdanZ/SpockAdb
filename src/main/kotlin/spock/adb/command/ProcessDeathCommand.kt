@@ -24,7 +24,9 @@ class ProcessDeathCommand : Command<String, Unit> {
 
     private fun sendAppToBackgroundIfInForeground(device: IDevice, p: String) {
         if (device.isAppInForeground(p)) {
-            device.executeShellCommand("input keyevent 3", ShellOutputReceiver(), 0, TimeUnit.SECONDS)
+            // A timeout of 0 means "wait forever" in ddmlib. If the device stopped
+            // responding, this hung the pooled thread with no way to recover.
+            device.executeShellCommand("input keyevent 3", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)
         }
     }
 

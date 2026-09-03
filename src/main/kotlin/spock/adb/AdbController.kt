@@ -7,7 +7,17 @@ import spock.adb.premission.ListItem
 
 interface AdbController {
     fun refresh()
+
+    /** Reads the device list once. [block] is invoked on the EDT. */
     fun connectedDevices(block: (devices: List<IDevice>) -> Unit)
+
+    /**
+     * Subscribes to the device list: [block] is invoked on the EDT with the current devices
+     * and again on every connect, disconnect or state change. Only one observer is
+     * supported, which is the tool window; menu actions use [connectedDevices] instead so
+     * they do not replace it.
+     */
+    fun observeDevices(block: (devices: List<IDevice>) -> Unit)
     fun currentBackStack(device: IDevice)
     fun currentApplicationBackStack(device: IDevice)
     fun currentActivity(device: IDevice)
