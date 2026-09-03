@@ -13,6 +13,8 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import org.jetbrains.android.sdk.AndroidSdkUtils
 import spock.adb.command.*
+import spock.adb.device.ConnectedDevice
+import spock.adb.device.DeviceInfoReader
 import spock.adb.models.ActivityData
 import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
@@ -37,17 +39,24 @@ class AdbControllerImp(
     private val log = Logger.getInstance(AdbControllerImp::class.java)
 
     @Volatile
-    private var updateDeviceList: ((List<IDevice>) -> Unit)? = null
+    private var updateDeviceList: ((List<ConnectedDevice>) -> Unit)? = null
 
     init {
         AndroidDebugBridge.addDeviceChangeListener(this)
     }
 
-    private fun devices(): List<IDevice> =
+    /**
+     * Reads the device list and resolves each device's metadata.
+     *
+     * Runs on a pooled thread: `IDevice.getProperty` blocks, so the UI must never do this
+     * itself while rendering the device dropdown.
+     */
+    private fun devices(): List<ConnectedDevice> =
         runCatching { debugBridgeProvider()?.devices?.toList() }
             .onFailure { log.warn("Could not read the connected device list from ADB", it) }
             .getOrNull()
             .orEmpty()
+            .map { ConnectedDevice(it, DeviceInfoReader.read(it)) }
 
     /** Device-change callbacks arrive on ddmlib threads; the listener updates Swing. */
     private fun publishDeviceList() {
@@ -84,14 +93,14 @@ class AdbControllerImp(
      * on the EDT and — for the connect/disconnect callbacks below — that Swing models were
      * mutated from a ddmlib thread.
      */
-    override fun connectedDevices(block: (devices: List<IDevice>) -> Unit) {
+    override fun connectedDevices(block: (devices: List<ConnectedDevice>) -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
             val devices = devices()
             onEdt { block(devices) }
         }
     }
 
-    override fun observeDevices(block: (devices: List<IDevice>) -> Unit) {
+    override fun observeDevices(block: (devices: List<ConnectedDevice>) -> Unit) {
         updateDeviceList = block
         connectedDevices(block)
     }

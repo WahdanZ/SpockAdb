@@ -4,3 +4,8 @@
 formatting:
   Indentation:
     active: false
+
+complexity:
+  LongParameterList:
+    # Test fixture builders legitimately mirror the shape of the data class under test.
+    excludes: ['**/test/**']
