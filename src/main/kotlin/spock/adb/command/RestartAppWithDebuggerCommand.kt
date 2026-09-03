@@ -3,6 +3,7 @@ package spock.adb.command
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
+import spock.adb.ShellQuote
 import spock.adb.compat.DebuggerSupport
 import spock.adb.forceKillApp
 import spock.adb.getDefaultActivityForApplication
@@ -19,7 +20,7 @@ class RestartAppWithDebuggerCommand : Command<String, Unit> {
                 when {
                     activity.isNotEmpty() -> {
                         device.executeShellCommand(
-                            "am start -D -n $activity",
+                            "am start -D -n ${ShellQuote.quote(activity)}",
                             ShellOutputReceiver(),
                             15L,
                             TimeUnit.SECONDS

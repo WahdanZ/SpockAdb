@@ -1,44 +1,66 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
-import java.util.concurrent.TimeUnit
 import spock.adb.command.DontKeepActivitiesState
 import spock.adb.command.Network
 import spock.adb.command.NetworkState
 import spock.adb.command.ShowLayoutBoundsState
 import spock.adb.command.ShowTapsState
+import java.util.concurrent.TimeUnit
 
 fun IDevice.forceKillApp(applicationID: String?, seconds: Long) {
     val shellOutputReceiver = ShellOutputReceiver()
-    executeShellCommand("am force-stop $applicationID", shellOutputReceiver, seconds, TimeUnit.SECONDS)
+    executeShellCommand(
+        "am force-stop ${ShellQuote.quote(applicationID.orEmpty())}",
+        shellOutputReceiver,
+        seconds,
+        TimeUnit.SECONDS,
+    )
 }
 
 fun IDevice.isAppInstall(applicationID: String?): Boolean {
     val shellOutputReceiver = ShellOutputReceiver()
-    executeShellCommand("pm list packages $applicationID", shellOutputReceiver, 15L, TimeUnit.SECONDS)
+    executeShellCommand(
+        "pm list packages ${ShellQuote.quote(applicationID.orEmpty())}",
+        shellOutputReceiver,
+        15L,
+        TimeUnit.SECONDS,
+    )
     return !shellOutputReceiver.toString().isEmpty()
 }
 
 fun IDevice.startActivity(activity: String) {
-    executeShellCommand("am start -n $activity", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)
+    executeShellCommand(
+        "am start -n ${ShellQuote.quote(activity)}",
+        ShellOutputReceiver(),
+        15L,
+        TimeUnit.SECONDS,
+    )
 }
 
 fun IDevice.clearAppData(applicationID: String?, seconds: Long) {
-    executeShellCommand("pm clear $applicationID", ShellOutputReceiver(), seconds, TimeUnit.SECONDS)
+    executeShellCommand(
+        "pm clear ${ShellQuote.quote(applicationID.orEmpty())}",
+        ShellOutputReceiver(),
+        seconds,
+        TimeUnit.SECONDS,
+    )
 }
 
 fun IDevice.getDefaultActivityForApplication(packageName: String?): String {
     val outputReceiver = ShellOutputReceiver()
-    if (isNougatOrAbove())
+    if (isNougatOrAbove()) {
         executeShellCommand(
-            "cmd package resolve-activity --brief $packageName | tail -n 1",
+            "cmd package resolve-activity --brief " +
+                "${ShellQuote.quote(packageName.orEmpty())} | tail -n 1",
             outputReceiver,
             15L,
             TimeUnit.SECONDS
         )
-    else {
+    } else {
         executeShellCommand(
-            "pm dump $packageName | grep -B 10 category\\.LAUNCHER | grep -o '[^ ]*/[^ ]*' | tail -n 1",
+            "pm dump ${ShellQuote.quote(packageName.orEmpty())} " +
+                "| grep -B 10 category\\.LAUNCHER | grep -o '[^ ]*/[^ ]*' | tail -n 1",
             outputReceiver,
             15L,
             TimeUnit.SECONDS

@@ -31,7 +31,12 @@ class ProcessDeathCommand : Command<String, Unit> {
     }
 
     private fun killAppProcess(device: IDevice, p: String) =
-        device.executeShellCommand("am kill $p", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)
+        device.executeShellCommand(
+            "am kill ${ShellQuote.quote(p)}",
+            ShellOutputReceiver(),
+            15L,
+            TimeUnit.SECONDS,
+        )
 
     private fun startApplication(device: IDevice, p: String) {
         val activity = device.getDefaultActivityForApplication(p)

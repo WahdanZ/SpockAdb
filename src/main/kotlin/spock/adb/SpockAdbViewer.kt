@@ -188,17 +188,23 @@ class SpockAdbViewer(
         }
         clearAppDataButton.addActionListener {
             selectedIDevice?.let { device ->
-                adbController.clearAppData(device)
+                if (DestructiveActionConfirmation.confirmClearData(project, device, andRestart = false)) {
+                    adbController.clearAppData(device)
+                }
             }
         }
         clearAppDataAndRestartButton.addActionListener {
             selectedIDevice?.let { device ->
-                adbController.clearAppDataAndRestart(device)
+                if (DestructiveActionConfirmation.confirmClearData(project, device, andRestart = true)) {
+                    adbController.clearAppDataAndRestart(device)
+                }
             }
         }
         uninstallAppButton.addActionListener {
             selectedIDevice?.let { device ->
-                adbController.uninstallApp(device)
+                if (DestructiveActionConfirmation.confirmUninstall(project, device)) {
+                    adbController.uninstallApp(device)
+                }
             }
         }
 
@@ -228,11 +234,12 @@ class SpockAdbViewer(
         }
         revokeAllPermissionsButton.addActionListener {
             selectedIDevice?.let { device ->
-                adbController.grantOrRevokeAllPermissions(
-                    device,
-                    GetApplicationPermission.PermissionOperation.REVOKE,
-
+                if (DestructiveActionConfirmation.confirmRevokeAllPermissions(project, device)) {
+                    adbController.grantOrRevokeAllPermissions(
+                        device,
+                        GetApplicationPermission.PermissionOperation.REVOKE,
                     )
+                }
             }
         }
         wifiToggle.addActionListener {

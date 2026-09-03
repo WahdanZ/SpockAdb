@@ -2,9 +2,8 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-
-import spock.adb.isAppInstall
 import spock.adb.forceKillApp
+import spock.adb.isAppInstall
 
 class ForceKillAppCommand:Command<String,Unit> {
     override fun execute(p: String, project: Project, device: IDevice) {
