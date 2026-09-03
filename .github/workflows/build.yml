@@ -77,6 +77,46 @@ jobs:
           name: ${{ steps.artifact.outputs.filename }}
           path: ./build/distributions/content/*/*
 
+  verify:
+    name: Plugin Verifier
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Fetch Sources
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+          cache: gradle
+
+      - name: Free Disk Space
+        run: |
+          # The verifier downloads one full IDE per target; the default runner image
+          # does not leave enough room for five of them.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+
+      - name: Cache Verifier IDEs
+        uses: actions/cache@v4
+        with:
+          path: ~/.pluginVerifier
+          key: plugin-verifier-${{ hashFiles('build.gradle.kts') }}
+          restore-keys: plugin-verifier-
+
+      - name: Run Plugin Verifier
+        run: ./gradlew verifyPlugin
+
+      - name: Upload Verifier Report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-verifier-report
+          path: ./build/reports/pluginVerifier
+          if-no-files-found: ignore
+
   releaseDraft:
     name: Release Draft
     if: github.event_name != 'pull_request'

@@ -7,6 +7,7 @@ import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import spock.adb.command.*
+import spock.adb.compat.DebuggerSupport
 import spock.adb.premission.CheckBoxDialog
 import java.awt.event.ActionEvent
 import javax.swing.*
@@ -265,7 +266,11 @@ class SpockAdbViewer(
                 SpockAction.CLEAR_APP_DATA -> clearAppDataButton.isVisible = it.isSelected
                 SpockAction.CLEAR_APP_DATA_RESTART -> clearAppDataAndRestartButton.isVisible = it.isSelected
                 SpockAction.RESTART -> restartAppButton.isVisible = it.isSelected
-                SpockAction.RESTART_DEBUG -> restartAppWithDebuggerButton.isVisible = it.isSelected
+                // Attaching a debugger needs the Android Studio execution tooling, which is
+                // absent in some IDEs that bundle the Android plugin. Hide the action there
+                // rather than offering a button that can only report an error.
+                SpockAction.RESTART_DEBUG ->
+                    restartAppWithDebuggerButton.isVisible = it.isSelected && DebuggerSupport.isAvailable
                 SpockAction.TEST_PROCESS_DEATH -> testProcessDeathButton.isVisible = it.isSelected
                 SpockAction.FORCE_KILL -> forceKillAppButton.isVisible = it.isSelected
                 SpockAction.UNINSTALL -> uninstallAppButton.isVisible = it.isSelected
@@ -355,24 +360,27 @@ class SpockAdbViewer(
     }
 
     private fun setToolWindowListener() {
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
 
-        ToolWindowManager
-            .getInstance(project)
-            .run {
-                val toolWindow = getToolWindow("Spock ADB")
-                if (toolWindow != null) {
-                    project.messageBus.connect()
-                        .subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
-                            override fun stateChanged() {
-                                if (toolWindow.isVisible) {
-                                    removeDeveloperOptionsListeners()
-                                    ApplicationManager.getApplication().executeOnPooledThread {
-                                        setDeveloperOptionsValues()
-                                    }
-                                }
-                            }
-                        })
-                }
-            }
+        project.messageBus
+            .connect()
+            .subscribe(
+                ToolWindowManagerListener.TOPIC,
+                object : ToolWindowManagerListener {
+                    // The no-argument stateChanged() is deprecated; the ToolWindowManager
+                    // overload has been available since 2020.1.
+                    override fun stateChanged(toolWindowManager: ToolWindowManager) {
+                        if (!toolWindow.isVisible) return
+                        removeDeveloperOptionsListeners()
+                        ApplicationManager.getApplication().executeOnPooledThread {
+                            setDeveloperOptionsValues()
+                        }
+                    }
+                },
+            )
+    }
+
+    private companion object {
+        const val TOOL_WINDOW_ID = "Spock ADB"
     }
 }

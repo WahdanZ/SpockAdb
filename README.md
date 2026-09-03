@@ -73,11 +73,28 @@ Spock ADB puts the most common ADB workflows into a single tool window: navigate
 
 ---
 
+## Supported IDEs
+
+| IDE | Versions |
+|---|---|
+| **Android Studio** | 2023.1 (Hedgehog) and later |
+| **IntelliJ IDEA** | 2023.1 and later, with the bundled Android plugin |
+
+Every release is checked against both IDEs with JetBrains Plugin Verifier before it ships.
+See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the full matrix and the reasoning
+behind the supported range.
+
+> **Note:** `Restart App With Debugger` requires the Android Studio execution tooling. It is
+> available in all supported Android Studio versions and in IntelliJ IDEA 2025.1+, and is
+> hidden automatically on IDEs that do not ship it. Every other feature works everywhere.
+
+---
+
 ## Installation
 
 **JetBrains Marketplace:** [Spock ADB](https://plugins.jetbrains.com/plugin/11591-spock-adb)
 
-Or install directly in Android Studio: `Settings → Plugins → Marketplace → search "Spock ADB"`
+Or install directly from your IDE: `Settings → Plugins → Marketplace → search "Spock ADB"`
 
 ---
 

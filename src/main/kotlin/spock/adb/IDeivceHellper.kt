@@ -115,13 +115,17 @@ fun IDevice.getNetworkState(network: Network): NetworkState {
  * and were silently treated as "unknown", pushing modern devices down the pre-Honeycomb
  * parsing path. `ro.build.version.sdk` is the API level and is always an integer.
  *
- * ddmlib's cached [IDevice.getVersion] is preferred when it is already populated, since it
- * avoids a shell round trip; the property read is the fallback.
+ * ddmlib's cached property table is consulted first since it avoids a shell round trip;
+ * an explicit `getprop` is the fallback.
  */
 fun IDevice.apiLevel(): Int? {
-    @Suppress("DEPRECATION")
-    val cached = runCatching { version.apiLevel }.getOrNull()
-    if (cached != null && cached > 0) return cached
+    // ddmlib caches device properties, so this usually avoids a shell round trip.
+    // Read the property directly rather than IDevice.version.apiLevel, which is deprecated.
+    runCatching { getProperty("ro.build.version.sdk") }
+        .getOrNull()
+        ?.trim()
+        ?.toIntOrNull()
+        ?.let { return it }
 
     val outputReceiver = ShellOutputReceiver()
     executeShellCommand("getprop ro.build.version.sdk", outputReceiver, 15L, TimeUnit.SECONDS)

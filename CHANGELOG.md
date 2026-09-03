@@ -12,7 +12,18 @@
 - **API level detection**: `getApiVersion()` read `ro.build.version.release` (the marketing version, e.g. "8.1.0"), which fails integer parsing and pushed modern devices down the pre-Honeycomb back stack parsing path. Replaced with `apiLevel()`, reading `ro.build.version.sdk` and preferring ddmlib's cached value
 - **Crash**: `GetApplicationBackStackCommand` called `tasks.last()` on a possibly empty list, throwing `NoSuchElementException` on a truncated `dumpsys` dump
 
+### Compatibility
+- **The plugin now works in IntelliJ IDEA, not just Android Studio.** The descriptor declared `<depends>com.intellij.modules.androidstudio</depends>`, which made the Marketplace report the plugin as incompatible with IntelliJ IDEA. Every Android API the plugin uses ships inside the `org.jetbrains.android` plugin rather than the Android Studio platform, so the dependency bought no API guarantees and only restricted reach
+- **Fixed a `NoSuchMethodError` on Android Studio 2023.1 through 2024.x.** `sinceBuild` was `231` while compiling against platform `251`. Kotlin emits compatibility-bridge overrides that `invokespecial` into every default method a platform interface had at compile time, so `AdbDrawerViewer` — the tool window factory, and therefore the plugin's entry point — referenced `ToolWindowFactory.manage` and `isApplicableAsync`, neither of which exists on 231. The tool window could not open. Fixed with `-Xjvm-default=all`
+- **Declared the missing Java plugin dependency.** The plugin navigates to sources through `JavaPsiFacade` and `PsiShortNamesCache` without declaring `com.intellij.modules.java`, which Plugin Verifier reported as a compatibility problem on every target
+- Restored Plugin Verifier and wired it into CI, now covering Android Studio 231/242/251 and IntelliJ IDEA 231/251. All five report `Compatible`
+- `Restart App With Debugger` is feature-detected at runtime and hidden on IDEs without the Android Studio execution tooling, instead of failing with `NoClassDefFoundError`
+- Replaced the deprecated `ToolWindowManagerListener.stateChanged()` override and the deprecated `AndroidVersion.getApiLevel()` call
+- Added `docs/COMPATIBILITY.md` documenting the supported range, the verification matrix and how to change it
+
 ### Changed
+- Application ID resolution reads through the stable `AndroidModel` interface instead of the Gradle-specific `GradleAndroidModel`, and now prefers application modules over libraries — in a multi-module project the previous code used an arbitrary facet and could resolve the wrong module or none at all
+- A project with no resolvable application ID now reports an actionable message; previously the nullable result was passed through `.toString()`, producing the literal string `"null"` and the misleading error `Application null not installed`
 - ADB output parsing extracted from the command classes into pure functions in `spock.adb.parser` (`ActivityParser`, `BackStackParser`, `ApplicationBackStackParser`, `FragmentDumpParser`), so it can be tested without a connected device
 
 ### Fixed
