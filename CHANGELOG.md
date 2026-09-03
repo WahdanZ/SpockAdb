@@ -34,6 +34,14 @@
 - **Dishonest success**: `connectDeviceOverIp` reported "connected to $ip" while its command was an empty stub that did nothing
 - **Compatibility**: `project.service<T>()` inlines a call to `ServicesKt.serviceNotFoundError`, absent before 2023.3, which would have thrown `NoSuchMethodError` on the oldest supported builds. Replaced with the non-inline `getService` in both services
 
+### Device management
+- The device dropdown now shows model, Android version, API level, architecture, and whether the device is an emulator or a handset, instead of just the raw ddmlib name. Offline, unauthorized and bootloader devices are labelled as such
+- **The selected device is persisted between sessions.** `AppSetting.selectedDevice` has existed since settings were introduced but was never read or written
+- Menu actions now ignore devices that cannot accept commands, and say why when none are usable (for example "Pixel 7 is unauthorized"), rather than failing part-way through a command
+- When no device was previously selected the plugin now prefers an online device rather than whichever happened to be first
+- Device metadata is read on a background thread; `IDevice.getProperty` blocks, so this must never happen while the dropdown is being rendered
+- Confirmation prompts name the target device, so it is unambiguous which of several attached devices an action will affect
+
 ### Security
 - **Shell injection via the device.** ADB commands are built by string interpolation and run through the device shell. The two fields the user types into were interpolated inside hand-written quotes — `input text '$p'` and `am start ... -d "$p"` — so a value containing the matching quote character closed it early and everything after ran as shell on the connected device. Pasting a crafted deep link was enough. All interpolated values now go through `ShellQuote.quote`, which single-quotes and escapes embedded quotes
 - Every other interpolation site was hardened the same way: package names, activity components, permission names and animation scales

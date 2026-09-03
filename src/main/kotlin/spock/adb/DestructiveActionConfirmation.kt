@@ -1,8 +1,8 @@
 package spock.adb
 
-import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
+import spock.adb.device.DeviceInfo
 
 /**
  * Confirmation prompts for operations that destroy state on the device.
@@ -14,7 +14,7 @@ import com.intellij.openapi.ui.MessageDialogBuilder
  */
 object DestructiveActionConfirmation {
 
-    fun confirmUninstall(project: Project, device: IDevice): Boolean = ask(
+    fun confirmUninstall(project: Project, device: DeviceInfo): Boolean = ask(
         project,
         title = "Uninstall Application",
         message = "Uninstall the app from ${device.describe()}?\n\n" +
@@ -22,7 +22,7 @@ object DestructiveActionConfirmation {
         yesText = "Uninstall",
     )
 
-    fun confirmClearData(project: Project, device: IDevice, andRestart: Boolean): Boolean = ask(
+    fun confirmClearData(project: Project, device: DeviceInfo, andRestart: Boolean): Boolean = ask(
         project,
         title = if (andRestart) "Clear App Data and Restart" else "Clear App Data",
         message = "Clear all data for the app on ${device.describe()}?\n\n" +
@@ -30,7 +30,7 @@ object DestructiveActionConfirmation {
         yesText = "Clear Data",
     )
 
-    fun confirmRevokeAllPermissions(project: Project, device: IDevice): Boolean = ask(
+    fun confirmRevokeAllPermissions(project: Project, device: DeviceInfo): Boolean = ask(
         project,
         title = "Revoke All Permissions",
         message = "Revoke every runtime permission for the app on ${device.describe()}?\n\n" +
@@ -45,10 +45,4 @@ object DestructiveActionConfirmation {
             .noText("Cancel")
             .asWarning()
             .ask(project)
-
-    /** Device model plus serial, so the prompt is unambiguous with several devices attached. */
-    private fun IDevice.describe(): String {
-        val model = runCatching { name }.getOrNull()?.takeIf { it.isNotBlank() }
-        return if (model != null && model != serialNumber) "$model ($serialNumber)" else serialNumber
-    }
 }

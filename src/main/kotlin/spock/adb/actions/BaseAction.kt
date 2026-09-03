@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import spock.adb.AdbController
 import spock.adb.SpockAdbService
+import spock.adb.device.ConnectedDevice
 import spock.adb.notification.CommonNotifier.Companion.showNotifier
 
 abstract class BaseAction : AnAction() {
@@ -31,17 +32,31 @@ abstract class BaseAction : AnAction() {
         // owned by SpockAdbService, so unlike the previous implementation it is not disposed
         // out from under this callback — which used to cancel the work before it ran.
         controller.connectedDevices { devices ->
+            val usable = devices.filter { it.info.isUsable }
             when {
-                devices.isEmpty() ->
-                    showNotifier(project = project, content = "No connected devices", type = NotificationType.ERROR)
-                devices.size == 1 -> performAction(controller, devices.first())
-                else -> showDeviceList(project, devices) { performAction(controller, it) }
+                usable.isEmpty() -> showNotifier(
+                    project = project,
+                    content = if (devices.isEmpty()) {
+                        "No connected devices"
+                    } else {
+                        devices.joinToString(prefix = "No device is ready: ") {
+                            "${it.info.displayName} is ${it.info.state.label}"
+                        }
+                    },
+                    type = NotificationType.ERROR,
+                )
+                usable.size == 1 -> performAction(controller, usable.first().device)
+                else -> showDeviceList(project, usable) { performAction(controller, it.device) }
             }
         }
     }
 
-    private fun showDeviceList(project: Project, devices: List<IDevice>, block: (device: IDevice) -> Unit) {
-        val names = devices.map { it.name }
+    private fun showDeviceList(
+        project: Project,
+        devices: List<ConnectedDevice>,
+        block: (device: ConnectedDevice) -> Unit,
+    ) {
+        val names = devices.map { it.info.label() }
         JBPopupFactory.getInstance()
             .createPopupChooserBuilder(names)
             .setTitle("Devices")

@@ -9,6 +9,7 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import spock.adb.command.*
 import spock.adb.compat.DebuggerSupport
+import spock.adb.device.ConnectedDevice
 import spock.adb.premission.CheckBoxDialog
 import java.awt.event.ActionEvent
 import java.awt.event.ItemEvent
@@ -40,7 +41,7 @@ class SpockAdbViewer(
     private lateinit var currentAppBackStackButton: JButton
     private lateinit var adbWifi: JButton
     private lateinit var setting: JButton
-    private var devices: List<IDevice> = emptyList()
+    private var devices: List<ConnectedDevice> = emptyList()
     private lateinit var enableDisableDontKeepActivities: JCheckBox
     private lateinit var enableDisableShowTaps: JCheckBox
     private lateinit var enableDisableShowLayoutBounds: JCheckBox
@@ -54,7 +55,10 @@ class SpockAdbViewer(
     private lateinit var inputOnDeviceButton: JButton
     private lateinit var openDeepLinkButton: JButton
     private lateinit var openDeveloperOptionsButton: JButton
-    private var selectedIDevice: IDevice? = null
+    private var selectedDevice: ConnectedDevice? = null
+
+    /** The ddmlib handle every command still operates on. */
+    private val selectedIDevice: IDevice? get() = selectedDevice?.device
 
     private lateinit var adbController: AdbController
 
@@ -143,7 +147,8 @@ class SpockAdbViewer(
             // model is emptied. Indexing straight into `devices` threw
             // ArrayIndexOutOfBoundsException whenever the last device disconnected.
             if (event.stateChange == ItemEvent.SELECTED) {
-                selectedIDevice = devices.getOrNull(devicesListComboBox.selectedIndex)
+                selectedDevice = devices.getOrNull(devicesListComboBox.selectedIndex)
+                rememberSelectedDevice()
             }
         }
         activitiesBackStackButton.addActionListener {
@@ -187,22 +192,22 @@ class SpockAdbViewer(
             }
         }
         clearAppDataButton.addActionListener {
-            selectedIDevice?.let { device ->
-                if (DestructiveActionConfirmation.confirmClearData(project, device, andRestart = false)) {
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmClearData(project, deviceInfo, andRestart = false)) {
                     adbController.clearAppData(device)
                 }
             }
         }
         clearAppDataAndRestartButton.addActionListener {
-            selectedIDevice?.let { device ->
-                if (DestructiveActionConfirmation.confirmClearData(project, device, andRestart = true)) {
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmClearData(project, deviceInfo, andRestart = true)) {
                     adbController.clearAppDataAndRestart(device)
                 }
             }
         }
         uninstallAppButton.addActionListener {
-            selectedIDevice?.let { device ->
-                if (DestructiveActionConfirmation.confirmUninstall(project, device)) {
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmUninstall(project, deviceInfo)) {
                     adbController.uninstallApp(device)
                 }
             }
@@ -233,8 +238,8 @@ class SpockAdbViewer(
             }
         }
         revokeAllPermissionsButton.addActionListener {
-            selectedIDevice?.let { device ->
-                if (DestructiveActionConfirmation.confirmRevokeAllPermissions(project, device)) {
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmRevokeAllPermissions(project, deviceInfo)) {
                     adbController.grantOrRevokeAllPermissions(
                         device,
                         GetApplicationPermission.PermissionOperation.REVOKE,
@@ -324,14 +329,38 @@ class SpockAdbViewer(
 
             // Match on serial rather than instance identity: ddmlib hands out a new IDevice
             // after a reconnect, so identity comparison silently reset the selection.
-            val previousSerial = selectedIDevice?.serialNumber
-            selectedIDevice = connected.firstOrNull { it.serialNumber == previousSerial }
+            // Falls back to the serial persisted from the previous session, then to the
+            // first device that is actually usable, so the plugin does not default to an
+            // offline or unauthorised device.
+            val preferredSerial = selectedDevice?.serialNumber ?: persistedDeviceSerial()
+            selectedDevice = connected.firstOrNull { it.serialNumber == preferredSerial }
+                ?: connected.firstOrNull { it.info.isUsable }
                 ?: connected.firstOrNull()
 
             devicesListComboBox.model = DefaultComboBoxModel(
-                connected.map { it.name }.toTypedArray(),
+                connected.map { it.info.label() }.toTypedArray(),
             )
-            selectedIDevice?.let { devicesListComboBox.selectedIndex = connected.indexOf(it) }
+            selectedDevice?.let { devicesListComboBox.selectedIndex = connected.indexOf(it) }
+            devicesListComboBox.toolTipText = selectedDevice?.info?.describe()
+            rememberSelectedDevice()
+        }
+    }
+
+    private fun persistedDeviceSerial(): String? =
+        AppSettingService.getInstance().state.selectedDevice?.takeIf { it.isNotBlank() }
+
+    /**
+     * Persists the chosen device so it is reselected next session.
+     *
+     * `AppSetting.selectedDevice` has existed since the settings were introduced but was
+     * never read or written.
+     */
+    private fun rememberSelectedDevice() {
+        val service = AppSettingService.getInstance()
+        val current = service.state
+        val serial = selectedDevice?.serialNumber
+        if (current.selectedDevice != serial) {
+            service.loadState(current.copy(selectedDevice = serial))
         }
     }
 
