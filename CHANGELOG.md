@@ -34,6 +34,9 @@
 - **Dishonest success**: `connectDeviceOverIp` reported "connected to $ip" while its command was an empty stub that did nothing
 - **Compatibility**: `project.service<T>()` inlines a call to `ServicesKt.serviceNotFoundError`, absent before 2023.3, which would have thrown `NoSuchMethodError` on the oldest supported builds. Replaced with the non-inline `getService` in both services
 
+### Fixed
+- **"Don't Keep Activities" did nothing.** The checkbox displayed the current device setting but was never given an action listener: clicking it moved the tick, left the device unchanged, and silently reverted on the next refresh. It now toggles `always_finish_activities` like the other developer options
+
 ### Device management
 - The device dropdown now shows model, Android version, API level, architecture, and whether the device is an emulator or a handset, instead of just the raw ddmlib name. Offline, unauthorized and bootloader devices are labelled as such
 - **The selected device is persisted between sessions.** `AppSetting.selectedDevice` has existed since settings were introduced but was never read or written

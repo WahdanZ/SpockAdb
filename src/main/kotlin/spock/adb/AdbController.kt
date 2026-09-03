@@ -35,6 +35,7 @@ interface AdbController {
     fun revokePermission(device: IDevice, listItem: ListItem)
     fun grantPermission(device: IDevice, listItem: ListItem)
     fun connectDeviceOverIp(ip: String)
+    fun enableDisableDontKeepActivities(device: IDevice)
     fun enableDisableShowTaps(device: IDevice)
     fun enableDisableShowLayoutBounds(device: IDevice)
     fun setWindowAnimatorScale(scale: String, device: IDevice)

@@ -62,6 +62,12 @@ class SpockAdbViewer(
 
     private lateinit var adbController: AdbController
 
+    private val dontKeepActivitiesActionListener: (ActionEvent) -> Unit = {
+        selectedIDevice?.let { device ->
+            adbController.enableDisableDontKeepActivities(device)
+        }
+    }
+
     private val showTapsActionListener: (ActionEvent) -> Unit = {
         selectedIDevice?.let { device ->
             adbController.enableDisableShowTaps(device)
@@ -365,6 +371,10 @@ class SpockAdbViewer(
     }
 
     private fun removeDeveloperOptionsListeners() {
+        enableDisableDontKeepActivities.actionListeners.forEach {
+            enableDisableDontKeepActivities.removeActionListener(it)
+        }
+
         enableDisableShowTaps.actionListeners.forEach {
             enableDisableShowTaps.removeActionListener(it)
         }
@@ -409,6 +419,8 @@ class SpockAdbViewer(
     }
 
     private fun setDeveloperOptionsListeners() {
+        enableDisableDontKeepActivities.addActionListener(dontKeepActivitiesActionListener)
+
         enableDisableShowTaps.addActionListener(showTapsActionListener)
 
         enableDisableShowLayoutBounds.addActionListener(showLayoutBoundsActionListener)

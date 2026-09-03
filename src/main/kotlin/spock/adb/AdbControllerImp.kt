@@ -407,6 +407,12 @@ class AdbControllerImp(
         showError("Connecting to a device over IP is not implemented yet.")
     }
 
+    override fun enableDisableDontKeepActivities(device: IDevice) {
+        execute {
+            showSuccess(EnableDisableDontKeepActivitiesCommand().execute(Any(), project, device))
+        }
+    }
+
     override fun enableDisableShowTaps(
         device: IDevice
 
