@@ -54,6 +54,11 @@ dependencies {
         bundledPlugin("com.intellij.gradle")
 
         instrumentationTools()
+
+        // The Plugin Verifier CLI. Without this declaration `verifyPlugin` only works when
+        // the jar happens to already be in the Gradle cache, so it passes locally and on a
+        // warm CI runner, then fails on a cold one with "executable not found".
+        pluginVerifier()
     }
 
     implementation("org.jooq:joor:0.9.15")
