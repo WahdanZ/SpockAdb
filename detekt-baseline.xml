@@ -1,0 +1,184 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ArgumentListWrapping:Debugger.kt$Debugger$(androidDebugger, device.getClient(packageName) ?: client ?: return@invokeLater)</ID>
+    <ID>ArgumentListWrapping:GetApplicationPermission.kt$GetApplicationPermission$("Device API level is below Marshmallow. Runtime permissions are not supported on this device.")</ID>
+    <ID>ArgumentListWrapping:IDeivceHellper.kt$("dumpsys activity recents | grep 'Recent #0' | cut -d= -f2 | sed 's| .*||' | cut -d '/' -f1", shellOutputReceiver, 15L, TimeUnit.SECONDS)</ID>
+    <ID>ArgumentListWrapping:IDeivceHellper.kt$("settings get global ${network.networkSettingIdentifier}", outputReceiver, 15L, TimeUnit.SECONDS)</ID>
+    <ID>ArgumentListWrapping:IPAddressInputValidator.kt$IPAddressInputValidator$(pattern = "^(\\d|[1-9]\\d|1\\d\\d|2([0-4]\\d|5[0-5]))\\.(\\d|[1-9]\\d" + "|1\\d\\d|2" + "([0-4]\\d|5[0-5]))\\.(\\d|[1-9]\\d|1\\d\\d|2([0-4]\\d|5[0-5]))\\.(\\d|[1-9]\\d|1\\d\\" + "d|2([0-4]\\d|5[0-5]))\$")</ID>
+    <ID>ArgumentListWrapping:OpenDeepLinkCommand.kt$OpenDeepLinkCommand$("am start -a android.intent.action.VIEW -d \"$p\"", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)</ID>
+    <ID>ArgumentListWrapping:PsiClassHelper.kt$( this, GlobalSearchScope.allScope(project) )</ID>
+    <ID>CommentSpacing:ProcessDeathCommand.kt$ProcessDeathCommand$//If we don't add this delay, the following commands executes without the app</ID>
+    <ID>CyclomaticComplexMethod:SpockAdbViewer.kt$SpockAdbViewer$fun initPlugin(adbController: AdbController)</ID>
+    <ID>CyclomaticComplexMethod:SpockAdbViewer.kt$SpockAdbViewer$private fun updateUi(it: AppSetting)</ID>
+    <ID>EmptyFunctionBlock:AdbControllerImp.kt$AdbControllerImp${}</ID>
+    <ID>EmptyFunctionBlock:BaseAction.kt$BaseAction${}</ID>
+    <ID>EmptyFunctionBlock:ShellOutputReceiver.kt$ShellOutputReceiver${}</ID>
+    <ID>Filename:utils.kt$spock.adb.utils.kt</ID>
+    <ID>FinalNewline:BaseAction.kt$spock.adb.actions.BaseAction.kt</ID>
+    <ID>FinalNewline:GetCurrentActivityAction.kt$spock.adb.actions.GetCurrentActivityAction.kt</ID>
+    <ID>FinalNewline:GetCurrentApplicationBackStackAction.kt$spock.adb.actions.GetCurrentApplicationBackStackAction.kt</ID>
+    <ID>FinalNewline:GetCurrentFragmentAction.kt$spock.adb.actions.GetCurrentFragmentAction.kt</ID>
+    <ID>FinalNewline:RestartAppAction.kt$spock.adb.actions.RestartAppAction.kt</ID>
+    <ID>FinalNewline:RestartAppWithDebuggerAction.kt$spock.adb.actions.RestartAppWithDebuggerAction.kt</ID>
+    <ID>FunctionReturnTypeSpacing:IDeivceHellper.kt$fun IDevice.isAppInForeground(applicationID: String?):Boolean</ID>
+    <ID>FunctionStartOfBodySpacing:IDeivceHellper.kt$fun IDevice.isAppInForeground(applicationID: String?):Boolean</ID>
+    <ID>ImportOrdering:AnimatorDurationScaleCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import java.util.concurrent.TimeUnit import spock.adb.ShellOutputReceiver</ID>
+    <ID>ImportOrdering:ClearAppDataAndRestartCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import spock.adb.clearAppData import spock.adb.getDefaultActivityForApplication import spock.adb.isAppInstall import spock.adb.startActivity</ID>
+    <ID>ImportOrdering:Debugger.kt$import com.android.ddmlib.Client import com.android.ddmlib.IDevice import com.android.tools.idea.execution.common.processhandler.AndroidProcessHandler import com.android.tools.idea.execution.common.debug.AndroidDebugger import com.intellij.execution.ExecutionManager import com.intellij.execution.process.ProcessHandler import com.intellij.execution.process.ProcessOutputTypes import com.intellij.openapi.application.ApplicationManager import com.intellij.openapi.project.Project import org.joor.Reflect import org.joor.Reflect.on</ID>
+    <ID>ImportOrdering:EnableDisableShowLayoutBoundsCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import java.util.concurrent.TimeUnit import spock.adb.ShellOutputReceiver import spock.adb.areShowLayoutBoundsEnabled</ID>
+    <ID>ImportOrdering:EnableDisableShowTapsCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import java.util.concurrent.TimeUnit import spock.adb.ShellOutputReceiver import spock.adb.areShowTapsEnabled</ID>
+    <ID>ImportOrdering:ForceKillAppCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import spock.adb.isAppInstall import spock.adb.forceKillApp</ID>
+    <ID>ImportOrdering:GetApplicationPermission.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import spock.adb.ShellOutputReceiver import spock.adb.isAppInstall import spock.adb.isMarshmallow import spock.adb.premission.ListItem import java.util.concurrent.TimeUnit</ID>
+    <ID>ImportOrdering:IDeivceHellper.kt$import com.android.ddmlib.IDevice import java.util.concurrent.TimeUnit import spock.adb.command.DontKeepActivitiesState import spock.adb.command.Network import spock.adb.command.NetworkState import spock.adb.command.ShowLayoutBoundsState import spock.adb.command.ShowTapsState</ID>
+    <ID>ImportOrdering:RestartAppWithDebuggerCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import spock.adb.* import spock.adb.debugger.Debugger import java.util.concurrent.TimeUnit</ID>
+    <ID>ImportOrdering:ToggleNetworkCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import java.util.concurrent.TimeUnit import spock.adb.ShellOutputReceiver import spock.adb.getNetworkState</ID>
+    <ID>ImportOrdering:TransitionAnimatorScaleCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import java.util.concurrent.TimeUnit import spock.adb.ShellOutputReceiver</ID>
+    <ID>ImportOrdering:UninstallAppCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import spock.adb.isAppInstall</ID>
+    <ID>ImportOrdering:WindowAnimatorScaleCommand.kt$import com.android.ddmlib.IDevice import com.intellij.openapi.project.Project import java.util.concurrent.TimeUnit import spock.adb.ShellOutputReceiver</ID>
+    <ID>LongMethod:SpockAdbViewer.kt$SpockAdbViewer$fun initPlugin(adbController: AdbController)</ID>
+    <ID>MagicNumber:AdbControllerImp.kt$AdbControllerImp$10</ID>
+    <ID>MagicNumber:AdbControllerImp.kt$AdbControllerImp$20</ID>
+    <ID>MagicNumber:AdbControllerImp.kt$AdbControllerImp$5</ID>
+    <ID>MagicNumber:AnimatorDurationScaleCommand.kt$AnimatorDurationScaleCommand$15L</ID>
+    <ID>MagicNumber:CheckBoxDialog.kt$CheckBoxDialog$24</ID>
+    <ID>MagicNumber:ClearAppDataAndRestartCommand.kt$ClearAppDataAndRestartCommand$15L</ID>
+    <ID>MagicNumber:ClearAppDataCommand.kt$ClearAppDataCommand$15L</ID>
+    <ID>MagicNumber:EnableDisableShowLayoutBoundsCommand.kt$EnableDisableShowLayoutBoundsCommand$15L</ID>
+    <ID>MagicNumber:EnableDisableShowTapsCommand.kt$EnableDisableShowTapsCommand$15L</ID>
+    <ID>MagicNumber:ForceKillAppCommand.kt$ForceKillAppCommand$15L</ID>
+    <ID>MagicNumber:GetActivityCommand.kt$GetActivityCommand$15L</ID>
+    <ID>MagicNumber:GetApplicationBackStackCommand.kt$GetApplicationBackStackCommand$15L</ID>
+    <ID>MagicNumber:GetApplicationPermission.kt$GetApplicationPermission$15L</ID>
+    <ID>MagicNumber:GetBackStackCommand.kt$GetBackStackCommand$15L</ID>
+    <ID>MagicNumber:GetFragmentsCommand.kt$GetFragmentsCommand$15L</ID>
+    <ID>MagicNumber:GrantPermissionCommand.kt$GrantPermissionCommand$15L</ID>
+    <ID>MagicNumber:IDeivceHellper.kt$15L</ID>
+    <ID>MagicNumber:IDeivceHellper.kt$23</ID>
+    <ID>MagicNumber:IDeivceHellper.kt$24</ID>
+    <ID>MagicNumber:InputOnDeviceCommand.kt$InputOnDeviceCommand$15L</ID>
+    <ID>MagicNumber:OpenDeepLinkCommand.kt$OpenDeepLinkCommand$15L</ID>
+    <ID>MagicNumber:OpenDeveloperOptionsCommand.kt$OpenDeveloperOptionsCommand$15L</ID>
+    <ID>MagicNumber:ProcessDeathCommand.kt$ProcessDeathCommand$15L</ID>
+    <ID>MagicNumber:ProcessDeathCommand.kt$ProcessDeathCommand$2500L</ID>
+    <ID>MagicNumber:RestartAppCommand.kt$RestartAppCommand$15L</ID>
+    <ID>MagicNumber:RestartAppWithDebuggerCommand.kt$RestartAppWithDebuggerCommand$15L</ID>
+    <ID>MagicNumber:RevokePermissionCommand.kt$RevokePermissionCommand$15L</ID>
+    <ID>MagicNumber:ToggleNetworkCommand.kt$ToggleNetworkCommand$15L</ID>
+    <ID>MagicNumber:TransitionAnimatorScaleCommand.kt$TransitionAnimatorScaleCommand$15L</ID>
+    <ID>MagicNumber:WindowAnimatorScaleCommand.kt$WindowAnimatorScaleCommand$15L</ID>
+    <ID>MaxLineLength:AdbControllerImp.kt$AdbControllerImp$val</ID>
+    <ID>MaxLineLength:Debugger.kt$Debugger$invokeLater { closeOldSessionAndRun(androidDebugger, device.getClient(packageName) ?: client ?: return@invokeLater) }</ID>
+    <ID>MaxLineLength:GetApplicationPermission.kt$GetApplicationPermission$throw Exception("Device API level is below Marshmallow. Runtime permissions are not supported on this device.")</ID>
+    <ID>MaxLineLength:IDeivceHellper.kt$executeShellCommand("dumpsys activity recents | grep 'Recent #0' | cut -d= -f2 | sed 's| .*||' | cut -d '/' -f1", shellOutputReceiver, 15L, TimeUnit.SECONDS)</ID>
+    <ID>MaxLineLength:IDeivceHellper.kt$executeShellCommand("settings get global ${network.networkSettingIdentifier}", outputReceiver, 15L, TimeUnit.SECONDS)</ID>
+    <ID>MaxLineLength:OpenDeepLinkCommand.kt$OpenDeepLinkCommand$device.executeShellCommand("am start -a android.intent.action.VIEW -d \"$p\"", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)</ID>
+    <ID>MaxLineLength:SpockAdbViewer.kt$SpockAdbViewer$animatorDurationScaleComboBox.selectedItem = AnimatorDurationScaleCommand.getAnimatorDurationScaleIndex(durationScale)</ID>
+    <ID>MaxLineLength:SpockAdbViewer.kt$SpockAdbViewer$transitionAnimatorScaleComboBox.selectedItem = TransitionAnimatorScaleCommand.getTransitionAnimatorScaleIndex(transitionScale)</ID>
+    <ID>MaxLineLength:SpockAdbViewer.kt$SpockAdbViewer$windowAnimatorScaleComboBox.selectedItem = WindowAnimatorScaleCommand.getWindowAnimatorScaleIndex(windowScale)</ID>
+    <ID>MaximumLineLength:AdbControllerImp.kt$AdbControllerImp$ </ID>
+    <ID>MaximumLineLength:Debugger.kt$Debugger$ </ID>
+    <ID>MaximumLineLength:GetApplicationPermission.kt$GetApplicationPermission$ </ID>
+    <ID>MaximumLineLength:IDeivceHellper.kt$ </ID>
+    <ID>MaximumLineLength:OpenDeepLinkCommand.kt$OpenDeepLinkCommand$ </ID>
+    <ID>MaximumLineLength:SpockAdbViewer.kt$SpockAdbViewer$ </ID>
+    <ID>MultiLineIfElse:AdbControllerImp.kt$AdbControllerImp$" |--$title (Fragment)"</ID>
+    <ID>MultiLineIfElse:AdbControllerImp.kt$AdbControllerImp$(title.split('.').lastOrNull() ?: "") + "(Activity)"</ID>
+    <ID>MultiLineIfElse:AdbControllerImp.kt$AdbControllerImp$block(permissions)</ID>
+    <ID>MultiLineIfElse:AdbControllerImp.kt$AdbControllerImp$current.psiClassByNameFromCache(project)</ID>
+    <ID>MultiLineIfElse:AdbControllerImp.kt$AdbControllerImp$current.psiClassByNameFromProjct(project)</ID>
+    <ID>MultiLineIfElse:AdbControllerImp.kt$AdbControllerImp$error("Your Application Doesn't Require any of Runtime Permissions ")</ID>
+    <ID>MultiLineIfElse:BaseAction.kt$BaseAction$if (list.size > 1) showDeviceList(project = this, devices = list) { performAction(controller, it) } else performAction(controller, list[0])</ID>
+    <ID>MultiLineIfElse:BaseAction.kt$BaseAction$performAction(controller, list[0])</ID>
+    <ID>MultiLineIfElse:BaseAction.kt$BaseAction$showDeviceList(project = this, devices = list) { performAction(controller, it) }</ID>
+    <ID>MultiLineIfElse:BaseAction.kt$BaseAction$showNotifier(project = this, content = "No Devices", type = NotificationType.ERROR)</ID>
+    <ID>MultiLineIfElse:ClearAppDataAndRestartCommand.kt$ClearAppDataAndRestartCommand$throw Exception("Application $p not installed")</ID>
+    <ID>MultiLineIfElse:ClearAppDataCommand.kt$ClearAppDataCommand$throw Exception("Application $p not installed")</ID>
+    <ID>MultiLineIfElse:ForceKillAppCommand.kt$ForceKillAppCommand$device.forceKillApp(p, 15L)</ID>
+    <ID>MultiLineIfElse:ForceKillAppCommand.kt$ForceKillAppCommand$throw Exception("Application $p not installed" )</ID>
+    <ID>MultiLineIfElse:GetApplicationPermission.kt$GetApplicationPermission$throw Exception("Application $p not installed")</ID>
+    <ID>MultiLineIfElse:GetApplicationPermission.kt$GetApplicationPermission$throw Exception("Device API level is below Marshmallow. Runtime permissions are not supported on this device.")</ID>
+    <ID>MultiLineIfElse:GrantPermissionCommand.kt$GrantPermissionCommand$device.executeShellCommand("pm grant $p ${p2.name}", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)</ID>
+    <ID>MultiLineIfElse:GrantPermissionCommand.kt$GrantPermissionCommand$throw Exception("Application $p not installed")</ID>
+    <ID>MultiLineIfElse:IDeivceHellper.kt$executeShellCommand( "cmd package resolve-activity --brief $packageName | tail -n 1", outputReceiver, 15L, TimeUnit.SECONDS )</ID>
+    <ID>MultiLineIfElse:RestartAppCommand.kt$RestartAppCommand$throw Exception("Application $p not installed")</ID>
+    <ID>MultiLineIfElse:RevokePermissionCommand.kt$RevokePermissionCommand$device.executeShellCommand("pm revoke $p ${p2.name}", ShellOutputReceiver(), 15L, TimeUnit.SECONDS)</ID>
+    <ID>MultiLineIfElse:RevokePermissionCommand.kt$RevokePermissionCommand$throw Exception("Application $p not installed")</ID>
+    <ID>MultiLineIfElse:SpockAdbViewer.kt$SpockAdbViewer$adbController.grantPermission(device, selectedItem)</ID>
+    <ID>MultiLineIfElse:SpockAdbViewer.kt$SpockAdbViewer$adbController.revokePermission(device, selectedItem)</ID>
+    <ID>MultiLineIfElse:SpockAdbViewer.kt$SpockAdbViewer$item</ID>
+    <ID>MultiLineIfElse:SpockAdbViewer.kt$SpockAdbViewer$item.copy(isSelected = selectedItem.isSelected)</ID>
+    <ID>MultiLineIfElse:UninstallAppCommand.kt$UninstallAppCommand$throw Exception("Application $p not installed")</ID>
+    <ID>NewLineAtEndOfFile:BaseAction.kt$spock.adb.actions.BaseAction.kt</ID>
+    <ID>NewLineAtEndOfFile:GetCurrentActivityAction.kt$spock.adb.actions.GetCurrentActivityAction.kt</ID>
+    <ID>NewLineAtEndOfFile:GetCurrentApplicationBackStackAction.kt$spock.adb.actions.GetCurrentApplicationBackStackAction.kt</ID>
+    <ID>NewLineAtEndOfFile:GetCurrentFragmentAction.kt$spock.adb.actions.GetCurrentFragmentAction.kt</ID>
+    <ID>NewLineAtEndOfFile:RestartAppAction.kt$spock.adb.actions.RestartAppAction.kt</ID>
+    <ID>NewLineAtEndOfFile:RestartAppWithDebuggerAction.kt$spock.adb.actions.RestartAppWithDebuggerAction.kt</ID>
+    <ID>NoBlankLineBeforeRbrace:AdbControllerImp.kt$AdbControllerImp$ </ID>
+    <ID>NoBlankLineBeforeRbrace:ClearAppDataAndRestartCommand.kt$ClearAppDataAndRestartCommand$ </ID>
+    <ID>NoBlankLineBeforeRbrace:Debugger.kt$TerminateRunSession$ </ID>
+    <ID>NoBlankLineBeforeRbrace:GetApplicationPermission.kt$GetApplicationPermission$ </ID>
+    <ID>NoBlankLineBeforeRbrace:SpockAdbViewer.kt$SpockAdbViewer$ </ID>
+    <ID>NoConsecutiveBlankLines:AdbControllerImp.kt$ </ID>
+    <ID>NoConsecutiveBlankLines:BaseAction.kt$ </ID>
+    <ID>NoConsecutiveBlankLines:CheckBoxDialog.kt$CheckBoxDialog$ </ID>
+    <ID>NoConsecutiveBlankLines:Debugger.kt$ </ID>
+    <ID>NoEmptyFirstLineInMethodBlock:EnableDisableShowLayoutBoundsCommand.kt$EnableDisableShowLayoutBoundsCommand$ </ID>
+    <ID>NoEmptyFirstLineInMethodBlock:EnableDisableShowTapsCommand.kt$EnableDisableShowTapsCommand$ </ID>
+    <ID>NoEmptyFirstLineInMethodBlock:SpockAdbViewer.kt$SpockAdbViewer$ </ID>
+    <ID>NoEmptyFirstLineInMethodBlock:ToggleNetworkCommand.kt$ToggleNetworkCommand$ </ID>
+    <ID>NoWildcardImports:AdbControllerImp.kt$import spock.adb.command.*</ID>
+    <ID>NoWildcardImports:CheckBoxDialog.kt$import java.awt.event.*</ID>
+    <ID>NoWildcardImports:CheckBoxDialog.kt$import javax.swing.*</ID>
+    <ID>NoWildcardImports:ProcessDeathCommand.kt$import spock.adb.*</ID>
+    <ID>NoWildcardImports:RestartAppCommand.kt$import spock.adb.*</ID>
+    <ID>NoWildcardImports:RestartAppWithDebuggerCommand.kt$import spock.adb.*</ID>
+    <ID>NoWildcardImports:SpockAdbViewer.kt$import javax.swing.*</ID>
+    <ID>NoWildcardImports:SpockAdbViewer.kt$import spock.adb.command.*</ID>
+    <ID>SpacingAroundColon:ForceKillAppCommand.kt$ForceKillAppCommand$:</ID>
+    <ID>SpacingAroundColon:IDeivceHellper.kt$:</ID>
+    <ID>SpacingAroundComma:ForceKillAppCommand.kt$ForceKillAppCommand$,</ID>
+    <ID>SpacingAroundCurly:IDeivceHellper.kt${</ID>
+    <ID>SpacingAroundParens:ForceKillAppCommand.kt$ForceKillAppCommand$)</ID>
+    <ID>StringTemplate:AdbControllerImp.kt$AdbControllerImp$${activity}</ID>
+    <ID>TooGenericExceptionCaught:AdbControllerImp.kt$AdbControllerImp$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:Debugger.kt$BackwardCompatibleGetter$e: Throwable</ID>
+    <ID>TooGenericExceptionThrown:AdbControllerImp.kt$AdbControllerImp$throw Exception("No activities found")</ID>
+    <ID>TooGenericExceptionThrown:AdbControllerImp.kt$AdbControllerImp$throw Exception("No fragments found")</ID>
+    <ID>TooGenericExceptionThrown:ClearAppDataAndRestartCommand.kt$ClearAppDataAndRestartCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:ClearAppDataAndRestartCommand.kt$ClearAppDataAndRestartCommand$throw Exception("No Default Activity Found")</ID>
+    <ID>TooGenericExceptionThrown:ClearAppDataCommand.kt$ClearAppDataCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:Debugger.kt$BackwardCompatibleGetter$throw RuntimeException(e)</ID>
+    <ID>TooGenericExceptionThrown:ForceKillAppCommand.kt$ForceKillAppCommand$throw Exception("Application $p not installed" )</ID>
+    <ID>TooGenericExceptionThrown:GetApplicationPermission.kt$GetApplicationPermission$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:GetApplicationPermission.kt$GetApplicationPermission$throw Exception("Device API level is below Marshmallow. Runtime permissions are not supported on this device.")</ID>
+    <ID>TooGenericExceptionThrown:GrantPermissionCommand.kt$GrantPermissionCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:ProcessDeathCommand.kt$ProcessDeathCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:ProcessDeathCommand.kt$ProcessDeathCommand$throw Exception("No Default Activity Found")</ID>
+    <ID>TooGenericExceptionThrown:RestartAppCommand.kt$RestartAppCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:RestartAppCommand.kt$RestartAppCommand$throw Exception("No Default Activity Found")</ID>
+    <ID>TooGenericExceptionThrown:RestartAppWithDebuggerCommand.kt$RestartAppWithDebuggerCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:RestartAppWithDebuggerCommand.kt$RestartAppWithDebuggerCommand$throw Exception("No Default Activity Found")</ID>
+    <ID>TooGenericExceptionThrown:RevokePermissionCommand.kt$RevokePermissionCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooGenericExceptionThrown:UninstallAppCommand.kt$UninstallAppCommand$throw Exception("Application $p not installed")</ID>
+    <ID>TooManyFunctions:AdbController.kt$AdbController</ID>
+    <ID>TooManyFunctions:AdbControllerImp.kt$AdbControllerImp : AdbControllerIDeviceChangeListenerDisposable</ID>
+    <ID>TooManyFunctions:IDeivceHellper.kt$spock.adb.IDeivceHellper.kt</ID>
+    <ID>UnusedParameter:FragmentData.kt$FragmentData$index: Int</ID>
+    <ID>UtilityClassWithPublicConstructor:CommonNotifier.kt$CommonNotifier</ID>
+    <ID>WildcardImport:AdbControllerImp.kt$import spock.adb.command.*</ID>
+    <ID>WildcardImport:CheckBoxDialog.kt$import java.awt.event.*</ID>
+    <ID>WildcardImport:CheckBoxDialog.kt$import javax.swing.*</ID>
+    <ID>WildcardImport:ProcessDeathCommand.kt$import spock.adb.*</ID>
+    <ID>WildcardImport:RestartAppCommand.kt$import spock.adb.*</ID>
+    <ID>WildcardImport:RestartAppWithDebuggerCommand.kt$import spock.adb.*</ID>
+    <ID>WildcardImport:SpockAdbViewer.kt$import javax.swing.*</ID>
+    <ID>WildcardImport:SpockAdbViewer.kt$import spock.adb.command.*</ID>
+    <ID>Wrapping:AdbControllerImp.kt$AdbControllerImp$(</ID>
+    <ID>Wrapping:IPAddressInputValidator.kt$IPAddressInputValidator$(</ID>
+    <ID>Wrapping:SpockAdbViewer.kt$SpockAdbViewer$(</ID>
+    <ID>Wrapping:SpockAdbViewer.kt$SpockAdbViewer$(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener { override fun stateChanged() { if (toolWindow.isVisible) { removeDeveloperOptionsListeners() ApplicationManager.getApplication().executeOnPooledThread { setDeveloperOptionsValues() } } } })</ID>
+  </CurrentIssues>
+</SmellBaseline>

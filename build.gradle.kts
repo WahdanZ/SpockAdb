@@ -7,6 +7,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "2.2.20"
     id("org.jetbrains.intellij.platform") version "2.10.5"
     id("org.jetbrains.changelog") version "2.2.1"
+    id("io.gitlab.arturbosch.detekt") version "1.23.8"
 }
 
 val pluginGroup: String by project
@@ -47,8 +48,39 @@ dependencies {
 
     implementation("org.jooq:joor:0.9.15")
 
-    testImplementation("org.mockito.kotlin:mockito-kotlin:4.1.0")
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("io.mockk:mockk:1.13.9")
+
+    detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.23.8")
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(files("detekt-config.yml"))
+    baseline = file("detekt-baseline.xml")
+    // Type resolution is not wired up: it would require the full IntelliJ Platform
+    // classpath and roughly triples analysis time for little extra signal here.
+    ignoreFailures = false
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "17"
+    reports {
+        html.required = true
+        xml.required = true
+        sarif.required = false
+        md.required = false
+    }
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 intellijPlatform {

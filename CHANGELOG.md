@@ -1,6 +1,20 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
 ## [Unreleased]
+### Added
+- Unit test suite for ADB output parsing (21 tests): activity, back stack, application back stack and fragment `dumpsys` parsers
+- `detekt` static analysis wired into the build with a baseline of the existing 178 findings, so new code cannot add to the debt
+- CI now runs `test` and `detekt` on every push and pull request, and uploads the reports
+
+### Fixed
+- **Build**: the test source set did not compile — JUnit was never on the test classpath, and CI only ran `buildPlugin`, so this went unnoticed
+- **Build**: `./gradlew detekt` was documented but the detekt plugin was never applied
+- **API level detection**: `getApiVersion()` read `ro.build.version.release` (the marketing version, e.g. "8.1.0"), which fails integer parsing and pushed modern devices down the pre-Honeycomb back stack parsing path. Replaced with `apiLevel()`, reading `ro.build.version.sdk` and preferring ddmlib's cached value
+- **Crash**: `GetApplicationBackStackCommand` called `tasks.last()` on a possibly empty list, throwing `NoSuchElementException` on a truncated `dumpsys` dump
+
+### Changed
+- ADB output parsing extracted from the command classes into pure functions in `spock.adb.parser` (`ActivityParser`, `BackStackParser`, `ApplicationBackStackParser`, `FragmentDumpParser`), so it can be tested without a connected device
+
 ### Fixed
 - **Threading**: `currentBackStack` and `currentApplicationBackStack` now run ADB on a background thread and show popups on EDT; PSI lookups wrapped in `ReadAction.compute`
 - **Crash**: `GetFragmentsCommand` — safe split access with `getOrNull` instead of hardcoded index, avoids `ArrayIndexOutOfBoundsException`

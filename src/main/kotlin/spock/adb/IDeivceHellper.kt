@@ -47,10 +47,8 @@ fun IDevice.getDefaultActivityForApplication(packageName: String?): String {
     return outputReceiver.toString()
 }
 
-@Suppress("DEPRECATION")
-fun IDevice.isMarshmallow() = this.version.apiLevel >= 23
-@Suppress("DEPRECATION")
-fun IDevice.isNougatOrAbove() = this.version.apiLevel >= 24
+fun IDevice.isMarshmallow() = (apiLevel() ?: 0) >= 23
+fun IDevice.isNougatOrAbove() = (apiLevel() ?: 0) >= 24
 
 fun IDevice.areDontKeepActivitiesEnabled(): DontKeepActivitiesState {
     val outputReceiver = ShellOutputReceiver()
@@ -109,9 +107,23 @@ fun IDevice.getNetworkState(network: Network): NetworkState {
     return NetworkState.getState(outputReceiver.toString())
 }
 
-fun IDevice.getApiVersion(): Int? {
-    val outputReceiver = ShellOutputReceiver()
-    executeShellCommand("getprop ro.build.version.release", outputReceiver, 15L, TimeUnit.SECONDS)
+/**
+ * The device's **API level** (e.g. 33), not its marketing version.
+ *
+ * The previous implementation read `ro.build.version.release`, which yields the
+ * user-visible version string ("13", "8.1.0"). Values like "8.1.0" fail `toIntOrNull()`
+ * and were silently treated as "unknown", pushing modern devices down the pre-Honeycomb
+ * parsing path. `ro.build.version.sdk` is the API level and is always an integer.
+ *
+ * ddmlib's cached [IDevice.getVersion] is preferred when it is already populated, since it
+ * avoids a shell round trip; the property read is the fallback.
+ */
+fun IDevice.apiLevel(): Int? {
+    @Suppress("DEPRECATION")
+    val cached = runCatching { version.apiLevel }.getOrNull()
+    if (cached != null && cached > 0) return cached
 
-    return outputReceiver.toString().toIntOrNull()
+    val outputReceiver = ShellOutputReceiver()
+    executeShellCommand("getprop ro.build.version.sdk", outputReceiver, 15L, TimeUnit.SECONDS)
+    return outputReceiver.toString().trim().toIntOrNull()
 }

@@ -43,6 +43,22 @@ jobs:
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Run Unit Tests
+        run: ./gradlew test
+
+      - name: Run Static Analysis
+        run: ./gradlew detekt
+
+      - name: Upload Reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            ./build/reports/tests
+            ./build/reports/detekt
+          if-no-files-found: ignore
+
       - name: Build Plugin
         run: ./gradlew buildPlugin
 
