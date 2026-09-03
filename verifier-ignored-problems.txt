@@ -1,0 +1,22 @@
+# Plugin Verifier - problems that are known, understood and handled at runtime.
+#
+# Line format is <plugin-id>, <version>, <problem message prefix>, separated by colons.
+# An empty version field applies the rule to every version.
+# Note - comment lines must not contain a colon, the CLI rejects the file if they do.
+#
+# --- com.android.tools.idea.execution.common on IntelliJ IDEA 2023.1 ---
+#
+# "Restart App With Debugger" needs AndroidDebugger and AndroidProcessHandler from the
+# Android Studio execution stack. Those classes are present in every Android Studio build
+# we support and in IntelliJ IDEA 2025.1, but not in the Android plugin bundled with
+# IntelliJ IDEA 2023.1.
+#
+# spock.adb.compat.DebuggerSupport feature-detects the class before the Debugger class is
+# ever loaded, and reports a clear message instead of failing. Every other feature works on
+# IDEA 2023.1, so refusing to load the whole plugin there would cost far more than the one
+# unavailable action. The static reference the verifier sees is therefore intentional, and
+# unreachable when the classes are missing.
+#
+# If DebuggerSupport is removed or its guard weakened, delete this entry and let the
+# verifier fail.
+com.wahdan.com.wahdan.spockAdb::Package 'com.android.tools.idea.execution' is not found

@@ -2,9 +2,11 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-
-import spock.adb.*
-import spock.adb.debugger.Debugger
+import spock.adb.ShellOutputReceiver
+import spock.adb.compat.DebuggerSupport
+import spock.adb.forceKillApp
+import spock.adb.getDefaultActivityForApplication
+import spock.adb.isAppInstall
 import java.util.concurrent.TimeUnit
 
 class RestartAppWithDebuggerCommand : Command<String, Unit> {
@@ -23,7 +25,7 @@ class RestartAppWithDebuggerCommand : Command<String, Unit> {
                             TimeUnit.SECONDS
                         )
 
-                        Debugger(project, device, p).attach()
+                        DebuggerSupport.attach(project, device, p)
                     }
                     else -> throw Exception("No Default Activity Found")
                 }

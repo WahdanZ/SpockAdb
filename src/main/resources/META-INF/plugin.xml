@@ -25,8 +25,24 @@
         </ul>
     ]]></description>
 
+    <!--
+      Dependencies deliberately stop at `org.jetbrains.android`.
+
+      Every Android API this plugin uses — ddmlib, AndroidFacet, AndroidModel,
+      AndroidSdkUtils and the execution tooling — ships inside the org.jetbrains.android
+      plugin, not the Android Studio platform. Declaring
+      `com.intellij.modules.androidstudio` therefore bought no API guarantees and only
+      restricted the plugin to Android Studio, which is why the Marketplace reported it as
+      incompatible with IntelliJ IDEA. The single Android Studio specific integration, the
+      debugger attach, is feature-detected at runtime by spock.adb.compat.DebuggerSupport.
+
+      `com.intellij.modules.java` is required for the Java PSI used to navigate to
+      Activity and Fragment sources (JavaPsiFacade, PsiShortNamesCache); it was previously
+      used without being declared.
+    -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
     <depends>org.jetbrains.android</depends>
-    <depends>com.intellij.modules.androidstudio</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="spock.adb.AppSettingService"/>

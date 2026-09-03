@@ -28,8 +28,18 @@ class AdbControllerImp(
         AndroidDebugBridge.addDeviceChangeListener(this)
     }
 
-    private fun getApplicationID(device: IDevice) =
-        GetApplicationIDCommand().execute(Any(), project, device).toString()
+    /**
+     * The previous implementation called `.toString()` on a nullable result, so a project
+     * with no resolvable application ID produced the literal string "null" and every
+     * downstream command failed with `Application null not installed`. Fail with an
+     * actionable message instead.
+     */
+    private fun getApplicationID(device: IDevice): String =
+        GetApplicationIDCommand().execute(Any(), project, device)
+            ?: throw IllegalStateException(
+                "Could not determine the application ID for this project. " +
+                    "Open an Android project and make sure its Gradle sync has finished.",
+            )
 
     override fun refresh() {
         AndroidDebugBridge.removeDeviceChangeListener(this)
