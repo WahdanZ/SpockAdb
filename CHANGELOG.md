@@ -12,7 +12,55 @@
 - **API level detection**: `getApiVersion()` read `ro.build.version.release` (the marketing version, e.g. "8.1.0"), which fails integer parsing and pushed modern devices down the pre-Honeycomb back stack parsing path. Replaced with `apiLevel()`, reading `ro.build.version.sdk` and preferring ddmlib's cached value
 - **Crash**: `GetApplicationBackStackCommand` called `tasks.last()` on a possibly empty list, throwing `NoSuchElementException` on a truncated `dumpsys` dump
 
+### Compatibility
+- **The plugin now works in IntelliJ IDEA, not just Android Studio.** The descriptor declared `<depends>com.intellij.modules.androidstudio</depends>`, which made the Marketplace report the plugin as incompatible with IntelliJ IDEA. Every Android API the plugin uses ships inside the `org.jetbrains.android` plugin rather than the Android Studio platform, so the dependency bought no API guarantees and only restricted reach
+- **Fixed a `NoSuchMethodError` on Android Studio 2023.1 through 2024.x.** `sinceBuild` was `231` while compiling against platform `251`. Kotlin emits compatibility-bridge overrides that `invokespecial` into every default method a platform interface had at compile time, so `AdbDrawerViewer` — the tool window factory, and therefore the plugin's entry point — referenced `ToolWindowFactory.manage` and `isApplicableAsync`, neither of which exists on 231. The tool window could not open. Fixed with `-Xjvm-default=all`
+- **Declared the missing Java plugin dependency.** The plugin navigates to sources through `JavaPsiFacade` and `PsiShortNamesCache` without declaring `com.intellij.modules.java`, which Plugin Verifier reported as a compatibility problem on every target
+- Restored Plugin Verifier and wired it into CI, now covering Android Studio 231/242/251 and IntelliJ IDEA 231/251. All five report `Compatible`
+- `Restart App With Debugger` is feature-detected at runtime and hidden on IDEs without the Android Studio execution tooling, instead of failing with `NoClassDefFoundError`
+- Replaced the deprecated `ToolWindowManagerListener.stateChanged()` override and the deprecated `AndroidVersion.getApiLevel()` call
+- Added `docs/COMPATIBILITY.md` documenting the supported range, the verification matrix and how to change it
+
+### Fixed
+- **EDT freeze**: `AndroidSdkUtils.getDebugBridge()` blocks while ADB starts, and was called both when opening the tool window and inside every menu action — all on the EDT. The bridge is now resolved lazily on a pooled thread
+- **Threading**: device connect/disconnect callbacks arrive on ddmlib threads and mutated the Swing combo box model directly. Device lists are now read off the EDT and delivered on it
+- **Threading**: `grantOrRevokeAllPermissions` would have issued one `pm grant`/`pm revoke` per permission on the EDT; it now runs entirely on a pooled thread
+- **Crash**: selecting in the device combo box indexed straight into the device list, throwing `ArrayIndexOutOfBoundsException` when the model reported index `-1` after the last device disconnected. Also now ignores `DESELECTED` events, which fired the handler twice
+- **Crash**: a persisted setting naming an action that no longer exists made `SpockAction.valueOf` throw from the constructor, preventing the tool window from opening at all. Unknown entries are ignored
+- **Hang**: `ProcessDeathCommand` passed a timeout of `0` to `executeShellCommand`, which means "wait forever" in ddmlib — an unresponsive device hung a pooled thread permanently
+- **Leak**: `project.messageBus.connect()` was called without a parent `Disposable`, so the tool window listener was never released
+- **Leak**: each menu action constructed its own `AdbControllerImp`, registering another global ADB device-change listener, and disposed it immediately after starting async work — cancelling the work before it ran. A single project-scoped `SpockAdbService` now owns the controller
+- **Silent failures**: exceptions were swallowed and surfaced as `e.message ?: "not found"`, so a null-message exception showed the user the words "not found" and left no stack trace anywhere. Failures are now logged to `idea.log` as well as reported
+- **Dishonest success**: `connectDeviceOverIp` reported "connected to $ip" while its command was an empty stub that did nothing
+- **Compatibility**: `project.service<T>()` inlines a call to `ServicesKt.serviceNotFoundError`, absent before 2023.3, which would have thrown `NoSuchMethodError` on the oldest supported builds. Replaced with the non-inline `getService` in both services
+
+### Fixed
+- **"Don't Keep Activities" did nothing.** The checkbox displayed the current device setting but was never given an action listener: clicking it moved the tick, left the device unchanged, and silently reverted on the next refresh. It now toggles `always_finish_activities` like the other developer options
+
+### Device management
+- The device dropdown now shows model, Android version, API level, architecture, and whether the device is an emulator or a handset, instead of just the raw ddmlib name. Offline, unauthorized and bootloader devices are labelled as such
+- **The selected device is persisted between sessions.** `AppSetting.selectedDevice` has existed since settings were introduced but was never read or written
+- Menu actions now ignore devices that cannot accept commands, and say why when none are usable (for example "Pixel 7 is unauthorized"), rather than failing part-way through a command
+- When no device was previously selected the plugin now prefers an online device rather than whichever happened to be first
+- Device metadata is read on a background thread; `IDevice.getProperty` blocks, so this must never happen while the dropdown is being rendered
+- Confirmation prompts name the target device, so it is unambiguous which of several attached devices an action will affect
+
+### Security
+- **Shell injection via the device.** ADB commands are built by string interpolation and run through the device shell. The two fields the user types into were interpolated inside hand-written quotes — `input text '$p'` and `am start ... -d "$p"` — so a value containing the matching quote character closed it early and everything after ran as shell on the connected device. Pasting a crafted deep link was enough. All interpolated values now go through `ShellQuote.quote`, which single-quotes and escapes embedded quotes
+- Every other interpolation site was hardened the same way: package names, activity components, permission names and animation scales
+- **Confirmation for destructive operations.** Uninstall, Clear App Data, Clear App Data & Restart and Revoke All Permissions were single clicks with no prompt, sitting beside read-only actions. Each now asks first, and names the target device so it is unambiguous which of several attached devices will be affected
+
+### Added
+- `BaseAction` now declares `ActionUpdateThread.BGT` and disables its actions when no project is open
+- Tests for `ShellOutputReceiver` chunking and trailing-newline handling, and for the device state enums
+
+### Removed
+- `GetConnectedDevicesCommand`, which was unused and contained an unchecked cast that would have thrown on a null bridge
+
 ### Changed
+- Device selection is now tracked by serial number rather than object identity, so it survives a device reconnect handing out a new `IDevice` instance
+- Application ID resolution reads through the stable `AndroidModel` interface instead of the Gradle-specific `GradleAndroidModel`, and now prefers application modules over libraries — in a multi-module project the previous code used an arbitrary facet and could resolve the wrong module or none at all
+- A project with no resolvable application ID now reports an actionable message; previously the nullable result was passed through `.toString()`, producing the literal string `"null"` and the misleading error `Application null not installed`
 - ADB output parsing extracted from the command classes into pure functions in `spock.adb.parser` (`ActivityParser`, `BackStackParser`, `ApplicationBackStackParser`, `FragmentDumpParser`), so it can be tested without a connected device
 
 ### Fixed

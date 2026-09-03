@@ -3,23 +3,21 @@ package spock
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import org.jetbrains.android.sdk.AndroidSdkUtils
-import spock.adb.AdbControllerImp
+import spock.adb.SpockAdbService
 import spock.adb.SpockAdbViewer
 
 class AdbDrawerViewer : ToolWindowFactory {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val adbController = AdbControllerImp(project, AndroidSdkUtils.getDebugBridge(project))
-        // Use toolWindow.disposable, not project, as the parent — it is disposed when the
-        // tool window is torn down (plugin unload / project close), which is the correct
-        // lifetime for the device-change listener registered inside AdbControllerImp.
-        com.intellij.openapi.util.Disposer.register(toolWindow.disposable, adbController)
-        val contentManager = toolWindow.contentManager
+        // Runs on the EDT. The controller is owned by the project-scoped SpockAdbService and
+        // resolves the ADB bridge lazily on a pooled thread, so nothing here blocks the UI
+        // while ADB starts.
+        val adbController = SpockAdbService.getInstance(project).controller
 
-        with(SpockAdbViewer(project)) {
-            initPlugin(adbController)
-            contentManager.addContent(contentManager.factory.createContent(this, null, false))
-        }
+        val viewer = SpockAdbViewer(project, toolWindow.disposable)
+        viewer.initPlugin(adbController)
+
+        val contentManager = toolWindow.contentManager
+        contentManager.addContent(contentManager.factory.createContent(viewer, null, false))
     }
 }

@@ -21,6 +21,16 @@ version = pluginVersion
 
 kotlin {
     jvmToolchain(17)
+
+    compilerOptions {
+        // Without this, Kotlin emits "compatibility bridge" overrides in classes that
+        // implement platform Kotlin interfaces (e.g. ToolWindowFactory). Those bridges
+        // `invokespecial` every default method the interface had at *compile* time, so a
+        // plugin compiled against 251 and run on 231 dies with NoSuchMethodError on
+        // ToolWindowFactory.manage / isApplicableAsync — in AdbDrawerViewer, the plugin's
+        // entry point. Verified with Plugin Verifier against AI-231; see docs/COMPATIBILITY.md.
+        freeCompilerArgs.add("-Xjvm-default=all")
+    }
 }
 
 // Configure project's dependencies
@@ -44,6 +54,11 @@ dependencies {
         bundledPlugin("com.intellij.gradle")
 
         instrumentationTools()
+
+        // The Plugin Verifier CLI. Without this declaration `verifyPlugin` only works when
+        // the jar happens to already be in the Gradle cache, so it passes locally and on a
+        // warm CI runner, then fails on a cold one with "executable not found".
+        pluginVerifier()
     }
 
     implementation("org.jooq:joor:0.9.15")
@@ -120,6 +135,31 @@ intellijPlatform {
             name = "Spock Adb"
             email = "ahmed.wahdan@outlook.com"
             url = "https://github.com/WahdanZ"
+        }
+    }
+
+    pluginVerification {
+        // Problems that are understood and handled at runtime, each justified in the file.
+        ignoredProblemsFile = file("verifier-ignored-problems.txt")
+
+        failureLevel = listOf(
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+            org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.NOT_DYNAMIC,
+        )
+
+        ides {
+            // Oldest supported Android Studio (Hedgehog, build AI-231) — the sinceBuild floor.
+            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.AndroidStudio, "2023.1.1.28")
+            // A mid-range Android Studio, to catch breakage between the two ends.
+            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.AndroidStudio, "2024.2.1.12")
+            // Current stable Android Studio — the compile target.
+            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.AndroidStudio, "2025.1.1.14")
+            // IntelliJ IDEA with the bundled Android plugin. The plugin no longer declares
+            // com.intellij.modules.androidstudio, so IDEA is a supported target and must be
+            // verified rather than assumed.
+            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaCommunity, "2023.1.5")
+            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaCommunity, "2025.1")
         }
     }
 

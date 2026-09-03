@@ -1,18 +1,24 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import spock.adb.command.*
+import spock.adb.compat.DebuggerSupport
+import spock.adb.device.ConnectedDevice
 import spock.adb.premission.CheckBoxDialog
 import java.awt.event.ActionEvent
+import java.awt.event.ItemEvent
 import javax.swing.*
 
 class SpockAdbViewer(
-    private val project: Project
+    private val project: Project,
+    /** Scopes the message bus connection; without a parent the connection is never released. */
+    private val parentDisposable: Disposable,
 ) : SimpleToolWindowPanel(true) {
     private lateinit var rootPanel: JPanel
     private lateinit var permissionPanel: JPanel
@@ -35,7 +41,7 @@ class SpockAdbViewer(
     private lateinit var currentAppBackStackButton: JButton
     private lateinit var adbWifi: JButton
     private lateinit var setting: JButton
-    private lateinit var devices: List<IDevice>
+    private var devices: List<ConnectedDevice> = emptyList()
     private lateinit var enableDisableDontKeepActivities: JCheckBox
     private lateinit var enableDisableShowTaps: JCheckBox
     private lateinit var enableDisableShowLayoutBounds: JCheckBox
@@ -49,9 +55,18 @@ class SpockAdbViewer(
     private lateinit var inputOnDeviceButton: JButton
     private lateinit var openDeepLinkButton: JButton
     private lateinit var openDeveloperOptionsButton: JButton
-    private var selectedIDevice: IDevice? = null
+    private var selectedDevice: ConnectedDevice? = null
+
+    /** The ddmlib handle every command still operates on. */
+    private val selectedIDevice: IDevice? get() = selectedDevice?.device
 
     private lateinit var adbController: AdbController
+
+    private val dontKeepActivitiesActionListener: (ActionEvent) -> Unit = {
+        selectedIDevice?.let { device ->
+            adbController.enableDisableDontKeepActivities(device)
+        }
+    }
 
     private val showTapsActionListener: (ActionEvent) -> Unit = {
         selectedIDevice?.let { device ->
@@ -133,9 +148,14 @@ class SpockAdbViewer(
 
         }
         adbWifi.isVisible = false
-        devicesListComboBox.addItemListener {
-            selectedIDevice = devices[devicesListComboBox.selectedIndex]
-
+        devicesListComboBox.addItemListener { event ->
+            // A combo box fires DESELECTED then SELECTED, and reports index -1 when the
+            // model is emptied. Indexing straight into `devices` threw
+            // ArrayIndexOutOfBoundsException whenever the last device disconnected.
+            if (event.stateChange == ItemEvent.SELECTED) {
+                selectedDevice = devices.getOrNull(devicesListComboBox.selectedIndex)
+                rememberSelectedDevice()
+            }
         }
         activitiesBackStackButton.addActionListener {
             selectedIDevice?.let { device ->
@@ -178,18 +198,24 @@ class SpockAdbViewer(
             }
         }
         clearAppDataButton.addActionListener {
-            selectedIDevice?.let { device ->
-                adbController.clearAppData(device)
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmClearData(project, deviceInfo, andRestart = false)) {
+                    adbController.clearAppData(device)
+                }
             }
         }
         clearAppDataAndRestartButton.addActionListener {
-            selectedIDevice?.let { device ->
-                adbController.clearAppDataAndRestart(device)
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmClearData(project, deviceInfo, andRestart = true)) {
+                    adbController.clearAppDataAndRestart(device)
+                }
             }
         }
         uninstallAppButton.addActionListener {
-            selectedIDevice?.let { device ->
-                adbController.uninstallApp(device)
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmUninstall(project, deviceInfo)) {
+                    adbController.uninstallApp(device)
+                }
             }
         }
 
@@ -218,12 +244,13 @@ class SpockAdbViewer(
             }
         }
         revokeAllPermissionsButton.addActionListener {
-            selectedIDevice?.let { device ->
-                adbController.grantOrRevokeAllPermissions(
-                    device,
-                    GetApplicationPermission.PermissionOperation.REVOKE,
-
+            selectedDevice?.let { (device, deviceInfo) ->
+                if (DestructiveActionConfirmation.confirmRevokeAllPermissions(project, deviceInfo)) {
+                    adbController.grantOrRevokeAllPermissions(
+                        device,
+                        GetApplicationPermission.PermissionOperation.REVOKE,
                     )
+                }
             }
         }
         wifiToggle.addActionListener {
@@ -256,8 +283,16 @@ class SpockAdbViewer(
     }
 
     private fun updateUi(it: AppSetting) {
-        it.list.map {
-            when (SpockAction.valueOf(it.name.replace(" ", "_"))) {
+        it.list.forEach {
+            // Settings persist action names as text. An action that is renamed or removed
+            // leaves a stale entry behind, and SpockAction.valueOf then threw
+            // IllegalArgumentException from the constructor — which prevented the tool
+            // window from opening at all. Unknown entries are now ignored.
+            val action = SpockAction.entries.firstOrNull { action ->
+                action.name == it.name.replace(" ", "_")
+            } ?: return@forEach
+
+            when (action) {
                 SpockAction.CURRENT_ACTIVITY -> currentActivityButton.isVisible = it.isSelected
                 SpockAction.CURRENT_FRAGMENT -> currentFragmentButton.isVisible = it.isSelected
                 SpockAction.CURRENT_APP_STACK -> currentAppBackStackButton.isVisible = it.isSelected
@@ -265,7 +300,11 @@ class SpockAdbViewer(
                 SpockAction.CLEAR_APP_DATA -> clearAppDataButton.isVisible = it.isSelected
                 SpockAction.CLEAR_APP_DATA_RESTART -> clearAppDataAndRestartButton.isVisible = it.isSelected
                 SpockAction.RESTART -> restartAppButton.isVisible = it.isSelected
-                SpockAction.RESTART_DEBUG -> restartAppWithDebuggerButton.isVisible = it.isSelected
+                // Attaching a debugger needs the Android Studio execution tooling, which is
+                // absent in some IDEs that bundle the Android plugin. Hide the action there
+                // rather than offering a button that can only report an error.
+                SpockAction.RESTART_DEBUG ->
+                    restartAppWithDebuggerButton.isVisible = it.isSelected && DebuggerSupport.isAvailable
                 SpockAction.TEST_PROCESS_DEATH -> testProcessDeathButton.isVisible = it.isSelected
                 SpockAction.FORCE_KILL -> forceKillAppButton.isVisible = it.isSelected
                 SpockAction.UNINSTALL -> uninstallAppButton.isVisible = it.isSelected
@@ -285,20 +324,57 @@ class SpockAdbViewer(
         }
     }
 
+    /**
+     * Rebuilds the device combo box. The callback is delivered on the EDT by
+     * [AdbController.connectedDevices]; it used to arrive on a ddmlib thread and mutate the
+     * Swing model directly.
+     */
     private fun updateDevicesList() {
-        adbController.connectedDevices { devices ->
-            this.devices = devices
-            selectedIDevice = this.devices.getOrElse(devices.indexOf(selectedIDevice)) { this.devices.getOrNull(0) }
+        adbController.observeDevices { connected ->
+            this.devices = connected
+
+            // Match on serial rather than instance identity: ddmlib hands out a new IDevice
+            // after a reconnect, so identity comparison silently reset the selection.
+            // Falls back to the serial persisted from the previous session, then to the
+            // first device that is actually usable, so the plugin does not default to an
+            // offline or unauthorised device.
+            val preferredSerial = selectedDevice?.serialNumber ?: persistedDeviceSerial()
+            selectedDevice = connected.firstOrNull { it.serialNumber == preferredSerial }
+                ?: connected.firstOrNull { it.info.isUsable }
+                ?: connected.firstOrNull()
 
             devicesListComboBox.model = DefaultComboBoxModel(
-                devices.map { device ->
-                    device.name
-                }.toTypedArray()
+                connected.map { it.info.label() }.toTypedArray(),
             )
+            selectedDevice?.let { devicesListComboBox.selectedIndex = connected.indexOf(it) }
+            devicesListComboBox.toolTipText = selectedDevice?.info?.describe()
+            rememberSelectedDevice()
+        }
+    }
+
+    private fun persistedDeviceSerial(): String? =
+        AppSettingService.getInstance().state.selectedDevice?.takeIf { it.isNotBlank() }
+
+    /**
+     * Persists the chosen device so it is reselected next session.
+     *
+     * `AppSetting.selectedDevice` has existed since the settings were introduced but was
+     * never read or written.
+     */
+    private fun rememberSelectedDevice() {
+        val service = AppSettingService.getInstance()
+        val current = service.state
+        val serial = selectedDevice?.serialNumber
+        if (current.selectedDevice != serial) {
+            service.loadState(current.copy(selectedDevice = serial))
         }
     }
 
     private fun removeDeveloperOptionsListeners() {
+        enableDisableDontKeepActivities.actionListeners.forEach {
+            enableDisableDontKeepActivities.removeActionListener(it)
+        }
+
         enableDisableShowTaps.actionListeners.forEach {
             enableDisableShowTaps.removeActionListener(it)
         }
@@ -343,6 +419,8 @@ class SpockAdbViewer(
     }
 
     private fun setDeveloperOptionsListeners() {
+        enableDisableDontKeepActivities.addActionListener(dontKeepActivitiesActionListener)
+
         enableDisableShowTaps.addActionListener(showTapsActionListener)
 
         enableDisableShowLayoutBounds.addActionListener(showLayoutBoundsActionListener)
@@ -355,24 +433,27 @@ class SpockAdbViewer(
     }
 
     private fun setToolWindowListener() {
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
 
-        ToolWindowManager
-            .getInstance(project)
-            .run {
-                val toolWindow = getToolWindow("Spock ADB")
-                if (toolWindow != null) {
-                    project.messageBus.connect()
-                        .subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
-                            override fun stateChanged() {
-                                if (toolWindow.isVisible) {
-                                    removeDeveloperOptionsListeners()
-                                    ApplicationManager.getApplication().executeOnPooledThread {
-                                        setDeveloperOptionsValues()
-                                    }
-                                }
-                            }
-                        })
-                }
-            }
+        project.messageBus
+            .connect(parentDisposable)
+            .subscribe(
+                ToolWindowManagerListener.TOPIC,
+                object : ToolWindowManagerListener {
+                    // The no-argument stateChanged() is deprecated; the ToolWindowManager
+                    // overload has been available since 2020.1.
+                    override fun stateChanged(toolWindowManager: ToolWindowManager) {
+                        if (!toolWindow.isVisible) return
+                        removeDeveloperOptionsListeners()
+                        ApplicationManager.getApplication().executeOnPooledThread {
+                            setDeveloperOptionsValues()
+                        }
+                    }
+                },
+            )
+    }
+
+    private companion object {
+        const val TOOL_WINDOW_ID = "Spock ADB"
     }
 }

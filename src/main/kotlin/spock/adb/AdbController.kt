@@ -3,11 +3,22 @@ package spock.adb
 import com.android.ddmlib.IDevice
 import spock.adb.command.GetApplicationPermission
 import spock.adb.command.Network
+import spock.adb.device.ConnectedDevice
 import spock.adb.premission.ListItem
 
 interface AdbController {
     fun refresh()
-    fun connectedDevices(block: (devices: List<IDevice>) -> Unit)
+
+    /** Reads the device list once, with metadata resolved. [block] is invoked on the EDT. */
+    fun connectedDevices(block: (devices: List<ConnectedDevice>) -> Unit)
+
+    /**
+     * Subscribes to the device list: [block] is invoked on the EDT with the current devices
+     * and again on every connect, disconnect or state change. Only one observer is
+     * supported, which is the tool window; menu actions use [connectedDevices] instead so
+     * they do not replace it.
+     */
+    fun observeDevices(block: (devices: List<ConnectedDevice>) -> Unit)
     fun currentBackStack(device: IDevice)
     fun currentApplicationBackStack(device: IDevice)
     fun currentActivity(device: IDevice)
@@ -24,6 +35,7 @@ interface AdbController {
     fun revokePermission(device: IDevice, listItem: ListItem)
     fun grantPermission(device: IDevice, listItem: ListItem)
     fun connectDeviceOverIp(ip: String)
+    fun enableDisableDontKeepActivities(device: IDevice)
     fun enableDisableShowTaps(device: IDevice)
     fun enableDisableShowLayoutBounds(device: IDevice)
     fun setWindowAnimatorScale(scale: String, device: IDevice)

@@ -1,9 +1,9 @@
 package spock.adb
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import com.intellij.openapi.components.service
 import spock.adb.premission.ListItem
 
 @State(
@@ -31,7 +31,9 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
 
     companion object {
         @JvmStatic
-        fun getInstance(): AppSettingService = service()
+        fun getInstance(): AppSettingService =
+            // Non-inline lookup, for the same reason as SpockAdbService.getInstance.
+            ApplicationManager.getApplication().getService(AppSettingService::class.java)
     }
 }
 

@@ -2,8 +2,8 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-
 import spock.adb.ShellOutputReceiver
+import spock.adb.ShellQuote
 import spock.adb.isAppInstall
 import spock.adb.isMarshmallow
 import spock.adb.premission.ListItem
@@ -17,7 +17,7 @@ class GetApplicationPermission : Command<String, List<ListItem>> {
                 val shellOutputReceiver = ShellOutputReceiver()
                 val ps = mutableMapOf<String, Boolean>()
                 device.executeShellCommand(
-                    "dumpsys package $p  | grep permission",
+                    "dumpsys package ${ShellQuote.quote(p)} | grep permission",
                     shellOutputReceiver,
                     15L,
                     TimeUnit.SECONDS
