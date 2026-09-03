@@ -1,6 +1,7 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
@@ -10,10 +11,13 @@ import spock.adb.command.*
 import spock.adb.compat.DebuggerSupport
 import spock.adb.premission.CheckBoxDialog
 import java.awt.event.ActionEvent
+import java.awt.event.ItemEvent
 import javax.swing.*
 
 class SpockAdbViewer(
-    private val project: Project
+    private val project: Project,
+    /** Scopes the message bus connection; without a parent the connection is never released. */
+    private val parentDisposable: Disposable,
 ) : SimpleToolWindowPanel(true) {
     private lateinit var rootPanel: JPanel
     private lateinit var permissionPanel: JPanel
@@ -36,7 +40,7 @@ class SpockAdbViewer(
     private lateinit var currentAppBackStackButton: JButton
     private lateinit var adbWifi: JButton
     private lateinit var setting: JButton
-    private lateinit var devices: List<IDevice>
+    private var devices: List<IDevice> = emptyList()
     private lateinit var enableDisableDontKeepActivities: JCheckBox
     private lateinit var enableDisableShowTaps: JCheckBox
     private lateinit var enableDisableShowLayoutBounds: JCheckBox
@@ -134,9 +138,13 @@ class SpockAdbViewer(
 
         }
         adbWifi.isVisible = false
-        devicesListComboBox.addItemListener {
-            selectedIDevice = devices[devicesListComboBox.selectedIndex]
-
+        devicesListComboBox.addItemListener { event ->
+            // A combo box fires DESELECTED then SELECTED, and reports index -1 when the
+            // model is emptied. Indexing straight into `devices` threw
+            // ArrayIndexOutOfBoundsException whenever the last device disconnected.
+            if (event.stateChange == ItemEvent.SELECTED) {
+                selectedIDevice = devices.getOrNull(devicesListComboBox.selectedIndex)
+            }
         }
         activitiesBackStackButton.addActionListener {
             selectedIDevice?.let { device ->
@@ -257,8 +265,16 @@ class SpockAdbViewer(
     }
 
     private fun updateUi(it: AppSetting) {
-        it.list.map {
-            when (SpockAction.valueOf(it.name.replace(" ", "_"))) {
+        it.list.forEach {
+            // Settings persist action names as text. An action that is renamed or removed
+            // leaves a stale entry behind, and SpockAction.valueOf then threw
+            // IllegalArgumentException from the constructor — which prevented the tool
+            // window from opening at all. Unknown entries are now ignored.
+            val action = SpockAction.entries.firstOrNull { action ->
+                action.name == it.name.replace(" ", "_")
+            } ?: return@forEach
+
+            when (action) {
                 SpockAction.CURRENT_ACTIVITY -> currentActivityButton.isVisible = it.isSelected
                 SpockAction.CURRENT_FRAGMENT -> currentFragmentButton.isVisible = it.isSelected
                 SpockAction.CURRENT_APP_STACK -> currentAppBackStackButton.isVisible = it.isSelected
@@ -290,16 +306,25 @@ class SpockAdbViewer(
         }
     }
 
+    /**
+     * Rebuilds the device combo box. The callback is delivered on the EDT by
+     * [AdbController.connectedDevices]; it used to arrive on a ddmlib thread and mutate the
+     * Swing model directly.
+     */
     private fun updateDevicesList() {
-        adbController.connectedDevices { devices ->
-            this.devices = devices
-            selectedIDevice = this.devices.getOrElse(devices.indexOf(selectedIDevice)) { this.devices.getOrNull(0) }
+        adbController.observeDevices { connected ->
+            this.devices = connected
+
+            // Match on serial rather than instance identity: ddmlib hands out a new IDevice
+            // after a reconnect, so identity comparison silently reset the selection.
+            val previousSerial = selectedIDevice?.serialNumber
+            selectedIDevice = connected.firstOrNull { it.serialNumber == previousSerial }
+                ?: connected.firstOrNull()
 
             devicesListComboBox.model = DefaultComboBoxModel(
-                devices.map { device ->
-                    device.name
-                }.toTypedArray()
+                connected.map { it.name }.toTypedArray(),
             )
+            selectedIDevice?.let { devicesListComboBox.selectedIndex = connected.indexOf(it) }
         }
     }
 
@@ -363,7 +388,7 @@ class SpockAdbViewer(
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
 
         project.messageBus
-            .connect()
+            .connect(parentDisposable)
             .subscribe(
                 ToolWindowManagerListener.TOPIC,
                 object : ToolWindowManagerListener {
