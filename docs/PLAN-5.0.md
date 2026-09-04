@@ -98,10 +98,10 @@ Two guards worth knowing about before writing another tool, both of which failed
 
 ## Phase 2 — File transfer and screen recording (P1)
 
-- [ ] `mcp/tools/FileTools.kt` — `PushFileTool`, `PullFileTool` over `IDevice.pushFile/pullFile`.
+- [x] `mcp/tools/FileTools.kt` — `PushFileTool`, `PullFileTool` over `IDevice.pushFile/pullFile`.
       Path validation rejects `..` and other apps' `/data/data`; 50 MB cap; pulls outside the
       allow-list are `DESTRUCTIVE` and prompt.
-- [ ] `mcp/tools/ScreenRecordTools.kt` — `StartScreenRecordTool` / `StopScreenRecordTool`,
+- [x] `mcp/tools/ScreenRecordTools.kt` — `StartScreenRecordTool` / `StopScreenRecordTool`,
       `SAFE_ACTION`, single tracked session, 180s auto-stop (platform hard cap), pull to a
       local path then `rm` the remote file.
       **Constraint found in Phase 1:** `IDevice.startScreenRecorder` is on
@@ -110,9 +110,23 @@ Two guards worth knowing about before writing another tool, both of which failed
       must go through `executeShellCommand("screenrecord …")`, and the guard test will fail the
       build if it does not. `getSyncService` is likewise unimplemented, so pushes and pulls must
       use `IDevice.pushFile`/`pullFile` directly rather than opening a sync service.
-- [ ] Tool descriptions state plainly that a recording captures whatever is on screen.
-- [ ] `FileToolsTest` (path validation, size caps), `ScreenRecordToolsTest` (state machine:
+- [x] Tool descriptions state plainly that a recording captures whatever is on screen.
+- [x] `FileToolsTest` (path validation, size caps), `ScreenRecordToolsTest` (state machine:
       start twice → error, stop without start → error).
+
+### Landed in Phase 2
+
+`DevicePaths` allow-list, `PushFileTool`, `PullFileTool`, `ScreenRecorder` +
+`Start`/`StopScreenRecordTool`, with 18 tests.
+
+Two deliberate narrowings of the plan, both tightening rather than loosening it:
+
+- A pull outside the allow-list is **refused**, not confirmed. One conditional gate that
+  sometimes prompts would be a second implementation of the safety model; refusing and pointing
+  at `android_run_adb_command` (already `DESTRUCTIVE`, already confirmed per call) keeps exactly
+  one.
+- The local destination of a pull is **not a parameter**. Letting a caller choose it hands
+  anything with the MCP token an arbitrary filesystem write.
 
 ## Phase 3 — Assistant core (P0)
 
