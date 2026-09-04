@@ -75,6 +75,6 @@ jobs:
 
           gh pr create \
             --title "Post-release: bump version to $NEXT" \
-            --body "After releasing \`$CURRENT\`:\n- Patched \`CHANGELOG.md\` with release notes\n- Bumped \`pluginVersion\` to \`$NEXT\` for the next development cycle" \
+            --body "$(printf 'After releasing %s:\n- Patched CHANGELOG.md with release notes\n- Bumped pluginVersion to %s for the next development cycle\n' "$CURRENT" "$NEXT")" \
             --base master \
             --head "$BRANCH"

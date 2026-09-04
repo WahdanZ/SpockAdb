@@ -150,6 +150,11 @@ jobs:
       - name: Create Release Draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed as an environment variable, never interpolated into the script body.
+          # `${{ }}` substitution happens before the shell parses the script, so changelog
+          # markdown was being executed: backticks became command substitution
+          # ("BaseAction: command not found"), and `!!` and `$(...)` broke the parse.
+          RELEASE_NOTES: ${{ needs.build.outputs.changelog }}
         run: |
           TAG="v${{ needs.build.outputs.version }}"
 
@@ -164,8 +169,10 @@ jobs:
             exit 0
           fi
 
+          printf '%s' "$RELEASE_NOTES" > "$RUNNER_TEMP/release-notes.md"
+
           gh release create "$TAG" \
             ./build/distributions/*.zip \
             --draft \
             --title "$TAG" \
-            --notes "${{ needs.build.outputs.changelog }}"
+            --notes-file "$RUNNER_TEMP/release-notes.md"

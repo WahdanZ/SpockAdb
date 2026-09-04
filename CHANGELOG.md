@@ -96,7 +96,7 @@
 > **Note:** this release did not work on the versions it claimed. The plugin was compiled
 > against platform 251, which made its tool window factory reference platform methods absent
 > on 231, so the tool window could not open on Android Studio 2023.1 through 2024.x. Fixed
-> and verified in 3.1.0 — see `docs/COMPATIBILITY.md`.
+> and verified in 4.0.0 — see `docs/COMPATIBILITY.md`.
 
 ## [3.0.0]
 ### Added
