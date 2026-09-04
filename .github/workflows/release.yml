@@ -32,6 +32,17 @@ jobs:
         run: |
           ./gradlew patchChangelog --release-note="$CHANGELOG"
 
+      # The descriptor is what decides whether a release is visible at all. Build it and
+      # assert it before handing it to the Marketplace: an until-build cap or a changed
+      # plugin id publishes "successfully" and is then never served to any IDE. See
+      # scripts/verify-marketplace-descriptor.sh for the two releases that proved it.
+      - name: Verify Marketplace Descriptor
+        env:
+          EXPECTED_VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          ./gradlew buildPlugin
+          EXPECTED_VERSION="${EXPECTED_VERSION#v}" scripts/verify-marketplace-descriptor.sh
+
       - name: Publish Plugin
         env:
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}

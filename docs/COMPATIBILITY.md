@@ -14,6 +14,59 @@ is. Every claim below is produced by `./gradlew verifyPlugin`, not by inspection
 - `untilBuild` is left open so new IDE releases do not require a republish.
 - Compiled against Android Studio 2025.1.1.14 (platform 251), Java 17, Kotlin 2.2.
 
+## Why the Marketplace served 1.0.2 for four years
+
+Until 4.0.0, searching for the plugin in any current Android Studio or IntelliJ IDEA
+offered **1.0.2** — a 2019 build — even though 2.0.3 had shipped in 2022. The IDE was not
+wrong and the Marketplace was not stale. Neither of the newer releases was *serveable*:
+
+| Version | Descriptor | Result in a 2025 IDE |
+|---|---|---|
+| 1.0.2 | no `until-build` | The newest release still considered compatible — so this is what was offered |
+| 2.0.0 – 2.0.3 | `until-build=211.*` / `213.*`, `depends com.intellij.modules.androidstudio` | Filtered out: capped below the IDE's build |
+| 3.0.0, 3.0.1 | `<id>` renamed to `com.wahdan.spockAdb` | Never reached the Marketplace at all |
+| 4.0.0 | `since-build=231`, no `until-build`, no Android Studio gate | Serveable to Android Studio and IDEA 2023.1+ |
+
+Two separate mistakes, neither of which fails a build:
+
+**An `until-build` cap is a silent expiry date.** `pluginUntilBuild=213.*` was correct on the
+day 2.0.3 shipped and wrong three months later. The Marketplace does not report an error for
+this; it just stops offering the release and falls back to the newest upload without a cap.
+That fallback was 1.0.2. This is why `pluginUntilBuild` is now deliberately empty — see the
+comment in `gradle.properties`.
+
+**The plugin id is the Marketplace primary key.** 3.0.0 renamed `<id>` from
+`com.wahdan.com.wahdan.spockAdb` (a typo, but the published one) to the tidier
+`com.wahdan.spockAdb`. An id is not cosmetic: it identifies the listing. Both 3.x release
+workflow runs failed, no 3.x ever appeared on
+[listing 11591](https://plugins.jetbrains.com/plugin/11591-spockadb), and the id was
+restored before 4.0.0. **Do not rename it.** Publishing under a different id cannot update
+this listing, and users who installed the old id would not see the rename as an update.
+
+### The guard
+
+`scripts/verify-marketplace-descriptor.sh` asserts, against the built artifact rather than
+the source descriptor (`since-build`, `until-build` and `version` are all patched in by the
+Gradle plugin):
+
+- `<id>` is exactly `com.wahdan.com.wahdan.spockAdb`,
+- there is no `until-build` attribute,
+- `since-build` matches `pluginSinceBuild`,
+- `<version>` matches the release tag (release job only).
+
+It runs in the `Build` job on every pull request, and in the `Release` job immediately
+before `publishPlugin`, so neither mistake can ship again.
+
+### After a release: the version is not instant
+
+`publishPlugin` succeeding means *uploaded*, not *served*. A new version goes through
+Marketplace approval, and the compatibility index is rebuilt afterwards, so the plugin page
+can already show the new description and screenshots while the IDE's Install button still
+offers the previous compatible version. Check the actual state in the vendor console at
+<https://plugins.jetbrains.com/plugin/11591/versions> before assuming a descriptor bug —
+and if the IDE lags behind the plugin page, *Settings > Plugins > gear > Check for Updates*
+after restarting refreshes its cached repository listing.
+
 ## Why the plugin is no longer Android Studio only
 
 Until 3.0.0 the descriptor declared:

@@ -62,6 +62,11 @@ jobs:
       - name: Build Plugin
         run: ./gradlew buildPlugin
 
+      # Catch a descriptor that would be unpublishable or invisible on the Marketplace at
+      # pull-request time, not at release time.
+      - name: Verify Marketplace Descriptor
+        run: scripts/verify-marketplace-descriptor.sh
+
       - name: Prepare Plugin Artifact
         id: artifact
         shell: bash
