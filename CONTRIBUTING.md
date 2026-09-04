@@ -158,8 +158,10 @@ The CI (`build.yml`) will automatically:
 
 **3. CI publishes automatically**
 The `release.yml` workflow triggers and:
+- Checks the built descriptor with `scripts/verify-marketplace-descriptor.sh` — plugin id,
+  no `until-build`, `since-build`, and version-matches-tag — **before** publishing
 - Signs the plugin with your certificates
-- Publishes to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/11591-spock-adb)
+- Publishes to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/11591-spockadb)
 - Uploads the signed `.zip` to the GitHub Release
 - Opens a PR that:
   - Moves `[Unreleased]` → `[3.0.0]` in `CHANGELOG.md`
@@ -167,7 +169,17 @@ The `release.yml` workflow triggers and:
 
 **4. Merge the post-release PR**
 
-That's it. The plugin is live on the marketplace within a few minutes.
+**5. Confirm the version is actually being served**
+
+A green `release.yml` means *uploaded*, not *live*. The new version goes through Marketplace
+approval and a compatibility-index rebuild, during which the plugin page can already show the
+new description while the IDE's Install button still offers the previous version. Check
+<https://plugins.jetbrains.com/plugin/11591/versions> for the version's state, then confirm in
+a real IDE (**Settings → Plugins → Marketplace**, after *Check for Updates*).
+
+If an IDE offers an *older* version than the one you published, that is a descriptor problem,
+not a caching problem — read
+[Why the Marketplace served 1.0.2 for four years](docs/COMPATIBILITY.md#why-the-marketplace-served-102-for-four-years).
 
 ---
 
@@ -175,8 +187,8 @@ That's it. The plugin is live on the marketplace within a few minutes.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `build.yml` | Push to `master` or any PR | Builds plugin, creates/updates draft GitHub Release with `.zip` |
-| `release.yml` | GitHub Release published | Signs & publishes to Marketplace, opens post-release PR |
+| `build.yml` | Push to `master` or any PR | Builds plugin, verifies the Marketplace descriptor, creates/updates draft GitHub Release with `.zip` |
+| `release.yml` | GitHub Release published | Verifies the descriptor, signs & publishes to Marketplace, opens post-release PR |
 | `bump-version.yml` | Manual (`workflow_dispatch`) | Bumps version in `gradle.properties` + `CHANGELOG.md`, opens PR |
 
 ---
