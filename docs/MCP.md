@@ -175,11 +175,13 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
+42 tools, in three levels.
+
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_take_screenshot`, `android_get_ui_hierarchy` |
-| **Safe action** | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_grant_permission`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key` |
-| **Destructive** | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_revoke_permission`, `android_run_adb_command` |
+| **Read-only** (19) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text` |
+| **Safe action** (19) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording` |
+| **Destructive** (4) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_run_adb_command` |
 
 Rules that hold regardless of what a client asks for:
 
@@ -290,17 +292,77 @@ the View-level fix does not exist there.
 
 ## UI automation
 
-`android_get_ui_hierarchy` returns uiautomator's XML: view class, resource id, text, content
-description, bounds, and whether each node is clickable, enabled and selected. Agents should
-drive `android_tap` from those bounds rather than guessing coordinates off a screenshot —
-guessed coordinates are the main cause of flaky UI automation.
+`android_get_ui_tree` returns the semantics tree as a structure rather than raw XML: class,
+test tag, text, content description, bounds, and whether each node is clickable, enabled,
+scrollable, checked or selected. Pass `interactiveOnly` to see only what can be acted on.
 
-Screenshots are first-class MCP image content, so an agent can actually look at the screen.
+Agents should not drive `android_tap` from those bounds by hand. Prefer the element-addressed
+tools — `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`,
+`android_input_text_into_element` — which resolve the element from semantics and derive the tap
+point from the matched node themselves. `android_tap` remains the fallback for a screen that
+offers no semantic identifier at all, and its own description says so.
+
+`android_assert_visible`, `android_assert_enabled` and `android_assert_text` let an agent verify
+the result of an action rather than infer it from pixels.
+
+Screenshots are first-class MCP image content, so an agent can also look at the screen.
+
+## Triage, files and screen recording
+
+### `android_get_debug_context`
+
+The call to reach for first when something is wrong. It returns the current activity, the UI
+semantics tree with its framework identified, recent logcat, and optionally a screenshot — in
+one round trip, all describing **the same moment**. Assembling those separately costs three or
+four turns, and by the time the last one lands the screen may have moved on, so the bundle it
+produces describes no single moment at all.
+
+Sections are chosen with `include` (`activity`, `ui`, `logcat`, `screenshot`); the first three
+are the default. The screenshot is opt-in because it is by far the most expensive section.
+
+**A failing section does not fail the call.** A screenshot blocked by `FLAG_SECURE` must not
+cost you the crash sitting beside it in logcat, so each section reports its own failure in place
+and the rest still come back.
+
+### `android_push_file` and `android_pull_file`
+
+Deliberately narrower than `adb` itself, in two ways.
+
+**Device paths are restricted** to `/sdcard`, `/storage` and `/data/local/tmp`. `adb` will hand
+over anything the shell user can read, and an agent that can be talked into pulling another
+app's database is an exfiltration path wearing a debugging tool's clothes. A path outside the
+allow-list is *refused*, not confirmed: one conditional gate that sometimes prompts would be a
+second implementation of the safety model, and `android_run_adb_command` already exists as the
+confirmed escape hatch.
+
+**The local destination of a pull is not a parameter.** A tool that writes where its caller asks
+lets anything holding the MCP token drop a file anywhere on your filesystem, and no debugging
+workflow needs that. Pulls land in the IDE's own pull directory and the tool reports the path;
+small text files come back inline as well, so reading one costs no second call. A transfer that
+fails part-way cannot leave a half-written file under a previous good name — the pull stages to
+a neighbour and moves into place.
+
+Transfers are capped at 50 MB.
+
+### `android_start_screen_recording` and `android_stop_screen_recording`
+
+One session per device, capped at three minutes. Recording stops with `SIGINT` rather than
+`SIGKILL` so `screenrecord` writes the MP4 index on the way out — a killed recording leaves a
+file no player will open — and the remote file is deleted only once the pull has succeeded.
+
+### `android_select_project`
+
+Needed only when the IDE has more than one project open. The application ID, the sources an
+Activity resolves against and the default logcat filter all come from a project, so with several
+open the plugin refuses to guess and names the candidates, exactly as it does for several
+attached devices. With one project open, every tool already targets it and this call is
+unnecessary.
 
 ## Example workflows
 
-**Debug a crash.** `android_list_devices` → `android_get_current_activity` →
-`android_get_logcat(minLevel: "E")` → `android_take_screenshot` → analyse.
+**Debug a crash.** `android_get_debug_context(include: ["activity", "ui", "logcat"], minLevel:
+"E")` → analyse. That is one call where it used to be four, and every section describes the same
+moment.
 
 **Test a deep link.** `android_open_deep_link(uri)` → `android_get_current_activity` →
 `android_take_screenshot` → report which screen opened.
@@ -312,15 +374,29 @@ Screenshots are first-class MCP image content, so an agent can actually look at 
 
 Recorded honestly so the gaps are not mistaken for features:
 
-- **Screen recording** (`android_start_screen_recording` / `android_stop_screen_recording`).
-  `screenrecord` needs a file pulled off the device afterwards and has a hard duration limit;
-  it needs a file-transfer story first.
-- **MCP activity panel.** Calls are recorded (`McpServerService.recentCalls()`) and
-  destructive ones are logged, but there is no tool window tab showing them live yet.
-- **Per-tool allow-lists** so a developer can disable individual tools.
-- **File push/pull.**
+- **Per-tool allow-lists** so a developer can expose, say, the read-only tools and nothing
+  else. The per-call confirmation on destructive tools is the real boundary today, and there is
+  no way to remove a tool from the catalogue short of not starting the server.
+- **Prompts.** `prompts/list` answers with an empty array. The debugging workflows in this
+  document are prose an agent cannot call.
+- **Cancellation over HTTP.** stdio honours `notifications/cancelled` by interrupting the
+  request; the HTTP transport is stateless by design and has nothing to cancel against, so a
+  slow tool call there runs to its timeout.
 
 ## Testing
+
+Two guards exist because of bugs that reached users. `StubbedIDeviceApiTest` fails the build
+when anything calls one of the nineteen `IDevice` methods Android Studio leaves unimplemented —
+each throws "This method is not used in Android Studio" at runtime while compiling and
+unit-testing cleanly, because a test that builds its own `AndroidDebugBridge` gets stock ddmlib
+where they all work. It reads compiled bytecode rather than source, since Kotlin's property
+syntax hides the call: `device.screenshot` is a call to `getScreenshot()` that no text search
+would find. This is exactly how `android_take_screenshot` shipped broken.
+
+`McpSmokeTest` calls every read-only tool against a real device through a running server, which
+is the only place that class of failure appears. The live checks are opt-in via `SPOCK_MCP_URL`
+and `SPOCK_MCP_TOKEN`, so an ordinary `./gradlew test` skips them — but its coverage assertion
+always runs, so a read-only tool cannot be added without deciding how it is smoke-tested.
 
 The protocol, the safety model and both transports are all tested without a device:
 `FakeToolContext` stands in for the IDE and ADB. The tests that matter most assert that
