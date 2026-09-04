@@ -78,6 +78,10 @@ class McpServerPanel(
 
     private val callListener: (McpCall) -> Unit = { refreshActivityLater() }
 
+    /** Set on dispose, so a transition still in flight cannot update a dead panel. */
+    @Volatile
+    private var disposed = false
+
     init {
         setToolbar(header())
         setContent(body())
@@ -289,10 +293,7 @@ class McpServerPanel(
 
     private fun wire() {
         startStopButton.addActionListener { if (service.isRunning) stopServer() else startServer() }
-        restartButton.addActionListener {
-            stopServer()
-            startServer()
-        }
+        restartButton.addActionListener { restartServer() }
         copyConfigButton.addActionListener {
             copy(service.clientConfiguration())
             detailLabel.text = "Configuration copied — it contains an access token for your devices."
@@ -307,18 +308,57 @@ class McpServerPanel(
     }
 
     private fun startServer() {
-        service.start()
-            .onSuccess { refreshStatus() }
-            .onFailure {
-                statusLabel.text = "Could not start: ${it.message}"
-                statusLabel.foreground = ERROR
-            }
+        beginTransition("Starting the MCP server…")
+        service.startAsync { result -> onEdt { finishTransition(result.exceptionOrNull()) } }
     }
 
     private fun stopServer() {
-        service.stop()
-        refreshStatus()
+        beginTransition("Stopping the MCP server…")
+        service.stopAsync { onEdt { finishTransition() } }
     }
+
+    /**
+     * Stop and start are chained, not issued together: the second must not begin until the
+     * first has released the sockets — which is the whole reason they are asynchronous.
+     */
+    private fun restartServer() {
+        beginTransition("Restarting the MCP server…")
+        service.stopAsync {
+            service.startAsync { result -> onEdt { finishTransition(result.exceptionOrNull()) } }
+        }
+    }
+
+    /**
+     * The controls go quiet while a transition runs.
+     *
+     * Starting binds two sockets and stopping waits for live stdio sessions to end, so both
+     * take long enough to notice — this used to happen on the EDT and froze the tool window.
+     * Disabling the buttons also stops a second click starting a server that is already
+     * starting.
+     */
+    private fun beginTransition(message: String) {
+        statusLabel.text = "◌ $message"
+        statusLabel.foreground = JBColor.GRAY
+        detailLabel.text = " "
+        startStopButton.isEnabled = false
+        restartButton.isEnabled = false
+        copyConfigButton.isEnabled = false
+    }
+
+    /** [failure] is reported after the refresh, which would otherwise overwrite it. */
+    private fun finishTransition(failure: Throwable? = null) {
+        startStopButton.isEnabled = true
+        refreshStatus()
+
+        if (failure != null) {
+            statusLabel.text = "Could not start: ${failure.message}"
+            statusLabel.foreground = ERROR
+        }
+    }
+
+    /** Back to the EDT, dropping the update when the panel or the project has gone. */
+    private fun onEdt(block: () -> Unit) =
+        ApplicationManager.getApplication().invokeLater({ block() }) { disposed || project.isDisposed }
 
     private fun refreshStatus() {
         val running = service.isRunning
@@ -377,8 +417,7 @@ class McpServerPanel(
 
     // ------------------------------------------------------------------ activity
 
-    private fun refreshActivityLater() =
-        ApplicationManager.getApplication().invokeLater({ refreshActivity() }) { project.isDisposed }
+    private fun refreshActivityLater() = onEdt { refreshActivity() }
 
     private fun refreshActivity() {
         val filter = McpHistoryFilter(
@@ -455,7 +494,10 @@ class McpServerPanel(
     private fun openSettings() =
         ShowSettingsUtil.getInstance().showSettingsDialog(project, SpockAdbConfigurable::class.java)
 
-    override fun dispose() = service.removeCallListener(callListener)
+    override fun dispose() {
+        disposed = true
+        service.removeCallListener(callListener)
+    }
 
     // ------------------------------------------------------------------ rendering
 

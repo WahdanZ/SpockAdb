@@ -16,12 +16,17 @@ class FakeToolContext(
     override val project: Project? = null,
     private val available: List<ConnectedDevice> = listOf(device("emulator-5554")),
     private val applicationId: String? = "com.example.app",
+    /** Names of the projects the IDE has open, for android_select_project. */
+    private val openProjects: List<String> = listOf("app"),
     /** Answer given to every destructive confirmation. */
     var confirmationAnswer: Boolean = false,
 ) : ToolContext {
 
     val confirmations = mutableListOf<String>()
     private var selected: String? = null
+
+    var selectedProject: String? = null
+        private set
 
     override fun devices(): List<ConnectedDevice> = available
 
@@ -46,6 +51,13 @@ class FakeToolContext(
     ): Boolean {
         confirmations += toolName
         return confirmationAnswer
+    }
+
+    override fun selectProject(name: String): String {
+        val match = openProjects.firstOrNull { it.equals(name, ignoreCase = true) }
+            ?: error("No open project is called '$name'. Open: ${openProjects.joinToString()}.")
+        selectedProject = match
+        return match
     }
 
     override fun projectApplicationId(): String? = applicationId

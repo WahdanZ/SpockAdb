@@ -14,6 +14,8 @@ object ToolRegistry {
         ListDevicesTool(),
         GetDeviceInfoTool(),
         SelectDeviceTool(),
+        // Which open project a call is about, for an IDE with more than one open
+        SelectProjectTool(),
         // Applications
         ListPackagesTool(),
         GetPackageInfoTool(),

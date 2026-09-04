@@ -13,7 +13,13 @@ import spock.adb.device.ConnectedDevice
  */
 interface ToolContext {
 
-    /** The project whose Android module supplies the application ID, if one is open. */
+    /**
+     * The project whose Android module supplies the application ID, if one can be chosen.
+     *
+     * Null both when nothing is open and when several projects are open and none has been
+     * selected. Prefer [requireProject] where the difference matters: a null cannot tell the
+     * agent which of the two problems it has, and they have different fixes.
+     */
     val project: Project?
 
     /** All devices ADB currently reports, with metadata already resolved. */
@@ -31,6 +37,25 @@ interface ToolContext {
 
     /** Persists the agent's device choice for subsequent calls. */
     fun selectDevice(serial: String): ConnectedDevice
+
+    /**
+     * The project this call is about, or an explanation of why one could not be chosen.
+     *
+     * @throws IllegalStateException with a message the agent can act on — open a project, or
+     *   call `android_select_project` and name one of the projects the message lists.
+     */
+    fun requireProject(): Project = project ?: error(
+        "No project is open, which this tool needs to run. Open the Android project in the " +
+            "IDE and let Gradle sync finish.",
+    )
+
+    /**
+     * Pins the project later calls resolve against, the way [selectDevice] pins the device.
+     *
+     * @return the name of the project that was selected.
+     * @throws IllegalStateException when no open project matches [name].
+     */
+    fun selectProject(name: String): String
 
     /**
      * Asks the developer to approve a [ToolSafety.DESTRUCTIVE] call.

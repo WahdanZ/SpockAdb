@@ -12,8 +12,9 @@ complexity:
   TooManyFunctions:
     # Swing panels decompose into many small private methods, which is the readable shape
     # for UI code — collapsing them into fewer, larger ones would be worse. Parsers split
-    # into small named steps for the same reason.
-    thresholdInClasses: 24
+    # into small named steps for the same reason, and a service that fronts several
+    # collaborators (transports, history, settings) is mostly thin, named delegation.
+    thresholdInClasses: 28
     thresholdInObjects: 14
 
 style:

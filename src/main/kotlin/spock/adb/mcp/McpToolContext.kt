@@ -22,10 +22,13 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class McpToolContext(
     private val selectedSerial: AtomicReference<String?>,
-    private val projectProvider: () -> Project? = { defaultProject() },
+    /** The agent's project choice, when it has made one. Session state, like the device. */
+    private val selectedProject: AtomicReference<String?> = AtomicReference(null),
+    private val openProjects: () -> List<Project> = { allOpenProjects() },
 ) : ToolContext {
 
-    override val project: Project? get() = projectProvider()
+    override val project: Project?
+        get() = (resolveProject() as? ProjectResolution.Outcome.Resolved)?.project
 
     private val lister: DeviceLister
         get() {
@@ -75,6 +78,48 @@ class McpToolContext(
         return device
     }
 
+    /**
+     * Fails with the reason rather than a null.
+     *
+     * "Nothing is open" and "several are open, say which" need different things from the
+     * agent, and returning null for both taught it the wrong fix for one of them.
+     */
+    override fun requireProject(): Project = when (val outcome = resolveProject()) {
+        is ProjectResolution.Outcome.Resolved -> outcome.project
+
+        ProjectResolution.Outcome.None -> error(
+            "No project is open, which this tool needs to run. Open the Android project in " +
+                "the IDE and let Gradle sync finish.",
+        )
+
+        is ProjectResolution.Outcome.Ambiguous -> error(
+            "Several projects are open, so it is ambiguous which app this call is about: " +
+                outcome.names.joinToString() +
+                ". Call android_select_project with one of those names first.",
+        )
+    }
+
+    override fun selectProject(name: String): String {
+        val open = openProjects()
+        check(open.isNotEmpty()) { "No project is open." }
+
+        val match = open.firstOrNull { candidate ->
+            keysOf(candidate).any { it.isNotBlank() && it.equals(name, ignoreCase = true) }
+        } ?: error(
+            "No open project is called '$name'. Open: " + open.joinToString { it.name } + ".",
+        )
+
+        selectedProject.set(match.name)
+        return match.name
+    }
+
+    private fun resolveProject(): ProjectResolution.Outcome<Project> = ProjectResolution.resolve(
+        candidates = openProjects(),
+        selectedKey = selectedProject.get(),
+        keysOf = { keysOf(it) },
+        nameOf = { it.name },
+    )
+
     override fun projectApplicationId(): String? =
         project?.let { runCatching { GetApplicationIDCommand.resolve(it) }.getOrNull() }
 
@@ -89,7 +134,10 @@ class McpToolContext(
         summary: String,
         device: ConnectedDevice,
     ): Boolean {
-        val currentProject = project ?: return false
+        // Any open frame will do: this dialog is about a device operation, not about a
+        // project, so refusing to ask merely because two projects are open would deny a call
+        // the developer would have approved.
+        val currentProject = project ?: openProjects().firstOrNull() ?: return false
         if (currentProject.isDisposed) return false
 
         var approved = false
@@ -115,8 +163,11 @@ class McpToolContext(
     }
 
     private companion object {
-        /** The single open project, when there is exactly one; otherwise nothing to guess at. */
-        fun defaultProject(): Project? =
-            ProjectManager.getInstance().openProjects.singleOrNull { !it.isDisposed }
+        /** Disposed projects are gone, not candidates. */
+        fun allOpenProjects(): List<Project> =
+            ProjectManager.getInstance().openProjects.filterNot { it.isDisposed }
+
+        /** Everything a project answers to, so a selection can name either. */
+        fun keysOf(project: Project): List<String> = listOfNotNull(project.name, project.basePath)
     }
 }

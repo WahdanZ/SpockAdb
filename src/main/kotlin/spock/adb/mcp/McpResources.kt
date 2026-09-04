@@ -38,6 +38,10 @@ object McpResources {
             name = "Project application ID",
             description = "Application ID of the app module in the open project.",
         ) { context ->
+            // Resolve the project first: "several projects are open" and "no application ID"
+            // are different problems, and reporting the second for the first sends the agent
+            // after a Gradle sync that was never the issue.
+            context.requireProject()
             context.projectApplicationId()
                 ?: "No application ID could be resolved. Open an Android project and let Gradle sync finish."
         },

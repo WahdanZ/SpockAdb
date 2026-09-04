@@ -18,8 +18,7 @@ class GetCurrentActivityTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.project
-            ?: return ToolResult.error("No project is open, which this tool needs to run.")
+        val project = context.requireProject()
 
         val activity = GetActivityCommand().execute(Any(), project, device.device)
             ?: return ToolResult.error(
@@ -40,8 +39,7 @@ class GetActivityStackTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.project
-            ?: return ToolResult.error("No project is open, which this tool needs to run.")
+        val project = context.requireProject()
 
         val stack = GetBackStackCommand().execute(Any(), project, device.device)
         if (stack.isEmpty()) return ToolResult.text("The activity stack is empty.")
@@ -73,8 +71,7 @@ class GetCurrentFragmentsTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.project
-            ?: return ToolResult.error("No project is open, which this tool needs to run.")
+        val project = context.requireProject()
 
         val fragments = GetFragmentsCommand().execute(
             context.resolvePackage(arguments),

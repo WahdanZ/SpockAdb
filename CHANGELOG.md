@@ -11,6 +11,29 @@
   encoded because ddmlib's shell channel decodes its output as text and would otherwise corrupt
   the PNG, and the result is checked for a PNG signature so a `FLAG_SECURE` screen is reported
   as such rather than returned as a broken image
+- **Every project-dependent MCP tool failed whenever two projects were open.** The tool
+  context resolved the project with `openProjects.singleOrNull { !it.isDisposed }`, so a
+  second open project turned `android_get_current_activity`, `android_get_activity_stack`,
+  `android_get_current_fragments` and the default logcat package filter into "No project is
+  open" — a message that was both wrong and unactionable. Resolution now follows the same
+  rule as device resolution: use the selected project, or the only one open, and otherwise
+  **refuse to guess** and name the candidates. Picking the focused window instead would be
+  wrong exactly when it matters most, with an agent working while the developer looks
+  elsewhere
+- **Starting and stopping the MCP server ran on the EDT.** Starting binds two sockets and
+  writes the stdio endpoint descriptor; stopping waits for live stdio sessions to end before
+  releasing their threads. Stopping the server from the MCP panel with a client attached
+  therefore froze the tool window until that wait expired. Both transitions now run on a
+  pooled thread, the controls show the transition and are disabled while it runs, and
+  Restart chains stop → start rather than issuing them together
+- `McpServerService.start()` is idempotent: starting an already-running server returns the
+  bound port instead of replacing the HTTP server and stranding the previous stdio bridge's
+  threads
+
+### Added
+
+- `android_select_project` — says which open project later calls are about, so the ambiguity
+  above names a fix the agent can actually perform. Unnecessary with a single project open
 
 ## [4.0.2] - 2026-09-04
 
