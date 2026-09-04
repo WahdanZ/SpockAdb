@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 ### Added
+- **Jetpack Compose is a first-class target for UI inspection and automation.** Compose has no View hierarchy, so `Activity → View hierarchy` is the wrong model for a Compose screen. The new semantics-based UI tree reads the accessibility tree — where Compose publishes its semantics — so one implementation covers Views, Compose and hybrid screens, with **no Compose dependency and no pinned Compose version**
+- `android_get_ui_tree` reports whether the screen is Views, Compose or hybrid, and every node's test tag, text, content description, bounds, and clickable/enabled/scrollable/checked/selected state
+- **Semantics-first interaction**: `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element` and `android_find_ui_element` resolve elements by testTag → content description → text, deriving the tap point from the matched node's own bounds. Coordinates are now explicitly the fallback — `android_tap`'s description says so
+- Compose puts the click handler on the parent of the text node, so element taps walk up to the nearest interactive ancestor automatically
+- **Assertions** so an agent can verify rather than infer from pixels: `android_assert_visible`, `android_assert_enabled`, `android_assert_text`
+- `android_accessibility_audit` — unlabelled interactive elements, touch targets below the 48dp minimum, ambiguous duplicate labels and unlabelled images, each with a fix appropriate to the framework (`Modifier.semantics` for Compose, not `android:contentDescription`)
+- Framework detection ignores layout containers: every Compose app has an `android.widget.FrameLayout` decor view, so counting any `android.widget.*` class as "Views" would report every pure-Compose screen as hybrid
+- Limitations documented rather than papered over: Compose test tags need the app to set `testTagsAsResourceId`, the current Navigation Compose route is not observable over ADB, and the Layout Inspector's Compose protocol is deliberately not used because it requires unstable internals
+
+### Fixed
+- **Compatibility**: a `sequence { }` builder compiled to a coroutine state machine referencing `kotlin.coroutines.jvm.internal.SpillingKt`, which is absent from the Kotlin stdlib bundled with 2023.1 IDEs — a `NoSuchClassError` at runtime, since the plugin uses the IDE's bundled stdlib. Caught by Plugin Verifier and rewritten as a plain recursive walk
+
+### Added
 - **MCP Server panel** as a tool window tab rather than a buried setting: status, transport and tool count, Start/Stop/Restart, Copy Config, and a link to Settings
 - **Live MCP activity monitor.** Every tool call as it happens with a safety marker (`✓` read-only, `⚡` action, `⚠` destructive), outcome and duration; select one to see arguments, result, client, target device, and — for destructive calls — whether you approved or denied it. Copy request or response
 - **Searchable, bounded MCP request history** across tool name, arguments and result, filterable by tool and outcome, with a configurable size in `Settings → Tools → Spock ADB`

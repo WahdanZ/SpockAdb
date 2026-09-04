@@ -1,6 +1,5 @@
 package spock.adb.mcp.tools
 
-import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import java.io.ByteArrayOutputStream
@@ -77,8 +76,8 @@ class OpenDeepLinkTool : AdbTool {
 class InputTextTool : AdbTool {
     override val name = "android_input_text"
     override val description =
-        "Type text into the currently focused input field. Focus the field first, by tapping " +
-            "it with android_tap."
+        "Type into whatever field currently has focus. Prefer " +
+            "android_input_text_into_element, which focuses the right field first."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         string("text", "The text to type.", required = true)
@@ -97,9 +96,10 @@ class InputTextTool : AdbTool {
 class TapTool : AdbTool {
     override val name = "android_tap"
     override val description =
-        "Tap a point on screen. Prefer coordinates taken from android_get_ui_hierarchy " +
-            "element bounds rather than guessing — guessed coordinates are the main cause of " +
-            "flaky UI automation."
+        "Tap raw screen coordinates. This is the FALLBACK: prefer android_tap_element, which " +
+            "resolves the element from semantics and works on Compose screens where guessed " +
+            "coordinates are the main cause of flaky automation. Use this only when no " +
+            "semantic identifier is available."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         integer("x", "X coordinate in pixels.", required = true)
@@ -180,50 +180,6 @@ class PressKeyTool : AdbTool {
             "VOLUME_DOWN" to 25,
             "POWER" to 26,
         )
-    }
-}
-
-/** `android_get_ui_hierarchy` — structured UI, so agents stop guessing coordinates. */
-class GetUiHierarchyTool : AdbTool {
-    override val name = "android_get_ui_hierarchy"
-    override val description =
-        "Dump the on-screen UI as structured XML from uiautomator: view class, resource id, " +
-            "text, content description, bounds, and whether each node is clickable, enabled " +
-            "and selected. Use the bounds from here to drive android_tap instead of guessing " +
-            "coordinates from a screenshot."
-    override val safety = ToolSafety.READ_ONLY
-    override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
-
-    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-
-        // uiautomator writes to a file, then it is read back: dumping to /dev/stdout is
-        // unreliable across Android versions.
-        val dumpPath = "/sdcard/spock-adb-ui-dump.xml"
-        val dumpOutput = McpShell.run(device, "uiautomator dump $dumpPath", timeoutSeconds = 30)
-        if (dumpOutput.contains("ERROR", ignoreCase = true)) {
-            return ToolResult.error(
-                "uiautomator could not dump the UI:\n$dumpOutput\n" +
-                    "This happens when the screen is off or a secure window is showing.",
-            )
-        }
-
-        val xml = McpShell.run(device, "cat ${ShellQuote.quote(dumpPath)}", maxChars = UI_DUMP_MAX_CHARS)
-        device.cleanUp(dumpPath)
-
-        return if (xml.isBlank()) {
-            ToolResult.error("uiautomator produced an empty dump.")
-        } else {
-            ToolResult.text(xml)
-        }
-    }
-
-    private fun IDevice.cleanUp(path: String) {
-        runCatching { McpShell.run(this, "rm -f ${ShellQuote.quote(path)}") }
-    }
-
-    private companion object {
-        const val UI_DUMP_MAX_CHARS = 60_000
     }
 }
 

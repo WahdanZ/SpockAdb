@@ -137,9 +137,30 @@ nothing warns you. **A deprecation warning on the newest platform is strictly be
 NoSuchMethodError on the oldest**, so the deprecated-but-present overload is used, with a
 comment saying why. Do not "clean up" that call without re-running the verifier.
 
-Three distinct instances of this one failure mode turned up while modernising this plugin —
-compatibility bridges, an inlined platform helper, and a newer overload. All three were
-invisible at compile time, and all three were caught by `verifyPlugin`.
+Four distinct instances of this one failure mode turned up while modernising this plugin —
+compatibility bridges, an inlined platform helper, a newer overload, and a Kotlin builder
+needing a newer stdlib. All four were invisible at compile time, and all four were caught by
+`verifyPlugin`.
+
+## The fourth trap: Kotlin language features that need a newer stdlib
+
+`kotlin.stdlib.default.dependency=false` — the plugin uses the Kotlin stdlib **bundled with
+the IDE**, not one it ships. So a language feature whose generated code calls a newer stdlib
+function fails on an older IDE even though it compiles perfectly:
+
+```
+Method UiNode.asSequence$1.invokeSuspend(Object) references an unresolved class
+kotlin.coroutines.jvm.internal.SpillingKt.
+This can lead to NoSuchClassError exception at runtime.
+```
+
+That came from an innocuous-looking `sequence { yield(...) }` builder. It compiles to a
+coroutine state machine, and Kotlin 2.x emits a reference to `SpillingKt`, which the stdlib
+bundled with 2023.1 IDEs does not have. Rewritten as a plain recursive walk.
+
+**Be wary of anything that lowers to a coroutine state machine** — `sequence { }`,
+`iterator { }`, `suspend` functions — in code that must run on the oldest supported IDE.
+`verifyPlugin` is what catches it; nothing else does.
 
 ## Verification matrix
 
