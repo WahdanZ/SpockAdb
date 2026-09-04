@@ -73,6 +73,15 @@
             <action id="spock.adb.actions.RestartAppWithDebuggerAction"
                     class="spock.adb.actions.RestartAppWithDebuggerAction"
                     text="Spock: Restart App With Debugger"/>
+            <separator/>
+            <action id="spock.adb.mcp.ToggleMcpServerAction"
+                    class="spock.adb.mcp.actions.ToggleMcpServerAction"
+                    text="Spock: Start MCP Server for AI Agents"
+                    description="Expose the connected Android device to MCP-compatible AI agents"/>
+            <action id="spock.adb.mcp.CopyMcpConfigurationAction"
+                    class="spock.adb.mcp.actions.CopyMcpConfigurationAction"
+                    text="Spock: Copy MCP Client Configuration"
+                    description="Copy a ready-to-paste MCP client configuration for this IDE"/>
         </group>
     </actions>
 </idea-plugin>

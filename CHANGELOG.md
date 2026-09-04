@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 ### Added
+- **Android MCP server.** Spock ADB can expose the connected device to MCP-compatible AI agents (Claude Code, Claude Desktop, Cursor). 26 strongly typed tools rather than a generic shell passthrough, so an agent can reason about what an operation means and you can audit it: devices, packages, app lifecycle, permissions, current Activity/Fragment, activity stack, logcat, processes, battery, network, deep links, input, tap/swipe/keys, screenshots as MCP image content, and the uiautomator UI hierarchy. Start it from `Tools → SpockAdb`; it is **off by default**
+- **MCP safety model.** Every tool declares read-only, safe-action or destructive. Destructive tools (clear app data, revoke permission, arbitrary shell) always ask before acting, default to denied, bring the IDE forward, and are written to `idea.log`. A test enforces that no destructive tool can report success without a confirmation
+- `android_run_adb_command` exists as a deliberately awkward escape hatch: it requires a stated reason, has a bounded timeout and capped output, and refuses catastrophic commands (`rm -rf /`, factory reset, `mkfs`, raw `dd`) before the confirmation dialog is even shown
+- The MCP layer owns no ADB logic — it resolves devices and runs commands through the same services the tool window uses, so there is one implementation of every device operation
+- Transport is the JDK's own `com.sun.net.httpserver`, bound to loopback with a per-install bearer token compared in constant time. Android Studio does not ship IntelliJ's built-in web server, and this avoids adding Netty or Ktor
+- `docs/MCP.md` documents the architecture, the safety model, example agent workflows, and what is not implemented yet
+
+### Added
 - Unit test suite for ADB output parsing (21 tests): activity, back stack, application back stack and fragment `dumpsys` parsers
 - `detekt` static analysis wired into the build with a baseline of the existing 178 findings, so new code cannot add to the debt
 - CI now runs `test` and `detekt` on every push and pull request, and uploads the reports

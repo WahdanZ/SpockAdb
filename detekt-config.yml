@@ -9,3 +9,10 @@ complexity:
   LongParameterList:
     # Test fixture builders legitimately mirror the shape of the data class under test.
     excludes: ['**/test/**']
+
+style:
+  ReturnCount:
+    # Guard clauses read better than the nesting required to satisfy a single-return rule,
+    # and the tool implementations are mostly precondition checks.
+    max: 4
+    excludeGuardClauses: true
