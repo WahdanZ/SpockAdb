@@ -1,16 +1,23 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBTextField
+import com.intellij.util.ui.JBUI
 import spock.adb.command.*
 import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.CheckBoxDialog
+import spock.adb.ui.CollapsibleSection
+import java.awt.BorderLayout
+import java.awt.GridLayout
 import java.awt.event.ActionEvent
 import java.awt.event.ItemEvent
 import javax.swing.*
@@ -20,41 +27,63 @@ class SpockAdbViewer(
     /** Scopes the message bus connection; without a parent the connection is never released. */
     private val parentDisposable: Disposable,
 ) : SimpleToolWindowPanel(true) {
-    private lateinit var rootPanel: JPanel
-    private lateinit var permissionPanel: JPanel
-    private lateinit var networkPanel: JPanel
-    private lateinit var developerPanel: JPanel
-    private lateinit var devicesListComboBox: JComboBox<String>
-    private lateinit var currentActivityButton: JButton
-    private lateinit var currentFragmentButton: JButton
-    private lateinit var clearAppDataButton: JButton
-    private lateinit var clearAppDataAndRestartButton: JButton
-    private lateinit var uninstallAppButton: JButton
-    private lateinit var permissionButton: JButton
-    private lateinit var grantAllPermissionsButton: JButton
-    private lateinit var revokeAllPermissionsButton: JButton
-    private lateinit var restartAppButton: JButton
-    private lateinit var restartAppWithDebuggerButton: JButton
-    private lateinit var forceKillAppButton: JButton
-    private lateinit var testProcessDeathButton: JButton
-    private lateinit var activitiesBackStackButton: JButton
-    private lateinit var currentAppBackStackButton: JButton
-    private lateinit var adbWifi: JButton
-    private lateinit var setting: JButton
+    // Components are constructed here rather than bound from SpockAdbViewer.form. The form
+    // required a reflective `$$$setupUI$$$` call, kept field names in sync by hand across two
+    // files, and laid every action out as a full-width row — roughly fifteen of them, so in a
+    // docked tool window most of the panel was below the fold.
+    private val devicesListComboBox = JComboBox<String>()
+    private val setting = JButton(AllIcons.General.Settings).apply {
+        toolTipText = "Choose which actions are shown"
+    }
+
+    private val currentActivityButton = JButton("Current Activity")
+    private val currentFragmentButton = JButton("Current Fragment")
+    private val currentAppBackStackButton = JButton("App Back Stack")
+    private val activitiesBackStackButton = JButton("All Activities")
+
+    private val restartAppButton = JButton("Restart")
+    private val restartAppWithDebuggerButton = JButton("Restart + Debugger")
+    private val forceKillAppButton = JButton("Force Stop")
+    private val testProcessDeathButton = JButton("Process Death")
+
+    // Destructive actions carry an ellipsis: they open a confirmation rather than acting.
+    private val clearAppDataButton = JButton("Clear Data...")
+    private val clearAppDataAndRestartButton = JButton("Clear Data & Restart...")
+    private val uninstallAppButton = JButton("Uninstall...")
+
+    private val permissionButton = JButton("Manage...")
+    private val grantAllPermissionsButton = JButton("Grant All")
+    private val revokeAllPermissionsButton = JButton("Revoke All...")
+
+    private val openDeveloperOptionsButton = JButton("Open on Device")
+    private val enableDisableDontKeepActivities = JCheckBox("Don't keep activities")
+    private val enableDisableShowTaps = JCheckBox("Show taps")
+    private val enableDisableShowLayoutBounds = JCheckBox("Show layout bounds")
+    private val windowAnimatorScaleComboBox = JComboBox(ANIMATION_SCALES)
+    private val transitionAnimatorScaleComboBox = JComboBox(ANIMATION_SCALES)
+    private val animatorDurationScaleComboBox = JComboBox(ANIMATION_SCALES)
+
+    private val wifiToggle = JButton("Wi-Fi")
+    private val mobileDataToggle = JButton("Mobile Data")
+
+    private val inputOnDeviceTextField = JBTextField()
+    private val inputOnDeviceButton = JButton("Send")
+    private val openDeepLinkTextField = JBTextField()
+    private val openDeepLinkButton = JButton("Open")
+
+    /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
+    private val adbWifi = JButton()
+
     private var devices: List<ConnectedDevice> = emptyList()
-    private lateinit var enableDisableDontKeepActivities: JCheckBox
-    private lateinit var enableDisableShowTaps: JCheckBox
-    private lateinit var enableDisableShowLayoutBounds: JCheckBox
-    private lateinit var windowAnimatorScaleComboBox: JComboBox<String>
-    private lateinit var transitionAnimatorScaleComboBox: JComboBox<String>
-    private lateinit var animatorDurationScaleComboBox: JComboBox<String>
-    private lateinit var wifiToggle: JButton
-    private lateinit var mobileDataToggle: JButton
-    private lateinit var inputOnDeviceTextField: JTextField
-    private lateinit var openDeepLinkTextField: JTextField
-    private lateinit var inputOnDeviceButton: JButton
-    private lateinit var openDeepLinkButton: JButton
-    private lateinit var openDeveloperOptionsButton: JButton
+
+    // Sections, so a group whose actions are all switched off hides its heading too.
+    private lateinit var navigateSection: CollapsibleSection
+    private lateinit var lifecycleSection: CollapsibleSection
+    private lateinit var dangerSection: CollapsibleSection
+    private lateinit var permissionSection: CollapsibleSection
+    private lateinit var developerSection: CollapsibleSection
+    private lateinit var networkSection: CollapsibleSection
+    private lateinit var sendSection: CollapsibleSection
     private var selectedDevice: ConnectedDevice? = null
         set(value) {
             field = value
@@ -123,16 +152,132 @@ class SpockAdbViewer(
     }
 
     init {
-        // The IntelliJ form compiler generates $$$setupUI$$$() but does not inject the call
-        // into Kotlin constructors (unlike Java). We must invoke it explicitly via reflection.
-        javaClass.getDeclaredMethod("\$\$\$setupUI\$\$\$").invoke(this)
-        setContent(JScrollPane(rootPanel))
+        setContent(JScrollPane(buildLayout()).apply { border = JBUI.Borders.empty() })
         AppSettingService.getInstance().run {
             updateUi(state)
         }
     }
 
-    fun initPlugin(adbController: AdbController) {
+    /**
+     * A compact, sectioned layout.
+     *
+     * Actions are laid out two to a row rather than one full-width row each, and grouped
+     * under collapsible headings, so the common ones fit without scrolling in a docked tool
+     * window. Destructive actions are separated into their own section rather than sitting
+     * between navigation and lifecycle buttons where they can be hit by accident.
+     */
+    private fun buildLayout(): JPanel {
+        navigateSection = section(
+            "Navigate",
+            "navigate",
+            grid(currentActivityButton, currentFragmentButton, currentAppBackStackButton, activitiesBackStackButton),
+        )
+        lifecycleSection = section(
+            "App lifecycle",
+            "lifecycle",
+            grid(restartAppButton, restartAppWithDebuggerButton, forceKillAppButton, testProcessDeathButton),
+        )
+        dangerSection = section(
+            "Destructive",
+            "destructive",
+            grid(clearAppDataButton, clearAppDataAndRestartButton, uninstallAppButton),
+        )
+        permissionSection = section(
+            "Permissions",
+            "permissions",
+            grid(permissionButton, grantAllPermissionsButton, revokeAllPermissionsButton),
+        )
+        developerSection = section("Developer options", "developer", developerOptionsContent())
+        networkSection = section("Network", "network", grid(wifiToggle, mobileDataToggle))
+        sendSection = section("Send to device", "send", sendContent())
+
+        val content = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            border = JBUI.Borders.empty(GAP)
+            add(deviceRow())
+            listOf(
+                navigateSection,
+                lifecycleSection,
+                dangerSection,
+                permissionSection,
+                developerSection,
+                networkSection,
+                sendSection,
+            ).forEach { add(it) }
+            // Absorbs the slack so the sections stay at the top instead of stretching.
+            add(Box.createVerticalGlue())
+        }
+        return content
+    }
+
+    private fun deviceRow(): JPanel = JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
+        alignmentX = LEFT_ALIGNMENT
+        maximumSize = java.awt.Dimension(Int.MAX_VALUE, preferredSize.height)
+        add(devicesListComboBox, BorderLayout.CENTER)
+        add(setting, BorderLayout.EAST)
+    }
+
+    /** Two buttons per row; an odd count leaves the last one on its own row. */
+    private fun grid(vararg buttons: JButton): JPanel = JPanel(
+        GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP)),
+    ).apply {
+        border = JBUI.Borders.empty(GAP, 0)
+        buttons.forEach { add(it) }
+        if (buttons.size % COLUMNS != 0) add(JPanel())
+    }
+
+    private fun developerOptionsContent(): JPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        border = JBUI.Borders.empty(GAP, 0)
+        add(leftAligned(openDeveloperOptionsButton))
+        add(leftAligned(enableDisableDontKeepActivities))
+        add(leftAligned(enableDisableShowTaps))
+        add(leftAligned(enableDisableShowLayoutBounds))
+        add(scaleRow("Window animation", windowAnimatorScaleComboBox))
+        add(scaleRow("Transition animation", transitionAnimatorScaleComboBox))
+        add(scaleRow("Animator duration", animatorDurationScaleComboBox))
+    }
+
+    private fun scaleRow(label: String, combo: JComboBox<String>): JPanel =
+        JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
+            alignmentX = LEFT_ALIGNMENT
+            maximumSize = java.awt.Dimension(Int.MAX_VALUE, combo.preferredSize.height + JBUI.scale(GAP))
+            border = JBUI.Borders.emptyTop(2)
+            add(JBLabel(label), BorderLayout.WEST)
+            add(combo, BorderLayout.EAST)
+        }
+
+    /** Field plus its action button, so the text and what it does stay adjacent. */
+    private fun sendContent(): JPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        border = JBUI.Borders.empty(GAP, 0)
+        add(fieldRow("Text", inputOnDeviceTextField, inputOnDeviceButton))
+        add(fieldRow("Deep link", openDeepLinkTextField, openDeepLinkButton))
+    }
+
+    private fun fieldRow(label: String, field: JBTextField, button: JButton): JPanel =
+        JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
+            alignmentX = LEFT_ALIGNMENT
+            maximumSize = java.awt.Dimension(Int.MAX_VALUE, field.preferredSize.height + JBUI.scale(GAP))
+            border = JBUI.Borders.emptyTop(2)
+            add(JBLabel(label), BorderLayout.WEST)
+            add(field, BorderLayout.CENTER)
+            add(button, BorderLayout.EAST)
+        }
+
+    private fun leftAligned(component: JComponent): JPanel =
+        JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, JBUI.scale(2))).apply {
+            alignmentX = LEFT_ALIGNMENT
+            maximumSize = java.awt.Dimension(Int.MAX_VALUE, component.preferredSize.height + JBUI.scale(GAP))
+            add(component)
+        }
+
+    private fun section(title: String, key: String, content: JPanel): CollapsibleSection =
+        CollapsibleSection(title, content, key).apply {
+            alignmentX = LEFT_ALIGNMENT
+        }
+
+        fun initPlugin(adbController: AdbController) {
         this.adbController = adbController
 
         // Registered only once the controller exists: the listener calls into it, and
@@ -324,9 +469,9 @@ class SpockAdbViewer(
                 SpockAction.TEST_PROCESS_DEATH -> testProcessDeathButton.isVisible = it.isSelected
                 SpockAction.FORCE_KILL -> forceKillAppButton.isVisible = it.isSelected
                 SpockAction.UNINSTALL -> uninstallAppButton.isVisible = it.isSelected
-                SpockAction.TOGGLE_NETWORK -> networkPanel.isVisible = it.isSelected
-                SpockAction.PERMISSIONS -> permissionPanel.isVisible = it.isSelected
-                SpockAction.DEVELOPER_OPTIONS -> developerPanel.isVisible = it.isSelected
+                SpockAction.TOGGLE_NETWORK -> networkSection.setSectionVisible(it.isSelected)
+                SpockAction.PERMISSIONS -> permissionSection.setSectionVisible(it.isSelected)
+                SpockAction.DEVELOPER_OPTIONS -> developerSection.setSectionVisible(it.isSelected)
                 SpockAction.INPUT -> {
                     inputOnDeviceButton.isVisible = it.isSelected
                     inputOnDeviceTextField.isVisible = it.isSelected
@@ -336,8 +481,39 @@ class SpockAdbViewer(
                     openDeepLinkTextField.isVisible = it.isSelected
                 }
             }
-            rootPanel.invalidate()
         }
+        refreshSectionVisibility()
+    }
+
+    /**
+     * Hides a section heading when every action inside it has been switched off, so the
+     * settings dialog cannot leave an empty titled separator behind.
+     */
+    private fun refreshSectionVisibility() {
+        navigateSection.setSectionVisible(
+            listOf(
+                currentActivityButton,
+                currentFragmentButton,
+                currentAppBackStackButton,
+                activitiesBackStackButton,
+            ).any { it.isVisible },
+        )
+        lifecycleSection.setSectionVisible(
+            listOf(
+                restartAppButton,
+                restartAppWithDebuggerButton,
+                forceKillAppButton,
+                testProcessDeathButton,
+            ).any { it.isVisible },
+        )
+        dangerSection.setSectionVisible(
+            listOf(clearAppDataButton, clearAppDataAndRestartButton, uninstallAppButton).any { it.isVisible },
+        )
+        sendSection.setSectionVisible(
+            inputOnDeviceButton.isVisible || openDeepLinkButton.isVisible,
+        )
+        revalidate()
+        repaint()
     }
 
     /**
@@ -489,6 +665,9 @@ class SpockAdbViewer(
 
     private companion object {
         const val TOOL_WINDOW_ID = "Spock ADB"
+        const val GAP = 4
+        const val COLUMNS = 2
+        val ANIMATION_SCALES = arrayOf("0.0", "0.5", "1.0", "1.5", "2.0", "5.0", "10.0")
         const val NO_DEVICES_LABEL = "No devices connected"
     }
 }

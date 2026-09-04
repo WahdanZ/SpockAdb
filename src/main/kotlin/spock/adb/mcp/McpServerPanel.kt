@@ -62,6 +62,7 @@ class McpServerPanel(
     private val detailArea = JBTextArea().apply {
         isEditable = false
         font = JBUI.Fonts.create(Font.MONOSPACED, font.size)
+        text = EMPTY_DETAIL
     }
 
     private val toolsModel = DefaultListModel<ToolRow>()
@@ -328,9 +329,10 @@ class McpServerPanel(
 
         detailLabel.text = when {
             // The transport is HTTP on loopback, not stdio. Say what it actually is.
-            running -> "Transport: HTTP (127.0.0.1:${service.port})   ·   Tools: $toolCount"
-            else -> "Not accepting connections.   ·   Tools available: $toolCount"
+            running -> "·  Transport: HTTP (127.0.0.1:${service.port})  ·  Tools: $toolCount"
+            else -> "·  Not accepting connections  ·  Tools available: $toolCount"
         }
+        detailLabel.foreground = JBColor.GRAY
 
         startStopButton.text = if (running) "Stop Server" else "Start MCP Server"
         startStopButton.icon = if (running) AllIcons.Actions.Suspend else AllIcons.Actions.Execute
@@ -404,7 +406,7 @@ class McpServerPanel(
 
     private fun showDetails() {
         val call = selected() ?: run {
-            detailArea.text = ""
+            detailArea.text = EMPTY_DETAIL
             return
         }
         detailArea.text = buildString {
@@ -431,7 +433,7 @@ class McpServerPanel(
     private fun clearHistory() {
         service.clearHistory()
         activityModel.clear()
-        detailArea.text = ""
+        detailArea.text = EMPTY_DETAIL
     }
 
     private fun copy(value: String?) {
@@ -480,7 +482,12 @@ class McpServerPanel(
         const val GAP = 4
         const val SEARCH_COLUMNS = 14
         const val ANY_TOOL = "All tools"
-        const val SPLIT_PROPORTION = 0.6f
+
+        // Favour the list: the detail pane is empty until something is selected.
+        const val SPLIT_PROPORTION = 0.72f
+
+        const val EMPTY_DETAIL =
+            "Select a request or a tool above to see its details here."
 
         const val ACTIVITY_ROW_FORMAT = "%s  %s %-32s %s %5d ms"
         const val ROW_PAD_V = 1
