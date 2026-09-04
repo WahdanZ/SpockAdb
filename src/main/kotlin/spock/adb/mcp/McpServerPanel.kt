@@ -350,11 +350,13 @@ class McpServerPanel(
     }
 
     /**
-     * Reports only what the transport actually tells us.
+     * Reports only what the transports actually tell us.
      *
-     * Plain HTTP POST is stateless: there is no connection to be "online" on, and a client
-     * that never calls `initialize` reports no identity at all. Presence indicators per
-     * client would be invented, so they are not shown.
+     * Neither one knows who is calling until the client says so in `initialize`, for two
+     * different reasons: plain HTTP POST is stateless, so there is no connection to be
+     * "online" on at all, and a stdio session is a connection but still carries no identity
+     * before that first message. Either way a per-client presence indicator would be invented
+     * rather than observed, so none is shown.
      */
     private fun refreshClientLabel(running: Boolean) {
         val client = service.connectedClient()
@@ -364,7 +366,7 @@ class McpServerPanel(
             // Wrapped as HTML: a plain JBLabel clips rather than wrapping, and this sentence
             // is longer than a docked tool window is wide.
             client == null ->
-                "<html>No client has identified itself yet — HTTP is stateless, so a client " +
+                "<html>No client has identified itself yet — on either transport, a client " +
                     "is only known once it calls initialize.</html>"
             else -> {
                 val version = client.version?.let { " $it" }.orEmpty()

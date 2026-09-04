@@ -37,12 +37,13 @@ It shows what is actually true rather than a mock-up of it:
 The panel names the connected client only when the client identifies itself in `initialize`,
 and says so plainly when it has not:
 
-> No client has identified itself yet. HTTP is stateless, so clients are only known once
-> they call initialize.
+> No client has identified itself yet. On either transport, a client is only known once it
+> calls initialize.
 
-There is no per-client presence list. Plain HTTP POST has no connection to be "online" on,
-so a list of green and grey dots next to client names would be invented rather than observed.
-**What the transport does not expose is reported as unknown, not guessed.**
+There is no per-client presence list. Plain HTTP POST has no connection to be "online" on at
+all, and a stdio session is a connection but carries no identity before `initialize`, so a list
+of green and grey dots next to client names would be invented rather than observed.
+**What a transport does not expose is reported as unknown, not guessed.**
 
 ## Quick start
 
