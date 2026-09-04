@@ -8,6 +8,7 @@ import spock.adb.SpockAdbService
 import spock.adb.SpockAdbViewer
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.logcat.LogcatPanel
+import spock.adb.mcp.McpServerPanel
 
 class AdbDrawerViewer : ToolWindowFactory {
 
@@ -19,11 +20,13 @@ class AdbDrawerViewer : ToolWindowFactory {
 
         val logcatPanel = LogcatPanel(project)
         val commandCenterPanel = CommandCenterPanel(project)
+        val mcpPanel = McpServerPanel(project)
 
         // Both panels are disposed with the tool window, which stops the logcat stream and
         // cancels any running command rather than leaking an ADB reader thread.
         Disposer.register(toolWindow.disposable, logcatPanel)
         Disposer.register(toolWindow.disposable, commandCenterPanel)
+        Disposer.register(toolWindow.disposable, mcpPanel)
 
         val viewer = SpockAdbViewer(project, toolWindow.disposable)
         // The device chosen in the Devices tab is the target for every tab, so there is one
@@ -43,6 +46,9 @@ class AdbDrawerViewer : ToolWindowFactory {
         )
         contentManager.addContent(
             contentManager.factory.createContent(commandCenterPanel, "Commands", false),
+        )
+        contentManager.addContent(
+            contentManager.factory.createContent(mcpPanel, "MCP Server", false),
         )
     }
 }

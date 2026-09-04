@@ -22,9 +22,12 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import spock.adb.device.ConnectedDevice
+import spock.adb.ui.WrapLayout
+import spock.adb.ui.renderWith
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.FlowLayout
+import java.awt.Font
 import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
@@ -32,6 +35,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import javax.swing.DefaultListModel
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
+import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ListCellRenderer
 import javax.swing.ListSelectionModel
@@ -61,8 +65,14 @@ class LogcatPanel(
     private val incoming = ConcurrentLinkedQueue<LogcatEntry>()
     private val flushTimer = Timer(FLUSH_INTERVAL_MS) { drainIncoming() }
 
-    private val presetCombo = JComboBox(LogcatPreset.entries.toTypedArray())
-    private val levelCombo = JComboBox(LogLevel.entries.toTypedArray())
+    private val presetCombo = JComboBox(LogcatPreset.entries.toTypedArray()).apply {
+        renderWith { it.label }
+        toolTipText = "Filter preset"
+    }
+    private val levelCombo = JComboBox(LogLevel.entries.toTypedArray()).apply {
+        renderWith { it.label }
+        toolTipText = "Minimum log level"
+    }
     private val searchField = JBTextField(SEARCH_COLUMNS)
     private val regexToggle = JCheckBox("Regex")
     private val autoScroll = JCheckBox("Auto-scroll", true)
@@ -81,7 +91,12 @@ class LogcatPanel(
         list.setEmptyText("Not streaming. Select a device and press Start.")
 
         setToolbar(buildToolbar())
-        setContent(JBScrollPane(list).apply { border = JBUI.Borders.empty() })
+        setContent(
+            JPanel(BorderLayout()).apply {
+                add(JBScrollPane(list).apply { border = JBUI.Borders.empty() }, BorderLayout.CENTER)
+                add(statusBar(), BorderLayout.SOUTH)
+            },
+        )
 
         wireFilterControls()
         flushTimer.isRepeats = true
@@ -284,22 +299,32 @@ class LogcatPanel(
             .createActionToolbar(ActionPlaces.TOOLWINDOW_CONTENT, actions, true)
         toolbar.targetComponent = this
 
-        val filters = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
+        // WrapLayout so the controls reflow instead of running off the edge of a narrow,
+        // docked tool window.
+        val filters = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+            border = JBUI.Borders.empty(0, GAP, 2, GAP)
             add(JBLabel("Preset:"))
             add(presetCombo)
             add(JBLabel("Level:"))
             add(levelCombo)
-            add(JBLabel("Search:"))
-            add(searchField)
+            add(searchField.apply { toolTipText = "Filter by message or tag" })
             add(regexToggle)
             add(autoScroll)
         }
 
+        // Two rows, not one. The previous layout put the toolbar, the filters and the status
+        // in a single BorderLayout row, so in a docked tool window the filter controls were
+        // clipped vertically and the status text was truncated.
         return JPanel(BorderLayout()).apply {
-            add(toolbar.component, BorderLayout.WEST)
+            add(toolbar.component, BorderLayout.NORTH)
             add(filters, BorderLayout.CENTER)
-            add(statusLabel.apply { border = JBUI.Borders.emptyRight(STATUS_PAD_RIGHT) }, BorderLayout.EAST)
         }
+    }
+
+    /** Status on its own row: in the old layout it lived in EAST and was truncated. */
+    private fun statusBar(): JComponent = JPanel(BorderLayout()).apply {
+        border = JBUI.Borders.empty(2, GAP)
+        add(statusLabel, BorderLayout.WEST)
     }
 
     private fun simpleAction(text: String, description: String, icon: javax.swing.Icon, run: () -> Unit) =
@@ -356,7 +381,9 @@ class LogcatPanel(
             cellHasFocus: Boolean,
         ): Component {
             label.text = value.render()
-            label.font = list.font
+            // Monospace: the timestamp, PID and level columns only line up in a fixed-width
+            // font, and a ragged log is much harder to scan.
+            label.font = JBUI.Fonts.create(Font.MONOSPACED, list.font.size)
             label.isOpaque = true
             label.background = if (isSelected) list.selectionBackground else list.background
             label.foreground = when {
@@ -397,6 +424,5 @@ class LogcatPanel(
         const val SEARCH_COLUMNS = 18
         const val PIDOF_TIMEOUT_SECONDS = 10L
         const val GAP = 4
-        const val STATUS_PAD_RIGHT = 8
     }
 }

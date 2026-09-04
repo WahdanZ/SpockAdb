@@ -30,9 +30,13 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     private var settings = McpSettings()
     private val selectedSerial = AtomicReference<String?>(null)
-    private val callLog = ArrayDeque<McpCall>()
+    private val history = McpRequestHistory()
 
     private var server: McpHttpServer? = null
+    private var protocol: McpProtocol? = null
+
+    /** Notified after each recorded call so the activity panel can update live. */
+    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(McpCall) -> Unit>()
 
     val isRunning: Boolean get() = server?.port != null
     val port: Int? get() = server?.port
@@ -49,11 +53,13 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     fun start(): Result<Int> = runCatching {
         if (settings.token.isBlank()) settings.token = generateToken()
 
-        val protocol = McpProtocol(
+        val mcpProtocol = McpProtocol(
             contextProvider = { McpToolContext(selectedSerial) },
             auditLog = ::record,
         )
-        val httpServer = McpHttpServer(protocol, settings.token)
+        protocol = mcpProtocol
+        history.capacity = settings.historySize
+        val httpServer = McpHttpServer(mcpProtocol, settings.token)
         val boundPort = httpServer.start(settings.port)
         server = httpServer
         settings.enabled = true
@@ -67,6 +73,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     fun stop() {
         server?.stop()
         server = null
+        protocol = null
         settings.enabled = false
     }
 
@@ -82,19 +89,48 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     }
 
     /** Most recent tool calls, newest first, for the activity view. */
-    @Synchronized
-    fun recentCalls(): List<McpCall> = callLog.toList().asReversed()
+    fun recentCalls(): List<McpCall> = history.all()
 
-    @Synchronized
+    fun queryHistory(filter: McpHistoryFilter): List<McpCall> = history.query(filter)
+
+    fun knownTools(): List<String> = history.knownTools()
+
+    fun knownClients(): List<String> = history.knownClients()
+
+    fun clearHistory() = history.clear()
+
+    /**
+     * What the connected client reported at `initialize`.
+     *
+     * Null when nothing is known. The HTTP transport is stateless, so a client that has not
+     * called `initialize` cannot be identified — reported honestly rather than guessed.
+     */
+    fun connectedClient(): McpClientInfo? = protocol?.connectedClient
+
+    fun addCallListener(listener: (McpCall) -> Unit) {
+        listeners += listener
+    }
+
+    fun removeCallListener(listener: (McpCall) -> Unit) {
+        listeners -= listener
+    }
+
+    var historySize: Int
+        get() = settings.historySize
+        set(value) {
+            settings.historySize = value
+            history.capacity = value
+        }
+
     private fun record(call: McpCall) {
-        callLog.addLast(call)
-        while (callLog.size > MAX_CALL_LOG) callLog.removeFirst()
+        history.record(call)
 
-        // Destructive calls are recorded in the IDE log too: the in-memory list is lost on
-        // restart, and "what did the agent do to my device" must survive that.
+        // Destructive calls are recorded in the IDE log too: the in-memory history is lost
+        // on restart, and "what did the agent do to my device" must survive that.
         if (call.safety == spock.adb.mcp.tools.ToolSafety.DESTRUCTIVE) {
             log.info("MCP destructive call: ${call.toolName} args=${call.arguments} error=${call.isError}")
         }
+        listeners.forEach { runCatching { it(call) } }
     }
 
     /**
@@ -130,7 +166,6 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     companion object {
         private const val TOKEN_BYTES = 32
-        private const val MAX_CALL_LOG = 200
 
         fun getInstance(): McpServerService =
             ApplicationManager.getApplication().getService(McpServerService::class.java)
@@ -145,4 +180,6 @@ data class McpSettings(
     var port: Int = 0,
     /** Bearer token clients must present. Generated on first use. */
     var token: String = "",
+    /** How many tool calls to keep. Bounded so the log cannot grow without limit. */
+    var historySize: Int = McpRequestHistory.DEFAULT_CAPACITY,
 )

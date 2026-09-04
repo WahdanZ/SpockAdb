@@ -21,6 +21,7 @@ object ToolRegistry {
         StopAppTool(),
         RestartAppTool(),
         ClearAppDataTool(),
+        UninstallAppTool(),
         GrantPermissionTool(),
         RevokePermissionTool(),
         // Inspection

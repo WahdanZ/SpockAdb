@@ -92,9 +92,20 @@ Works in Android Studio and IntelliJ IDEA.
 | Feature | Description |
 |---|---|
 | **Android MCP server** | Expose the device to Claude Code, Claude Desktop, Cursor or any MCP client |
-| **26 typed tools** | Devices, packages, app lifecycle, permissions, Activity/Fragment, logcat, screenshots, UI hierarchy, input |
+| **27 typed tools** | Devices, packages, app lifecycle, permissions, Activity/Fragment, logcat, screenshots, UI hierarchy, input |
+| **MCP Server panel** | Status, start/stop/restart, copy config — a tab, not a buried setting |
+| **Live activity monitor** | Every agent request with safety marker, outcome and duration; expand for arguments and result |
+| **Searchable history** | Filter by tool and outcome; bounded, with a configurable size |
 | **Safety model** | Destructive tools always ask, per call, and default to denied |
 | **Off by default** | Started explicitly from `Tools → SpockAdb` |
+
+### Actions & keyboard shortcuts
+| Feature | Description |
+|---|---|
+| **Everything is an IntelliJ Action** | Discoverable through Find Action, listed in `Settings → Keymap → Spock ADB` |
+| **Assign your own shortcuts** | Native Keymap — no custom shortcut system |
+| **No defaults shipped** | The plugin will never silently claim a combination you already use |
+| **Context-aware** | Actions disable themselves and say why: *"no Android device connected"* |
 
 See **[docs/MCP.md](docs/MCP.md)** for setup, the tool list, the safety model and example agent workflows.
 

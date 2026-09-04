@@ -1,10 +1,11 @@
 package spock.adb.actions
 
-import com.android.ddmlib.IDevice
-import spock.adb.AdbController
+import com.intellij.openapi.project.Project
+import spock.adb.SpockAdbService
+import spock.adb.device.ConnectedDevice
 
-class GetCurrentFragmentAction : BaseAction() {
-    override fun performAction(controller: AdbController, device: IDevice) {
-        controller.currentFragment(device)
-    }
+class GetCurrentFragmentAction : DeviceAwareAction() {
+    override val baseDescription = "Open the source of the visible Fragment"
+    override fun perform(project: Project, device: ConnectedDevice) =
+        SpockAdbService.getInstance(project).controller.currentFragment(device.device)
 }

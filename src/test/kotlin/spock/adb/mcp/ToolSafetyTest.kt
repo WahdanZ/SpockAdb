@@ -29,6 +29,7 @@ class ToolSafetyTest {
         assertEquals(
             setOf(
                 "android_clear_app_data",
+                "android_uninstall_app",
                 "android_revoke_permission",
                 "android_run_adb_command",
             ),

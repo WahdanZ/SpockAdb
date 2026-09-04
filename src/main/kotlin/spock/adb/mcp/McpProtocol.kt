@@ -49,7 +49,10 @@ class McpProtocol(
 
         return try {
             when (method) {
-                "initialize" -> success(id, initialize())
+                "initialize" -> {
+                    rememberClient(request.getAsJsonObject("params"))
+                    success(id, initialize())
+                }
                 "ping" -> success(id, JsonObject())
                 "tools/list" -> success(id, toolsList())
                 "tools/call" -> success(id, toolsCall(request.getAsJsonObject("params")))
@@ -61,6 +64,21 @@ class McpProtocol(
         } catch (e: Exception) {
             error(id, INTERNAL_ERROR, e.message ?: e.javaClass.simpleName).toString()
         }
+    }
+
+    /** Name reported by the connected client at `initialize`, when it reported one. */
+    @Volatile
+    var connectedClient: McpClientInfo? = null
+        private set
+
+    private fun rememberClient(params: JsonObject?) {
+        val info = params?.getAsJsonObject("clientInfo") ?: return
+        val name = info.get("name")?.asString ?: return
+        connectedClient = McpClientInfo(
+            name = name,
+            version = info.get("version")?.asString,
+            connectedAt = System.currentTimeMillis(),
+        )
     }
 
     private fun initialize(): JsonObject = JsonObject().apply {
@@ -138,8 +156,11 @@ class McpProtocol(
                 toolName = name,
                 safety = tool.safety,
                 arguments = arguments.toString(),
+                result = result.summarise(),
                 durationMs = System.currentTimeMillis() - startedAt,
                 isError = result.isError,
+                client = connectedClient?.name,
+                deviceSerial = arguments.get("deviceSerial")?.takeIf { !it.isJsonNull }?.asString,
             ),
         )
         return result.toJson()
@@ -183,6 +204,19 @@ class McpProtocol(
                     )
                 },
             )
+        }
+    }
+
+    /**
+     * A short, readable form of the result for the activity panel.
+     *
+     * Image payloads are described rather than stored: a base64 screenshot is megabytes and
+     * would make the bounded history meaningless.
+     */
+    private fun ToolResult.summarise(): String = content.joinToString("\n") { item ->
+        when (item) {
+            is ToolContent.Text -> item.text.take(RESULT_PREVIEW_CHARS)
+            is ToolContent.Image -> "[${item.mimeType}, ${item.base64Data.length} base64 chars]"
         }
     }
 
@@ -236,15 +270,36 @@ class McpProtocol(
         const val INVALID_REQUEST = -32600
         const val METHOD_NOT_FOUND = -32601
         const val INTERNAL_ERROR = -32603
+        const val RESULT_PREVIEW_CHARS = 4_000
     }
 }
 
-/** One recorded tool invocation, for the activity panel and the audit trail. */
+/** What a client told us about itself at `initialize`. Absent when it told us nothing. */
+data class McpClientInfo(
+    val name: String,
+    val version: String?,
+    val connectedAt: Long,
+)
+
+/**
+ * One recorded tool invocation, for the activity panel and the audit trail.
+ *
+ * [client] is whatever the client reported in `initialize`. It is genuinely optional: the
+ * HTTP transport is stateless, so a client that never calls `initialize` — or calls it on a
+ * different connection — cannot be identified. It is left null rather than guessed.
+ */
 data class McpCall(
     val toolName: String,
     val safety: spock.adb.mcp.tools.ToolSafety,
     val arguments: String,
+    val result: String,
     val durationMs: Long,
     val isError: Boolean,
+    val client: String? = null,
+    val deviceSerial: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
-)
+) {
+    /** Destructive calls that succeeded were, by construction, confirmed by the developer. */
+    val wasConfirmed: Boolean
+        get() = safety == spock.adb.mcp.tools.ToolSafety.DESTRUCTIVE && !isError
+}

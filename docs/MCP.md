@@ -11,6 +11,34 @@ action.
 > drive your device. Start it deliberately, from
 > `Tools → SpockAdb → Spock: Start MCP Server for AI Agents`.
 
+## The MCP Server panel
+
+`Tools → SpockAdb → Open MCP Server Panel`, or the **MCP Server** tab in the tool window.
+
+It shows what is actually true rather than a mock-up of it:
+
+- **Status** — running or stopped, the transport (`HTTP (127.0.0.1:<port>)`, not stdio), and
+  the tool count. Start / Stop / Restart / Copy Config / Settings.
+- **Activity monitor** — every tool call as it happens, with a safety marker
+  (`✓` read-only, `⚡` action, `⚠` destructive), success or failure, and duration.
+- **Request details** — select a call to see arguments, result, client, target device,
+  duration, and for destructive calls whether you approved or denied it. Copy request or
+  response.
+- **History** — searchable across tool name, arguments and result; filterable by tool and by
+  outcome. Bounded, and the size is configurable in `Settings → Tools → Spock ADB`.
+
+### What the transport can and cannot tell you
+
+The panel names the connected client only when the client identifies itself in `initialize`,
+and says so plainly when it has not:
+
+> No client has identified itself yet. HTTP is stateless, so clients are only known once
+> they call initialize.
+
+There is no per-client presence list. Plain HTTP POST has no connection to be "online" on,
+so a list of green and grey dots next to client names would be invented rather than observed.
+**What the transport does not expose is reported as unknown, not guessed.**
+
 ## Quick start
 
 1. `Tools → SpockAdb → Spock: Start MCP Server for AI Agents`
