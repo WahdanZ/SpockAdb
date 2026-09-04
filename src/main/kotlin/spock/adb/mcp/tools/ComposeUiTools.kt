@@ -62,7 +62,12 @@ internal object UiTreeReader {
         }
     }
 
-    fun UiNode.render(depth: Int = 0): String = buildString {
+    /**
+     * @param maxDepth how deep to descend before summarising. A whole tree is often thousands
+     *   of nodes, and an agent pays for every one of them, so callers assembling a bundle can
+     *   trade depth for tokens. Hidden subtrees are counted rather than dropped silently.
+     */
+    fun UiNode.render(depth: Int = 0, maxDepth: Int = Int.MAX_VALUE): String = buildString {
         append("  ".repeat(depth))
         append(shortClassName())
         testTag?.let { append(" testTag=").append(it) }
@@ -74,7 +79,17 @@ internal object UiTreeReader {
         if (!enabled) append(" DISABLED")
         if (selected) append(" selected")
         append(' ').append(bounds)
-        children.forEach { append('\n').append(it.render(depth + 1)) }
+
+        when {
+            children.isEmpty() -> Unit
+            depth < maxDepth -> children.forEach { append('\n').append(it.render(depth + 1, maxDepth)) }
+            else -> {
+                val hidden = children.sumOf { it.asSequence().count() }
+                append('\n').append("  ".repeat(depth + 1))
+                append("[").append(hidden).append(" more node(s) below this one, hidden by maxUiDepth=")
+                append(maxDepth).append(". Raise it, or call android_get_ui_tree for the full tree.]")
+            }
+        }
     }
 
     private fun UiNode.shortClassName(): String = className.substringAfterLast('.')
