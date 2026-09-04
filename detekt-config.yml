@@ -9,6 +9,10 @@ complexity:
   LongParameterList:
     # Test fixture builders legitimately mirror the shape of the data class under test.
     excludes: ['**/test/**']
+  TooManyFunctions:
+    # Swing panels decompose into many small private methods, which is the readable shape
+    # for UI code — collapsing them into fewer, larger ones would be worse.
+    thresholdInClasses: 20
 
 style:
   ReturnCount:

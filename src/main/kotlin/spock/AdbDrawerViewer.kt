@@ -1,10 +1,13 @@
 package spock
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import spock.adb.SpockAdbService
 import spock.adb.SpockAdbViewer
+import spock.adb.commandcenter.CommandCenterPanel
+import spock.adb.logcat.LogcatPanel
 
 class AdbDrawerViewer : ToolWindowFactory {
 
@@ -14,10 +17,32 @@ class AdbDrawerViewer : ToolWindowFactory {
         // while ADB starts.
         val adbController = SpockAdbService.getInstance(project).controller
 
+        val logcatPanel = LogcatPanel(project)
+        val commandCenterPanel = CommandCenterPanel(project)
+
+        // Both panels are disposed with the tool window, which stops the logcat stream and
+        // cancels any running command rather than leaking an ADB reader thread.
+        Disposer.register(toolWindow.disposable, logcatPanel)
+        Disposer.register(toolWindow.disposable, commandCenterPanel)
+
         val viewer = SpockAdbViewer(project, toolWindow.disposable)
+        // The device chosen in the Devices tab is the target for every tab, so there is one
+        // answer to "which device is this acting on" across the whole tool window.
+        viewer.onDeviceSelected { selected ->
+            logcatPanel.setDevice(selected)
+            commandCenterPanel.setDevice(selected)
+        }
         viewer.initPlugin(adbController)
 
         val contentManager = toolWindow.contentManager
-        contentManager.addContent(contentManager.factory.createContent(viewer, null, false))
+        contentManager.addContent(
+            contentManager.factory.createContent(viewer, "Devices", false),
+        )
+        contentManager.addContent(
+            contentManager.factory.createContent(logcatPanel, "Logcat", false),
+        )
+        contentManager.addContent(
+            contentManager.factory.createContent(commandCenterPanel, "Commands", false),
+        )
     }
 }
