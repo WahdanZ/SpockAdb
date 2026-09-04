@@ -11,10 +11,10 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
-import org.jetbrains.android.sdk.AndroidSdkUtils
 import spock.adb.command.*
 import spock.adb.device.ConnectedDevice
-import spock.adb.device.DeviceInfoReader
+import spock.adb.device.DebugBridgeProvider
+import spock.adb.device.DeviceLister
 import spock.adb.models.ActivityData
 import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
@@ -25,15 +25,10 @@ import spock.adb.premission.ListItem
 class AdbControllerImp(
     private val project: Project,
     /**
-     * Resolves the ADB bridge. Invoked on a pooled thread, never on the EDT.
-     *
-     * `AndroidSdkUtils.getDebugBridge` blocks while ADB starts, which can take seconds on a
-     * cold start. It was previously called during `createToolWindowContent` and inside
-     * `AnAction.actionPerformed`, both of which run on the EDT, freezing the IDE.
+     * Resolves the ADB bridge. Safe to call from any thread — see [DebugBridgeProvider],
+     * which handles the fact that `AndroidSdkUtils.getDebugBridge` asserts the EDT.
      */
-    private val debugBridgeProvider: () -> AndroidDebugBridge? = {
-        AndroidSdkUtils.getDebugBridge(project)
-    },
+    private val debugBridgeProvider: () -> AndroidDebugBridge? = DebugBridgeProvider(project),
 ) : AdbController, AndroidDebugBridge.IDeviceChangeListener, com.intellij.openapi.Disposable {
 
     private val log = Logger.getInstance(AdbControllerImp::class.java)
@@ -49,14 +44,14 @@ class AdbControllerImp(
      * Reads the device list and resolves each device's metadata.
      *
      * Runs on a pooled thread: `IDevice.getProperty` blocks, so the UI must never do this
-     * itself while rendering the device dropdown.
+     * itself while rendering the device dropdown. Never throws — see [DeviceLister].
      */
-    private fun devices(): List<ConnectedDevice> =
-        runCatching { debugBridgeProvider()?.devices?.toList() }
-            .onFailure { log.warn("Could not read the connected device list from ADB", it) }
-            .getOrNull()
-            .orEmpty()
-            .map { ConnectedDevice(it, DeviceInfoReader.read(it)) }
+    private val deviceLister = DeviceLister(
+        devicesSupplier = { debugBridgeProvider()?.devices?.toList() },
+        onError = { message, error -> log.warn(message, error) },
+    )
+
+    private fun devices(): List<ConnectedDevice> = deviceLister.list()
 
     /** Device-change callbacks arrive on ddmlib threads; the listener updates Swing. */
     private fun publishDeviceList() {
@@ -81,9 +76,17 @@ class AdbControllerImp(
                     "Open an Android project and make sure its Gradle sync has finished.",
             )
 
+    /**
+     * Re-registers the device-change listener and re-reads the device list.
+     *
+     * This previously only swapped the listener registration, so it could not recover a
+     * dropdown that had come up empty — there was no way to ask ADB again short of
+     * reopening the project.
+     */
     override fun refresh() {
         AndroidDebugBridge.removeDeviceChangeListener(this)
         AndroidDebugBridge.addDeviceChangeListener(this)
+        ApplicationManager.getApplication().executeOnPooledThread { publishDeviceList() }
     }
 
     /**

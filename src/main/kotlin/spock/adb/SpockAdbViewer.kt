@@ -115,7 +115,6 @@ class SpockAdbViewer(
         // into Kotlin constructors (unlike Java). We must invoke it explicitly via reflection.
         javaClass.getDeclaredMethod("\$\$\$setupUI\$\$\$").invoke(this)
         setContent(JScrollPane(rootPanel))
-        setToolWindowListener()
         AppSettingService.getInstance().run {
             updateUi(state)
         }
@@ -123,6 +122,11 @@ class SpockAdbViewer(
 
     fun initPlugin(adbController: AdbController) {
         this.adbController = adbController
+
+        // Registered only once the controller exists: the listener calls into it, and
+        // `adbController` is a lateinit property, so subscribing from the constructor risked
+        // an UninitializedPropertyAccessException on an early tool window state change.
+        setToolWindowListener()
 
         updateDevicesList()
 
@@ -343,11 +347,22 @@ class SpockAdbViewer(
                 ?: connected.firstOrNull { it.info.isUsable }
                 ?: connected.firstOrNull()
 
-            devicesListComboBox.model = DefaultComboBoxModel(
-                connected.map { it.info.label() }.toTypedArray(),
-            )
-            selectedDevice?.let { devicesListComboBox.selectedIndex = connected.indexOf(it) }
-            devicesListComboBox.toolTipText = selectedDevice?.info?.describe()
+            if (connected.isEmpty()) {
+                // An empty dropdown with no explanation is indistinguishable from a broken
+                // plugin. Say so, and say what to do about it.
+                devicesListComboBox.model = DefaultComboBoxModel(arrayOf(NO_DEVICES_LABEL))
+                devicesListComboBox.isEnabled = false
+                devicesListComboBox.toolTipText =
+                    "Connect a device or start an emulator, then press Refresh. " +
+                        "If a device is attached, check idea.log for ADB errors."
+            } else {
+                devicesListComboBox.isEnabled = true
+                devicesListComboBox.model = DefaultComboBoxModel(
+                    connected.map { it.info.label() }.toTypedArray(),
+                )
+                selectedDevice?.let { devicesListComboBox.selectedIndex = connected.indexOf(it) }
+                devicesListComboBox.toolTipText = selectedDevice?.info?.describe()
+            }
             rememberSelectedDevice()
         }
     }
@@ -444,6 +459,13 @@ class SpockAdbViewer(
                     // overload has been available since 2020.1.
                     override fun stateChanged(toolWindowManager: ToolWindowManager) {
                         if (!toolWindow.isVisible) return
+
+                        // Re-read the device list every time the panel is shown. There is no
+                        // refresh button in the form, so without this a dropdown that came up
+                        // empty — because ADB had not started yet, or a device was plugged in
+                        // afterwards — could only be recovered by reopening the project.
+                        adbController.refresh()
+
                         removeDeveloperOptionsListeners()
                         ApplicationManager.getApplication().executeOnPooledThread {
                             setDeveloperOptionsValues()
@@ -455,5 +477,6 @@ class SpockAdbViewer(
 
     private companion object {
         const val TOOL_WINDOW_ID = "Spock ADB"
+        const val NO_DEVICES_LABEL = "No devices connected"
     }
 }

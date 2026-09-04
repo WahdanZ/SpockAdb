@@ -37,6 +37,13 @@
 ### Fixed
 - **"Don't Keep Activities" did nothing.** The checkbox displayed the current device setting but was never given an action listener: clicking it moved the tick, left the device unchanged, and silently reverted on the next refresh. It now toggles `always_finish_activities` like the other developer options
 
+### Fixed
+- **The device list came up empty.** `AndroidSdkUtils.getDebugBridge()` opens with `assertIsDispatchThread()` — it drives a progress task while ADB boots, so it is designed for the EDT and throws anywhere else. Moving it to a pooled thread made every device lookup fail. `DebugBridgeProvider` now reads the already-running bridge via `AndroidDebugBridge.getBridge()`, which is safe from any thread, and only delegates to `AndroidSdkUtils` on the EDT when ADB still has to be started
+- **The failure was silent.** The device list is read on a background thread and delivered to a UI callback; when that read threw, the callback never ran, so the dropdown stayed empty with nothing shown and nothing logged. `DeviceLister` now reports every failure to `idea.log` and degrades — one unreadable device no longer discards the whole list
+- **An empty dropdown now explains itself** instead of looking like a broken plugin, and says what to do next
+- **`refresh()` did not refresh.** It re-registered the ADB listener without re-reading devices, so an empty dropdown could only be recovered by reopening the project. It now re-reads the list, and the tool window does so every time it becomes visible
+- The tool window listener is registered after the controller is assigned; it calls into a `lateinit` property, so an early state change could have thrown `UninitializedPropertyAccessException`
+
 ### Device management
 - The device dropdown now shows model, Android version, API level, architecture, and whether the device is an emulator or a handset, instead of just the raw ddmlib name. Offline, unauthorized and bootloader devices are labelled as such
 - **The selected device is persisted between sessions.** `AppSetting.selectedDevice` has existed since settings were introduced but was never read or written
