@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][1080,2220]">
+    <node index="0" text="" resource-id="android:id/content" class="android.widget.FrameLayout" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][1080,2154]">
+      <node index="0" text="" resource-id="" class="androidx.compose.ui.platform.AndroidComposeView" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][1080,2154]">
+        <node index="0" text="Checkout" resource-id="" class="android.view.View" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[42,120][400,180]" />
+        <node index="1" text="" resource-id="com.example.compose:id/checkout_continue" class="android.view.View" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[42,900][1038,1032]">
+          <node index="0" text="Continue" resource-id="" class="android.view.View" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[400,940][680,992]" />
+        </node>
+        <node index="2" text="" resource-id="" class="android.view.View" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[980,60][1010,90]" />
+        <node index="3" text="Disabled action" resource-id="com.example.compose:id/disabled_action" class="android.view.View" package="com.example.compose" content-desc="" checkable="false" checked="false" clickable="true" enabled="false" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[42,1100][1038,1232]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>

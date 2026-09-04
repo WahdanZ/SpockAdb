@@ -92,7 +92,9 @@ Works in Android Studio and IntelliJ IDEA.
 | Feature | Description |
 |---|---|
 | **Android MCP server** | Expose the device to Claude Code, Claude Desktop, Cursor or any MCP client |
-| **27 typed tools** | Devices, packages, app lifecycle, permissions, Activity/Fragment, logcat, screenshots, UI hierarchy, input |
+| **36 typed tools** | Devices, packages, app lifecycle, permissions, Activity/Fragment, logcat, screenshots, UI tree, semantic interaction, assertions |
+| **Jetpack Compose first-class** | Semantics-based UI tree that identifies Views / Compose / hybrid, with element-addressed tap, scroll, input and assertions — no Compose dependency, no pinned version |
+| **Accessibility audit** | Unlabelled controls, small touch targets, duplicate labels — with Compose-level fixes |
 | **MCP Server panel** | Status, start/stop/restart, copy config — a tab, not a buried setting |
 | **Live activity monitor** | Every agent request with safety marker, outcome and duration; expand for arguments and result |
 | **Searchable history** | Filter by tool and outcome; bounded, with a configurable size |

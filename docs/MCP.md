@@ -136,6 +136,76 @@ Every resource is read fresh and stamped with the time it was read. A resource a
 believes is current but is minutes old is worse than none — it will reason confidently about
 a screen that has since changed.
 
+## Jetpack Compose
+
+Compose is a first-class target, not an afterthought bolted onto a View-based design.
+
+**Why it works without depending on Compose.** Compose has no View hierarchy to inspect, so
+`Activity → View hierarchy` is simply the wrong model for a Compose screen. What Compose
+*does* publish is **semantics into the accessibility tree** — the same tree `uiautomator`
+reads. Modelling semantics covers Views, Compose and hybrid screens with one implementation,
+and means the plugin needs **no Compose artifact and pins no Compose version**.
+
+`android_get_ui_tree` reports which framework is in use:
+
+| Reported | Meaning |
+|---|---|
+| `Traditional Android Views` | No Compose host on screen |
+| `Jetpack Compose` | An `AndroidComposeView` is hosting the content |
+| `Mixed Views and Jetpack Compose` | Both, with real View *content* widgets present |
+
+The detection deliberately ignores layout containers: every Compose app still has an
+`android.widget.FrameLayout` decor view, so counting any `android.widget.*` class as "Views"
+would report every pure-Compose screen as hybrid.
+
+### Semantics first, coordinates last
+
+`android_tap_element`, `android_long_press_element`, `android_scroll_to_element`,
+`android_input_text_into_element`, `android_find_ui_element`, `android_assert_visible`,
+`android_assert_enabled` and `android_assert_text` all resolve elements by **testTag → content
+description → text**, and only then derive a tap point from the matched node's own bounds.
+
+A coordinate guessed from a screenshot breaks on a different screen size, density, font scale
+or after any layout change, and is the single biggest cause of flaky AI-driven UI automation.
+`android_tap` still exists, and its description tells agents it is the fallback.
+
+One Compose-specific detail matters: Compose usually puts the text on a child node and the
+click handler on its **parent**, so the node matching "Continue" often is not the tappable
+one. `android_tap_element` walks up to the nearest interactive ancestor automatically.
+
+### Limitations, stated plainly
+
+- **Compose test tags require the app to opt in.** `Modifier.testTag` is only visible over
+  ADB when the app sets `Modifier.semantics { testTagsAsResourceId = true }` (Compose UI
+  1.2+). When it has not, `android_get_ui_tree` says so explicitly and tells the agent to
+  match on text or content description instead. It does not pretend the tag is missing for
+  some other reason.
+
+- **The current Compose Navigation route is not observable over ADB.** Navigation Compose
+  keeps its back stack in memory and publishes nothing to `dumpsys` or the accessibility
+  tree, so an agent sees the hosting Activity and the visible semantics, not the route. To
+  make routes visible, an app can put the route in a test tag on its `NavHost` and enable
+  `testTagsAsResourceId`. Navigation **Fragment** destinations *are* visible, via
+  `android_get_current_fragments`.
+
+- **The Layout Inspector's Compose protocol is deliberately not used.** Android Studio reads
+  the full composition tree — recomposition counts, modifiers, parameters — through the
+  app-inspection framework, which needs a debuggable build, the `ui-tooling` artifact, and a
+  JVMTI agent speaking an undocumented protocol. Reimplementing that would mean depending on
+  unstable Compose internals and would break with Compose releases. The semantics tree is the
+  stable, documented, version-independent alternative, and is what test frameworks use too.
+
+- **Recomposition counts are therefore not available.** Use Android Studio's Layout Inspector
+  for that; it is better at it and already exists.
+
+### Accessibility audit
+
+`android_accessibility_audit` reports unlabelled interactive elements, touch targets below
+the 48dp minimum, ambiguous duplicate labels and unlabelled images — each with a **code-level
+fix appropriate to the framework**. On a Compose screen it suggests
+`Modifier.semantics { contentDescription = "…" }`, not `android:contentDescription`, because
+the View-level fix does not exist there.
+
 ## UI automation
 
 `android_get_ui_hierarchy` returns uiautomator's XML: view class, resource id, text, content

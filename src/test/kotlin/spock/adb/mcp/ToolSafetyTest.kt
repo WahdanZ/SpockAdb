@@ -53,7 +53,12 @@ class ToolSafetyTest {
                 "android_get_battery_info",
                 "android_get_network_info",
                 "android_take_screenshot",
-                "android_get_ui_hierarchy",
+                "android_get_ui_tree",
+                "android_find_ui_element",
+                "android_accessibility_audit",
+                "android_assert_visible",
+                "android_assert_enabled",
+                "android_assert_text",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )

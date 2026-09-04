@@ -32,9 +32,21 @@ object ToolRegistry {
         GetProcessesTool(),
         GetBatteryInfoTool(),
         GetNetworkInfoTool(),
-        // Interaction
+        // UI inspection — semantics-first, so it covers Views, Compose and hybrid screens
         TakeScreenshotTool(),
-        GetUiHierarchyTool(),
+        GetUiTreeTool(),
+        FindUiElementTool(),
+        AccessibilityAuditTool(),
+        // Element-addressed interaction. Coordinates are the fallback, not the primary path.
+        TapElementTool(),
+        LongPressElementTool(),
+        ScrollToElementTool(),
+        InputTextIntoElementTool(),
+        // Assertions, so an agent can verify rather than infer from pixels
+        AssertVisibleTool(),
+        AssertEnabledTool(),
+        AssertTextTool(),
+        // Interaction
         OpenDeepLinkTool(),
         InputTextTool(),
         TapTool(),
