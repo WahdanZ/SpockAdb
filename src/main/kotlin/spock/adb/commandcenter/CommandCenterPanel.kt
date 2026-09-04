@@ -352,7 +352,8 @@ class CommandCenterPanel(
               dumpsys battery
               ps -A
 
-            Destructive commands are flagged as you type and confirmed before they run.
+            Destructive commands are flagged as you type,
+            and confirmed before they run.
         """.trimIndent()
         const val GAP = 4
         const val STATUS_PAD_V = 2

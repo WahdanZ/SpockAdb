@@ -91,12 +91,45 @@ class UiTreeParserTest {
     }
 
     @Test
-    fun `a screen with both Compose and View widgets is reported as hybrid`() {
-        val hybrid = dump("compose-material3.xml").replace(
-            """<node index="0" text="Checkout" resource-id="" class="android.view.View"""",
-            """<node index="0" text="Checkout" resource-id="" class="android.widget.TextView"""",
-        )
+    fun `a real Compose-only screen is not misreported as hybrid`() {
+        // Captured from a device running a Compose-only app. Compose reports a Text node's
+        // class as android.widget.TextView so screen readers treat it correctly, which made
+        // a flat class-name scan call this screen hybrid.
+        val tree = UiTreeParser.parse(dump("compose-only-real.xml"))
 
+        assertEquals(UiFramework.COMPOSE, tree.framework)
+        assertTrue(
+            tree.nodes().any { it.className == "android.widget.TextView" },
+            "fixture should contain the TextView that caused the misclassification",
+        )
+    }
+
+    @Test
+    fun `only View widgets outside the Compose subtree make a screen hybrid`() {
+        val hybrid = """
+            <hierarchy rotation="0">
+              <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="p"
+                    content-desc="" checkable="false" checked="false" clickable="false" enabled="true"
+                    focusable="false" focused="false" scrollable="false" long-clickable="false"
+                    password="false" selected="false" bounds="[0,0][1080,2220]">
+                <node index="0" text="Toolbar" resource-id="" class="android.widget.TextView" package="p"
+                      content-desc="" checkable="false" checked="false" clickable="false" enabled="true"
+                      focusable="false" focused="false" scrollable="false" long-clickable="false"
+                      password="false" selected="false" bounds="[0,0][1080,132]" />
+                <node index="1" text="" resource-id="" class="androidx.compose.ui.platform.ComposeView"
+                      package="p" content-desc="" checkable="false" checked="false" clickable="false"
+                      enabled="true" focusable="false" focused="false" scrollable="false"
+                      long-clickable="false" password="false" selected="false" bounds="[0,132][1080,2220]">
+                  <node index="0" text="Hello" resource-id="" class="android.widget.TextView" package="p"
+                        content-desc="" checkable="false" checked="false" clickable="false" enabled="true"
+                        focusable="false" focused="false" scrollable="false" long-clickable="false"
+                        password="false" selected="false" bounds="[42,174][400,232]" />
+                </node>
+              </node>
+            </hierarchy>
+        """.trimIndent()
+
+        // The toolbar TextView sits outside the ComposeView; the inner one does not.
         assertEquals(UiFramework.HYBRID, UiTreeParser.parse(hybrid).framework)
     }
 }

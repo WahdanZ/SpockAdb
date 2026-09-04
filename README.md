@@ -14,9 +14,7 @@ It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cu
 Works in Android Studio and IntelliJ IDEA.
 <!-- Plugin description end -->
 
-![Spock ADB tool window](images/spock_adb.png)
-
-<!-- TODO replace with a 4.0 shot of the tool window: images/tool-window.png -->
+![Spock ADB tool window](images/devices.png)
 
 ---
 
@@ -40,8 +38,6 @@ of three attached devices a command just hit — every operation names its targe
 
 ### Devices
 
-<!-- TODO screenshot: images/devices.png -->
-
 Model, Android version, API level, architecture, and whether each device is an emulator or a
 handset — with offline and unauthorized devices labelled as such. Your selection persists
 between sessions, and every other tab targets it.
@@ -60,7 +56,7 @@ between sessions, and every other tab targets it.
 
 ### Logcat
 
-<!-- TODO screenshot: images/logcat.png -->
+![Logcat tab](images/logcat.png)
 
 Scoped to the app in your project by default — this is the part Android Studio's Logcat window
 doesn't do for you.
@@ -74,7 +70,7 @@ doesn't do for you.
 
 ### Commands
 
-<!-- TODO screenshot: images/command-center.png -->
+![ADB Command Center](images/command-center.png)
 
 Any `adb shell` command, with the things a terminal gives you and a tool window usually doesn't:
 a real timeout, a **Cancel button that actually stops the command**, de-duplicating history,
@@ -84,7 +80,7 @@ Destructive commands are flagged **as you type**, not only in a dialog after you
 
 ### UI Inspector
 
-<!-- TODO screenshot: images/ui-inspector.png -->
+![UI Inspector](images/ui-inspector.png)
 
 Inspect what is on screen — and it works for **Jetpack Compose**, because it reads the
 accessibility tree where Compose publishes its semantics rather than assuming a View hierarchy.
@@ -96,12 +92,13 @@ accessibility tree where Compose publishes its semantics rather than assuming a 
   with a fix appropriate to the framework (`Modifier.semantics` on Compose, not
   `android:contentDescription`)
 
-> When Compose test tags aren't visible, the panel says so and gives you the fix
-> (`Modifier.semantics { testTagsAsResourceId = true }`) instead of showing an empty column.
+> The screenshot above is a real Compose app: the panel reports the framework, and because
+> the app hasn't opted into `testTagsAsResourceId` it says so and gives the fix, instead of
+> showing an empty column and leaving you to work out why.
 
 ### MCP Server
 
-<!-- TODO screenshot: images/mcp-panel.png -->
+![MCP Server panel](images/mcp-panel.png)
 
 Give an AI agent — Claude Code, Claude Desktop, Cursor — safe, structured access to a connected
 device. **Off by default**; you start it deliberately.

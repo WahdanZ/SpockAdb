@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 ### Fixed
+- **A Compose-only screen was reported as "Mixed Views and Jetpack Compose".** Compose reports a `Text` node's class as `android.widget.TextView` so screen readers treat it correctly, which meant a flat class-name scan saw "Views present" on a pure Compose screen. Framework detection is now subtree-aware: only widgets *outside* every `ComposeView` count as Views. Caught on a real device, and covered by a fixture captured from it
+- Three labels ran past the edge of a docked tool window: the MCP "no client identified" message (now wraps), the Command Center hint, and the UI Inspector target line
+
+### Fixed
 - **The Devices tab clipped its second column.** Content inside a `JScrollPane` is laid out at its *preferred* width, so the two-column grid sized itself from the widest label and everything in the right column was cut off behind a horizontal scrollbar. The content now tracks the viewport width, the pane never scrolls sideways, and buttons are allowed to shrink below their label width. Covered by a headless layout test
 - The device dropdown ran past the panel edge for the same reason; it now elides instead
 - "Restart + Debugger" and "Clear Data & Restart..." were the widest labels; shortened to "Debugger" and "Clear & Restart...", with tooltips carrying the full meaning

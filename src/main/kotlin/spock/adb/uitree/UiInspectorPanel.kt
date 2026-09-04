@@ -391,7 +391,8 @@ class UiInspectorPanel(
     }
 
     private fun updateStatus() {
-        statusLabel.text = device?.let { "Target: ${it.info.describe()} — press Capture UI." }
+        // Just the device name: the full describe() plus a hint overflowed a docked panel.
+        statusLabel.text = device?.let { "Target: ${it.info.displayName} — press Capture UI" }
             ?: "No device selected."
     }
 

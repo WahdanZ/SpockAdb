@@ -354,9 +354,11 @@ class McpServerPanel(
         clientLabel.foreground = JBColor.GRAY
         clientLabel.text = when {
             !running -> " "
+            // Wrapped as HTML: a plain JBLabel clips rather than wrapping, and this sentence
+            // is longer than a docked tool window is wide.
             client == null ->
-                "No client has identified itself yet. HTTP is stateless, so clients are only " +
-                    "known once they call initialize."
+                "<html>No client has identified itself yet — HTTP is stateless, so a client " +
+                    "is only known once it calls initialize.</html>"
             else -> {
                 val version = client.version?.let { " $it" }.orEmpty()
                 "Last client: ${client.name}$version   ·   requests: ${service.recentCalls().size}"
