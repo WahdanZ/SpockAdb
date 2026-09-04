@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`android_take_screenshot` never worked inside Android Studio.** It called
+  `IDevice.getScreenshot()`, which the IDE ships as a stub that fails with "This method is not
+  used in Android Studio", so every call returned that message instead of an image. Capture now
+  goes through `screencap -p` on the shell, like every other tool. The bytes come back base64
+  encoded because ddmlib's shell channel decodes its output as text and would otherwise corrupt
+  the PNG, and the result is checked for a PNG signature so a `FLAG_SECURE` screen is reported
+  as such rather than returned as a broken image
+
 ## [4.0.2] - 2026-09-04
 
 ### Added

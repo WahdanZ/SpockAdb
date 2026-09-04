@@ -2,10 +2,7 @@ package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
-import java.io.ByteArrayOutputStream
 import java.util.Base64
-import java.util.concurrent.TimeUnit
-import javax.imageio.ImageIO
 
 /** `android_take_screenshot` — the screen, as MCP image content. */
 class TakeScreenshotTool : AdbTool {
@@ -17,24 +14,35 @@ class TakeScreenshotTool : AdbTool {
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
+    // Capture goes through the shell rather than IDevice.getScreenshot(), which Android Studio
+    // ships as a stub that fails with "This method is not used in Android Studio".
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
-        val raw = device.getScreenshot(SCREENSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            ?: return ToolResult.error("The device returned no screenshot.")
+        val png = try {
+            McpShell.runBinary(device, "screencap -p", SCREENSHOT_TIMEOUT_SECONDS)
+        } catch (e: IllegalStateException) {
+            return ToolResult.error(e.message ?: "The screenshot could not be captured.")
+        }
 
-        val image = raw.asBufferedImage()
-            ?: return ToolResult.error("The screenshot could not be decoded.")
-
-        val png = ByteArrayOutputStream().use { out ->
-            ImageIO.write(image, "png", out)
-            out.toByteArray()
+        if (!png.looksLikePng()) {
+            return ToolResult.error(
+                "The device returned ${png.size} bytes that are not a PNG. The screen may be " +
+                    "protected by FLAG_SECURE, which blocks capture.",
+            )
         }
         return ToolResult.image(Base64.getEncoder().encodeToString(png))
     }
 
+    private fun ByteArray.looksLikePng() =
+        size > PNG_SIGNATURE.size && PNG_SIGNATURE.indices.all { this[it] == PNG_SIGNATURE[it] }
+
     private companion object {
         const val SCREENSHOT_TIMEOUT_SECONDS = 15L
+
+        /** The eight bytes every PNG starts with. */
+        val PNG_SIGNATURE =
+            byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
     }
 }
 

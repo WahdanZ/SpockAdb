@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.android.ddmlib.IDevice
 import spock.adb.ShellOutputReceiver
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
@@ -25,6 +26,40 @@ internal object McpShell {
         val receiver = ShellOutputReceiver()
         device.executeShellCommand(command, receiver, timeoutSeconds, TimeUnit.SECONDS)
         return receiver.toString().truncateForAgent(maxChars)
+    }
+
+    /**
+     * Runs a command whose output is binary, and returns the raw bytes.
+     *
+     * ddmlib's shell channel decodes everything it receives as text, so raw bytes coming
+     * back from something like `screencap -p` are corrupted before a caller ever sees them.
+     * Encoding on the device and decoding here keeps the payload ASCII for the whole trip.
+     *
+     * The output is deliberately not truncated: half a PNG is not a smaller PNG.
+     *
+     * @throws IllegalStateException when the device did not return decodable base64, carrying
+     *   the raw output so the caller can report what the device actually said.
+     */
+    fun runBinary(
+        device: IDevice,
+        command: String,
+        timeoutSeconds: Long = DEFAULT_TIMEOUT_SECONDS,
+    ): ByteArray {
+        val receiver = ShellOutputReceiver()
+        device.executeShellCommand("$command | base64", receiver, timeoutSeconds, TimeUnit.SECONDS)
+
+        // The device wraps base64 at 76 columns, and a failing command prints its diagnostics
+        // to the same stream in plain text.
+        val output = receiver.toString()
+        return try {
+            Base64.getDecoder().decode(output.filterNot { it.isWhitespace() })
+        } catch (e: IllegalArgumentException) {
+            throw IllegalStateException(
+                "`$command` did not return binary output. The device said:\n" +
+                    output.truncateForAgent(DEFAULT_MAX_CHARS),
+                e,
+            )
+        }
     }
 
     fun String.truncateForAgent(maxChars: Int): String = when {
