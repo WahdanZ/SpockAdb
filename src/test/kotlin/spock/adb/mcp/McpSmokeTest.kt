@@ -49,7 +49,7 @@ class McpSmokeTest {
         // so adding a read-only tool without classifying it fails here rather than silently
         // going untested.
         val readOnly = ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet()
-        val covered = PROBES.keys + QUERIES.keys
+        val covered = (PROBES + QUERIES).map { (tool, _) -> tool }.toSet()
 
         val untested = readOnly - covered
         assertTrue(untested.isEmpty()) {
@@ -131,7 +131,8 @@ class McpSmokeTest {
         // tool, so it is worth asserting on by name.
         val offenders = (PROBES + QUERIES).servedBy(endpoint)
             .filter { (tool, arguments) -> endpoint.call(tool, arguments).text.contains(UNIMPLEMENTED) }
-            .keys
+            .map { (tool, _) -> tool }
+            .distinct()
 
         assertTrue(offenders.isEmpty()) {
             "These tools returned \"$UNIMPLEMENTED\": ${offenders.sorted()}. " +
@@ -199,8 +200,8 @@ class McpSmokeTest {
      * A stale IDE is reported once, by [the running server is this build]; it should not also
      * surface as a failure against every tool it has not heard of.
      */
-    private fun Map<String, String>.servedBy(endpoint: Endpoint): Map<String, String> =
-        filterKeys { it in endpoint.servedTools }.toSortedMap()
+    private fun List<Pair<String, String>>.servedBy(endpoint: Endpoint): List<Pair<String, String>> =
+        filter { (tool, _) -> tool in endpoint.servedTools }.sortedBy { it.first }
 
     /** Null, having skipped the test, when no live server was configured. */
     private fun liveEndpoint(): Endpoint? {
@@ -223,8 +224,14 @@ class McpSmokeTest {
 
         val NO_MATCH_VERDICT = Regex("FAIL|not found|nothing matched|no element", RegexOption.IGNORE_CASE)
 
-        /** Report device or app state. Any error is a real failure. */
-        val PROBES = mapOf(
+        /**
+         * Report device or app state. Any error is a real failure.
+         *
+         * A list of pairs rather than a map: a tool worth probing two ways — as
+         * android_get_debug_context is, with and without an explicit section list — appears
+         * twice, and map keys are unique, so the first entry was silently discarded.
+         */
+        val PROBES = listOf(
             "android_list_devices" to "{}",
             "android_get_device_info" to "{}",
             "android_list_packages" to """{"filter":"android"}""",
@@ -245,7 +252,7 @@ class McpSmokeTest {
         )
 
         /** Search for something. Reporting "no match" is a pass; anything else is not. */
-        val QUERIES = mapOf(
+        val QUERIES = listOf(
             "android_find_ui_element" to """{"text":"$ABSENT"}""",
             "android_assert_visible" to """{"text":"$ABSENT"}""",
             "android_assert_enabled" to """{"text":"$ABSENT"}""",

@@ -32,8 +32,39 @@
 
 ### Added
 
+- **`android_get_debug_context`** — the whole triage bundle in one call: current activity, the
+  UI semantics tree with its framework identified, recent logcat, and optionally a screenshot.
+  Assembling those separately cost three or four round trips, and by the time the last landed
+  the screen could have moved on, so the bundle described no single moment. A failing section
+  reports its failure in place and the rest still come back — a screenshot blocked by
+  `FLAG_SECURE` must not cost you the crash sitting beside it in logcat
+- **`android_push_file` and `android_pull_file`.** Device paths are restricted to `/sdcard`,
+  `/storage` and `/data/local/tmp`, which is deliberately stricter than `adb`: it will hand over
+  anything the shell user can read, and an agent that can be talked into pulling another app's
+  database is an exfiltration path wearing a debugging tool's clothes. The local destination of
+  a pull is **not** a parameter — a tool that writes where its caller asks lets anything holding
+  the MCP token drop a file anywhere on the filesystem — so pulls land in one known directory
+  and the tool reports where. Transfers are capped at 50 MB
+- **`android_start_screen_recording` and `android_stop_screen_recording`**, one session per
+  device, capped at three minutes. Recording stops with `SIGINT` rather than `SIGKILL` so
+  `screenrecord` writes the MP4 index on the way out — a killed recording leaves a file no
+  player will open — and the remote file is deleted only once the pull has succeeded
 - `android_select_project` — says which open project later calls are about, so the ambiguity
   above names a fix the agent can actually perform. Unnecessary with a single project open
+
+### Internal
+
+- `StubbedIDeviceApiTest` fails the build when anything calls one of the nineteen `IDevice`
+  methods Android Studio leaves unimplemented. Each throws "This method is not used in Android
+  Studio" at runtime while compiling and unit-testing cleanly, because a test that builds its
+  own `AndroidDebugBridge` gets stock ddmlib where they all work. It scans compiled bytecode
+  rather than source, since Kotlin's property syntax hides the call — `device.screenshot` is a
+  call to `getScreenshot()` that no text search would find. This is the bug that shipped in
+  `android_take_screenshot`
+- `McpSmokeTest` calls every read-only tool against a real device through a running server.
+  The live checks are opt-in via `SPOCK_MCP_URL` and `SPOCK_MCP_TOKEN`, so an ordinary
+  `./gradlew test` skips them, but its coverage assertion always runs — a read-only tool cannot
+  be added without deciding how it is smoke-tested
 
 ## [4.0.2] - 2026-09-04
 
