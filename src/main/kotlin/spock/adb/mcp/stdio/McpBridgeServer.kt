@@ -17,6 +17,7 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -117,6 +118,11 @@ class McpBridgeServer(
         stop()
         accepts.shutdownNow()
         connections.shutdownNow()
+        // Wait for them to actually go. The accept thread is not unblocked by an interrupt —
+        // only by stop() closing the channel — so returning before it has noticed would leave
+        // a thread running after the object that owns it is gone.
+        runCatching { accepts.awaitTermination(SHUTDOWN_GRACE_SECONDS, TimeUnit.SECONDS) }
+        runCatching { connections.awaitTermination(SHUTDOWN_GRACE_SECONDS, TimeUnit.SECONDS) }
     }
 
     private fun closeChannel() {
@@ -293,6 +299,7 @@ class McpBridgeServer(
 
         /** Conservative limit for `sun_path`, which is 104 bytes on macOS and 108 on Linux. */
         private const val MAX_SOCKET_PATH_BYTES = 100
+        private const val SHUTDOWN_GRACE_SECONDS = 5L
         const val DESCRIPTOR_NAME = "mcp-stdio.properties"
     }
 }

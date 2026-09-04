@@ -45,7 +45,14 @@ class McpStdioServerTest {
 
     @AfterEach
     fun stop() {
+        // Closing the client's end is how a stdio session ends, and the only thing that
+        // unblocks serve() from readLine(). Without it the serving thread lives past the test,
+        // which the IDE test framework's thread-leak tracker fails the test for — correctly,
+        // since a real session leaking a thread per connection would be a defect.
+        runCatching { toServer.close() }
         if (::server.isInitialized) server.shutdown()
+        if (::thread.isInitialized) thread.join(TimeUnit.SECONDS.toMillis(TIMEOUT_SECONDS))
+        runCatching { fromServer.close() }
     }
 
     private fun send(line: String) {

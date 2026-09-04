@@ -125,12 +125,20 @@ class McpBridgeServerTest {
 
     // ---- the launcher, as a real process ----
 
+    /**
+     * Spawns the launcher from its own code source rather than from `java.class.path`.
+     *
+     * The launcher has no dependencies — that is the point of it being plain Java — so the jar
+     * or class directory holding it is the entire classpath it needs. It is also the same way
+     * the generated client configuration resolves it, and it does not care whether the test
+     * runner handed us a real classpath or a manifest-only one.
+     */
     private fun launch(descriptor: Path): Process {
-        val classpath = System.getProperty("java.class.path")
-        assumeTrue(!classpath.isNullOrBlank(), "no usable classpath to spawn the launcher with")
+        val source = SpockAdbStdioLauncher::class.java.protectionDomain?.codeSource?.location
+        assumeTrue(source != null, "cannot locate the launcher to spawn it")
         return ProcessBuilder(
             Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-            "-cp", classpath,
+            "-cp", Path.of(source!!.toURI()).toString(),
             SpockAdbStdioLauncher::class.java.name,
             descriptor.toString(),
         ).start()

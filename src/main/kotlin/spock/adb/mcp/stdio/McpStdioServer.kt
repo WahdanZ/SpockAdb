@@ -88,9 +88,19 @@ class McpStdioServer(
         }
     }
 
-    /** Stops serving and stops accepting new work. Safe to call more than once. */
+    /**
+     * Stops serving and releases the worker pool. Safe to call more than once.
+     *
+     * Deliberately unconditional rather than guarded on [running]: a server that was shut down
+     * before it ever served, or that has already stopped, must still release its threads.
+     * Guarding this on the running flag leaked the pool in exactly those two cases.
+     *
+     * This does **not** unblock a [serve] call sitting in `readLine`. Nothing can, short of
+     * closing the stream — which is how a stdio session ends anyway, and what
+     * [McpBridgeServer] does to each live connection when it stops.
+     */
     fun shutdown() {
-        if (!running.compareAndSet(true, false)) return
+        running.set(false)
         // Interrupt anything still running: a tool call blocked on a device must not keep the
         // IDE's executor alive after the client has gone.
         inFlight.values.forEach { it.interrupt() }
