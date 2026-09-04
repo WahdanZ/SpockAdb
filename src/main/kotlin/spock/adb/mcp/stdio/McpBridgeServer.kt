@@ -97,6 +97,9 @@ class McpBridgeServer(
      * @param directory where the socket and descriptor live. Created `700` if absent, so a
      *   Unix domain socket is unreachable by other users.
      */
+    // A failed start must leave nothing behind, so the cleanup path catches whatever the
+    // bind, the descriptor write or the executor threw and rethrows it after undoing them.
+    @Suppress("TooGenericExceptionCaught")
     @Synchronized
     fun start(directory: Path): Endpoint {
         stop()
@@ -104,13 +107,24 @@ class McpBridgeServer(
 
         val bound = bindUnixDomain(directory) ?: bindLoopback()
         channel = bound.first
-        val descriptor = writeDescriptor(directory, bound.second)
-        endpoint = descriptor
-        running.set(true)
 
-        accepts.execute { acceptLoop() }
-        diagnostics("MCP stdio bridge listening on ${descriptor.describe()}", null)
-        return descriptor
+        return try {
+            val descriptor = writeDescriptor(directory, bound.second)
+            endpoint = descriptor
+            running.set(true)
+
+            accepts.execute { acceptLoop() }
+            diagnostics("MCP stdio bridge listening on ${descriptor.describe()}", null)
+            descriptor
+        } catch (e: Exception) {
+            // Nothing half-built survives a failed start. A bound socket with no accept loop,
+            // or a descriptor naming one, both leave a client waiting on an endpoint that will
+            // never answer — and the descriptor is where the token lives.
+            running.set(false)
+            closeChannel()
+            runCatching { Files.deleteIfExists(directory.resolve(DESCRIPTOR_NAME)) }
+            throw e
+        }
     }
 
     @Synchronized
@@ -277,6 +291,16 @@ class McpBridgeServer(
 
         val session = Session(connection, McpStdioServer(handle, diagnostics))
         sessions += session
+        // stop() clears `running` before it drains the list, so a session published after that
+        // drain would otherwise be missed and outlive the server that accepted it. Publishing
+        // first and then re-checking closes the window in both directions: either stop() sees
+        // this session, or this sees that the server has stopped.
+        if (!running.get()) {
+            sessions -= session
+            session.server.shutdown()
+            return
+        }
+
         try {
             session.server.serve(reader, writer)
         } finally {

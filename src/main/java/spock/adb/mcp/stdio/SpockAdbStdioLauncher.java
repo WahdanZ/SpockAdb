@@ -148,14 +148,9 @@ public final class SpockAdbStdioLauncher {
         AtomicBoolean clientClosedStdin = new AtomicBoolean(false);
         Thread pump = new Thread(() -> {
             try {
-                copy(System.in, toIde);
-                // Reached only on end of stream: the client deliberately closed stdin. Set
-                // before the half-close below, so the IDE cannot react and end the read on
+                // Set before the half-close below, so the IDE cannot react and end the read on
                 // the main thread before this is visible to it.
-                clientClosedStdin.set(true);
-            } catch (IOException ignored) {
-                // The client exited and closed the pipe. That is how a session ends.
-                clientClosedStdin.set(true);
+                clientClosedStdin.set(pumpToIde(System.in, toIde));
             } finally {
                 // Half-close: tell the IDE the client has gone without tearing down the read
                 // side. Closing the whole channel here aborts the main thread's read mid-call,
@@ -171,6 +166,38 @@ public final class SpockAdbStdioLauncher {
 
         copy(fromIde, protocolOut);
         return clientClosedStdin.get();
+    }
+
+    /**
+     * Pumps stdin to the IDE, reporting which side ended it.
+     *
+     * The two directions fail for opposite reasons and must not be conflated: stdin breaking
+     * means the client has gone, which ends a session normally, while a write failing means
+     * the IDE's socket is already gone while the client is still talking, which is a lost
+     * connection. Treating both as a client shutdown let a mid-session disconnect exit 0.
+     *
+     * @return true if the client ended it, by closing stdin or exiting; false if the write to
+     *     the IDE failed.
+     */
+    private static boolean pumpToIde(InputStream source, OutputStream destination) {
+        byte[] buffer = new byte[BUFFER_BYTES];
+        while (true) {
+            int read;
+            try {
+                read = source.read(buffer);
+            } catch (IOException clientGone) {
+                return true;
+            }
+            if (read == -1) {
+                return true;
+            }
+            try {
+                destination.write(buffer, 0, read);
+                destination.flush();
+            } catch (IOException ideGone) {
+                return false;
+            }
+        }
     }
 
     /**
