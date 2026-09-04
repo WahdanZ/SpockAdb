@@ -89,6 +89,15 @@
 - Compile target updated to Android Studio Meerkat (2025.1.1) — latest stable build
 - `untilBuild` remains open-ended so new releases are accepted without a plugin update
 
+## [3.0.1]
+### Compatibility
+- Lowered `sinceBuild` from `253` to `231`, intended to support Android Studio Hedgehog (2023.1.1) and later
+
+> **Note:** this release did not work on the versions it claimed. The plugin was compiled
+> against platform 251, which made its tool window factory reference platform methods absent
+> on 231, so the tool window could not open on Android Studio 2023.1 through 2024.x. Fixed
+> and verified in 3.1.0 — see `docs/COMPATIBILITY.md`.
+
 ## [3.0.0]
 ### Added
 - Open Developer Options button in the developer panel

@@ -151,8 +151,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ needs.build.outputs.version }}" \
+          TAG="v${{ needs.build.outputs.version }}"
+
+          # This job runs on every push to master, but the release it creates is named after
+          # pluginVersion. If that version has already been published, `gh release create`
+          # fails on the existing tag and takes the whole master build red — which is exactly
+          # what happened when pluginVersion was left at 3.0.0 after v3.0.1 shipped.
+          # A published release is a signal to bump the version, not a build failure.
+          if gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null | grep -q false; then
+            echo "::warning::Release $TAG is already published — skipping draft creation."
+            echo "Bump pluginVersion in gradle.properties to draft the next release."
+            exit 0
+          fi
+
+          gh release create "$TAG" \
             ./build/distributions/*.zip \
             --draft \
-            --title "v${{ needs.build.outputs.version }}" \
+            --title "$TAG" \
             --notes "${{ needs.build.outputs.changelog }}"
