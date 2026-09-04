@@ -1,130 +1,143 @@
-
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/811387b23aae4a479f842c8a485a820a)](https://app.codacy.com/manual/WahdanZ/SpockAdb?utm_source=github.com&utm_medium=referral&utm_content=WahdanZ/SpockAdb&utm_campaign=Badge_Grade_Dashboard)
-![Build](https://github.com/WahdanZ/SpockAdb/workflows/Build/badge.svg)
-![JetBrains IntelliJ Plugins](https://img.shields.io/jetbrains/plugin/v/11591-spock-adb)
-![JetBrains IntelliJ plugins](https://img.shields.io/jetbrains/plugin/d/11591-spock-adb)
+[![Build](https://github.com/WahdanZ/SpockAdb/workflows/Build/badge.svg)](https://github.com/WahdanZ/SpockAdb/actions)
+[![JetBrains Plugin](https://img.shields.io/jetbrains/plugin/v/11591-spock-adb)](https://plugins.jetbrains.com/plugin/11591-spock-adb)
+[![Downloads](https://img.shields.io/jetbrains/plugin/d/11591-spock-adb)](https://plugins.jetbrains.com/plugin/11591-spock-adb)
 
 # Spock ADB
 
 <!-- Plugin description -->
 Full control of your Android device directly from your IDE — no terminal needed.
 
-Spock ADB puts the most common ADB workflows into a single tool window: navigate to the active Activity or Fragment in your editor, manage app lifecycle, toggle developer settings, control permissions, stream logcat, and run ADB commands — all with one click.
+Spock ADB puts the most common ADB workflows into a single tool window: navigate to the active Activity or Fragment in your editor, manage app lifecycle, stream logcat, run ADB commands, and inspect the UI of Views <em>and</em> Jetpack Compose screens.
 
-It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cursor or any MCP client safe, structured access to a connected device. 26 strongly typed tools rather than a raw shell, and anything destructive asks you first, every time.
+It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cursor or any MCP client safe, structured access to a connected device. 36 strongly typed tools rather than a raw shell, and anything destructive asks you first, every time.
 
 Works in Android Studio and IntelliJ IDEA.
 <!-- Plugin description end -->
 
+![Spock ADB tool window](images/spock_adb.png)
+
+<!-- TODO replace with a 4.0 shot of the tool window: images/tool-window.png -->
+
 ---
 
-## Features
+## Why
 
-### Navigation
-| Feature | Description |
-|---|---|
-| **Open Current Activity** | Jump directly to the currently visible Activity in your editor |
-| **Open Current Fragment** | Jump directly to the currently visible Fragment (supports nested fragments) |
-| **Current App Back Stack** | View the full back stack of Activities and Fragments for the foreground app |
-| **Back Stack (All Apps)** | View the system-wide Activity back stack across all running apps |
+Everything here is one keystroke or one click away from where you already are. No switching to a
+terminal, no remembering `adb shell dumpsys activity activities | grep …`, and no guessing which
+of three attached devices a command just hit — every operation names its target.
 
-### App Lifecycle
-| Feature | Description |
-|---|---|
-| **Restart App** | Stop and relaunch the foreground application |
-| **Restart with Debugger** | Relaunch and immediately attach the debugger |
-| **Test Process Death** | Kill the app process without removing it from recents (tests background restore) |
-| **Force Kill** | Hard kill the application process |
-| **Clear App Data** | Wipe all app data (shared prefs, databases, cache) |
-| **Clear App Data & Restart** | Wipe all app data and immediately relaunch |
-| **Uninstall App** | Remove the application from the device |
+**New in 4.0**
 
-### Permissions
-| Feature | Description |
-|---|---|
-| **Revoke / Grant Permission** | Toggle individual runtime permissions via a checkbox dialog |
-| **Grant All** | Grant every declared runtime permission at once |
-| **Revoke All** | Revoke every declared runtime permission at once |
+- **Works in IntelliJ IDEA**, not just Android Studio
+- **Logcat** and an **ADB Command Center** in the tool window
+- **UI Inspector** for Views *and* Jetpack Compose
+- **Android MCP server** — safe, structured device access for AI agents
+- Every operation is an **IntelliJ Action**, bindable in Keymap
 
-### Developer Options
-| Feature | Description |
-|---|---|
-| **Open Developer Options** | Launch the system Developer Options screen |
-| **Don't Keep Activities** | Read current state of the "Don't Keep Activities" setting |
-| **Show Taps** | Toggle the "Show Taps" developer setting |
-| **Show Layout Bounds** | Toggle the "Show Layout Bounds" developer setting |
-| **Window Animation Scale** | Set window animation scale (0×, 0.5×, 1×, 1.5×, 2×, 5×, 10×) |
-| **Transition Animation Scale** | Set transition animation scale |
-| **Animator Duration Scale** | Set animator duration scale |
+---
 
-### Network
-| Feature | Description |
-|---|---|
-| **Toggle Wi-Fi** | Enable or disable Wi-Fi on the device |
-| **Toggle Mobile Data** | Enable or disable mobile data on the device |
+## The tool window
 
-### Utilities
-| Feature | Description |
+### Devices
+
+<!-- TODO screenshot: images/devices.png -->
+
+Model, Android version, API level, architecture, and whether each device is an emulator or a
+handset — with offline and unauthorized devices labelled as such. Your selection persists
+between sessions, and every other tab targets it.
+
+| | |
 |---|---|
-| **Input Text** | Type text into the focused field on the device |
-| **Open Deep Link** | Fire an `android.intent.action.VIEW` intent with any URI |
+| **Open Current Activity** | Jump to the Activity on screen, in your editor |
+| **Open Current Fragment** | Jump to the visible Fragment, nested ones included |
+| **Back stacks** | The app's Activity/Fragment stack, or the system-wide one |
+| **Restart / Force Stop / Test Process Death** | App lifecycle, one click each |
+| **Clear Data · Uninstall** | Destructive — always confirmed, and the prompt names the device |
+| **Permissions** | Toggle runtime permissions individually, or grant/revoke all |
+| **Developer options** | Show Taps, Layout Bounds, Don't Keep Activities, animation scales |
+| **Network** | Toggle Wi-Fi and mobile data |
+| **Input text · Open deep link** | Type on the device, or fire an `ACTION_VIEW` intent |
 
 ### Logcat
-| Feature | Description |
-|---|---|
-| **Live logcat** | Stream the device log, scoped to the app in the open project |
-| **Presets** | Current app, Errors only, Crashes, ANRs, Network |
-| **Filtering** | Log level, tag, plain-text or regex search, filter by process |
-| **Crash highlighting** | Fatal exceptions, native crashes and ANRs are colour-coded |
-| **Pause / resume / clear** | Freeze the view without losing the stream |
-| **Copy & export** | Copy selected lines, or export the buffer to a file |
 
-### ADB Command Center
-| Feature | Description |
-|---|---|
-| **Run any ADB shell command** | With a real timeout and a working Cancel button |
-| **History & favourites** | Recent commands, and the ones you keep coming back to |
-| **Searchable output** | Find text in long `dumpsys` dumps |
-| **Copy command / copy output / clear** | One click each |
-| **Confirmation on dangerous commands** | Destructive commands are flagged before they run |
+<!-- TODO screenshot: images/logcat.png -->
 
-### UI Inspector (Views & Jetpack Compose)
-| Feature | Description |
-|---|---|
-| **Semantics tree** | Inspect what is on screen, as a hierarchy you can browse and search |
-| **Framework detection** | Says whether the screen is Views, Jetpack Compose, or both |
-| **Compose test tags** | Shows them when available, and tells you how to expose them when not |
-| **Node details** | Test tag, text, content description, bounds, and every interactive flag |
-| **Accessibility audit** | Unlabelled controls, small touch targets, duplicate labels — with Compose-level fixes |
+Scoped to the app in your project by default — this is the part Android Studio's Logcat window
+doesn't do for you.
 
-### AI agents (MCP)
-| Feature | Description |
-|---|---|
-| **Android MCP server** | Expose the device to Claude Code, Claude Desktop, Cursor or any MCP client |
-| **36 typed tools** | Devices, packages, app lifecycle, permissions, Activity/Fragment, logcat, screenshots, UI tree, semantic interaction, assertions |
-| **Jetpack Compose first-class** | Semantics-based UI tree that identifies Views / Compose / hybrid, with element-addressed tap, scroll, input and assertions — no Compose dependency, no pinned version |
-| **Accessibility audit** | Unlabelled controls, small touch targets, duplicate labels — with Compose-level fixes |
-| **MCP Server panel** | Status, start/stop/restart, copy config — a tab, not a buried setting |
-| **Live activity monitor** | Every agent request with safety marker, outcome and duration; expand for arguments and result |
-| **Searchable history** | Filter by tool and outcome; bounded, with a configurable size |
-| **Safety model** | Destructive tools always ask, per call, and default to denied |
-| **Off by default** | Started explicitly from `Tools → SpockAdb` |
+- Presets for **Current app**, **Errors only**, **Crashes**, **ANRs**, **Network**
+- Filters by **process ID**, not by text-matching the package name — text matching both misses
+  lines and returns unrelated ones
+- Level, tag, plain-text and regex search. An invalid regex matches nothing and says so, rather
+  than silently showing an unfiltered log
+- Crashes and ANRs are colour-coded; pause, clear, copy, export, auto-scroll
 
-### Actions & keyboard shortcuts
-| Feature | Description |
-|---|---|
-| **Everything is an IntelliJ Action** | Discoverable through Find Action, listed in `Settings → Keymap → Spock ADB` |
-| **Assign your own shortcuts** | Native Keymap — no custom shortcut system |
-| **No defaults shipped** | The plugin will never silently claim a combination you already use |
-| **Context-aware** | Actions disable themselves and say why: *"no Android device connected"* |
+### Commands
 
-See **[docs/MCP.md](docs/MCP.md)** for setup, the tool list, the safety model and example agent workflows.
+<!-- TODO screenshot: images/command-center.png -->
+
+Any `adb shell` command, with the things a terminal gives you and a tool window usually doesn't:
+a real timeout, a **Cancel button that actually stops the command**, de-duplicating history,
+favourites, and searchable output.
+
+Destructive commands are flagged **as you type**, not only in a dialog after you press Run.
+
+### UI Inspector
+
+<!-- TODO screenshot: images/ui-inspector.png -->
+
+Inspect what is on screen — and it works for **Jetpack Compose**, because it reads the
+accessibility tree where Compose publishes its semantics rather than assuming a View hierarchy.
+
+- Says outright whether the screen is **Views**, **Jetpack Compose**, or **hybrid**
+- Browse and search the semantics tree; filter to interactive elements
+- Per-node test tag, text, content description, bounds and every interactive flag
+- **Accessibility audit** — unlabelled controls, sub-48dp touch targets, duplicate labels — each
+  with a fix appropriate to the framework (`Modifier.semantics` on Compose, not
+  `android:contentDescription`)
+
+> When Compose test tags aren't visible, the panel says so and gives you the fix
+> (`Modifier.semantics { testTagsAsResourceId = true }`) instead of showing an empty column.
+
+### MCP Server
+
+<!-- TODO screenshot: images/mcp-panel.png -->
+
+Give an AI agent — Claude Code, Claude Desktop, Cursor — safe, structured access to a connected
+device. **Off by default**; you start it deliberately.
+
+- **36 strongly typed tools** instead of a raw shell, so an agent can reason about what an
+  operation *means* and you can audit it
+- **Live activity monitor**: every call with a safety marker, outcome and duration. Expand one to
+  see arguments, result, client, target device — and whether you approved or denied it
+- **Tools catalogue** grouped by safety, browsable before you start the server
+- Searchable, bounded request history
+
+**Destructive tools always ask, per call, and default to denied.** An unattended IDE denies
+rather than approves.
+
+| | |
+|---|---|
+| ✓ **Read-only** | Device info, packages, logcat, screenshots, UI tree — run automatically |
+| ⚡ **Actions** | Launch, tap, input text, deep links — run automatically |
+| ⚠ **Destructive** | Clear data, uninstall, revoke permission, arbitrary shell — **always confirmed** |
+
+See **[docs/MCP.md](docs/MCP.md)** for setup, the full tool list, the safety model and example
+agent workflows.
 
 ---
 
-## Screenshot
+## Keyboard shortcuts
 
-![Screenshot](images/spock_adb.png)
+Every operation is an IntelliJ Action, so it shows up in **Find Action** and in
+`Settings → Keymap → Spock ADB`.
+
+**No default shortcuts ship.** A binding that's free in one keymap is taken in another, and a
+plugin silently claiming a combination you already use is worse than shipping none — so you
+assign your own. `Settings → Tools → Spock ADB` shows what's currently bound.
+
+Actions are context-aware: they disable themselves and say why, for example
+*"Restart App — no Android device connected"*.
 
 ---
 
@@ -135,24 +148,12 @@ See **[docs/MCP.md](docs/MCP.md)** for setup, the tool list, the safety model an
 | **Android Studio** | 2023.1 (Hedgehog) and later |
 | **IntelliJ IDEA** | 2023.1 and later, with the bundled Android plugin |
 
-Every release is checked against both IDEs with JetBrains Plugin Verifier before it ships.
-See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the full matrix and the reasoning
-behind the supported range.
+Every release is checked against **five IDE builds** with JetBrains Plugin Verifier before it
+ships. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the matrix and the reasoning.
 
-> **Note:** `Restart App With Debugger` requires the Android Studio execution tooling. It is
-> available in all supported Android Studio versions and in IntelliJ IDEA 2025.1+, and is
-> hidden automatically on IDEs that do not ship it. Every other feature works everywhere.
-
----
-
-## Documentation
-
-| Document | Contents |
-|---|---|
-| [docs/MCP.md](docs/MCP.md) | Android MCP server: setup, tools, safety model, agent workflows |
-| [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | Supported IDE range, verification matrix, how to change it safely |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, threading rules, release process |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
+> `Restart App With Debugger` needs the Android Studio execution tooling. It's available in all
+> supported Android Studio versions and IntelliJ IDEA 2025.1+, and hides itself where it isn't.
+> Everything else works everywhere.
 
 ---
 
@@ -160,7 +161,60 @@ behind the supported range.
 
 **JetBrains Marketplace:** [Spock ADB](https://plugins.jetbrains.com/plugin/11591-spock-adb)
 
-Or install directly from your IDE: `Settings → Plugins → Marketplace → search "Spock ADB"`
+Or from your IDE: `Settings → Plugins → Marketplace → search "Spock ADB"`
+
+## Quick start
+
+1. Open an Android project and connect a device or start an emulator.
+2. Open the **Spock ADB** tool window (left-hand sidebar, or `Tools → SpockAdb`).
+3. Pick your device in **Devices** — every other tab follows it.
+4. Optional: `Tools → SpockAdb → Start MCP Server for AI Agents`, then
+   **Copy MCP Client Configuration** and paste it into your MCP client.
+
+---
+
+## Troubleshooting
+
+**The device list is empty.** Check `adb devices` sees it. The list refreshes whenever the tool
+window becomes visible, so switching away and back re-reads it. If a device is attached but not
+listed, `Help → Show Log in Finder/Explorer` will have the ADB error — failures are logged.
+
+**A device shows as `unauthorized`.** Accept the USB debugging prompt on the device. Actions
+ignore devices that aren't ready and tell you which ones and why.
+
+**"Could not determine the application ID."** The plugin reads it from the Android module in the
+open project — open an Android project and let Gradle sync finish.
+
+**`Restart App With Debugger` is missing.** Your IDE doesn't ship the Android Studio execution
+tooling; the action hides itself rather than failing. Everything else still works.
+
+**UI Inspector says it can't dump the UI.** `uiautomator` can't capture while the screen is off,
+a secure window (payment, password) is showing, or the UI is mid-animation.
+
+**Compose test tags aren't shown.** The app has to opt in with
+`Modifier.semantics { testTagsAsResourceId = true }`. Until then, match on text or content
+description — the panel says so too.
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/MCP.md](docs/MCP.md) | MCP server: setup, tools, safety model, Compose support, agent workflows |
+| [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | Supported IDE range, verification matrix, how to change it safely |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, threading rules, release process |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+
+## Development
+
+```bash
+./gradlew runIde         # launch a sandboxed IDE with the plugin
+./gradlew test           # unit tests
+./gradlew detekt         # static analysis
+./gradlew verifyPlugin   # Plugin Verifier across all supported IDEs
+./gradlew buildPlugin    # produce the installable zip
+```
 
 ---
 
