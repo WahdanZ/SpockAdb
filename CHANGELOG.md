@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- **stdio transport for the MCP server**, served by the same `McpProtocol`, `ToolRegistry`,
+  safety model, device services and audit trail as the HTTP transport — a tool call arriving
+  over stdio is confirmed, recorded and logged exactly as the same call over HTTP
+- `Tools → SpockAdb → Copy MCP Client Configuration (stdio)`. **It contains no credential**:
+  the client is pointed at an endpoint descriptor, and the token stays in that `600` file
+- `McpStdioServer` — newline-delimited JSON-RPC framing, request cancellation via
+  `notifications/cancelled` (the call is interrupted and its response suppressed), and a
+  worker pool so a cancellation arriving behind a slow tool call is still read
+- `McpBridgeServer` — a Unix domain socket in a `700` directory, falling back to loopback TCP
+  where `AF_UNIX` is unavailable or the path is too long for `sun_path`. Every connection
+  presents the token on both transports; one that never does is closed after ten seconds, and
+  the session pool is bounded, so nothing that reaches the endpoint can hold threads open
+- `SpockAdbStdioLauncher` — the process an MCP client spawns. A dependency-free Java byte
+  relay with no knowledge of MCP, so nothing about the protocol is implemented twice. It
+  claims the real stdout and redirects `System.out` to stderr, so no log line can corrupt the
+  protocol stream
+
 ## [4.0.1] - 2026-09-04
 
 ### Added
