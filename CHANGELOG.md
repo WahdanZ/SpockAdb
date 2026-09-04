@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-09-04
+
 ### Added
 
 - `scripts/verify-marketplace-descriptor.sh` — gates the built descriptor before it reaches JetBrains Marketplace: the plugin id must be `com.wahdan.com.wahdan.spockAdb`, there must be no `until-build` cap, `since-build` must match `pluginSinceBuild`, and the version must match the release tag. Runs in `build.yml` on every pull request and in `release.yml` immediately before `publishPlugin`
@@ -11,6 +13,7 @@
 - `docs/COMPATIBILITY.md` records why the Marketplace served 1.0.2 to modern IDEs for four years: 2.0.x shipped an `until-build` cap that silently expired the release, and 3.0.x renamed the plugin id so it could never reach listing 11591
 - `CONTRIBUTING.md` no longer claims a release is live "within a few minutes" — a green `release.yml` means uploaded, not approved and served — and says how to confirm which version an IDE is actually offered
 
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.0...HEAD
 ## [4.0.0] - 2026-09-04
 
 ### Fixed
@@ -64,7 +67,6 @@
 - Fixed exception message `"Bazinga!!"` in `GetApplicationPermission` → professional message
 - Renamed `kippAppProcess` → `killAppProcess` (typo fix) in `ProcessDeathCommand`
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v3.0.1...HEAD
 ## [3.0.1]
 
 ### Compatibility
@@ -168,7 +170,8 @@
 - Enable and Disable Permissions of your application
 - Kill or Restart Application
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.1...HEAD
+[4.0.1]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/WahdanZ/SpockAdb/compare/v3.0.1...v4.0.0
 [3.0.1]: https://github.com/WahdanZ/SpockAdb/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/WahdanZ/SpockAdb/compare/v2.0.3...v3.0.0
