@@ -16,6 +16,7 @@
 - **Compatibility**: a `sequence { }` builder compiled to a coroutine state machine referencing `kotlin.coroutines.jvm.internal.SpillingKt`, which is absent from the Kotlin stdlib bundled with 2023.1 IDEs — a `NoSuchClassError` at runtime, since the plugin uses the IDE's bundled stdlib. Caught by Plugin Verifier and rewritten as a plain recursive walk
 
 ### Added
+- **Tools catalogue in the MCP panel.** The panel reported only a count ("Tools: 36"), which told you nothing about what pressing Start would expose. There is now a Tools tab listing every tool grouped by safety level — destructive first, since those are the ones worth reading — searchable, filterable to destructive only, and showing each tool's description and argument schema. It works while the server is stopped, so the catalogue can be reviewed before turning it on
 - **MCP Server panel** as a tool window tab rather than a buried setting: status, transport and tool count, Start/Stop/Restart, Copy Config, and a link to Settings
 - **Live MCP activity monitor.** Every tool call as it happens with a safety marker (`✓` read-only, `⚡` action, `⚠` destructive), outcome and duration; select one to see arguments, result, client, target device, and — for destructive calls — whether you approved or denied it. Copy request or response
 - **Searchable, bounded MCP request history** across tool name, arguments and result, filterable by tool and outcome, with a configurable size in `Settings → Tools → Spock ADB`

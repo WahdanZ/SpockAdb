@@ -12,6 +12,7 @@ import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
@@ -29,6 +30,7 @@ import java.util.Date
 import java.util.Locale
 import javax.swing.DefaultListModel
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -61,6 +63,11 @@ class McpServerPanel(
         isEditable = false
         font = JBUI.Fonts.create(Font.MONOSPACED, font.size)
     }
+
+    private val toolsModel = DefaultListModel<ToolRow>()
+    private val toolsList = JBList(toolsModel)
+    private val toolSearchField = JBTextField(SEARCH_COLUMNS)
+    private val showDestructiveOnly = JCheckBox("Destructive only")
 
     private val searchField = JBTextField(SEARCH_COLUMNS)
     private val toolFilter = JComboBox<String>()
@@ -137,7 +144,8 @@ class McpServerPanel(
             add(
                 JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
                     border = JBUI.Borders.empty(2, GAP)
-                    add(JBLabel("Request details"))
+                    add(JBLabel("Details"))
+                    add(JButton("Copy").apply { addActionListener { copy(detailArea.text) } })
                     add(JButton("Copy Request").apply { addActionListener { copy(selected()?.arguments) } })
                     add(JButton("Copy Response").apply { addActionListener { copy(selected()?.result) } })
                 },
@@ -146,11 +154,133 @@ class McpServerPanel(
             add(JBScrollPane(detailArea), BorderLayout.CENTER)
         }
 
+        // Activity and Tools share the detail pane below: both answer "what is this call /
+        // this tool", so two separate detail views would be redundant in a narrow window.
+        val tabs = JBTabbedPane().apply {
+            addTab("Activity", activity)
+            addTab("Tools (${ToolRegistry.all().size})", toolsPane())
+        }
+
         // A splitter, not a fixed pane: on a narrow docked tool window the developer decides
         // how much room the detail view gets.
         return OnePixelSplitter(true, SPLIT_PROPORTION).apply {
-            firstComponent = activity
+            firstComponent = tabs
             secondComponent = details
+        }
+    }
+
+    /**
+     * The catalogue of what an agent can actually do to the device.
+     *
+     * The panel previously reported only a count, which told a developer nothing about what
+     * they were exposing when they pressed Start. Grouping by safety level is the point:
+     * the three destructive tools are the ones worth reading before turning the server on.
+     */
+    private fun toolsPane(): JComponent {
+        toolsList.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        toolsList.cellRenderer = ToolRenderer()
+        toolsList.addListSelectionListener { showToolDetails() }
+
+        val filters = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+            border = JBUI.Borders.empty(2, GAP)
+            add(JBLabel("Search:"))
+            add(toolSearchField)
+            add(showDestructiveOnly)
+        }
+
+        toolSearchField.addKeyListener(
+            object : java.awt.event.KeyAdapter() {
+                override fun keyReleased(e: java.awt.event.KeyEvent) = refreshTools()
+            },
+        )
+        showDestructiveOnly.addActionListener { refreshTools() }
+
+        refreshTools()
+        return JPanel(BorderLayout()).apply {
+            add(filters, BorderLayout.NORTH)
+            add(JBScrollPane(toolsList), BorderLayout.CENTER)
+        }
+    }
+
+    private fun refreshTools() {
+        val query = toolSearchField.text.orEmpty()
+        val destructiveOnly = showDestructiveOnly.isSelected
+
+        toolsModel.clear()
+        // Destructive first: the tools a developer most needs to know about should not be
+        // buried at the bottom of an alphabetical list.
+        ToolSafety.entries.sortedByDescending { it.ordinal }.forEach { safety ->
+            if (destructiveOnly && safety != ToolSafety.DESTRUCTIVE) return@forEach
+
+            val matching = ToolRegistry.bySafety(safety)
+                .filter { query.isBlank() || it.name.contains(query, true) || it.description.contains(query, true) }
+                .sortedBy { it.name }
+            if (matching.isEmpty()) return@forEach
+
+            toolsModel.addElement(ToolRow.Header(safety, matching.size))
+            matching.forEach { toolsModel.addElement(ToolRow.Entry(it)) }
+        }
+    }
+
+    private fun showToolDetails() {
+        val tool = (toolsList.selectedValue as? ToolRow.Entry)?.tool ?: return
+        detailArea.text = buildString {
+            appendLine(tool.name)
+            appendLine()
+            appendLine("Safety: ${tool.safety.describe()}")
+            if (tool.safety == ToolSafety.DESTRUCTIVE) {
+                appendLine("         You are asked to approve every call, and denial is the default.")
+            }
+            appendLine()
+            appendLine("Description:")
+            appendLine(tool.description)
+            appendLine()
+            appendLine("Arguments:")
+            append(prettyJson(tool.inputSchema))
+        }
+        detailArea.caretPosition = 0
+    }
+
+    private fun prettyJson(json: com.google.gson.JsonObject): String =
+        runCatching { com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json) }
+            .getOrDefault(json.toString())
+
+    /** A row is either a safety heading or a tool, so one list renders the grouping. */
+    private sealed interface ToolRow {
+        data class Header(val safety: ToolSafety, val count: Int) : ToolRow
+        data class Entry(val tool: spock.adb.mcp.tools.AdbTool) : ToolRow
+    }
+
+    private class ToolRenderer : ListCellRenderer<ToolRow> {
+        private val label = JBLabel().apply { border = JBUI.Borders.empty(ROW_PAD_V + 1, ROW_PAD_H) }
+
+        override fun getListCellRendererComponent(
+            list: javax.swing.JList<out ToolRow>,
+            value: ToolRow,
+            index: Int,
+            isSelected: Boolean,
+            cellHasFocus: Boolean,
+        ): Component {
+            label.isOpaque = true
+            label.background = if (isSelected) list.selectionBackground else list.background
+
+            when (value) {
+                is ToolRow.Header -> {
+                    label.text = "  ${value.safety.marker()}  ${value.safety.heading()} (${value.count})"
+                    label.font = list.font.deriveFont(Font.BOLD)
+                    label.foreground = if (isSelected) list.selectionForeground else value.safety.colour()
+                }
+                is ToolRow.Entry -> {
+                    label.text = TOOL_INDENT + value.tool.name
+                    label.font = JBUI.Fonts.create(Font.MONOSPACED, list.font.size)
+                    label.foreground = when {
+                        isSelected -> list.selectionForeground
+                        value.tool.safety == ToolSafety.DESTRUCTIVE -> DESTRUCTIVE
+                        else -> JBColor.foreground()
+                    }
+                }
+            }
+            return label
         }
     }
 
@@ -355,17 +485,31 @@ class McpServerPanel(
         const val ACTIVITY_ROW_FORMAT = "%s  %s %-32s %s %5d ms"
         const val ROW_PAD_V = 1
         const val ROW_PAD_H = 6
+        const val TOOL_INDENT = "        "
 
         val TIME_FORMAT = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
         val RUNNING = JBColor(0x1F6F4A, 0x57BA8C)
         val ERROR = JBColor(0xB3261E, 0xF2857C)
         val DESTRUCTIVE = JBColor(0x8A6100, 0xE0A030)
+        val ACTION = JBColor(0x2C5D92, 0x6EA8E0)
 
         /** Marks match the safety vocabulary used in the docs and the tool descriptions. */
         fun ToolSafety.marker(): String = when (this) {
             ToolSafety.READ_ONLY -> "✓"
             ToolSafety.SAFE_ACTION -> "⚡"
             ToolSafety.DESTRUCTIVE -> "⚠"
+        }
+
+        fun ToolSafety.heading(): String = when (this) {
+            ToolSafety.READ_ONLY -> "Read-only — run automatically"
+            ToolSafety.SAFE_ACTION -> "Actions — run automatically"
+            ToolSafety.DESTRUCTIVE -> "Destructive — always ask first"
+        }
+
+        fun ToolSafety.colour(): JBColor = when (this) {
+            ToolSafety.READ_ONLY -> RUNNING
+            ToolSafety.SAFE_ACTION -> ACTION
+            ToolSafety.DESTRUCTIVE -> DESTRUCTIVE
         }
 
         fun ToolSafety.describe(): String = when (this) {

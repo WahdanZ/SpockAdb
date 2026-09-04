@@ -167,6 +167,23 @@ class ToolSafetyTest {
     }
 
     @Test
+    fun `every safety level has tools, so the panel grouping is never empty`() {
+        // The MCP panel groups the catalogue under three headings; an empty group would
+        // render a heading with nothing under it.
+        ToolSafety.entries.forEach { safety ->
+            assertTrue(
+                ToolRegistry.bySafety(safety).isNotEmpty(),
+                "no tools registered with safety $safety",
+            )
+        }
+        assertEquals(
+            ToolRegistry.all().size,
+            ToolSafety.entries.sumOf { ToolRegistry.bySafety(it).size },
+            "every tool must fall into exactly one safety group",
+        )
+    }
+
+    @Test
     fun `safe actions are not silently treated as read-only`() {
         ToolRegistry.bySafety(ToolSafety.SAFE_ACTION).forEach { tool ->
             assertFalse(tool.safety == ToolSafety.READ_ONLY, tool.name)
