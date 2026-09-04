@@ -1,6 +1,11 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
 ## [Unreleased]
+### Changed
+- **The Devices tab is no longer a fifteen-row scroll.** Actions are laid out two to a row instead of one full-width row each, and grouped under collapsible headings — Navigate, App lifecycle, Destructive, Permissions, Developer options, Network, Send to device — so the common ones fit without scrolling in a docked tool window. Section state is remembered between sessions
+- **Destructive actions moved into their own section** rather than sitting between navigation and lifecycle buttons where they could be hit by accident, and are labelled with an ellipsis to show they confirm first
+- **Removed `SpockAdbViewer.form`.** The tool window is now built in Kotlin: 406 lines of GUI-designer XML gone, along with the reflective `$$$setupUI$$$` call and the need to keep field names in sync by hand across two files. This was recorded as technical debt in the audit. `PermissionDialog.form` is untouched
+
 ### Fixed
 - **"Don't Keep Activities" could never be clicked.** The checkbox was marked `enabled="false"` in the UI form, so wiring its action listener achieved nothing — it was disabled before the listener could ever fire. Now enabled and functional
 - **Typo in the permissions panel**: "Revoke / Grant Premission" → "Permission"
