@@ -260,3 +260,39 @@ internal fun ToolContext.resolvePackage(arguments: JsonObject): String =
                 "open project. Pass packageName explicitly, or open an Android project and " +
                 "let its Gradle sync finish.",
         )
+
+/** `android_uninstall_app` — removes the app entirely. Destructive, always confirmed. */
+class UninstallAppTool : AdbTool {
+    override val name = "android_uninstall_app"
+    override val description =
+        "Uninstall an app from the device, removing the application and all of its data. " +
+            "This cannot be undone and requires the developer to confirm before it runs."
+    override val safety = ToolSafety.DESTRUCTIVE
+    override val inputSchema: JsonObject = Schema.obj {
+        string("packageName", "Package to uninstall. Defaults to the open project's application ID.")
+        deviceSerial()
+    }
+
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        val target = context.requireDevice(arguments.optionalString("deviceSerial"))
+        val packageName = context.resolvePackage(arguments)
+
+        if (!target.device.isAppInstall(packageName)) {
+            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        }
+        val approved = context.confirmDestructive(
+            name,
+            "Uninstall $packageName, removing the application and all of its data.",
+            target,
+        )
+        if (!approved) {
+            return ToolResult.error("The developer declined to uninstall $packageName.")
+        }
+        val output = target.device.uninstallPackage(packageName)
+        return if (output == null) {
+            ToolResult.text("Uninstalled $packageName.")
+        } else {
+            ToolResult.error("Could not uninstall $packageName: $output")
+        }
+    }
+}

@@ -1,10 +1,11 @@
 package spock.adb.actions
 
-import com.android.ddmlib.IDevice
-import spock.adb.AdbController
+import com.intellij.openapi.project.Project
+import spock.adb.SpockAdbService
+import spock.adb.device.ConnectedDevice
 
-class GetCurrentApplicationBackStackAction : BaseAction() {
-    override fun performAction(controller: AdbController, device: IDevice) {
-        controller.currentBackStack(device)
-    }
+class GetCurrentApplicationBackStackAction : DeviceAwareAction() {
+    override val baseDescription = "Show the Activity and Fragment stack for this app"
+    override fun perform(project: Project, device: ConnectedDevice) =
+        SpockAdbService.getInstance(project).controller.currentApplicationBackStack(device.device)
 }

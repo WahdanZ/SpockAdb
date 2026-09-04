@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 ### Added
+- **MCP Server panel** as a tool window tab rather than a buried setting: status, transport and tool count, Start/Stop/Restart, Copy Config, and a link to Settings
+- **Live MCP activity monitor.** Every tool call as it happens with a safety marker (`✓` read-only, `⚡` action, `⚠` destructive), outcome and duration; select one to see arguments, result, client, target device, and — for destructive calls — whether you approved or denied it. Copy request or response
+- **Searchable, bounded MCP request history** across tool name, arguments and result, filterable by tool and outcome, with a configurable size in `Settings → Tools → Spock ADB`
+- **Every major operation is now an IntelliJ Action**, so it is discoverable through Find Action and bindable in `Settings → Keymap → Spock ADB`. Actions are context-aware: they disable themselves and explain why ("no Android device connected", "no application ID could be resolved from this project")
+- **No default keyboard shortcuts are shipped**, deliberately — a binding that is free in one keymap is taken in another, and silently claiming a combination the developer already uses is worse than shipping none. A test enforces that none creep in
+- `Settings → Tools → Spock ADB` shows which shortcuts are currently bound, read live from `KeymapManager`, with an "Edit in Keymap" button. IntelliJ's Keymap remains the single source of truth — no custom shortcut engine
+- `android_uninstall_app` MCP tool, marked destructive
+
+### Fixed
+- **Logcat preset and level dropdowns showed raw enum constants** (`CURRENT_APP` instead of "Current app") — the combos had no renderer
+- **The logcat filter row was clipped and the status text truncated.** The toolbar, filters and status shared a single `BorderLayout` row, so in a docked tool window the controls were cut off. Split into an actions row, a wrapping filter row, and a status bar of its own
+- **Controls no longer run off the edge of a narrow tool window.** A `WrapLayout` reflows them instead — plain `FlowLayout` reports a single row's height and is clipped rather than wrapped
+- **Logcat columns now line up**: rows render in a monospace font, so timestamp, PID and level are scannable
+- Destructive commands are flagged in the Command Center *as you type*, not only in a dialog after pressing Run
+
+### Added
 - **Logcat panel.** Live logcat in its own tool window tab, pre-scoped to the app in the open project. Presets for Current app, Errors only, Crashes, ANRs and Network; filtering by level, tag and plain-text or regex search; crash and ANR highlighting; pause/resume, clear, copy and export; auto-scroll. Filtering is by process ID rather than by matching the package name against message text, which both misses lines and returns unrelated ones
 - **ADB Command Center.** Run any shell command against the selected device with a real timeout and a Cancel button that actually stops the command. Command history that de-duplicates and reorders rather than piling up, favourites, searchable output, copy command, copy output and clear
 - **Commands can now be cancelled at all.** `ShellOutputReceiver` hard-coded `isCancelled()` to `false`, so no long-running command could ever be interrupted. The new `CancellableShellReceiver` streams output line by line and honours cancellation, which is what makes both live logcat and the Cancel button possible

@@ -23,6 +23,18 @@ class SpockAdbService(project: Project) : Disposable {
 
     val controller: AdbController get() = delegate
 
+    @Volatile
+    private var cachedDevices: List<spock.adb.device.ConnectedDevice> = emptyList()
+
+    init {
+        // Actions call update() constantly; it must never trigger an ADB round trip or start
+        // the bridge. Observing keeps a cheap snapshot for them to read.
+        delegate.observeDevices { cachedDevices = it }
+    }
+
+    /** Devices as of the last ADB update. Safe to call from update(); never blocks. */
+    fun lastKnownDevices(): List<spock.adb.device.ConnectedDevice> = cachedDevices
+
     override fun dispose() = delegate.dispose()
 
     companion object {

@@ -1,10 +1,11 @@
 package spock.adb.actions
 
-import com.android.ddmlib.IDevice
-import spock.adb.AdbController
+import com.intellij.openapi.project.Project
+import spock.adb.SpockAdbService
+import spock.adb.device.ConnectedDevice
 
-class GetCurrentActivityAction : BaseAction() {
-    override fun performAction(controller: AdbController, device: IDevice) {
-        controller.currentActivity(device)
-    }
+class GetCurrentActivityAction : DeviceAwareAction(requiresApplication = false) {
+    override val baseDescription = "Open the source of the Activity currently on screen"
+    override fun perform(project: Project, device: ConnectedDevice) =
+        SpockAdbService.getInstance(project).controller.currentActivity(device.device)
 }

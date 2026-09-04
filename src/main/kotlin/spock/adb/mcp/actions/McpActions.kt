@@ -87,3 +87,30 @@ class CopyMcpConfigurationAction : AnAction() {
         )
     }
 }
+
+/** Stops then starts the server, which also re-reads the configured port. */
+class RestartMcpServerAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = McpServerService.getInstance().isRunning
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        val project = event.project ?: return
+        val service = McpServerService.getInstance()
+        service.stop()
+        service.start()
+            .onSuccess {
+                CommonNotifier.showNotifier(project = project, content = "MCP server restarted on 127.0.0.1:$it.")
+            }
+            .onFailure {
+                CommonNotifier.showNotifier(
+                    project = project,
+                    content = "Could not restart the MCP server: ${it.message}",
+                    type = NotificationType.ERROR,
+                )
+            }
+    }
+}

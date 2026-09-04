@@ -19,6 +19,7 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import spock.adb.device.ConnectedDevice
+import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
@@ -51,6 +52,7 @@ class CommandCenterPanel(
     private val cancelButton = JButton("Cancel").apply { isEnabled = false }
     private val favouriteButton = JButton("☆ Favourite")
     private val statusLabel = JBLabel(" ")
+    private val dangerLabel = JBLabel(" ")
     private val searchField = JBTextField(SEARCH_COLUMNS)
 
     private var device: ConnectedDevice? = null
@@ -72,7 +74,7 @@ class CommandCenterPanel(
 
     private fun buildContent(): JComponent {
         val input = JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
-            border = JBUI.Borders.empty(GAP)
+            border = JBUI.Borders.empty(GAP, GAP, 0, GAP)
             add(JBLabel("adb shell"), BorderLayout.WEST)
             add(commandField, BorderLayout.CENTER)
             add(
@@ -85,11 +87,11 @@ class CommandCenterPanel(
             )
         }
 
-        val selectors = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
-            border = JBUI.Borders.emptyLeft(GAP)
+        val selectors = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+            border = JBUI.Borders.empty(0, GAP, 2, GAP)
             add(JBLabel("History:"))
             add(historyCombo)
-            add(JBLabel("Find in output:"))
+            add(JBLabel("Find:"))
             add(searchField)
         }
 
@@ -102,7 +104,14 @@ class CommandCenterPanel(
                 BorderLayout.NORTH,
             )
             add(JBScrollPane(output), BorderLayout.CENTER)
-            add(statusLabel.apply { border = JBUI.Borders.empty(STATUS_PAD_V, STATUS_PAD_H) }, BorderLayout.SOUTH)
+            add(
+                JPanel(BorderLayout()).apply {
+                    border = JBUI.Borders.empty(STATUS_PAD_V, STATUS_PAD_H)
+                    add(dangerLabel, BorderLayout.NORTH)
+                    add(statusLabel, BorderLayout.SOUTH)
+                },
+                BorderLayout.SOUTH,
+            )
         }
     }
 
@@ -142,6 +151,13 @@ class CommandCenterPanel(
             runner.cancel()
             statusLabel.text = "Cancelling…"
         }
+        commandField.document.addDocumentListener(
+            object : javax.swing.event.DocumentListener {
+                override fun insertUpdate(e: javax.swing.event.DocumentEvent) = refreshDangerHint()
+                override fun removeUpdate(e: javax.swing.event.DocumentEvent) = refreshDangerHint()
+                override fun changedUpdate(e: javax.swing.event.DocumentEvent) = refreshDangerHint()
+            },
+        )
         commandField.registerKeyboardAction(
             { execute() },
             KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0),
@@ -282,6 +298,30 @@ class CommandCenterPanel(
         output.select(index, index + needle.length)
         output.requestFocusInWindow()
         statusLabel.text = "Found '$needle'."
+    }
+
+    /**
+     * Flags a destructive command while it is being typed.
+     *
+     * A confirmation dialog after pressing Run is easy to dismiss on autopilot; seeing the
+     * warning appear as you type is what actually prevents the mistake.
+     */
+    private fun refreshDangerHint() {
+        val command = commandField.text.orEmpty()
+        when (DangerousCommands.classify(command)) {
+            DangerousCommands.Verdict.SAFE -> {
+                dangerLabel.text = " "
+                dangerLabel.icon = null
+            }
+            DangerousCommands.Verdict.DESTRUCTIVE -> {
+                dangerLabel.text = DangerousCommands.explain(command).orEmpty()
+                dangerLabel.icon = AllIcons.General.Warning
+            }
+            DangerousCommands.Verdict.REFUSED -> {
+                dangerLabel.text = "Refused: ${DangerousCommands.explain(command)}"
+                dangerLabel.icon = AllIcons.General.Error
+            }
+        }
     }
 
     private fun updateStatus() {

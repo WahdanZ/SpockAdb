@@ -46,6 +46,10 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="spock.adb.AppSettingService"/>
+        <applicationConfigurable parentId="tools"
+                                 instance="spock.adb.mcp.SpockAdbConfigurable"
+                                 id="spock.adb.settings"
+                                 displayName="Spock ADB"/>
         <notificationGroup id="SpockAdb" displayType="BALLOON" isLogByDefault="true"/>
         <toolWindow anchor="left"
                     canCloseContents="false"
@@ -56,31 +60,97 @@
     </extensions>
 
     <actions>
-        <group id="SpockAdb.ActionGroup" text="SpockAdb" popup="true">
+        <!--
+          Every operation is an Action so it appears in Find Action and in
+          Settings > Keymap > Spock ADB.
+
+          No <keyboard-shortcut> defaults are declared, deliberately. A binding that is free
+          in one keymap and on one OS is often taken in another, and a plugin silently
+          claiming a combination the developer already uses is worse than shipping none.
+          Users assign what they want through the standard Keymap UI; the Settings tab shows
+          what is currently bound.
+
+          Action IDs are stable: renaming one drops any shortcut a user has assigned to it.
+        -->
+        <group id="SpockAdb.ActionGroup" text="Spock ADB" popup="true"
+               description="Android device actions provided by Spock ADB">
             <add-to-group group-id="ToolsMenu" anchor="first"/>
+
+            <!-- Navigation -->
             <action id="spock.adb.actions.GetCurrentActivityAction"
                     class="spock.adb.actions.GetCurrentActivityAction"
-                    text="Spock: Get Current Activity"/>
-            <action id="spock.adb.actions.GetCurrentApplicationBackStackAction"
-                    class="spock.adb.actions.GetCurrentApplicationBackStackAction"
-                    text="Spock: Current App BackStack"/>
+                    text="Open Current Activity"/>
             <action id="spock.adb.actions.GetCurrentFragmentAction"
                     class="spock.adb.actions.GetCurrentFragmentAction"
-                    text="Spock: Current Fragment"/>
+                    text="Open Current Fragment"/>
+            <action id="spock.adb.actions.GetCurrentApplicationBackStackAction"
+                    class="spock.adb.actions.GetCurrentApplicationBackStackAction"
+                    text="Show App Back Stack"/>
+            <action id="spock.adb.actions.ShowActivityStackAction"
+                    class="spock.adb.actions.ShowActivityStackAction"
+                    text="Show Activity Stack"/>
+
+            <separator/>
+
+            <!-- App lifecycle -->
             <action id="spock.adb.actions.RestartAppAction"
                     class="spock.adb.actions.RestartAppAction"
-                    text="Spock: Restart App"/>
+                    text="Restart App"/>
             <action id="spock.adb.actions.RestartAppWithDebuggerAction"
                     class="spock.adb.actions.RestartAppWithDebuggerAction"
-                    text="Spock: Restart App With Debugger"/>
+                    text="Restart App With Debugger"/>
+            <action id="spock.adb.actions.ForceStopAppAction"
+                    class="spock.adb.actions.ForceStopAppAction"
+                    text="Force Stop App"/>
+            <action id="spock.adb.actions.TestProcessDeathAction"
+                    class="spock.adb.actions.TestProcessDeathAction"
+                    text="Test Process Death"/>
+
             <separator/>
+
+            <!-- Destructive -->
+            <action id="spock.adb.actions.ClearAppDataAction"
+                    class="spock.adb.actions.ClearAppDataAction"
+                    text="Clear App Data..."/>
+            <action id="spock.adb.actions.ClearAppDataAndRestartAction"
+                    class="spock.adb.actions.ClearAppDataAndRestartAction"
+                    text="Clear App Data and Restart..."/>
+            <action id="spock.adb.actions.UninstallAppAction"
+                    class="spock.adb.actions.UninstallAppAction"
+                    text="Uninstall App..."/>
+
+            <separator/>
+
+            <!-- Tool window -->
+            <action id="spock.adb.actions.OpenDevicesAction"
+                    class="spock.adb.actions.OpenDevicesAction"
+                    text="Open Devices"/>
+            <action id="spock.adb.actions.OpenLogcatAction"
+                    class="spock.adb.actions.OpenLogcatAction"
+                    text="Open Logcat"/>
+            <action id="spock.adb.actions.OpenCommandCenterAction"
+                    class="spock.adb.actions.OpenCommandCenterAction"
+                    text="Open ADB Command Center"/>
+            <action id="spock.adb.actions.OpenMcpPanelAction"
+                    class="spock.adb.actions.OpenMcpPanelAction"
+                    text="Open MCP Server Panel"/>
+            <action id="spock.adb.actions.OpenDeveloperOptionsAction"
+                    class="spock.adb.actions.OpenDeveloperOptionsAction"
+                    text="Open Developer Options on Device"/>
+
+            <separator/>
+
+            <!-- MCP -->
             <action id="spock.adb.mcp.ToggleMcpServerAction"
                     class="spock.adb.mcp.actions.ToggleMcpServerAction"
-                    text="Spock: Start MCP Server for AI Agents"
+                    text="Start MCP Server for AI Agents"
                     description="Expose the connected Android device to MCP-compatible AI agents"/>
+            <action id="spock.adb.mcp.RestartMcpServerAction"
+                    class="spock.adb.mcp.actions.RestartMcpServerAction"
+                    text="Restart MCP Server"/>
             <action id="spock.adb.mcp.CopyMcpConfigurationAction"
                     class="spock.adb.mcp.actions.CopyMcpConfigurationAction"
-                    text="Spock: Copy MCP Client Configuration"
+                    text="Copy MCP Client Configuration"
                     description="Copy a ready-to-paste MCP client configuration for this IDE"/>
         </group>
     </actions>

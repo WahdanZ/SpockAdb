@@ -33,8 +33,14 @@ class AdbControllerImp(
 
     private val log = Logger.getInstance(AdbControllerImp::class.java)
 
-    @Volatile
-    private var updateDeviceList: ((List<ConnectedDevice>) -> Unit)? = null
+    /**
+     * Device-list observers.
+     *
+     * A single slot was enough when only the tool window listened, but the project service
+     * now also observes to keep a cheap snapshot for action `update()`. With one slot the
+     * second subscriber silently replaced the first.
+     */
+    private val deviceObservers = java.util.concurrent.CopyOnWriteArrayList<(List<ConnectedDevice>) -> Unit>()
 
     init {
         AndroidDebugBridge.addDeviceChangeListener(this)
@@ -53,11 +59,11 @@ class AdbControllerImp(
 
     private fun devices(): List<ConnectedDevice> = deviceLister.list()
 
-    /** Device-change callbacks arrive on ddmlib threads; the listener updates Swing. */
+    /** Device-change callbacks arrive on ddmlib threads; observers update Swing. */
     private fun publishDeviceList() {
-        val block = updateDeviceList ?: return
+        if (deviceObservers.isEmpty()) return
         val devices = devices()
-        onEdt { block(devices) }
+        onEdt { deviceObservers.forEach { it(devices) } }
     }
 
     private fun onEdt(block: () -> Unit) =
@@ -104,7 +110,7 @@ class AdbControllerImp(
     }
 
     override fun observeDevices(block: (devices: List<ConnectedDevice>) -> Unit) {
-        updateDeviceList = block
+        deviceObservers.addIfAbsent(block)
         connectedDevices(block)
     }
 
@@ -561,6 +567,6 @@ class AdbControllerImp(
 
     override fun dispose() {
         AndroidDebugBridge.removeDeviceChangeListener(this)
-        updateDeviceList = null
+        deviceObservers.clear()
     }
 }

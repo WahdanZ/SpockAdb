@@ -14,9 +14,9 @@ interface AdbController {
 
     /**
      * Subscribes to the device list: [block] is invoked on the EDT with the current devices
-     * and again on every connect, disconnect or state change. Only one observer is
-     * supported, which is the tool window; menu actions use [connectedDevices] instead so
-     * they do not replace it.
+     * and again on every connect, disconnect or state change. Multiple observers are
+     * supported — the tool window and the project service both subscribe — and each is
+     * notified. One-shot callers should use [connectedDevices] instead of subscribing.
      */
     fun observeDevices(block: (devices: List<ConnectedDevice>) -> Unit)
     fun currentBackStack(device: IDevice)
