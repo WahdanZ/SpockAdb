@@ -1,6 +1,15 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
 ## [Unreleased]
+### Fixed
+- **A Compose-only screen was reported as "Mixed Views and Jetpack Compose".** Compose reports a `Text` node's class as `android.widget.TextView` so screen readers treat it correctly, which meant a flat class-name scan saw "Views present" on a pure Compose screen. Framework detection is now subtree-aware: only widgets *outside* every `ComposeView` count as Views. Caught on a real device, and covered by a fixture captured from it
+- Three labels ran past the edge of a docked tool window: the MCP "no client identified" message (now wraps), the Command Center hint, and the UI Inspector target line
+
+### Fixed
+- **The Devices tab clipped its second column.** Content inside a `JScrollPane` is laid out at its *preferred* width, so the two-column grid sized itself from the widest label and everything in the right column was cut off behind a horizontal scrollbar. The content now tracks the viewport width, the pane never scrolls sideways, and buttons are allowed to shrink below their label width. Covered by a headless layout test
+- The device dropdown ran past the panel edge for the same reason; it now elides instead
+- "Restart + Debugger" and "Clear Data & Restart..." were the widest labels; shortened to "Debugger" and "Clear & Restart...", with tooltips carrying the full meaning
+
 ### Changed
 - **The Devices tab is no longer a fifteen-row scroll.** Actions are laid out two to a row instead of one full-width row each, and grouped under collapsible headings — Navigate, App lifecycle, Destructive, Permissions, Developer options, Network, Send to device — so the common ones fit without scrolling in a docked tool window. Section state is remembered between sessions
 - **Destructive actions moved into their own section** rather than sitting between navigation and lifecycle buttons where they could be hit by accident, and are labelled with an ellipsis to show they confirm first

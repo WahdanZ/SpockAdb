@@ -11,8 +11,10 @@ complexity:
     excludes: ['**/test/**']
   TooManyFunctions:
     # Swing panels decompose into many small private methods, which is the readable shape
-    # for UI code — collapsing them into fewer, larger ones would be worse.
+    # for UI code — collapsing them into fewer, larger ones would be worse. Parsers split
+    # into small named steps for the same reason.
     thresholdInClasses: 24
+    thresholdInObjects: 14
 
 style:
   ReturnCount:

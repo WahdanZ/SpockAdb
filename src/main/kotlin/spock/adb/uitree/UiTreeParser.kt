@@ -61,34 +61,48 @@ object UiTreeParser {
         val hierarchy = document.documentElement ?: return empty()
         val root = hierarchy.childElements().firstOrNull()?.toNode() ?: return empty()
 
-        val all = root.asSequence().toList()
-        val framework = detectFramework(all)
-        return UiTree(root, framework, detectTestTagSupport(framework, all))
+        val framework = detectFramework(root)
+        return UiTree(root, framework, detectTestTagSupport(framework, root.asSequence().toList()))
     }
 
     private fun empty() = UiTree(null, UiFramework.UNKNOWN, UiTree.TestTagSupport.NOT_APPLICABLE)
 
     /**
-     * Compose hosts itself inside an `AndroidComposeView`, which does appear in the dump.
-     * Its semantics children are reported as plain `android.view.View` nodes carrying text
-     * and content descriptions, which is why class names alone cannot identify Compose
-     * content — only its host can.
+     * Compose hosts itself inside a `ComposeView` / `AndroidComposeView`, which does appear
+     * in the dump. Its semantics children are *not* all reported as `android.view.View`:
+     * Compose deliberately reports a `Text` node's class as `android.widget.TextView`, a
+     * button as `android.widget.Button` and so on, so screen readers treat them correctly.
+     *
+     * That means a flat scan for widget class names cannot tell Views from Compose — a pure
+     * Compose screen showing one `Text` looks identical to a hybrid one. Verified against a
+     * real device: a Compose-only app produced
+     * `FrameLayout > … > ComposeView > View > View > TextView "Hello Android!"` and was
+     * misreported as hybrid.
+     *
+     * Only widgets **outside** every Compose subtree count as real Views.
      */
-    private fun detectFramework(nodes: List<UiNode>): UiFramework {
-        val hasCompose = nodes.any {
-            it.className == COMPOSE_VIEW_MARKER || it.className == COMPOSE_LEGACY_MARKER
-        }
-        val hasViewWidgets = nodes.any { node ->
-            VIEW_CONTENT_WIDGETS.any { node.className.startsWith(it) }
-        }
+    private fun detectFramework(root: UiNode): UiFramework {
+        val hasCompose = root.asSequence().any { it.isComposeHost() }
+        val hasViewWidgets = hasViewContentOutsideCompose(root, insideCompose = false)
 
         return when {
             hasCompose && hasViewWidgets -> UiFramework.HYBRID
             hasCompose -> UiFramework.COMPOSE
-            nodes.isNotEmpty() -> UiFramework.VIEWS
-            else -> UiFramework.UNKNOWN
+            else -> UiFramework.VIEWS
         }
     }
+
+    private fun hasViewContentOutsideCompose(node: UiNode, insideCompose: Boolean): Boolean {
+        val withinCompose = insideCompose || node.isComposeHost()
+
+        if (!withinCompose && VIEW_CONTENT_WIDGETS.any { node.className.startsWith(it) }) {
+            return true
+        }
+        return node.children.any { hasViewContentOutsideCompose(it, withinCompose) }
+    }
+
+    private fun UiNode.isComposeHost(): Boolean =
+        className == COMPOSE_VIEW_MARKER || className == COMPOSE_LEGACY_MARKER
 
     private fun detectTestTagSupport(framework: UiFramework, nodes: List<UiNode>): UiTree.TestTagSupport =
         when (framework) {
