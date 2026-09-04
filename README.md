@@ -88,6 +88,15 @@ Works in Android Studio and IntelliJ IDEA.
 | **Copy command / copy output / clear** | One click each |
 | **Confirmation on dangerous commands** | Destructive commands are flagged before they run |
 
+### UI Inspector (Views & Jetpack Compose)
+| Feature | Description |
+|---|---|
+| **Semantics tree** | Inspect what is on screen, as a hierarchy you can browse and search |
+| **Framework detection** | Says whether the screen is Views, Jetpack Compose, or both |
+| **Compose test tags** | Shows them when available, and tells you how to expose them when not |
+| **Node details** | Test tag, text, content description, bounds, and every interactive flag |
+| **Accessibility audit** | Unlabelled controls, small touch targets, duplicate labels — with Compose-level fixes |
+
 ### AI agents (MCP)
 | Feature | Description |
 |---|---|

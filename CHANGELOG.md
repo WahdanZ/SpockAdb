@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- **UI Inspector tab.** The Compose semantics work was previously reachable only through MCP — useful to an AI agent and invisible to the developer. The same machinery is now a tool window tab: browse and search the semantics tree, see whether the screen is Views/Compose/hybrid, inspect every node's test tag, text, content description, bounds and interactive flags, and run the accessibility audit. Reachable from Find Action as "Open UI Inspector"
 - **Jetpack Compose is a first-class target for UI inspection and automation.** Compose has no View hierarchy, so `Activity → View hierarchy` is the wrong model for a Compose screen. The new semantics-based UI tree reads the accessibility tree — where Compose publishes its semantics — so one implementation covers Views, Compose and hybrid screens, with **no Compose dependency and no pinned Compose version**
 - `android_get_ui_tree` reports whether the screen is Views, Compose or hybrid, and every node's test tag, text, content description, bounds, and clickable/enabled/scrollable/checked/selected state
 - **Semantics-first interaction**: `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element` and `android_find_ui_element` resolve elements by testTag → content description → text, deriving the tap point from the matched node's own bounds. Coordinates are now explicitly the fallback — `android_tap`'s description says so

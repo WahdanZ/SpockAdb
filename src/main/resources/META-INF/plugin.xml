@@ -131,6 +131,10 @@
             <action id="spock.adb.actions.OpenCommandCenterAction"
                     class="spock.adb.actions.OpenCommandCenterAction"
                     text="Open ADB Command Center"/>
+            <action id="spock.adb.actions.OpenUiInspectorAction"
+                    class="spock.adb.actions.OpenUiInspectorAction"
+                    text="Open UI Inspector"
+                    description="Inspect the semantics tree of the screen, for Views and Jetpack Compose"/>
             <action id="spock.adb.actions.OpenMcpPanelAction"
                     class="spock.adb.actions.OpenMcpPanelAction"
                     text="Open MCP Server Panel"/>

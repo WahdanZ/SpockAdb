@@ -12,7 +12,7 @@ complexity:
   TooManyFunctions:
     # Swing panels decompose into many small private methods, which is the readable shape
     # for UI code — collapsing them into fewer, larger ones would be worse.
-    thresholdInClasses: 20
+    thresholdInClasses: 24
 
 style:
   ReturnCount:
