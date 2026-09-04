@@ -44,7 +44,8 @@ class ToggleMcpServerAction : AnAction() {
                 CommonNotifier.showNotifier(
                     project = project,
                     content = "MCP server listening on 127.0.0.1:$port. " +
-                        "Use 'Spock: Copy MCP Client Configuration' to connect a client.",
+                        "Use 'Spock: Copy MCP Client Configuration (stdio)' — or (HTTP) — to " +
+                        "connect a client.",
                 )
             }
             .onFailure { error ->
@@ -119,7 +120,7 @@ class CopyMcpStdioConfigurationAction : AnAction() {
             CommonNotifier.showNotifier(
                 project = project,
                 content = "The stdio bridge could not start on this machine — see idea.log. " +
-                    "Use 'Copy MCP Client Configuration' for the HTTP transport instead.",
+                    "Use 'Copy MCP Client Configuration (HTTP)' instead.",
                 type = NotificationType.WARNING,
             )
             return

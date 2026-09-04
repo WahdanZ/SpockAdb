@@ -14,6 +14,9 @@ import java.nio.channels.SocketChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFileAttributeView
+import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.Executors
@@ -97,8 +100,7 @@ class McpBridgeServer(
     @Synchronized
     fun start(directory: Path): Endpoint {
         stop()
-        Files.createDirectories(directory)
-        restrictToOwner(directory)
+        prepareDirectory(directory)
 
         val bound = bindUnixDomain(directory) ?: bindLoopback()
         channel = bound.first
@@ -299,33 +301,60 @@ class McpBridgeServer(
             complete.port?.let { setProperty("port", it.toString()) }
             setProperty("token", complete.token)
         }
-        // Written before the permissions are tightened, so create it empty and restrict it
-        // first: a token must never exist, even briefly, as a world-readable file.
+        // Created with its permissions, not created and then chmod-ed. POSIX checks
+        // permissions when a file is opened, so a descriptor another process opened during
+        // that window keeps working afterwards and reads the token as soon as it is written.
         Files.deleteIfExists(file)
-        Files.createFile(file)
-        restrictToOwner(file)
+        createRestricted(file)
         Files.newOutputStream(file).use { properties.store(it, "Spock ADB MCP stdio endpoint") }
         return complete
     }
 
-    /**
-     * Best effort `700` / `600`.
-     *
-     * POSIX permissions are the real protection for the Unix socket. On Windows the ACL model
-     * is different and the token is what protects the loopback port, so a failure here is
-     * reported rather than fatal.
-     */
-    private fun restrictToOwner(path: Path) {
-        try {
-            val view = Files.getFileAttributeView(
-                path,
-                java.nio.file.attribute.PosixFileAttributeView::class.java,
-            ) ?: return
-            val permissions = if (Files.isDirectory(path)) "rwx------" else "rw-------"
-            view.setPermissions(java.nio.file.attribute.PosixFilePermissions.fromString(permissions))
-        } catch (e: IOException) {
-            diagnostics("Could not restrict permissions on $path", e)
+    /** Creates the token file as `600` in one step, so it is never briefly readable. */
+    private fun createRestricted(file: Path) {
+        val owned = ownerOnly("rw-------")
+        if (owned == null) {
+            // No POSIX attributes — Windows, where the ACL model is different and the token is
+            // what protects the loopback port anyway.
+            Files.createFile(file)
+            return
         }
+        Files.createFile(file, owned)
+    }
+
+    /**
+     * Creates the endpoint directory as `700`, or tightens it if it is already there.
+     *
+     * The directory is what protects the Unix socket, which carries no permissions of its own
+     * worth relying on. Creating it with the permissions avoids the same window the token file
+     * avoids; an existing directory can only be tightened after the fact.
+     */
+    private fun prepareDirectory(directory: Path) {
+        val owned = ownerOnly("rwx------")
+        try {
+            when {
+                Files.isDirectory(directory) -> restrictExisting(directory, "rwx------")
+                owned == null -> Files.createDirectories(directory)
+                else -> Files.createDirectories(directory, owned)
+            }
+        } catch (e: IOException) {
+            diagnostics("Could not prepare $directory for the MCP stdio endpoint", e)
+        }
+    }
+
+    private fun ownerOnly(permissions: String): java.nio.file.attribute.FileAttribute<Set<PosixFilePermission>>? =
+        try {
+            java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                PosixFilePermissions.fromString(permissions),
+            )
+        } catch (e: UnsupportedOperationException) {
+            diagnostics("POSIX permissions unavailable on this filesystem", e)
+            null
+        }
+
+    private fun restrictExisting(path: Path, permissions: String) {
+        val view = Files.getFileAttributeView(path, PosixFileAttributeView::class.java) ?: return
+        view.setPermissions(PosixFilePermissions.fromString(permissions))
     }
 
     enum class Transport { UNIX, TCP }

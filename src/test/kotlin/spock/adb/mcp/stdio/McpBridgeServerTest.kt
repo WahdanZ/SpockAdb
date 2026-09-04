@@ -205,6 +205,42 @@ class McpBridgeServerTest {
     }
 
     @Test
+    fun `a launcher whose token is stale fails loudly rather than exiting quietly`(@TempDir directory: Path) {
+        val endpoint = start(directory)
+        assumeTrue(endpoint.transport == McpBridgeServer.Transport.UNIX, "no Unix domain sockets here")
+
+        // A descriptor pointing at the real endpoint with the wrong token — what a client is
+        // left holding after the token is rotated. The bridge closes the connection without a
+        // word, so from the launcher this is indistinguishable from a stopped server, and both
+        // used to look like a clean, silent, successful exit.
+        val stale = directory.resolve("stale.properties")
+        Files.newOutputStream(stale).use { out ->
+            Properties().apply {
+                setProperty("transport", "unix")
+                setProperty("socket", endpoint.socketPath!!.toString())
+                setProperty("token", "not-the-token")
+            }.store(out, null)
+        }
+
+        val process = launch(stale)
+        try {
+            val stdin = process.outputStream
+            stdin.write("""{"jsonrpc":"2.0","id":1,"method":"initialize"}""".toByteArray())
+            stdin.write('\n'.code)
+            runCatching { stdin.flush() }
+
+            assertTrue(process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            assertFalse(process.exitValue() == 0, "a rejected session is a failure, not a quiet success")
+            assertTrue(
+                process.errorStream.readBytes().decodeToString().contains("closed the connection"),
+                "the developer should be told the IDE hung up, not left guessing",
+            )
+        } finally {
+            process.destroyForcibly()
+        }
+    }
+
+    @Test
     fun `a launcher given no descriptor explains how to get one`() {
         // The descriptor path is required: the IDE writes it under its own config directory,
         // which differs per IDE, version and platform, so no default could name it correctly.
@@ -256,6 +292,10 @@ class McpBridgeServerTest {
                 process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS),
                 "stopping the server must end the client's session, not strand it",
             )
+            // The IDE hanging up while the client is still talking is a failure, however
+            // quietly it happens. Exiting 0 would tell the client the server started and then
+            // chose to do nothing.
+            assertFalse(process.exitValue() == 0, "a server that vanished mid-session is not success")
         } finally {
             process.destroyForcibly()
         }

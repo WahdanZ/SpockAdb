@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The process an MCP client spawns for the stdio transport.
@@ -82,7 +83,18 @@ public final class SpockAdbStdioLauncher {
 
         try (SocketChannel connection = connect(endpoint)) {
             handshake(connection, endpoint.getProperty("token", ""));
-            relay(connection, protocolOut);
+            if (!relay(connection, protocolOut)) {
+                // The IDE hung up while the client was still talking. The likeliest causes are
+                // a stale token in the descriptor and a server that has been stopped, and both
+                // look identical from here: the bridge closes the connection without a word.
+                // Exiting 0 would present either as a server that started and cleanly chose to
+                // do nothing, which is the least useful thing a client could be told.
+                fail("Spock ADB: the IDE closed the connection without serving the session."
+                        + " The MCP server may have been stopped, or the token in "
+                        + descriptorFile + " may be stale — re-copy the configuration from"
+                        + " Tools > SpockAdb > Copy MCP Client Configuration (stdio).");
+                System.exit(EXIT_CONNECTION_LOST);
+            }
         } catch (IOException e) {
             fail("Spock ADB: lost the connection to the IDE (" + e.getMessage() + ")."
                     + " The MCP server may have been stopped.");
@@ -124,16 +136,26 @@ public final class SpockAdbStdioLauncher {
      * long as the session does; the client-to-IDE direction runs on a daemon thread, which
      * lets the process exit the moment the IDE closes the connection rather than waiting on
      * a stdin read that will never return.
+     *
+     * @return true if the client ended the session by closing stdin, which is the ordinary
+     *     way one ends and a success; false if the IDE hung up first, which is a failure
+     *     however quiet it looked.
      */
-    private static void relay(SocketChannel connection, OutputStream protocolOut) throws IOException {
+    private static boolean relay(SocketChannel connection, OutputStream protocolOut) throws IOException {
         InputStream fromIde = Channels.newInputStream(connection);
         OutputStream toIde = Channels.newOutputStream(connection);
 
+        AtomicBoolean clientClosedStdin = new AtomicBoolean(false);
         Thread pump = new Thread(() -> {
             try {
                 copy(System.in, toIde);
+                // Reached only on end of stream: the client deliberately closed stdin. Set
+                // before the half-close below, so the IDE cannot react and end the read on
+                // the main thread before this is visible to it.
+                clientClosedStdin.set(true);
             } catch (IOException ignored) {
                 // The client exited and closed the pipe. That is how a session ends.
+                clientClosedStdin.set(true);
             } finally {
                 // Half-close: tell the IDE the client has gone without tearing down the read
                 // side. Closing the whole channel here aborts the main thread's read mid-call,
@@ -148,6 +170,7 @@ public final class SpockAdbStdioLauncher {
         pump.start();
 
         copy(fromIde, protocolOut);
+        return clientClosedStdin.get();
     }
 
     /**

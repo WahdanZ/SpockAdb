@@ -11,6 +11,7 @@ import java.io.Writer
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -126,6 +127,19 @@ class McpStdioServer(
 
         // Every request runs on a worker so reading continues while a tool executes: a
         // cancellation that arrived behind a slow call would otherwise never be read.
+        //
+        // A message arriving as the pool shuts down is rejected, which is the right outcome —
+        // there is nothing left to run it on — but it must be dropped rather than thrown out
+        // of the reading loop, where it would end the session as a failure during what is an
+        // ordinary shutdown race.
+        try {
+            submit(line, id, writer)
+        } catch (e: RejectedExecutionException) {
+            diagnostics("Dropped a message that arrived while the stdio session was closing", e)
+        }
+    }
+
+    private fun submit(line: String, id: String?, writer: Writer) {
         workers.execute {
             id?.let { inFlight[it] = Thread.currentThread() }
             try {
