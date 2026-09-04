@@ -85,7 +85,10 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     fun stop() {
         server?.stop()
         server = null
-        bridge?.stop()
+        // dispose(), not stop(): stop() releases the socket but keeps the executors, and
+        // start() always builds a fresh McpBridgeServer, so a stop/start cycle — which is
+        // exactly what Restart MCP Server does — would strand the previous one's threads.
+        bridge?.dispose()
         bridge = null
         protocol = null
         settings.enabled = false
@@ -248,12 +251,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         PathManager.getJarPathForClass(SpockAdbStdioLauncher::class.java)
             ?: PathManager.getPluginsPath()
 
-    override fun dispose() {
-        // stop() clears the field, so take the reference first or the executors leak.
-        val stdio = bridge
-        stop()
-        stdio?.dispose()
-    }
+    override fun dispose() = stop()
 
     private fun generateToken(): String {
         val bytes = ByteArray(TOKEN_BYTES)

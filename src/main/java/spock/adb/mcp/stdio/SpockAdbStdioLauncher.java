@@ -135,8 +135,13 @@ public final class SpockAdbStdioLauncher {
             } catch (IOException ignored) {
                 // The client exited and closed the pipe. That is how a session ends.
             } finally {
-                // Tell the IDE the client has gone, which ends its session loop too.
-                closeQuietly(connection);
+                // Half-close: tell the IDE the client has gone without tearing down the read
+                // side. Closing the whole channel here aborts the main thread's read mid-call,
+                // which surfaces as AsynchronousCloseException and gets reported as a lost
+                // connection — on the ordinary path where the client just closed stdin. After
+                // the half-close the IDE sees end of stream, ends its session and closes its
+                // end, and the read below finishes cleanly.
+                shutdownOutputQuietly(connection);
             }
         }, "spock-adb-stdio-in");
         pump.setDaemon(true);
@@ -160,11 +165,11 @@ public final class SpockAdbStdioLauncher {
         }
     }
 
-    private static void closeQuietly(SocketChannel connection) {
+    private static void shutdownOutputQuietly(SocketChannel connection) {
         try {
-            connection.close();
+            connection.shutdownOutput();
         } catch (IOException ignored) {
-            // Nothing useful to do while shutting down.
+            // The connection is already gone, which is the state this was aiming for.
         }
     }
 

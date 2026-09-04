@@ -349,7 +349,11 @@ class McpBridgeServer(
 
         /** Conservative limit for `sun_path`, which is 104 bytes on macOS and 108 on Linux. */
         private const val MAX_SOCKET_PATH_BYTES = 100
-        private const val SHUTDOWN_GRACE_SECONDS = 5L
+
+        // A ceiling, not an expected wait: stop() has already closed every channel by the
+        // time these are awaited, so the threads are on their way out. It stays short because
+        // the tool window's Stop and Restart actions call this from the EDT.
+        private const val SHUTDOWN_GRACE_SECONDS = 2L
         private const val MAX_CONCURRENT_SESSIONS = 8
         private const val HANDSHAKE_TIMEOUT_SECONDS = 10L
         const val DESCRIPTOR_NAME = "mcp-stdio.properties"

@@ -187,6 +187,18 @@ class McpBridgeServerTest {
             )
             // Everything after the response must have gone to stderr instead.
             assertNull(stdout.readLine(), "stdout carries protocol messages and nothing else")
+
+            // This is the ordinary way a session ends, so it is a success, and silent. Tearing
+            // the connection down from the stdin pump instead of half-closing it used to abort
+            // the read still in flight and report the clean shutdown as a lost connection.
+            assertEquals(0, process.exitValue(), "a client closing stdin is not a failure")
+            // Asserting the absence of the failure rather than an empty stderr: a JVM may
+            // print banners of its own there (JAVA_TOOL_OPTIONS, CDS warnings), and a test
+            // that breaks on those would be testing the environment, not the launcher.
+            assertFalse(
+                process.errorStream.readBytes().decodeToString().contains("lost the connection"),
+                "a clean shutdown must not be reported as a lost connection",
+            )
         } finally {
             process.destroyForcibly()
         }
