@@ -19,6 +19,10 @@ It shows what is actually true rather than a mock-up of it:
 
 - **Status** — running or stopped, the transport (`HTTP (127.0.0.1:<port>)`, not stdio), and
   the tool count. Start / Stop / Restart / Copy Config / Settings.
+- **Tools tab** — the full catalogue of what an agent can do to your device, grouped by
+  safety level with destructive first, searchable, and filterable to destructive only.
+  Selecting a tool shows its description and argument schema. Available whether or not the
+  server is running, so you can review exactly what you are exposing *before* you start it.
 - **Activity monitor** — every tool call as it happens, with a safety marker
   (`✓` read-only, `⚡` action, `⚠` destructive), success or failure, and duration.
 - **Request details** — select a call to see arguments, result, client, target device,
