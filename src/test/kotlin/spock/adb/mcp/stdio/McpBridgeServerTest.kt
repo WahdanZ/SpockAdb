@@ -138,7 +138,8 @@ class McpBridgeServerTest {
         assumeTrue(source != null, "cannot locate the launcher to spawn it")
         return ProcessBuilder(
             Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-            "-cp", Path.of(source!!.toURI()).toString(),
+            "-cp",
+            Path.of(source!!.toURI()).toString(),
             SpockAdbStdioLauncher::class.java.name,
             descriptor.toString(),
         ).start()

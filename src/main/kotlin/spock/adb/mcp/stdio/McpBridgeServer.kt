@@ -183,18 +183,26 @@ class McpBridgeServer(
         )
     }
 
+    /**
+     * Waits for the next connection.
+     *
+     * Null means stop accepting, for either reason: the channel is gone, or accept() threw —
+     * which is how [stop] unblocks this loop, since closing the channel is the only thing that
+     * does. Both collapse into one value so the loop has a single exit.
+     */
+    private fun acceptNext(): SocketChannel? = try {
+        channel?.accept()
+    } catch (e: IOException) {
+        if (running.get()) diagnostics("MCP stdio bridge accept failed", e)
+        null
+    }
+
     // The accept loop must survive one bad connection: a client that dies mid-handshake is
     // routine and must not take the endpoint down with it.
     @Suppress("TooGenericExceptionCaught")
     private fun acceptLoop() {
         while (running.get()) {
-            val connection = try {
-                channel?.accept() ?: break
-            } catch (e: IOException) {
-                // Closing the channel to stop the server unblocks accept() by throwing.
-                if (running.get()) diagnostics("MCP stdio bridge accept failed", e)
-                break
-            }
+            val connection = acceptNext() ?: break
             connections.execute {
                 try {
                     session(connection)
@@ -212,7 +220,8 @@ class McpBridgeServer(
             InputStreamReader(Channels.newInputStream(connection), StandardCharsets.UTF_8),
         )
         val writer = OutputStreamWriter(
-            Channels.newOutputStream(connection), StandardCharsets.UTF_8,
+            Channels.newOutputStream(connection),
+            StandardCharsets.UTF_8,
         )
 
         val presented = reader.readLine()

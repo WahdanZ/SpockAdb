@@ -40,7 +40,10 @@ class McpStdioServerTest {
         val output = PipedOutputStream(fromServer)
         responses = fromServer.bufferedReader()
         server = McpStdioServer(handle)
-        thread = Thread { server.serve(input, output) }.apply { isDaemon = true; start() }
+        thread = Thread { server.serve(input, output) }.apply {
+            isDaemon = true
+            start()
+        }
     }
 
     @AfterEach

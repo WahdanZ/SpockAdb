@@ -75,9 +75,10 @@ class McpStdioServer(
         running.set(true)
         try {
             while (running.get()) {
+                // End of stream is the only way out: the peer closed its end.
                 val line = reader.readLine() ?: break
-                if (line.isBlank()) continue
-                dispatch(line, writer)
+                // A blank line is not a message. Clients send them; they are not an error.
+                if (line.isNotBlank()) dispatch(line, writer)
             }
         } catch (e: java.io.IOException) {
             // A client that exits mid-read closes the pipe. That is how a stdio session ends,
