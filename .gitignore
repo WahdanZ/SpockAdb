@@ -11,3 +11,7 @@
 # macOS
 .DS_Store
 **/.DS_Store
+
+# Plugin Verifier writes a timestamped scratch directory per verified IDE into the
+# project root on every `verifyPlugin` run.
+verification-*/
