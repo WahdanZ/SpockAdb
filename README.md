@@ -109,6 +109,8 @@ device. **Off by default**; you start it deliberately.
   see arguments, result, client, target device — and whether you approved or denied it
 - **Tools catalogue** grouped by safety, browsable before you start the server
 - Searchable, bounded request history
+- **HTTP and stdio**, served by one protocol implementation and one tool registry. The stdio
+  configuration carries no token at all, so it is safe to paste anywhere
 
 **Destructive tools always ask, per call, and default to denied.** An unattended IDE denies
 rather than approves.
@@ -166,7 +168,7 @@ Or from your IDE: `Settings → Plugins → Marketplace → search "Spock ADB"`
 2. Open the **Spock ADB** tool window (left-hand sidebar, or `Tools → SpockAdb`).
 3. Pick your device in **Devices** — every other tab follows it.
 4. Optional: `Tools → SpockAdb → Start MCP Server for AI Agents`, then
-   **Copy MCP Client Configuration** and paste it into your MCP client.
+   **Copy MCP Client Configuration (stdio)** — or **(HTTP)** — and paste it into your MCP client.
 
 ---
 

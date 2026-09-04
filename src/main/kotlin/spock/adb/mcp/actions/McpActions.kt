@@ -88,6 +88,52 @@ class CopyMcpConfigurationAction : AnAction() {
     }
 }
 
+/**
+ * Copies the stdio client configuration.
+ *
+ * Separate from the HTTP one because the two are not interchangeable: this one contains no
+ * token, so the warning that belongs on the HTTP config would be a lie here, and a client
+ * that speaks stdio cannot use a URL.
+ */
+class CopyMcpStdioConfigurationAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = McpServerService.getInstance().isRunning
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        val project = event.project ?: return
+        val service = McpServerService.getInstance()
+
+        if (!service.isRunning) {
+            CommonNotifier.showNotifier(
+                project = project,
+                content = "Start the MCP server first.",
+                type = NotificationType.WARNING,
+            )
+            return
+        }
+        if (service.stdioEndpoint == null) {
+            CommonNotifier.showNotifier(
+                project = project,
+                content = "The stdio bridge could not start on this machine — see idea.log. " +
+                    "Use 'Copy MCP Client Configuration' for the HTTP transport instead.",
+                type = NotificationType.WARNING,
+            )
+            return
+        }
+
+        CopyPasteManager.getInstance().setContents(StringSelection(service.stdioClientConfiguration()))
+        CommonNotifier.showNotifier(
+            project = project,
+            content = "MCP stdio configuration copied. It contains no token — the client " +
+                "reads one from a file only you can read.",
+        )
+    }
+}
+
 /** Stops then starts the server, which also re-reads the configured port. */
 class RestartMcpServerAction : AnAction() {
 

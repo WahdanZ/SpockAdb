@@ -154,8 +154,12 @@
                     text="Restart MCP Server"/>
             <action id="spock.adb.mcp.CopyMcpConfigurationAction"
                     class="spock.adb.mcp.actions.CopyMcpConfigurationAction"
-                    text="Copy MCP Client Configuration"
+                    text="Copy MCP Client Configuration (HTTP)"
                     description="Copy a ready-to-paste MCP client configuration for this IDE"/>
+            <action id="spock.adb.mcp.CopyMcpStdioConfigurationAction"
+                    class="spock.adb.mcp.actions.CopyMcpStdioConfigurationAction"
+                    text="Copy MCP Client Configuration (stdio)"
+                    description="Copy a stdio MCP client configuration, which carries no token"/>
         </group>
     </actions>
 </idea-plugin>

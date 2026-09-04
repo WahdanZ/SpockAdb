@@ -328,8 +328,9 @@ class McpServerPanel(
         statusLabel.foreground = if (running) RUNNING else JBColor.GRAY
 
         detailLabel.text = when {
-            // The transport is HTTP on loopback, not stdio. Say what it actually is.
-            running -> "·  Transport: HTTP (127.0.0.1:${service.port})  ·  Tools: $toolCount"
+            // Name the transports that are actually accepting connections. The stdio bridge
+            // is reported only when it bound, since it can fail while HTTP keeps working.
+            running -> "·  Transports: ${transports()}  ·  Tools: $toolCount"
             else -> "·  Not accepting connections  ·  Tools available: $toolCount"
         }
         detailLabel.foreground = JBColor.GRAY
@@ -340,6 +341,12 @@ class McpServerPanel(
         copyConfigButton.isEnabled = running
 
         refreshClientLabel(running)
+    }
+
+    private fun transports(): String {
+        val http = "HTTP (127.0.0.1:${service.port})"
+        val stdio = service.stdioEndpoint?.let { "stdio (${it.describe()})" }
+        return listOfNotNull(http, stdio).joinToString(", ")
     }
 
     /**

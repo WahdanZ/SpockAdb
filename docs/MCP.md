@@ -17,8 +17,9 @@ action.
 
 It shows what is actually true rather than a mock-up of it:
 
-- **Status** — running or stopped, the transport (`HTTP (127.0.0.1:<port>)`, not stdio), and
-  the tool count. Start / Stop / Restart / Copy Config / Settings.
+- **Status** — running or stopped, the transports actually accepting connections
+  (`HTTP (127.0.0.1:<port>)` and, when it bound, `stdio (unix:<path>)`), and the tool count.
+  Start / Stop / Restart / Copy Config / Settings.
 - **Tools tab** — the full catalogue of what an agent can do to your device, grouped by
   safety level with destructive first, searchable, and filterable to destructive only.
   Selecting a tool shows its description and argument schema. Available whether or not the
@@ -46,8 +47,36 @@ so a list of green and grey dots next to client names would be invented rather t
 ## Quick start
 
 1. `Tools → SpockAdb → Spock: Start MCP Server for AI Agents`
-2. `Tools → SpockAdb → Spock: Copy MCP Client Configuration`
-3. Paste into your MCP client's config. It looks like this:
+2. `Tools → SpockAdb → Spock: Copy MCP Client Configuration (stdio)` — or `(HTTP)` if your
+   client does not spawn processes
+3. Paste into your MCP client's config
+
+Both transports are started together and serve the same tools. Pick whichever your client
+supports; **prefer stdio**, because its configuration contains no credential.
+
+### stdio
+
+```json
+{
+  "mcpServers": {
+    "spock-adb": {
+      "command": "<the IDE's java>",
+      "args": [
+        "-cp", "<the Spock ADB plugin jar>",
+        "spock.adb.mcp.stdio.SpockAdbStdioLauncher",
+        "<IDE config>/spock-adb/mcp-stdio.properties"
+      ]
+    }
+  }
+}
+```
+
+There is no token in it. The client is pointed at an endpoint descriptor, and the token lives
+in that file with `600` permissions — so this config can be committed, pasted into a chat or
+attached to a bug report without leaking anything. The `java` named is the IDE's own, so the
+launcher runs on a JDK that is definitely present and new enough.
+
+### HTTP
 
 ```json
 {
@@ -61,20 +90,27 @@ so a list of green and grey dots next to client names would be invented rather t
 }
 ```
 
-The token is a credential for your device. It is generated locally, never leaves your
-machine unless you paste it somewhere, and can be rotated.
+This one **does** contain a credential for your device. It is generated locally, never leaves
+your machine unless you paste it somewhere, and can be rotated.
 
 ## Architecture
 
 ```
-MCP client  ->  McpHttpServer  ->  McpProtocol  ->  ToolRegistry
-                                                        |
-                                                        v
-                                    SpockAdbService / DeviceLister / commands
-                                                        |
-                                                        v
-                                                   ADB -> device
+MCP client --+-> McpHttpServer  --+
+             |                    |
+             +-> McpStdioServer --+->  McpProtocol  ->  ToolRegistry
+                                                             |
+                                                             v
+                                         SpockAdbService / DeviceLister / commands
+                                                             |
+                                                             v
+                                                        ADB -> device
 ```
+
+The transports meet at `McpProtocol` and share everything below it: one protocol
+implementation, one `ToolRegistry`, one safety model, one audit trail. A `tools/call` arriving
+over stdio is confirmed, recorded in the activity panel and written to `idea.log` exactly as
+the same call over HTTP, because it is the same call.
 
 The MCP layer **owns no ADB logic**. Tools resolve devices through the same
 `DebugBridgeProvider` and `DeviceLister` the tool window uses, and reuse the same command
@@ -84,6 +120,42 @@ of error messages, and no chance of the UI and the agent path drifting apart.
 `ToolRegistry` is deliberately shared: a future in-plugin AI assistant uses the same tool
 definitions and the same safety levels rather than a parallel implementation. Two
 implementations would drift, and the one that drifted would be the one enforcing safety.
+
+### How stdio reaches a plugin
+
+A client speaking stdio *spawns* its server and talks to that child process's stdin and
+stdout. The tools cannot live in that child: they need the running IDE's ADB bridge, its
+project model, and its confirmation dialogs. So the child — `SpockAdbStdioLauncher` — is a
+**byte relay and nothing else**. It copies bytes between its own stdio and a local stream
+endpoint in the IDE, where `McpStdioServer` serves the session against the shared
+`McpProtocol`.
+
+The relay is deliberately ignorant. It does not parse JSON-RPC, does not know what a tool is,
+and never rewrites anything passing through it, because the wire on both sides is identical:
+newline-delimited JSON-RPC, exactly as the MCP stdio spec defines it. A relay that understood
+the protocol would be a second implementation of it, and the second one would drift.
+
+It is written in Java with no dependencies, so `java -cp <plugin jar>` is enough to start it.
+The plugin does not bundle the Kotlin standard library — it uses the one inside the IDE — so a
+Kotlin launcher could not be started that way.
+
+**Stdout is the protocol stream.** One stray line on it corrupts the session, so the launcher
+claims the real stdout on its first statement and redirects `System.out` to stderr; nothing
+that later prints, in this code or any library, can reach the client. Diagnostics go to
+stderr, which MCP clients surface in their logs, and inside the IDE to `idea.log`.
+
+**Authorisation is the filesystem.** The endpoint is a Unix domain socket in a `700`
+directory, so another user cannot reach it. Where `AF_UNIX` is unavailable, or the config path
+is too long for `sun_path`, it falls back to a loopback TCP port — which any local process can
+reach — so the connection presents a token either way, read from a `600` file rather than
+carried in the client config. The token is the same one the HTTP transport uses, and rotating
+it rotates both.
+
+**Cancellation.** `notifications/cancelled` interrupts the thread running that request and
+suppresses its response, per spec — the client has already stopped waiting. Requests run on a
+worker pool rather than the reading thread, precisely so a cancellation arriving behind a slow
+tool call can still be read. Stopping the server closes live sessions, which ends the relay
+processes rather than stranding them.
 
 ### Why a self-hosted HTTP server
 
@@ -239,15 +311,21 @@ Recorded honestly so the gaps are not mistaken for features:
   it needs a file-transfer story first.
 - **MCP activity panel.** Calls are recorded (`McpServerService.recentCalls()`) and
   destructive ones are logged, but there is no tool window tab showing them live yet.
-- **stdio transport.** Clients that only speak stdio need a small bridge process; HTTP works
-  with Claude Code and Cursor today.
 - **Per-tool allow-lists** so a developer can disable individual tools.
 - **File push/pull.**
 
 ## Testing
 
-The protocol, the safety model and the transport are all tested without a device:
+The protocol, the safety model and both transports are all tested without a device:
 `FakeToolContext` stands in for the IDE and ADB. The tests that matter most assert that
 destructive tools cannot succeed unasked, that catastrophic commands are refused before the
 dialog, and that an unauthorised or wrong-token request is rejected — including a token that
 is a prefix of the real one, since the comparison is constant-time.
+
+The stdio transport is tested over a real pipe against the real `McpProtocol` — `initialize`,
+`tools/list`, `tools/call`, an invalid request, malformed JSON, an unknown tool, a failing
+tool, cancellation and shutdown — so the claim that it re-implements nothing is checked rather
+than asserted. The launcher is tested as an actual spawned process, because the two things
+most likely to be wrong about it are only true of a real one: that it exits when its client
+closes stdin or the IDE stops the server, and that it writes nothing but protocol messages to
+stdout.
