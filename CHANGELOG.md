@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 ### Added
+- **Logcat panel.** Live logcat in its own tool window tab, pre-scoped to the app in the open project. Presets for Current app, Errors only, Crashes, ANRs and Network; filtering by level, tag and plain-text or regex search; crash and ANR highlighting; pause/resume, clear, copy and export; auto-scroll. Filtering is by process ID rather than by matching the package name against message text, which both misses lines and returns unrelated ones
+- **ADB Command Center.** Run any shell command against the selected device with a real timeout and a Cancel button that actually stops the command. Command history that de-duplicates and reorders rather than piling up, favourites, searchable output, copy command, copy output and clear
+- **Commands can now be cancelled at all.** `ShellOutputReceiver` hard-coded `isCancelled()` to `false`, so no long-running command could ever be interrupted. The new `CancellableShellReceiver` streams output line by line and honours cancellation, which is what makes both live logcat and the Cancel button possible
+- Destructive shell commands are classified and confirmed before running, sharing `DangerousCommands` with the MCP `android_run_adb_command` tool so a command needing confirmation for an AI agent needs it in the UI too
+- The tool window is now three tabs — Devices, Logcat, Commands — with the device chosen in Devices targeted by all of them
+- README now documents the MCP server, the Logcat panel and the Command Center, and links the docs; the Marketplace description mentions MCP and IntelliJ IDEA support
+
+### Fixed
+- **Compatibility**: `FileSaverDescriptor(String, String)` does not exist before 2025.1 and would have thrown `NoSuchMethodError` on Android Studio 2023.1/2024.2 and IntelliJ IDEA 2023.1. Caught by Plugin Verifier; the deprecated-but-present overload is used instead
+
+### Added
 - **Android MCP server.** Spock ADB can expose the connected device to MCP-compatible AI agents (Claude Code, Claude Desktop, Cursor). 26 strongly typed tools rather than a generic shell passthrough, so an agent can reason about what an operation means and you can audit it: devices, packages, app lifecycle, permissions, current Activity/Fragment, activity stack, logcat, processes, battery, network, deep links, input, tap/swipe/keys, screenshots as MCP image content, and the uiautomator UI hierarchy. Start it from `Tools → SpockAdb`; it is **off by default**
 - **MCP safety model.** Every tool declares read-only, safe-action or destructive. Destructive tools (clear app data, revoke permission, arbitrary shell) always ask before acting, default to denied, bring the IDE forward, and are written to `idea.log`. A test enforces that no destructive tool can report success without a confirmation
 - `android_run_adb_command` exists as a deliberately awkward escape hatch: it requires a stated reason, has a bounded timeout and capped output, and refuses catastrophic commands (`rm -rf /`, factory reset, `mkfs`, raw `dd`) before the confirmation dialog is even shown

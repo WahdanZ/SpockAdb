@@ -56,6 +56,18 @@ class SpockAdbViewer(
     private lateinit var openDeepLinkButton: JButton
     private lateinit var openDeveloperOptionsButton: JButton
     private var selectedDevice: ConnectedDevice? = null
+        set(value) {
+            field = value
+            deviceListeners.forEach { it(value) }
+        }
+
+    /** Notified whenever the selected device changes, so other tool window tabs follow it. */
+    private val deviceListeners = mutableListOf<(ConnectedDevice?) -> Unit>()
+
+    fun onDeviceSelected(listener: (ConnectedDevice?) -> Unit) {
+        deviceListeners += listener
+        listener(selectedDevice)
+    }
 
     /** The ddmlib handle every command still operates on. */
     private val selectedIDevice: IDevice? get() = selectedDevice?.device

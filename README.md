@@ -7,9 +7,13 @@
 # Spock ADB
 
 <!-- Plugin description -->
-Full control of your Android device directly from Android Studio — no terminal needed.
+Full control of your Android device directly from your IDE — no terminal needed.
 
-Spock ADB puts the most common ADB workflows into a single tool window: navigate to the active Activity or Fragment in your editor, manage app lifecycle, toggle developer settings, control permissions, and more — all with one click.
+Spock ADB puts the most common ADB workflows into a single tool window: navigate to the active Activity or Fragment in your editor, manage app lifecycle, toggle developer settings, control permissions, stream logcat, and run ADB commands — all with one click.
+
+It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cursor or any MCP client safe, structured access to a connected device. 26 strongly typed tools rather than a raw shell, and anything destructive asks you first, every time.
+
+Works in Android Studio and IntelliJ IDEA.
 <!-- Plugin description end -->
 
 ---
@@ -65,6 +69,35 @@ Spock ADB puts the most common ADB workflows into a single tool window: navigate
 | **Input Text** | Type text into the focused field on the device |
 | **Open Deep Link** | Fire an `android.intent.action.VIEW` intent with any URI |
 
+### Logcat
+| Feature | Description |
+|---|---|
+| **Live logcat** | Stream the device log, scoped to the app in the open project |
+| **Presets** | Current app, Errors only, Crashes, ANRs, Network |
+| **Filtering** | Log level, tag, plain-text or regex search, filter by process |
+| **Crash highlighting** | Fatal exceptions, native crashes and ANRs are colour-coded |
+| **Pause / resume / clear** | Freeze the view without losing the stream |
+| **Copy & export** | Copy selected lines, or export the buffer to a file |
+
+### ADB Command Center
+| Feature | Description |
+|---|---|
+| **Run any ADB shell command** | With a real timeout and a working Cancel button |
+| **History & favourites** | Recent commands, and the ones you keep coming back to |
+| **Searchable output** | Find text in long `dumpsys` dumps |
+| **Copy command / copy output / clear** | One click each |
+| **Confirmation on dangerous commands** | Destructive commands are flagged before they run |
+
+### AI agents (MCP)
+| Feature | Description |
+|---|---|
+| **Android MCP server** | Expose the device to Claude Code, Claude Desktop, Cursor or any MCP client |
+| **26 typed tools** | Devices, packages, app lifecycle, permissions, Activity/Fragment, logcat, screenshots, UI hierarchy, input |
+| **Safety model** | Destructive tools always ask, per call, and default to denied |
+| **Off by default** | Started explicitly from `Tools → SpockAdb` |
+
+See **[docs/MCP.md](docs/MCP.md)** for setup, the tool list, the safety model and example agent workflows.
+
 ---
 
 ## Screenshot
@@ -87,6 +120,17 @@ behind the supported range.
 > **Note:** `Restart App With Debugger` requires the Android Studio execution tooling. It is
 > available in all supported Android Studio versions and in IntelliJ IDEA 2025.1+, and is
 > hidden automatically on IDEs that do not ship it. Every other feature works everywhere.
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/MCP.md](docs/MCP.md) | Android MCP server: setup, tools, safety model, agent workflows |
+| [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | Supported IDE range, verification matrix, how to change it safely |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, threading rules, release process |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
 
 ---
 

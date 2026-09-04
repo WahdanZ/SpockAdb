@@ -119,6 +119,28 @@ project.getService(SpockAdbService::class.java)
 
 Both `SpockAdbService.getInstance` and `AppSettingService.getInstance` do this deliberately.
 
+## The third trap: a newer overload of an old class
+
+The same failure shape appears when a class you have always used gains a nicer constructor
+or method. `FileSaverDescriptor(String, String)` reads better than the vararg form and the
+vararg form is deprecated on 2025.1 — but the two-argument constructor does not exist before
+it:
+
+```
+Method LogcatPanel.export() contains an *invokespecial* instruction referencing an
+unresolved constructor FileSaverDescriptor.<init>(String, String).
+This can lead to NoSuchMethodError exception at runtime.
+```
+
+Compiling against the newest platform makes the newer overload the obvious choice, and
+nothing warns you. **A deprecation warning on the newest platform is strictly better than a
+NoSuchMethodError on the oldest**, so the deprecated-but-present overload is used, with a
+comment saying why. Do not "clean up" that call without re-running the verifier.
+
+Three distinct instances of this one failure mode turned up while modernising this plugin —
+compatibility bridges, an inlined platform helper, and a newer overload. All three were
+invisible at compile time, and all three were caught by `verifyPlugin`.
+
 ## Verification matrix
 
 `./gradlew verifyPlugin` checks these builds. They are the two ends of the supported range
