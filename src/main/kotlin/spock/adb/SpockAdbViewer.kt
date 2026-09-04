@@ -16,6 +16,7 @@ import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.CheckBoxDialog
 import spock.adb.ui.CollapsibleSection
+import spock.adb.ui.VerticallyScrollablePanel
 import java.awt.BorderLayout
 import java.awt.GridLayout
 import java.awt.event.ActionEvent
@@ -38,24 +39,38 @@ class SpockAdbViewer(
 
     private val currentActivityButton = JButton("Current Activity")
     private val currentFragmentButton = JButton("Current Fragment")
-    private val currentAppBackStackButton = JButton("App Back Stack")
-    private val activitiesBackStackButton = JButton("All Activities")
+    private val currentAppBackStackButton = JButton("App Back Stack").apply {
+        toolTipText = "Activities and Fragments of the app in this project"
+    }
+    private val activitiesBackStackButton = JButton("All Activities").apply {
+        toolTipText = "The Activity back stack across every running app"
+    }
 
     private val restartAppButton = JButton("Restart")
-    private val restartAppWithDebuggerButton = JButton("Restart + Debugger")
+    private val restartAppWithDebuggerButton = JButton("Debugger").apply {
+        toolTipText = "Restart the app and attach the debugger"
+    }
     private val forceKillAppButton = JButton("Force Stop")
-    private val testProcessDeathButton = JButton("Process Death")
+    private val testProcessDeathButton = JButton("Process Death").apply {
+        toolTipText = "Background the app, kill its process, then relaunch it"
+    }
 
     // Destructive actions carry an ellipsis: they open a confirmation rather than acting.
     private val clearAppDataButton = JButton("Clear Data...")
-    private val clearAppDataAndRestartButton = JButton("Clear Data & Restart...")
+    private val clearAppDataAndRestartButton = JButton("Clear & Restart...").apply {
+        toolTipText = "Delete all app data, then relaunch the app"
+    }
     private val uninstallAppButton = JButton("Uninstall...")
 
-    private val permissionButton = JButton("Manage...")
+    private val permissionButton = JButton("Manage...").apply {
+        toolTipText = "Grant or revoke individual runtime permissions"
+    }
     private val grantAllPermissionsButton = JButton("Grant All")
     private val revokeAllPermissionsButton = JButton("Revoke All...")
 
-    private val openDeveloperOptionsButton = JButton("Open on Device")
+    private val openDeveloperOptionsButton = JButton("Open on Device").apply {
+        toolTipText = "Open the system Developer Options screen on the device"
+    }
     private val enableDisableDontKeepActivities = JCheckBox("Don't keep activities")
     private val enableDisableShowTaps = JCheckBox("Show taps")
     private val enableDisableShowLayoutBounds = JCheckBox("Show layout bounds")
@@ -152,7 +167,15 @@ class SpockAdbViewer(
     }
 
     init {
-        setContent(JScrollPane(buildLayout()).apply { border = JBUI.Borders.empty() })
+        setContent(
+            JScrollPane(buildLayout()).apply {
+                border = JBUI.Borders.empty()
+                // Never scroll sideways: the content shrinks to the panel instead, which is
+                // what stops the second button column being clipped in a docked tool window.
+                horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+                verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+            },
+        )
         AppSettingService.getInstance().run {
             updateUi(state)
         }
@@ -166,7 +189,7 @@ class SpockAdbViewer(
      * window. Destructive actions are separated into their own section rather than sitting
      * between navigation and lifecycle buttons where they can be hit by accident.
      */
-    private fun buildLayout(): JPanel {
+    private fun buildLayout(): JComponent {
         navigateSection = section(
             "Navigate",
             "navigate",
@@ -191,7 +214,7 @@ class SpockAdbViewer(
         networkSection = section("Network", "network", grid(wifiToggle, mobileDataToggle))
         sendSection = section("Send to device", "send", sendContent())
 
-        val content = JPanel().apply {
+        val content = VerticallyScrollablePanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(GAP)
             add(deviceRow())
@@ -213,6 +236,9 @@ class SpockAdbViewer(
     private fun deviceRow(): JPanel = JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
         alignmentX = LEFT_ALIGNMENT
         maximumSize = java.awt.Dimension(Int.MAX_VALUE, preferredSize.height)
+        // A long device label must not widen the panel; the combo elides instead.
+        devicesListComboBox.minimumSize = java.awt.Dimension(0, devicesListComboBox.preferredSize.height)
+        devicesListComboBox.prototypeDisplayValue = ""
         add(devicesListComboBox, BorderLayout.CENTER)
         add(setting, BorderLayout.EAST)
     }
@@ -222,7 +248,13 @@ class SpockAdbViewer(
         GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP)),
     ).apply {
         border = JBUI.Borders.empty(GAP, 0)
-        buttons.forEach { add(it) }
+        buttons.forEach { button ->
+            // Without this a button refuses to shrink below its label width, so two of them
+            // side by side force the whole panel wider than the tool window.
+            button.minimumSize = java.awt.Dimension(0, button.preferredSize.height)
+            if (button.toolTipText == null) button.toolTipText = button.text.removeSuffix("...")
+            add(button)
+        }
         if (buttons.size % COLUMNS != 0) add(JPanel())
     }
 
