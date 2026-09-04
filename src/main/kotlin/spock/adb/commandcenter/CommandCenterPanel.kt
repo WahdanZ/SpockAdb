@@ -47,6 +47,8 @@ class CommandCenterPanel(
     private val output = JBTextArea().apply {
         isEditable = false
         lineWrap = false
+        // An empty pane gives no hint that anything works; say what to do instead.
+        text = EMPTY_OUTPUT_HINT
     }
     private val runButton = JButton("Run")
     private val cancelButton = JButton("Cancel").apply { isEnabled = false }
@@ -124,7 +126,7 @@ class CommandCenterPanel(
                 },
             )
             add(
-                action("Copy output", AllIcons.Actions.Dump) {
+                action("Copy output", AllIcons.Actions.ListFiles) {
                     CopyPasteManager.getInstance().setContents(StringSelection(outputBuffer.toString()))
                     statusLabel.text = "Output copied."
                 },
@@ -263,7 +265,13 @@ class CommandCenterPanel(
         statusLabel.text = if (running) "Running…" else statusLabel.text
     }
 
+    private var showingHint = true
+
     private fun appendLine(line: String) {
+        if (showingHint) {
+            output.text = ""
+            showingHint = false
+        }
         outputBuffer.append(line).append('\n')
         // Keep the pane bounded: a `dumpsys` dump can run to megabytes.
         if (outputBuffer.length > MAX_OUTPUT_CHARS) {
@@ -277,7 +285,8 @@ class CommandCenterPanel(
 
     private fun clearOutput() {
         outputBuffer.setLength(0)
-        output.text = ""
+        output.text = EMPTY_OUTPUT_HINT
+        showingHint = true
         statusLabel.text = "Output cleared."
     }
 
@@ -334,6 +343,17 @@ class CommandCenterPanel(
         const val MAX_OUTPUT_CHARS = 2_000_000
         const val SEARCH_COLUMNS = 16
         const val FAVOURITE_PREFIX = "★  "
+
+        val EMPTY_OUTPUT_HINT = """
+            Type an adb shell command above and press Run.
+
+            Examples:
+              pm list packages -3
+              dumpsys battery
+              ps -A
+
+            Destructive commands are flagged as you type and confirmed before they run.
+        """.trimIndent()
         const val GAP = 4
         const val STATUS_PAD_V = 2
         const val STATUS_PAD_H = 6

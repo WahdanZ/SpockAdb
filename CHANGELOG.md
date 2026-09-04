@@ -1,6 +1,16 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
 ## [Unreleased]
+### Fixed
+- **"Don't Keep Activities" could never be clicked.** The checkbox was marked `enabled="false"` in the UI form, so wiring its action listener achieved nothing — it was disabled before the listener could ever fire. Now enabled and functional
+- **Typo in the permissions panel**: "Revoke / Grant Premission" → "Permission"
+- "Dont Keep Activities" → "Don't Keep Activities"; "Open DeepLink" → "Open Deep Link"; trailing space trimmed from "Current Backstack Activities"
+- The MCP status line ran two labels together ("MCP Server stopped Not accepting connections."); the detail now reads as a separate, dimmed clause
+- The MCP details pane took 40% of the panel while empty. It favours the list now, and says what to select instead of showing blank space
+- The Command Center output pane was blank with no indication anything worked; it now shows example commands until the first output arrives
+- The Command Center "Copy output" icon rendered as a camera, which read as "screenshot"
+- The Logcat search box had no label, unlike Preset and Level
+
 ### Added
 - **UI Inspector tab.** The Compose semantics work was previously reachable only through MCP — useful to an AI agent and invisible to the developer. The same machinery is now a tool window tab: browse and search the semantics tree, see whether the screen is Views/Compose/hybrid, inspect every node's test tag, text, content description, bounds and interactive flags, and run the accessibility audit. Reachable from Find Action as "Open UI Inspector"
 - **Jetpack Compose is a first-class target for UI inspection and automation.** Compose has no View hierarchy, so `Activity → View hierarchy` is the wrong model for a Compose screen. The new semantics-based UI tree reads the accessibility tree — where Compose publishes its semantics — so one implementation covers Views, Compose and hybrid screens, with **no Compose dependency and no pinned Compose version**

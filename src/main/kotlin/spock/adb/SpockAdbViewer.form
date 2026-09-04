@@ -59,7 +59,7 @@
               <grid row="5" column="0" row-span="1" col-span="6" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
             </constraints>
             <properties>
-              <text value="Current Backstack Activities "/>
+              <text value="Current Backstack Activities"/>
             </properties>
           </component>
           <component id="86947" class="javax.swing.JButton" binding="setting">
@@ -101,8 +101,7 @@
                   <grid row="1" column="0" row-span="1" col-span="2" vsize-policy="0" hsize-policy="3" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
                 </constraints>
                 <properties>
-                  <enabled value="false"/>
-                  <text value="Dont Keep Activities"/>
+                  <text value="Don't Keep Activities"/>
                 </properties>
               </component>
               <hspacer id="770c7">
@@ -280,7 +279,7 @@
                   <grid row="0" column="0" row-span="1" col-span="3" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
                 </constraints>
                 <properties>
-                  <text value="Revoke / Grant Premission"/>
+                  <text value="Revoke / Grant Permission"/>
                 </properties>
               </component>
               <component id="762d8" class="javax.swing.JButton" binding="grantAllPermissionsButton">
@@ -377,7 +376,7 @@
               <grid row="16" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="3" anchor="0" fill="1" indent="0" use-parent-layout="false"/>
             </constraints>
             <properties>
-              <text value="Open DeepLink"/>
+              <text value="Open Deep Link"/>
             </properties>
           </component>
           <component id="dd5fc" class="javax.swing.JTextField" binding="openDeepLinkTextField">

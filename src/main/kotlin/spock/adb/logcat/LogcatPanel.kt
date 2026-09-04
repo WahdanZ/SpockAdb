@@ -307,6 +307,7 @@ class LogcatPanel(
             add(presetCombo)
             add(JBLabel("Level:"))
             add(levelCombo)
+            add(JBLabel("Search:"))
             add(searchField.apply { toolTipText = "Filter by message or tag" })
             add(regexToggle)
             add(autoScroll)
