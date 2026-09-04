@@ -54,6 +54,11 @@ object ToolRegistry {
         TapTool(),
         SwipeTool(),
         PressKeyTool(),
+        // Moving files and video off the device, within a deliberately narrow path allow-list
+        PushFileTool(),
+        PullFileTool(),
+        StartScreenRecordTool(),
+        StopScreenRecordTool(),
         // Escape hatch
         RunAdbCommandTool(),
     )
