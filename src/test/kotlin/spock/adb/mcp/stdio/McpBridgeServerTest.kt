@@ -113,6 +113,23 @@ class McpBridgeServerTest {
     }
 
     @Test
+    fun `a connection that never presents a token is closed`(@TempDir directory: Path) {
+        // A connection that opens and then says nothing would otherwise hold a thread for as
+        // long as it liked, and enough of them would starve real clients of the pool — which
+        // any local process can attempt in the TCP fallback.
+        val server = McpBridgeServer(protocol::handle, token, handshakeTimeoutSeconds = 1)
+        bridge = server
+        val endpoint = server.start(directory)
+
+        connect(endpoint).use { channel ->
+            val responses = Channels.newInputStream(channel).bufferedReader()
+            // Deliberately send nothing at all. readLine returns null when the far end closes,
+            // so this blocks until the deadline does its job, or the test times out.
+            assertNull(responses.readLine(), "a silent connection should be closed, not held")
+        }
+    }
+
+    @Test
     fun `stopping removes the socket and the token file`(@TempDir directory: Path) {
         val endpoint = start(directory)
         bridge!!.stop()
@@ -133,16 +150,17 @@ class McpBridgeServerTest {
      * the generated client configuration resolves it, and it does not care whether the test
      * runner handed us a real classpath or a manifest-only one.
      */
-    private fun launch(descriptor: Path): Process {
+    private fun launch(descriptor: Path?): Process {
         val source = SpockAdbStdioLauncher::class.java.protectionDomain?.codeSource?.location
         assumeTrue(source != null, "cannot locate the launcher to spawn it")
-        return ProcessBuilder(
+        val command = listOfNotNull(
             Path.of(System.getProperty("java.home"), "bin", "java").toString(),
             "-cp",
             Path.of(source!!.toURI()).toString(),
             SpockAdbStdioLauncher::class.java.name,
-            descriptor.toString(),
-        ).start()
+            descriptor?.toString(),
+        )
+        return ProcessBuilder(command).start()
     }
 
     @Test
@@ -169,6 +187,24 @@ class McpBridgeServerTest {
             )
             // Everything after the response must have gone to stderr instead.
             assertNull(stdout.readLine(), "stdout carries protocol messages and nothing else")
+        } finally {
+            process.destroyForcibly()
+        }
+    }
+
+    @Test
+    fun `a launcher given no descriptor explains how to get one`() {
+        // The descriptor path is required: the IDE writes it under its own config directory,
+        // which differs per IDE, version and platform, so no default could name it correctly.
+        val process = launch(descriptor = null)
+        try {
+            assertTrue(process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+            assertFalse(process.exitValue() == 0)
+            assertTrue(process.inputStream.readBytes().isEmpty(), "nothing may go to stdout")
+            assertTrue(
+                process.errorStream.readBytes().decodeToString().contains("Copy MCP Client Configuration"),
+                "the message should say where to get a descriptor",
+            )
         } finally {
             process.destroyForcibly()
         }

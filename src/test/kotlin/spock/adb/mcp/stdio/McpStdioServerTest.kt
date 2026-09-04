@@ -241,16 +241,38 @@ class McpStdioServerTest {
     }
 
     @Test
-    fun `an exception escaping the protocol does not end the session`() {
+    fun `an exception escaping the protocol becomes an error response, not silence`() {
         start { raw -> if (raw.contains("boom")) error("boom") else """{"jsonrpc":"2.0","id":18,"result":{}}""" }
         send("""{"jsonrpc":"2.0","id":17,"method":"boom"}""")
-        send("""{"jsonrpc":"2.0","id":18,"method":"ping"}""")
 
+        // Answering nothing would leave the client waiting forever on a request that is never
+        // answered — indistinguishable from a dropped one, and worse than the crash it
+        // contains.
+        val failure = read()
+        assertEquals(17, failure.get("id").asInt)
+        val error = failure.getAsJsonObject("error")
+        assertEquals(JSON_RPC_INTERNAL_ERROR, error.get("code").asInt)
+        assertTrue(error.get("message").asString.contains("boom"))
+
+        // And the session is still usable afterwards.
+        send("""{"jsonrpc":"2.0","id":18,"method":"ping"}""")
         assertEquals(18, read().get("id").asInt)
+    }
+
+    @Test
+    fun `an exception on a notification is still not answered`() {
+        start { error("boom") }
+        send("""{"jsonrpc":"2.0","method":"notifications/initialized"}""")
+        send("""{"jsonrpc":"2.0","id":19,"method":"ping"}""")
+
+        // A notification has no response coming, failure included, so the next line on the
+        // wire is the ping's error rather than anything for the notification.
+        assertEquals(19, read().get("id").asInt)
     }
 
     private companion object {
         const val BUFFER = 1 shl 16
+        const val JSON_RPC_INTERNAL_ERROR = -32603
         const val TIMEOUT_SECONDS = 10L
         const val POLL_MS = 25L
     }

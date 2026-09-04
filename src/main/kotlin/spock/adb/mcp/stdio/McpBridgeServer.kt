@@ -17,6 +17,7 @@ import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -33,17 +34,24 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The wire is identical to real stdio — newline-delimited JSON-RPC — so the relay never has to
  * understand, reframe or rewrite anything passing through it.
  *
- * Security. A Unix domain socket is used where the platform has one: it lives in a directory
- * only the developer can enter, so the filesystem does the authorisation and no credential
- * needs to exist. Where it is unavailable the endpoint falls back to a loopback TCP port,
- * which any local process can reach, so a token is required on both — one line, checked before
- * the session starts. The token lives in a `600` file that the client config points at rather
- * than embeds, so pasting a config into a client, or into a chat, does not paste a credential.
+ * Security. **Every connection presents the token**, on both transports, as one line checked
+ * before the session starts — the filesystem is defence in depth, never a substitute for it.
+ * A Unix domain socket is preferred where the platform has one, because it lives in a `700`
+ * directory and so is not reachable by another user at all; where it is unavailable the
+ * endpoint falls back to a loopback TCP port, which any local process can connect to. The
+ * token itself lives in a `600` file that the client config points at rather than embeds, so
+ * pasting a config into a client, or into a chat, does not paste a credential.
+ *
+ * A connection that opens and then says nothing is closed after [handshakeTimeoutSeconds].
+ * Without that it would hold a thread indefinitely, and enough of them would starve the pool
+ * of the slots real clients need — reachable by any local process in the TCP fallback.
  */
 class McpBridgeServer(
     private val handle: (String) -> String?,
     private val token: String,
     private val diagnostics: (String, Throwable?) -> Unit = { _, _ -> },
+    /** How long a connection has to present its token before it is closed. */
+    private val handshakeTimeoutSeconds: Long = HANDSHAKE_TIMEOUT_SECONDS,
 ) {
 
     private val running = AtomicBoolean(false)
@@ -64,8 +72,16 @@ class McpBridgeServer(
     private val accepts = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "SpockAdb-MCP-bridge-accept").apply { isDaemon = true }
     }
-    private val connections = Executors.newCachedThreadPool { runnable ->
+
+    // Bounded, not cached: an unbounded pool lets anything that can reach the endpoint create
+    // threads without limit. Queued connections are still covered by the handshake deadline,
+    // so a burst of silent ones drains rather than blocking real clients out.
+    private val connections = Executors.newFixedThreadPool(MAX_CONCURRENT_SESSIONS) { runnable ->
         Thread(runnable, "SpockAdb-MCP-bridge").apply { isDaemon = true }
+    }
+
+    private val handshakes = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "SpockAdb-MCP-bridge-handshake").apply { isDaemon = true }
     }
 
     @Volatile
@@ -118,6 +134,7 @@ class McpBridgeServer(
         stop()
         accepts.shutdownNow()
         connections.shutdownNow()
+        handshakes.shutdownNow()
         // Wait for them to actually go. The accept thread is not unblocked by an interrupt —
         // only by stop() closing the channel — so returning before it has noticed would leave
         // a thread running after the object that owns it is gone.
@@ -203,19 +220,31 @@ class McpBridgeServer(
     private fun acceptLoop() {
         while (running.get()) {
             val connection = acceptNext() ?: break
+            // Scheduled here rather than inside session() so that time spent waiting for a
+            // pool slot counts against the deadline too: the whole point is that a connection
+            // which never authenticates cannot occupy the server.
+            val deadline = handshakes.schedule(
+                {
+                    diagnostics("Closing an MCP stdio connection that never presented a token", null)
+                    runCatching { connection.close() }
+                },
+                handshakeTimeoutSeconds,
+                TimeUnit.SECONDS,
+            )
             connections.execute {
                 try {
-                    session(connection)
+                    session(connection, deadline)
                 } catch (e: Exception) {
                     diagnostics("MCP stdio session failed", e)
                 } finally {
+                    deadline.cancel(false)
                     runCatching { connection.close() }
                 }
             }
         }
     }
 
-    private fun session(connection: SocketChannel) {
+    private fun session(connection: SocketChannel, deadline: ScheduledFuture<*>) {
         val reader = BufferedReader(
             InputStreamReader(Channels.newInputStream(connection), StandardCharsets.UTF_8),
         )
@@ -224,7 +253,19 @@ class McpBridgeServer(
             StandardCharsets.UTF_8,
         )
 
-        val presented = reader.readLine()
+        val presented = try {
+            reader.readLine()
+        } catch (ignored: IOException) {
+            // The deadline fired and closed the connection out from under the read. That is
+            // the timeout working as designed, and it has already been logged, so there is
+            // nothing here worth a second line or a stack trace.
+            null
+        } finally {
+            // The session is authenticated or rejected from here on; either way the deadline
+            // has done its job and must not close a healthy connection later.
+            deadline.cancel(false)
+        }
+
         if (presented == null || !matchesToken(presented.trim())) {
             // Deliberately terse and unlogged in detail: do not tell an unauthorised caller
             // how to authorise.
@@ -309,6 +350,8 @@ class McpBridgeServer(
         /** Conservative limit for `sun_path`, which is 104 bytes on macOS and 108 on Linux. */
         private const val MAX_SOCKET_PATH_BYTES = 100
         private const val SHUTDOWN_GRACE_SECONDS = 5L
+        private const val MAX_CONCURRENT_SESSIONS = 8
+        private const val HANDSHAKE_TIMEOUT_SECONDS = 10L
         const val DESCRIPTOR_NAME = "mcp-stdio.properties"
     }
 }

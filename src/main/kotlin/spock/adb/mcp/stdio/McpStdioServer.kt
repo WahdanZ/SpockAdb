@@ -1,5 +1,6 @@
 package spock.adb.mcp.stdio
 
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.BufferedReader
 import java.io.InputStream
@@ -128,7 +129,7 @@ class McpStdioServer(
         workers.execute {
             id?.let { inFlight[it] = Thread.currentThread() }
             try {
-                val response = handleSafely(line)
+                val response = handleSafely(line, id)
                 // A cancelled request gets no response, per the MCP spec: the client has
                 // already stopped waiting for one.
                 if (response != null && (id == null || !cancelled.contains(id))) {
@@ -145,17 +146,39 @@ class McpStdioServer(
         }
     }
 
-    // The protocol boundary must not be able to kill the session: an unexpected exception
-    // becomes an error response, never a dropped connection the client waits on forever.
+    /**
+     * Runs the handler, turning an unexpected exception into an error response.
+     *
+     * Returning null here instead would leave the client waiting forever on a request that is
+     * never answered — indistinguishable from a dropped one, and worse than the crash it was
+     * meant to contain. A notification ([id] null) still gets no response: by spec it never
+     * had one coming.
+     */
     @Suppress("TooGenericExceptionCaught")
-    private fun handleSafely(line: String): String? = try {
+    private fun handleSafely(line: String, id: String?): String? = try {
         handle(line)
     } catch (e: Exception) {
         diagnostics("MCP request failed", e)
-        null
+        id?.let { internalError(it, e) }
     }
 
-    private fun cancel(message: com.google.gson.JsonObject?) {
+    /**
+     * @param id the request id exactly as it arrived, already valid JSON — a number or a
+     *   quoted string — so it is echoed back in the form the client sent it.
+     */
+    private fun internalError(id: String, cause: Exception): String = JsonObject().apply {
+        addProperty("jsonrpc", "2.0")
+        add("id", JsonParser.parseString(id))
+        add(
+            "error",
+            JsonObject().apply {
+                addProperty("code", INTERNAL_ERROR)
+                addProperty("message", cause.message ?: cause.javaClass.simpleName)
+            },
+        )
+    }.toString()
+
+    private fun cancel(message: JsonObject?) {
         val id = runCatching {
             message?.getAsJsonObject("params")?.get("requestId")?.takeIf { !it.isJsonNull }?.toString()
         }.getOrNull() ?: return
@@ -185,6 +208,9 @@ class McpStdioServer(
 
     companion object {
         const val CANCEL_NOTIFICATION = "notifications/cancelled"
+
+        /** JSON-RPC 2.0 internal error. Defined here so the transport stays standalone. */
+        private const val INTERNAL_ERROR = -32603
 
         private const val WORKERS = 4
         private const val SHUTDOWN_GRACE_SECONDS = 2L

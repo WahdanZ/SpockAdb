@@ -144,12 +144,17 @@ claims the real stdout on its first statement and redirects `System.out` to stde
 that later prints, in this code or any library, can reach the client. Diagnostics go to
 stderr, which MCP clients surface in their logs, and inside the IDE to `idea.log`.
 
-**Authorisation is the filesystem.** The endpoint is a Unix domain socket in a `700`
-directory, so another user cannot reach it. Where `AF_UNIX` is unavailable, or the config path
-is too long for `sun_path`, it falls back to a loopback TCP port — which any local process can
-reach — so the connection presents a token either way, read from a `600` file rather than
-carried in the client config. The token is the same one the HTTP transport uses, and rotating
-it rotates both.
+**Every connection presents the token**, on both transports, as one line checked before the
+session starts. The filesystem is defence in depth, not a substitute: a Unix domain socket in a
+`700` directory is preferred because another user cannot reach it at all, and where `AF_UNIX`
+is unavailable — or the config path is too long for `sun_path` — the endpoint falls back to a
+loopback TCP port, which any local process can connect to. The token is read from a `600` file
+rather than carried in the client config, and is the same one the HTTP transport uses, so
+rotating it rotates both.
+
+A connection that opens and then says nothing is closed after ten seconds, and the session pool
+is bounded. Without both, anything that could reach the endpoint could hold threads open until
+real clients could not get one — which in the TCP fallback means any local process.
 
 **Cancellation.** `notifications/cancelled` interrupts the thread running that request and
 suppresses its response, per spec — the client has already stopped waiting. Requests run on a

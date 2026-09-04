@@ -35,12 +35,16 @@ import java.util.Properties;
  * corrupts the session. {@link System#out} is therefore redirected to stderr on the first
  * line of {@link #main}, and the real stdout is held privately by the relay.
  *
- * <p>Usage: {@code java -cp <plugin.jar> spock.adb.mcp.stdio.SpockAdbStdioLauncher [descriptor]}
+ * <p>Usage: {@code java -cp <plugin.jar> spock.adb.mcp.stdio.SpockAdbStdioLauncher <descriptor>}
+ *
+ * <p>The descriptor path is required rather than defaulted. The IDE writes it under its own
+ * configuration directory, which differs per IDE, per version and per platform, so there is no
+ * single location a default could name that would be right — and a default naming the wrong
+ * place is worse than none. Copy the ready-made configuration from
+ * <em>Tools &gt; SpockAdb &gt; Copy MCP Client Configuration (stdio)</em>, which fills in the
+ * real path for the IDE that generated it.
  */
 public final class SpockAdbStdioLauncher {
-
-    /** Where the IDE writes the endpoint descriptor when no path is given. */
-    public static final String DEFAULT_DESCRIPTOR = ".spock-adb/mcp-stdio.properties";
 
     private static final int EXIT_NO_ENDPOINT = 2;
     private static final int EXIT_CONNECTION_LOST = 3;
@@ -55,9 +59,15 @@ public final class SpockAdbStdioLauncher {
         OutputStream protocolOut = new FileOutputStream(FileDescriptor.out);
         System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.err), true));
 
-        Path descriptorFile = args.length > 0
-                ? Path.of(args[0])
-                : Path.of(System.getProperty("user.home"), DEFAULT_DESCRIPTOR);
+        if (args.length < 1) {
+            fail("Spock ADB: usage: java -cp <plugin jar> "
+                    + SpockAdbStdioLauncher.class.getName() + " <descriptor>."
+                    + " Copy the ready-made configuration from Tools > SpockAdb >"
+                    + " Copy MCP Client Configuration (stdio), which fills in the path.");
+            System.exit(EXIT_NO_ENDPOINT);
+            return;
+        }
+        Path descriptorFile = Path.of(args[0]);
 
         Properties endpoint;
         try {
