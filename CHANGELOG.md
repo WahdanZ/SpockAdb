@@ -54,8 +54,8 @@
 
 ### Internal
 
-- `StubbedIDeviceApiTest` fails the build when anything calls one of the nineteen `IDevice`
-  methods Android Studio leaves unimplemented. Each throws "This method is not used in Android
+- `StubbedIDeviceApiTest` fails the build when anything calls an `IDevice` method Android
+  Studio leaves unimplemented. Each throws "This method is not used in Android
   Studio" at runtime while compiling and unit-testing cleanly, because a test that builds its
   own `AndroidDebugBridge` gets stock ddmlib where they all work. It scans compiled bytecode
   rather than source, since Kotlin's property syntax hides the call — `device.screenshot` is a
