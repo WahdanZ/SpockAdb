@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The assistant core** — the machinery behind the in-IDE AI assistant, with no UI yet.
+  `AgentLoop` runs the model ⇄ tool cycle against the same `ToolRegistry` the MCP transports
+  use, so there is one definition of what an agent may do and one safety model: destructive
+  tools still ask the developer per call and still default to denied, and a declined call is
+  reported back to the model in words rather than ending the conversation. Every call is
+  recorded to the same activity history as `spock-assistant`, so one place answers "what
+  touched my device". The loop is capped at 25 iterations, which is the only guard against a
+  surprise bill in this version
+- `AnthropicClient` and `OpenAiCompatibleClient` on `java.net.http` and Gson — no SDK, no new
+  dependency, and no change to the supported IDE range. Provider errors are surfaced verbatim
+  and never retried: retrying a rejected request spends money to be rejected again
+- The API key lives in `PasswordSafe` and nowhere else — never in the settings XML, the audit
+  history or the log
+
 ### Fixed
 
 - **`android_take_screenshot` never worked inside Android Studio.** It called

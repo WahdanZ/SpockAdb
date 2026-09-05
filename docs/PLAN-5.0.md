@@ -130,20 +130,45 @@ Two deliberate narrowings of the plan, both tightening rather than loosening it:
 
 ## Phase 3 — Assistant core (P0)
 
-- [ ] `assistant/LlmClient.kt` — synchronous interface called from pooled threads, streaming
+- [x] `assistant/LlmClient.kt` — synchronous interface called from pooled threads, streaming
       via callback, explicit cancellation predicate. No coroutines.
-- [ ] `AdbTool.toToolSpec(provider)` — one mapping from the existing `inputSchema`, so tool
-      definitions are never written twice.
-- [ ] `assistant/AnthropicClient.kt` and `assistant/OpenAiCompatibleClient.kt` on
+- [x] `AdbTool.toToolSpec()` — one mapping from the existing `inputSchema`, so tool definitions
+      are never written twice. **No `provider` parameter**: a tool is a name, a description and
+      a JSON Schema for both providers, and only the envelope differs — that belongs to the
+      client writing the request body. Passing the provider in would have put two providers'
+      knowledge in the mapping *and* still left each client shaping its own request.
+- [x] `assistant/AnthropicClient.kt` and `assistant/OpenAiCompatibleClient.kt` on
       `java.net.http.HttpClient` + Gson. Configurable base URL. Errors surfaced verbatim; no
-      retries in v1.
-- [ ] `assistant/AgentLoop.kt` — model ⇄ tool-call cycle through `ToolRegistry`, hard cap 25
-      iterations, every call recorded to `McpRequestHistory` as `spock-assistant`.
-- [ ] `assistant/AssistantToolContext.kt` — same `DeviceLister`/`DebugBridgeProvider`, reusing
-      the `McpToolContext` confirmation dialog.
-- [ ] API key in `PasswordSafe` only — never in `PersistentStateComponent` XML, logs or history.
-- [ ] `AgentLoopTest` (scripted fake `LlmClient`: tool cycle, iteration cap, denied
-      confirmation fed back to the model, cancellation), `ToolSpecMappingTest`.
+      retries in v1. Model `claude-opus-5`; `thinking` is deliberately unset (on by default on
+      that family, and the older `budget_tokens` form is a 400, not a knob).
+- [x] `assistant/AgentLoop.kt` — model ⇄ tool-call cycle, hard cap 25 iterations, every call
+      recorded to `McpRequestHistory` as `spock-assistant`. Reaches the registry through an
+      `AgentTools` seam so the loop is testable without an IDE, a device or 42 real tools;
+      `RegistryAgentTools` is the adapter and holds no tool logic of its own.
+- [x] API key in `PasswordSafe` only — never in `PersistentStateComponent` XML, logs or history
+      (`assistant/AssistantKeyStore.kt`, read on demand so a rotated key applies to the next
+      request rather than the next restart).
+- [x] `AgentLoopTest` (scripted fake `LlmClient`: tool cycle, iteration cap, denied
+      confirmation fed back to the model, cancellation), `ToolSpecMappingTest`,
+      `AnthropicStreamTest` and `OpenAiStreamTest` (fragmented tool arguments, parallel calls
+      by index, a half-streamed call dropped rather than run, mid-stream error, refusal).
+- [x] ~~`assistant/AssistantToolContext.kt`~~ — **not written, deliberately.** `McpToolContext`
+      already *is* "the same `DeviceLister`/`DebugBridgeProvider`, reusing the confirmation
+      dialog". A subclass would add a name and no behaviour, and would be a second place for the
+      safety model to drift to. The assistant is handed the same context the transports get.
+
+### Landed in Phase 3
+
+`LlmClient`, `LlmMessage`/`LlmToolCall`/`LlmToolResult`/`ToolSpec` (one neutral shape, since a
+loop written against either provider's own would have to be rewritten for the other),
+`AnthropicClient` + `AnthropicStream`, `OpenAiCompatibleClient` + `OpenAiStream`, `AgentLoop`,
+`AgentTools`/`RegistryAgentTools`, `AssistantKeyStore`, `toToolSpec`.
+
+Each provider's SSE parsing is split from its HTTP call, which is what makes the frame handling
+testable from a canned stream: 22 tests run without a network, an IDE or a key.
+
+Still open before Phase 4 can use this: nothing in the loop, but no `AssistantService` owns a
+conversation yet — that arrives with the UI it exists to serve.
 
 ## Phase 4 — Assistant UI (P0)
 
