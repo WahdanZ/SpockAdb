@@ -44,7 +44,9 @@
   database is an exfiltration path wearing a debugging tool's clothes. The local destination of
   a pull is **not** a parameter — a tool that writes where its caller asks lets anything holding
   the MCP token drop a file anywhere on the filesystem — so pulls land in one known directory
-  and the tool reports where. Transfers are capped at 50 MB
+  and the tool reports where. The source of a push is restricted to the open project or
+  that same directory, so the pair cannot be composed into a read of any file on the
+  machine. Transfers are capped at 50 MB in both directions
 - **`android_start_screen_recording` and `android_stop_screen_recording`**, one session per
   device, capped at three minutes. Recording stops with `SIGINT` rather than `SIGKILL` so
   `screenrecord` writes the MP4 index on the way out — a killed recording leaves a file no

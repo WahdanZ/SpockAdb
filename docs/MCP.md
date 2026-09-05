@@ -342,7 +342,11 @@ small text files come back inline as well, so reading one costs no second call. 
 fails part-way cannot leave a half-written file under a previous good name — the pull stages to
 a neighbour and moves into place.
 
-Transfers are capped at 50 MB.
+Transfers are capped at 50 MB in both directions, and the cap on a pull is enforced
+before the bytes are kept, not just claimed. The **source** of a push is restricted too —
+the open project, or the IDE's pull directory — because push and pull compose: an
+unrestricted source means an agent can push any file on the machine to a device and pull
+it straight back, which is an arbitrary local read wearing a debugging tool's clothes.
 
 ### `android_start_screen_recording` and `android_stop_screen_recording`
 
