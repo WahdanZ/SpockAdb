@@ -47,8 +47,16 @@ class SpockAdbConfigurable : Configurable {
     private var historySpinner: JSpinner? = null
     private var panel: JComponent? = null
 
+    /**
+     * The listener is bound here rather than in [assistantSection].
+     *
+     * A Configurable can be reused across openings of the Settings dialog — that is what
+     * `disposeUIResources` exists for — and binding it there added one listener per opening, so
+     * a single selection change eventually ran the handler several times over.
+     */
     private val providerBox = JComboBox(AssistantProvider.entries.toTypedArray()).apply {
         renderWith { it.label }
+        addActionListener { onProviderChanged() }
     }
     private val modelField = JBTextField(FIELD_COLUMNS)
     private val baseUrlField = JBTextField(FIELD_COLUMNS)
@@ -136,8 +144,6 @@ class SpockAdbConfigurable : Configurable {
      * one consequence a developer cannot undo after the fact.
      */
     private fun assistantSection(): JComponent {
-        providerBox.addActionListener { onProviderChanged() }
-
         val fields = JPanel(GridBagLayout())
         val labels = GridBagConstraints().apply {
             gridx = 0
@@ -370,11 +376,19 @@ class SpockAdbConfigurable : Configurable {
         return historyChanged || toolsChanged || assistantModified()
     }
 
-    /** A typed key always counts as a change: the field is write-only, so it cannot be compared. */
+    /**
+     * Compares what [apply] would store, not what was typed.
+     *
+     * `AssistantService` canonicalises a base URL by dropping a trailing slash, so comparing the
+     * raw field against the stored value left Settings reporting itself modified for ever when
+     * the only difference was a slash that apply() was about to strip.
+     *
+     * A typed key always counts as a change: the field is write-only, so it cannot be compared.
+     */
     private fun assistantModified(): Boolean =
         selectedProvider() != assistant.provider ||
             modelField.text.orEmpty().trim() != storedModelText() ||
-            baseUrlField.text.orEmpty().trim() != storedBaseUrlText() ||
+            AssistantProvider.normalizeBaseUrl(baseUrlField.text.orEmpty()) != storedBaseUrlText() ||
             apiKeyField.password.isNotEmpty()
 
     override fun apply() {

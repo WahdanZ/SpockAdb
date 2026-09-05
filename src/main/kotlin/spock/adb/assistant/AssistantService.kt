@@ -51,7 +51,7 @@ class AssistantService : PersistentStateComponent<AssistantSettings> {
     var baseUrl: String
         get() = settings.baseUrl.ifBlank { provider.defaultBaseUrl }
         set(value) {
-            settings.baseUrl = value.trim().trimEnd('/')
+            settings.baseUrl = AssistantProvider.normalizeBaseUrl(value)
         }
 
     /**
@@ -76,23 +76,31 @@ class AssistantService : PersistentStateComponent<AssistantSettings> {
     val isConfigured: Boolean get() = AssistantKeyStore.hasKey(provider)
 
     /**
-     * A loop wired to the same registry, gate and audit trail the MCP transports use.
+     * The tools a conversation may use: the same registry, gate and audit trail the MCP
+     * transports use.
+     *
+     * Handed out separately from [newLoop] so the caller can invoke a tool itself — attaching
+     * device context before the first question — and have that call gated, audited and reported
+     * exactly like one the model asked for. Reaching into `ToolRegistry` directly would be a
+     * second path with none of that.
+     */
+    fun newTools(contextProvider: () -> spock.adb.mcp.tools.ToolContext): AgentTools {
+        val mcp = McpServerService.getInstance()
+        return RegistryAgentTools(
+            contextProvider = contextProvider,
+            audit = mcp::record,
+            isToolEnabled = mcp::isToolEnabled,
+        )
+    }
+
+    /**
+     * A loop over [tools].
      *
      * Built per conversation rather than cached: the provider, model, base URL and key can all
      * change in Settings between one question and the next, and a cached client would keep
      * using the old one until the IDE restarted.
      */
-    fun newLoop(contextProvider: () -> spock.adb.mcp.tools.ToolContext): AgentLoop {
-        val mcp = McpServerService.getInstance()
-        return AgentLoop(
-            client = newClient(),
-            tools = RegistryAgentTools(
-                contextProvider = contextProvider,
-                audit = mcp::record,
-                isToolEnabled = mcp::isToolEnabled,
-            ),
-        )
-    }
+    fun newLoop(tools: AgentTools): AgentLoop = AgentLoop(client = newClient(), tools = tools)
 
     private fun newClient(): LlmClient {
         val selected = provider

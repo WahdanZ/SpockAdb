@@ -41,6 +41,17 @@ enum class AssistantProvider {
 
     companion object {
         /**
+         * The one place a base URL is canonicalised.
+         *
+         * The settings screen compares what is typed against what is stored to decide whether
+         * anything changed, so it has to normalise identically. When it did not, a trailing
+         * slash left Settings reporting itself modified for ever — it stored one value and
+         * compared another. It lives here, free of IntelliJ types, so that rule can be run
+         * rather than only read.
+         */
+        fun normalizeBaseUrl(value: String): String = value.trim().trimEnd('/')
+
+        /**
          * Reads a stored name, falling back rather than throwing.
          *
          * A settings file written by a version that knew a provider this one does not must still

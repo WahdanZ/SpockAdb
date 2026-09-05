@@ -63,6 +63,15 @@ class AssistantPanel(
     private val sendButton = JButton("Send", AllIcons.Actions.Execute)
     private val stopButton = JButton("Stop", AllIcons.Actions.Suspend)
     private val attachContext = JBCheckBox("Attach debugging context", settings.attachContext)
+
+    /**
+     * Disabled while a turn runs.
+     *
+     * [conversation] is appended to on the pooled thread running the loop, so clearing it from
+     * the EDT mid-turn is a race — at best a garbled history for the model, at worst a
+     * ConcurrentModificationException inside the loop. Stop first, then Clear.
+     */
+    private val clearButton = JButton("Clear").apply { addActionListener { clearConversation() } }
     private val statusLabel = JBLabel(" ")
 
     /**
@@ -103,7 +112,7 @@ class AssistantPanel(
             add(sendButton)
             add(stopButton)
             add(attachContext)
-            add(JButton("Clear").apply { addActionListener { clearConversation() } })
+            add(clearButton)
             add(JButton("Copy Transcript").apply { addActionListener { copyTranscript() } })
             add(JButton("Settings").apply { addActionListener { openSettings() } })
         }
@@ -193,8 +202,9 @@ class AssistantPanel(
     private fun runTurn(question: String, attach: Boolean) {
         val outcome = try {
             val context = McpServerService.getInstance().toolContext
-            val loop = settings.newLoop { context }
-            val message = if (attach && conversation.isEmpty()) withDebugContext(question, context) else question
+            val tools = settings.newTools { context }
+            val loop = settings.newLoop(tools)
+            val message = if (attach && conversation.isEmpty()) withDebugContext(question, tools) else question
             loop.run(
                 system = AssistantPrompt.SYSTEM,
                 userMessage = message,
@@ -216,34 +226,28 @@ class AssistantPanel(
      * what "why is this screen wrong" needs. Only the first message — repeating it every turn
      * would resend a stale snapshot and pay for it each time.
      *
-     * A failure here is a note, not a stop: the question is still worth asking without it.
+     * Run through [tools] rather than against `ToolRegistry` directly, so it is gated, audited
+     * and reported exactly like a call the model asked for. Invoking the tool by hand made this
+     * the one device call that never reached the Activity tab, and turned an actionable error —
+     * "no device connected" — into a generic note.
+     *
+     * A failure is a note, not a stop: the question is still worth asking without the context.
      */
-    private fun withDebugContext(question: String, context: spock.adb.mcp.tools.ToolContext): String {
-        val tool = spock.adb.mcp.tools.ToolRegistry.find(DEBUG_CONTEXT_TOOL)
-            ?: return question
-        if (!McpServerService.getInstance().isToolEnabled(DEBUG_CONTEXT_TOOL)) {
-            onEdt {
-                note(
-                    AssistantTranscript.Kind.NOTE,
-                    "$DEBUG_CONTEXT_TOOL is switched off, so no context was attached.",
-                )
-            }
-            return question
-        }
+    private fun withDebugContext(question: String, tools: AgentTools): String {
+        val result = tools.invoke(
+            LlmToolCall(CONTEXT_CALL_ID, DEBUG_CONTEXT_TOOL, com.google.gson.JsonObject()),
+        )
 
-        val result = runCatching { tool.execute(com.google.gson.JsonObject(), context) }.getOrNull()
-        val text = result?.content
-            ?.filterIsInstance<spock.adb.mcp.tools.ToolContent.Text>()
-            ?.joinToString("\n") { it.text }
-            .orEmpty()
-
-        if (text.isBlank()) {
-            onEdt { note(AssistantTranscript.Kind.NOTE, "Could not read the device context; asking without it.") }
+        if (result.isError || result.content.isBlank()) {
+            // The tool's own words: a disabled tool says so and says where the switch is, and a
+            // missing device says which — both things the developer can act on.
+            val reason = result.content.ifBlank { "the tool returned nothing" }
+            onEdt { note(AssistantTranscript.Kind.NOTE, "No device context attached — $reason") }
             return question
         }
 
         onEdt { note(AssistantTranscript.Kind.NOTE, "Attached the current device context.") }
-        return "Current device context:\n\n$text\n\n---\n\n$question"
+        return "Current device context:\n\n${result.content}\n\n---\n\n$question"
     }
 
     private fun beginTurn() {
@@ -355,6 +359,7 @@ class AssistantPanel(
         val configured = settings.isConfigured
         sendButton.isEnabled = configured && !running
         stopButton.isEnabled = running
+        clearButton.isEnabled = !running
         inputArea.isEnabled = configured
 
         if (transcript.isEmpty()) {
@@ -389,6 +394,9 @@ class AssistantPanel(
         const val CTRL_MASK = java.awt.event.InputEvent.CTRL_DOWN_MASK
         const val SETTINGS_DISPLAY_NAME = "Spock ADB"
         const val DEBUG_CONTEXT_TOOL = "android_get_debug_context"
+
+        /** Not a model-issued call, but the audit trail wants an id like any other. */
+        const val CONTEXT_CALL_ID = "attach-context"
 
         const val NO_KEY =
             "No API key is configured.\n\n" +

@@ -41,6 +41,24 @@ class AssistantProviderTest {
     }
 
     @Test
+    fun `a base URL is canonicalised the same way wherever it is compared`() {
+        // The defect: Settings compared the raw field against the stored value, which had its
+        // trailing slash dropped on the way in — so a URL ending in "/" left the screen
+        // reporting itself modified for ever, and OK never went quiet.
+        assertEquals("https://api.example.com", AssistantProvider.normalizeBaseUrl("https://api.example.com/"))
+        assertEquals("https://api.example.com", AssistantProvider.normalizeBaseUrl("  https://api.example.com  "))
+        assertEquals("https://api.example.com", AssistantProvider.normalizeBaseUrl("https://api.example.com///"))
+        assertEquals("https://api.example.com", AssistantProvider.normalizeBaseUrl("https://api.example.com"))
+        assertEquals("", AssistantProvider.normalizeBaseUrl("   "))
+    }
+
+    @Test
+    fun `normalising is idempotent, so storing a stored value changes nothing`() {
+        val once = AssistantProvider.normalizeBaseUrl("https://api.example.com/v1/")
+        assertEquals(once, AssistantProvider.normalizeBaseUrl(once))
+    }
+
+    @Test
     fun `every provider has a label for the settings dropdown`() {
         AssistantProvider.entries.forEach {
             assertTrue(it.label.isNotBlank(), "${it.name} needs a label")
