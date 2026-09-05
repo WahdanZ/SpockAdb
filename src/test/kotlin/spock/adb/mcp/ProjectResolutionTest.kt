@@ -22,7 +22,9 @@ class ProjectResolutionTest {
         candidates = candidates,
         selectedKey = selectedKey,
         keysOf = { listOfNotNull(it.name, it.path) },
-        nameOf = { it.name },
+        // The real caller passes a labeller; these cases are about resolution, not labelling,
+        // and the labelling has its own tests below.
+        labelOf = { it.name },
     )
 
     private val app = Proj("app", "/home/dev/app")
@@ -107,5 +109,61 @@ class ProjectResolutionTest {
             ProjectResolution.Outcome.Resolved(pathless, ProjectResolution.Source.SELECTED),
             resolve(listOf(app, pathless), selectedKey = "scratch"),
         )
+    }
+
+    @Test
+    fun `a duplicated name carries the path that tells the two apart`() {
+        val fork = Proj("app", "/home/dev/app-fork")
+        val label = ProjectResolution.labeller(listOf(app, fork), { it.name }, { it.path })
+
+        assertEquals("app (/home/dev/app)", label(app))
+        assertEquals("app (/home/dev/app-fork)", label(fork))
+    }
+
+    @Test
+    fun `a unique name is not cluttered with its path`() {
+        val label = ProjectResolution.labeller(listOf(app, sdk), { it.name }, { it.path })
+
+        assertEquals("app", label(app))
+    }
+
+    @Test
+    fun `a duplicated name with no path still says something`() {
+        val pathless = Proj("app", null)
+        val label = ProjectResolution.labeller(listOf(app, pathless), { it.name }, { it.path })
+
+        assertEquals("app (no path)", label(pathless))
+    }
+
+    @Test
+    fun `an ambiguity between same-named projects names choices the caller can make`() {
+        val fork = Proj("app", "/home/dev/app-fork")
+        val candidates = listOf(app, fork)
+
+        val outcome = ProjectResolution.resolve(
+            candidates = candidates,
+            selectedKey = null,
+            keysOf = { listOfNotNull(it.name, it.path) },
+            labelOf = ProjectResolution.labeller(candidates, { it.name }, { it.path }),
+        )
+
+        // "app, app" would ask the caller to choose between two identical strings.
+        assertEquals(
+            ProjectResolution.Outcome.Ambiguous(
+                listOf("app (/home/dev/app)", "app (/home/dev/app-fork)"),
+            ),
+            outcome,
+        )
+    }
+
+    @Test
+    fun `selecting by path wins over another project with the same name`() {
+        // The defect this covers: the selection used to be stored as the project's *name*, so
+        // it matched whichever the IDE listed first and the fork could never be targeted.
+        val fork = Proj("app", "/home/dev/app-fork")
+
+        val outcome = resolve(listOf(app, fork), selectedKey = "/home/dev/app-fork")
+
+        assertEquals(ProjectResolution.Outcome.Resolved(fork, ProjectResolution.Source.SELECTED), outcome)
     }
 }

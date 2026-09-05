@@ -43,8 +43,16 @@ internal object ScreenRecorder {
 
     /** @throws IllegalStateException when a recording is already running on this device. */
     fun start(device: IDevice, serial: String, timeLimitSeconds: Int): Session {
-        // A session whose time limit already elapsed is over, not in the way.
-        sessions[serial]?.takeIf { it.finished }?.let { sessions.remove(serial, it) }
+        // A session whose time limit already elapsed is over, not in the way — but its
+        // recording is still sitting on the device, and now that the session is gone nothing
+        // will ever pull it. Dropping the session without the file leaves one abandoned mp4
+        // per expired recording, which is the accumulation the rm -f after a pull exists to
+        // prevent.
+        sessions[serial]?.takeIf { it.finished }?.let { expired ->
+            if (sessions.remove(serial, expired)) {
+                runCatching { McpShell.run(device, "rm -f " + ShellQuote.quote(expired.remotePath)) }
+            }
+        }
 
         val session = Session(
             serial = serial,

@@ -95,7 +95,8 @@ class McpToolContext(
         is ProjectResolution.Outcome.Ambiguous -> error(
             "Several projects are open, so it is ambiguous which app this call is about: " +
                 outcome.names.joinToString() +
-                ". Call android_select_project with one of those names first.",
+                ". Call android_select_project first, naming one of those — where a path is " +
+                "shown, two projects share a name and only the path tells them apart.",
         )
     }
 
@@ -106,18 +107,28 @@ class McpToolContext(
         val match = open.firstOrNull { candidate ->
             keysOf(candidate).any { it.isNotBlank() && it.equals(name, ignoreCase = true) }
         } ?: error(
-            "No open project is called '$name'. Open: " + open.joinToString { it.name } + ".",
+            "No open project is called '$name'. Open: " +
+                open.joinToString { labellerFor(open)(it) } +
+                ". A project may be named by its name or by its path.",
         )
 
-        selectedProject.set(match.name)
-        return match.name
+        // Remembered by path, not by name. Two checkouts of one repository are both called
+        // "app", and a selection stored as "app" resolves back to whichever the IDE lists
+        // first — so selecting the fork by its path would silently keep targeting the
+        // original, and every project-dependent tool would answer about the wrong app.
+        selectedProject.set(match.basePath ?: match.name)
+        return labellerFor(open)(match)
     }
+
+    /** Labels that separate two open projects sharing a name. */
+    private fun labellerFor(candidates: List<Project>): (Project) -> String =
+        ProjectResolution.labeller(candidates, nameOf = { it.name }, pathOf = { it.basePath })
 
     private fun resolveProject(): ProjectResolution.Outcome<Project> = ProjectResolution.resolve(
         candidates = openProjects(),
         selectedKey = selectedProject.get(),
         keysOf = { keysOf(it) },
-        nameOf = { it.name },
+        labelOf = labellerFor(openProjects()),
     )
 
     override fun projectApplicationId(): String? =

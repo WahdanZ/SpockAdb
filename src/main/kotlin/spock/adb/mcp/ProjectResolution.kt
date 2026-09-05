@@ -25,7 +25,11 @@ object ProjectResolution {
 
         data class Resolved<T>(val project: T, val source: Source) : Outcome<T>
 
-        /** Several are open and none was chosen. [names] is what may be selected from. */
+        /**
+         * Several are open and none was chosen. [names] is what may be selected from, and is
+         * built by [labeller] so that two projects sharing a name are still told apart — a
+         * list reading "app, app" names no choice the caller can actually make.
+         */
         data class Ambiguous(val names: List<String>) : Outcome<Nothing>
     }
 
@@ -42,13 +46,14 @@ object ProjectResolution {
      * @param candidates the open projects.
      * @param selectedKey what was last selected, matched against [keysOf] case-insensitively.
      * @param keysOf every identifier a candidate answers to — its name and its path.
-     * @param nameOf the human name, used only to describe an ambiguity.
+     * @param labelOf how to describe a candidate in an ambiguity. Build it with [labeller]
+     *   so duplicated names carry the detail that separates them.
      */
     fun <T> resolve(
         candidates: List<T>,
         selectedKey: String?,
         keysOf: (T) -> List<String>,
-        nameOf: (T) -> String,
+        labelOf: (T) -> String,
     ): Outcome<T> {
         if (candidates.isEmpty()) return Outcome.None
 
@@ -62,6 +67,29 @@ object ProjectResolution {
 
         candidates.singleOrNull()?.let { return Outcome.Resolved(it, Source.ONLY_OPEN) }
 
-        return Outcome.Ambiguous(candidates.map(nameOf).sorted())
+        return Outcome.Ambiguous(candidates.map(labelOf).sorted())
+    }
+
+    /**
+     * Describes each candidate, adding its path only where the name alone would not identify it.
+     *
+     * Two checkouts of one repository are both called `app`, which is ordinary rather than
+     * exotic. Naming them both "app" in an ambiguity error asks the caller to choose between
+     * two identical strings; qualifying every project with its path all the time would make
+     * the common single-name case needlessly noisy. So the path appears exactly when it is
+     * what distinguishes them.
+     */
+    fun <T> labeller(
+        candidates: List<T>,
+        nameOf: (T) -> String,
+        pathOf: (T) -> String?,
+    ): (T) -> String {
+        val duplicated = candidates.groupingBy(nameOf).eachCount()
+            .filterValues { it > 1 }
+            .keys
+        return { candidate ->
+            val name = nameOf(candidate)
+            if (name in duplicated) "$name (${pathOf(candidate) ?: "no path"})" else name
+        }
     }
 }

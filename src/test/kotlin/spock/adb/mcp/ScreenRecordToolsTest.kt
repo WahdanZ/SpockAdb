@@ -80,6 +80,21 @@ class ScreenRecordToolsTest {
     private fun start(arguments: JsonObject = JsonObject()) =
         StartScreenRecordTool().execute(arguments, context)
 
+    /**
+     * Starts once the previous recording has released the device.
+     *
+     * A recording that ended on its own does not announce it — the thread notices when the
+     * shell call returns — so this retries rather than sleeping for a guessed interval.
+     */
+    private fun startWhenFree(): spock.adb.mcp.tools.ToolResult {
+        val deadline = System.currentTimeMillis() + AWAIT_SECONDS * 1_000
+        while (System.currentTimeMillis() < deadline) {
+            runCatching { return start() }
+            Thread.sleep(POLL_MS)
+        }
+        error("the expired recording never released the device; saw ${issued.toList()}")
+    }
+
     private fun awaitCommand(prefix: String) {
         val deadline = System.currentTimeMillis() + AWAIT_SECONDS * 1_000
         while (System.currentTimeMillis() < deadline) {
@@ -172,5 +187,24 @@ class ScreenRecordToolsTest {
     private companion object {
         const val AWAIT_SECONDS = 5L
         const val POLL_MS = 10L
+    }
+
+    @Test
+    fun `a recording that hit its own time limit is cleaned off the device`() {
+        start()
+        awaitCommand("screenrecord")
+
+        // The time limit elapses: screenrecord returns on its own and no one ever calls stop,
+        // so nothing will pull this file. Starting again drops the dead session — and used to
+        // drop the recording with it, leaving one abandoned mp4 on /sdcard every time.
+        recordingEnded.countDown()
+
+        startWhenFree()
+
+        awaitCommand("rm -f")
+        assertTrue(
+            issued.toList().any { it.startsWith("rm -f") && it.contains(".mp4") },
+            "the expired recording should be removed from the device; saw ${issued.toList()}",
+        )
     }
 }

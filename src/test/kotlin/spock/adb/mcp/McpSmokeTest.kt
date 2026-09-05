@@ -239,7 +239,7 @@ class McpSmokeTest {
             "android_get_current_activity" to "{}",
             "android_get_activity_stack" to "{}",
             "android_get_current_fragments" to "{}",
-            "android_get_logcat" to """{"lines":20}""",
+            "android_get_logcat" to """{"maxLines":20}""",
             "android_get_processes" to "{}",
             "android_get_battery_info" to "{}",
             "android_get_network_info" to "{}",
