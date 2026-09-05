@@ -41,9 +41,15 @@ class AdbDrawerViewer : ToolWindowFactory {
         }
         viewer.initPlugin(adbController)
 
+        // Devices first because every other tab acts on the device chosen there, then MCP
+        // Server: it is the tab a developer opens to start the server and to see what an agent
+        // has been doing, and it was last, behind three tabs used far less often.
         val contentManager = toolWindow.contentManager
         contentManager.addContent(
             contentManager.factory.createContent(viewer, "Devices", false),
+        )
+        contentManager.addContent(
+            contentManager.factory.createContent(mcpPanel, "MCP Server", false),
         )
         contentManager.addContent(
             contentManager.factory.createContent(logcatPanel, "Logcat", false),
@@ -53,9 +59,6 @@ class AdbDrawerViewer : ToolWindowFactory {
         )
         contentManager.addContent(
             contentManager.factory.createContent(uiInspectorPanel, "UI Inspector", false),
-        )
-        contentManager.addContent(
-            contentManager.factory.createContent(mcpPanel, "MCP Server", false),
         )
     }
 }
