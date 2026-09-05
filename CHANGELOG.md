@@ -17,6 +17,19 @@
   and never retried: retrying a rejected request spends money to be rejected again
 - The API key lives in `PasswordSafe` and nowhere else — never in the settings XML, the audit
   history or the log
+- **Per-tool access control.** `Settings → Tools → Spock ADB → Tool Access` lists every tool
+  grouped by safety level, with "Enable all" and "Read-only only". Confirmation alone could not
+  express this: it sees one call at a time, and `android_push_file` and `android_pull_file` are
+  individually reasonable but compose into reading any file on the machine. A disabled tool is
+  still listed and still described, and refuses when called naming itself and where the switch
+  is, so an agent is told it was turned off rather than hunting for a tool it can see
+  documented. The refusal is audited like any other call — an agent reaching for something it
+  was denied is the entry most worth reviewing. Both ways in consult the same setting
+- **The activity history now survives a restart.** Calls are appended as newline-delimited JSON
+  under the IDE config directory, capped by the existing "keep the most recent N requests"
+  setting and written off the calling thread in batches, so an agent never waits on a disk
+  write. A file truncated by a crash costs one record rather than the history, and a failure to
+  persist is logged rather than failing the tool call that was being recorded
 
 ### Fixed
 

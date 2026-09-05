@@ -16,6 +16,7 @@ import spock.adb.mcp.stdio.SpockAdbStdioLauncher
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -40,6 +41,27 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     private val selectedProject = AtomicReference<String?>(null)
     private val history = McpRequestHistory()
 
+    /**
+     * Read on a server thread for every tool call, written from the settings dialog. Held as
+     * an immutable set that is *replaced* rather than mutated, so a reader sees either the
+     * old membership or the new one and never a set being rebuilt underneath it.
+     */
+    private val disabledToolNames = AtomicReference<Set<String>>(emptySet())
+
+    /**
+     * Both built on first use: an IDE where the server is never enabled reads no file and
+     * starts no thread.
+     */
+    private val historyStore: McpHistoryStore by lazy {
+        McpHistoryStore(
+            file = endpointDirectory().resolve(HISTORY_FILE),
+            capacity = settings.historySize,
+            onError = { message, error -> log.warn("$message; the activity view is unaffected", error) },
+        )
+    }
+    private val historyWriter: McpHistoryWriter by lazy { McpHistoryWriter(historyStore) }
+    private val historyLoaded = AtomicBoolean(false)
+
     private var server: McpHttpServer? = null
     private var bridge: McpBridgeServer? = null
     private var protocol: McpProtocol? = null
@@ -59,6 +81,11 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     override fun loadState(state: McpSettings) {
         settings = state
         if (settings.token.isBlank()) settings.token = generateToken()
+        disabledToolNames.set(state.disabledTools.toSet())
+        // Off the calling thread: this runs during IDE startup and the file can hold thousands
+        // of records. Nothing waits on it — the activity view shows what has arrived so far,
+        // and a call recorded while it is in flight is kept rather than overwritten.
+        ApplicationManager.getApplication().executeOnPooledThread(::ensureHistoryLoaded)
     }
 
     @Synchronized
@@ -74,9 +101,10 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         val mcpProtocol = McpProtocol(
             contextProvider = { McpToolContext(selectedSerial, selectedProject) },
             auditLog = ::record,
+            isToolEnabled = ::isToolEnabled,
         )
         protocol = mcpProtocol
-        history.capacity = settings.historySize
+        ensureHistoryLoaded()
         val httpServer = McpHttpServer(mcpProtocol, settings.token)
         val boundPort = httpServer.start(settings.port)
         server = httpServer
@@ -168,7 +196,38 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         return settings.token
     }
 
-    /** Most recent tool calls, newest first, for the activity view. */
+    /**
+     * Whether [toolName] may run at all.
+     *
+     * Both ways in consult this — the MCP transports through [McpProtocol], the built-in
+     * assistant through `RegistryAgentTools` — so the switch means the same thing wherever
+     * the call came from.
+     */
+    fun isToolEnabled(toolName: String): Boolean = ToolGate.isEnabled(toolName, disabledToolNames.get())
+
+    /** The tools switched off, for the settings screen. */
+    val disabledTools: Set<String> get() = disabledToolNames.get()
+
+    /**
+     * Replaces the set of disabled tools.
+     *
+     * Takes effect on the next call, on a running server: the predicate is consulted per call
+     * rather than baked into the tool list, so turning a tool off does not need a restart and
+     * cannot be outrun by a client that cached `tools/list`.
+     */
+    fun setDisabledTools(names: Set<String>) {
+        // Sorted so the settings file does not churn on save, and so a diff of it is readable.
+        val stored = names.toSortedSet().toMutableSet()
+        settings.disabledTools = stored
+        disabledToolNames.set(stored.toSet())
+    }
+
+    /**
+     * Most recent tool calls, newest first, for the activity view.
+     *
+     * Reads memory only. The panel calls this on the EDT, and parsing the history file there
+     * would be a visible hitch every time the tool window opens.
+     */
     fun recentCalls(): List<McpCall> = history.all()
 
     fun queryHistory(filter: McpHistoryFilter): List<McpCall> = history.query(filter)
@@ -177,7 +236,10 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     fun knownClients(): List<String> = history.knownClients()
 
-    fun clearHistory() = history.clear()
+    fun clearHistory() {
+        history.clear()
+        historyWriter.clear()
+    }
 
     /**
      * What the connected client reported at `initialize`.
@@ -200,13 +262,32 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         set(value) {
             settings.historySize = value
             history.capacity = value
+            // The in-memory cap is authoritative; the file follows it so a lowered cap
+            // actually shrinks what is kept on disk rather than only what is displayed.
+            historyStore.capacity = history.capacity
         }
+
+    /**
+     * Brings the persisted history into memory, once.
+     *
+     * Never on the EDT: it opens and parses a file that is capped, but capped at thousands of
+     * records. Both callers are already off it — [start] runs on a pooled thread through
+     * [startAsync], and [loadState] schedules this on one.
+     */
+    private fun ensureHistoryLoaded() {
+        if (!historyLoaded.compareAndSet(false, true)) return
+        history.capacity = settings.historySize
+        historyStore.capacity = history.capacity
+        history.prepend(historyStore.load())
+    }
 
     private fun record(call: McpCall) {
         history.record(call)
+        historyWriter.record(call)
 
-        // Destructive calls are recorded in the IDE log too: the in-memory history is lost
-        // on restart, and "what did the agent do to my device" must survive that.
+        // Destructive calls reach the IDE log as well as the history file. The history is the
+        // developer's view and can be cleared from the panel; the log is the one an incident is
+        // reconstructed from, and the two should not be lost by the same action.
         if (call.safety == spock.adb.mcp.tools.ToolSafety.DESTRUCTIVE) {
             log.info("MCP destructive call: ${call.toolName} args=${call.arguments} error=${call.isError}")
         }
@@ -287,7 +368,10 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         PathManager.getJarPathForClass(SpockAdbStdioLauncher::class.java)
             ?: PathManager.getPluginsPath()
 
-    override fun dispose() = stop()
+    override fun dispose() {
+        stop()
+        historyWriter.shutdown()
+    }
 
     private fun generateToken(): String {
         val bytes = ByteArray(TOKEN_BYTES)
@@ -297,6 +381,9 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     companion object {
         private const val TOKEN_BYTES = 32
+
+        /** Beside the stdio endpoint descriptor, under the IDE config directory. */
+        const val HISTORY_FILE = "mcp-history.ndjson"
 
         fun getInstance(): McpServerService =
             ApplicationManager.getApplication().getService(McpServerService::class.java)
@@ -313,4 +400,12 @@ data class McpSettings(
     var token: String = "",
     /** How many tool calls to keep. Bounded so the log cannot grow without limit. */
     var historySize: Int = McpRequestHistory.DEFAULT_CAPACITY,
+    /**
+     * Tools the developer has switched off, by name.
+     *
+     * Stored as the exception rather than the allow-list so a tool added by a plugin update
+     * is available by default: an allow-list would silently withhold every new tool from a
+     * developer who had once opened this screen, which reads as the update being broken.
+     */
+    var disabledTools: MutableSet<String> = mutableSetOf(),
 )

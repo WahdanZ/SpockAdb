@@ -29,6 +29,23 @@ class McpRequestHistory(capacity: Int = DEFAULT_CAPACITY) {
     @Synchronized
     fun all(): List<McpCall> = calls.toList().asReversed()
 
+    /**
+     * Inserts [older] ahead of everything already here, oldest first.
+     *
+     * Used to bring the persisted history back at startup. It prepends rather than replaces
+     * because the load runs off the EDT and a call can be recorded while it is in flight —
+     * replacing would throw that call away, which is the one the developer is watching for. The
+     * caller loads once; loading twice would double the entries.
+     */
+    @Synchronized
+    fun prepend(older: List<McpCall>) {
+        val live = calls.toList()
+        calls.clear()
+        calls.addAll(older)
+        calls.addAll(live)
+        trim()
+    }
+
     @Synchronized
     fun clear() = calls.clear()
 

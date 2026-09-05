@@ -192,7 +192,33 @@ Rules that hold regardless of what a client asks for:
 - The IDE window is brought forward when a confirmation is needed, because the request came
   from another application and you are probably not looking at it.
 - Destructive calls are written to `idea.log`, so "what did the agent do to my device"
-  survives a restart.
+  survives a restart. The full activity trail survives one too: it is kept as newline-delimited
+  JSON under the IDE config directory, capped by the same "keep the most recent N requests"
+  setting, and written off the calling thread so an agent never waits on a disk write.
+
+### Turning tools off
+
+`Settings → Tools → Spock ADB → Tool Access` lists every registered tool, grouped by safety
+level, with **Enable all** and **Read-only only** for the two decisions worth making in one
+click. The per-call confirmation on destructive tools is unchanged: this decides what may be
+*attempted*, that decides what actually runs.
+
+It exists because confirmation cannot see a *composition*. `android_push_file` and
+`android_pull_file` are individually reasonable and compose into reading any file on the
+machine; a dialog shown one call at a time has no way to notice that, and a list does not have
+to.
+
+Three properties are deliberate:
+
+- **A disabled tool is still listed and still described.** It refuses when called, naming
+  itself and where the switch is, so an agent is told "you turned this off" rather than hunting
+  for a tool it can see documented. The exception is the in-IDE assistant, which is handed a
+  fresh list every turn and so is simply not offered the tool.
+- **A refused call is audited like any other.** An agent reaching for something it was denied
+  is the entry most worth reviewing.
+- **The setting stores what is *off*.** A tool added by a later plugin update is therefore
+  available by default, rather than silently withheld from anyone who had ever opened the
+  screen.
 
 ### The arbitrary command tool
 
@@ -378,9 +404,6 @@ moment.
 
 Recorded honestly so the gaps are not mistaken for features:
 
-- **Per-tool allow-lists** so a developer can expose, say, the read-only tools and nothing
-  else. The per-call confirmation on destructive tools is the real boundary today, and there is
-  no way to remove a tool from the catalogue short of not starting the server.
 - **Prompts.** `prompts/list` answers with an empty array. The debugging workflows in this
   document are prose an agent cannot call.
 - **Cancellation over HTTP.** stdio honours `notifications/cancelled` by interrupting the
