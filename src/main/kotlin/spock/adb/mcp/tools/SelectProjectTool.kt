@@ -26,7 +26,8 @@ class SelectProjectTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj {
         string(
             "projectName",
-            "Name of the open project, as listed in the ambiguity error.",
+            "The open project to target. Pass one of the entries from the ambiguity error " +
+                "exactly as written; its name or its full path on their own are accepted too.",
             required = true,
         )
     }

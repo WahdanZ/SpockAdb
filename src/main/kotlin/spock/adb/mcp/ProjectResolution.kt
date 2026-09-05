@@ -71,6 +71,24 @@ object ProjectResolution {
     }
 
     /**
+     * The candidate a caller named, or null.
+     *
+     * Matches the label as well as [keysOf], because the label is what an ambiguity error
+     * *shows*: a caller that passes back exactly what it was told to choose from would
+     * otherwise be answered "no open project is called 'app (/home/dev/app)'", which reads as
+     * the project having closed rather than as the wrong string having been sent.
+     */
+    fun <T> select(
+        candidates: List<T>,
+        key: String,
+        keysOf: (T) -> List<String>,
+        labelOf: (T) -> String,
+    ): T? = candidates.firstOrNull { candidate ->
+        (keysOf(candidate) + labelOf(candidate))
+            .any { it.isNotBlank() && it.equals(key, ignoreCase = true) }
+    }
+
+    /**
      * Describes each candidate, adding its path only where the name alone would not identify it.
      *
      * Two checkouts of one repository are both called `app`, which is ordinary rather than

@@ -95,21 +95,19 @@ class McpToolContext(
         is ProjectResolution.Outcome.Ambiguous -> error(
             "Several projects are open, so it is ambiguous which app this call is about: " +
                 outcome.names.joinToString() +
-                ". Call android_select_project first, naming one of those — where a path is " +
-                "shown, two projects share a name and only the path tells them apart.",
+                ". Call android_select_project first, passing one of those exactly as written.",
         )
     }
 
     override fun selectProject(name: String): String {
         val open = openProjects()
         check(open.isNotEmpty()) { "No project is open." }
+        val label = labellerFor(open)
 
-        val match = open.firstOrNull { candidate ->
-            keysOf(candidate).any { it.isNotBlank() && it.equals(name, ignoreCase = true) }
-        } ?: error(
+        val match = ProjectResolution.select(open, name, ::keysOf, label) ?: error(
             "No open project is called '$name'. Open: " +
-                open.joinToString { labellerFor(open)(it) } +
-                ". A project may be named by its name or by its path.",
+                open.joinToString { label(it) } +
+                ". A project may be named by its name, its path, or exactly as listed here.",
         )
 
         // Remembered by path, not by name. Two checkouts of one repository are both called
@@ -117,19 +115,25 @@ class McpToolContext(
         // first — so selecting the fork by its path would silently keep targeting the
         // original, and every project-dependent tool would answer about the wrong app.
         selectedProject.set(match.basePath ?: match.name)
-        return labellerFor(open)(match)
+        return label(match)
     }
 
     /** Labels that separate two open projects sharing a name. */
     private fun labellerFor(candidates: List<Project>): (Project) -> String =
         ProjectResolution.labeller(candidates, nameOf = { it.name }, pathOf = { it.basePath })
 
-    private fun resolveProject(): ProjectResolution.Outcome<Project> = ProjectResolution.resolve(
-        candidates = openProjects(),
-        selectedKey = selectedProject.get(),
-        keysOf = { keysOf(it) },
-        labelOf = labellerFor(openProjects()),
-    )
+    private fun resolveProject(): ProjectResolution.Outcome<Project> {
+        // One snapshot: a project opened or closed between the two reads would label the
+        // candidates against a different set than the one being resolved, and the labels are
+        // what the caller is then told to choose from.
+        val open = openProjects()
+        return ProjectResolution.resolve(
+            candidates = open,
+            selectedKey = selectedProject.get(),
+            keysOf = { keysOf(it) },
+            labelOf = labellerFor(open),
+        )
+    }
 
     override fun projectApplicationId(): String? =
         project?.let { runCatching { GetApplicationIDCommand.resolve(it) }.getOrNull() }

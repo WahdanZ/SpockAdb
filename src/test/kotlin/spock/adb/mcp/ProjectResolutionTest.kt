@@ -157,6 +157,55 @@ class ProjectResolutionTest {
     }
 
     @Test
+    fun `a selection may be the label the ambiguity error showed`() {
+        // The defect this covers: the ambiguity error lists "app (/home/dev/app)", and an agent
+        // that passed that back exactly was told no open project is called that — which reads
+        // as the project having closed rather than as the wrong string having been sent.
+        val fork = Proj("app", "/home/dev/app-fork")
+        val candidates = listOf(app, fork)
+        val label = ProjectResolution.labeller(candidates, { it.name }, { it.path })
+
+        val chosen = ProjectResolution.select(
+            candidates = candidates,
+            key = "app (/home/dev/app-fork)",
+            keysOf = { listOfNotNull(it.name, it.path) },
+            labelOf = label,
+        )
+
+        assertEquals(fork, chosen)
+    }
+
+    @Test
+    fun `a selection may still be the bare name or the bare path`() {
+        val candidates = listOf(app, sdk)
+        val label = ProjectResolution.labeller(candidates, { it.name }, { it.path })
+        fun select(key: String) = ProjectResolution.select(
+            candidates,
+            key,
+            { listOfNotNull(it.name, it.path) },
+            label,
+        )
+
+        assertEquals(sdk, select("sdk"))
+        assertEquals(sdk, select("/home/dev/sdk"))
+        assertEquals(app, select("APP"))
+    }
+
+    @Test
+    fun `a selection matching nothing is null rather than a guess`() {
+        val candidates = listOf(app, sdk)
+
+        val chosen = ProjectResolution.select(
+            candidates,
+            "closed-project",
+            { listOfNotNull(it.name, it.path) },
+            ProjectResolution.labeller(candidates, { it.name }, { it.path }),
+        )
+
+        assertEquals(null, chosen)
+    }
+
+    @Test
     fun `selecting by path wins over another project with the same name`() {
         // The defect this covers: the selection used to be stored as the project's *name*, so
         // it matched whichever the IDE listed first and the fork could never be targeted.

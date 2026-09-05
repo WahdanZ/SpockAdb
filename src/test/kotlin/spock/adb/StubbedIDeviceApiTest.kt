@@ -80,7 +80,7 @@ class StubbedIDeviceApiTest {
 
     private fun disassemble(classes: List<File>): String {
         if (classes.isEmpty()) return ""
-        val javap = File(System.getProperty("java.home"), "bin/javap")
+        val javap = File(System.getProperty("java.home"), "bin/$JAVAP")
         val process = ProcessBuilder(listOf(javap.absolutePath, "-p", "-c") + classes.map { it.absolutePath })
             .redirectErrorStream(true)
             .start()
@@ -100,6 +100,9 @@ class StubbedIDeviceApiTest {
 
     private companion object {
         const val CLASS_DIR = "build/classes/kotlin/main"
+
+        /** `bin/javap` does not exist on Windows, and this guard has to run wherever CI does. */
+        val JAVAP = if (System.getProperty("os.name").startsWith("Windows")) "javap.exe" else "javap"
 
         /** javap renders these as `invokeinterface ... // InterfaceMethod com/android/ddmlib/IDevice.name:(...)`. */
         val IDEVICE_CALL = Regex("""(?:InterfaceMethod|Method) com/android/ddmlib/IDevice\.([a-zA-Z]+)""")

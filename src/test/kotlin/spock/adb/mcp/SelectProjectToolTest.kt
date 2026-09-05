@@ -77,7 +77,4 @@ class SelectProjectToolTest {
                 .contains("No project is open"),
         )
     }
-
-    private fun spock.adb.mcp.tools.ToolResult.text(): String =
-        content.filterIsInstance<spock.adb.mcp.tools.ToolContent.Text>().joinToString("\n") { it.text }
 }
