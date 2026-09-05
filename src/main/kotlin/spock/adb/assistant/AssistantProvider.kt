@@ -39,6 +39,19 @@ enum class AssistantProvider {
 
     val needsExplicitBaseUrl: Boolean get() = defaultBaseUrl.isBlank()
 
+    /**
+     * What this provider still needs before a request can be built, in words.
+     *
+     * Empty means ready. Checked before the client is constructed rather than after: with a
+     * blank base URL the request URI is the relative string "/chat/completions", and
+     * `HttpRequest` rejects it with "URI with undefined scheme" — a message about nothing the
+     * developer typed, at a moment when the thing to say is which field is empty.
+     */
+    fun missingRequirements(model: String, baseUrl: String): List<String> = buildList {
+        if (needsExplicitModel && model.isBlank()) add("a model name")
+        if (needsExplicitBaseUrl && baseUrl.isBlank()) add("a base URL")
+    }
+
     companion object {
         /**
          * The one place a base URL is canonicalised.

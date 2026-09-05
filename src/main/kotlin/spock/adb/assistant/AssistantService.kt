@@ -72,8 +72,27 @@ class AssistantService : PersistentStateComponent<AssistantSettings> {
             settings.attachContext = value
         }
 
-    /** True once a key exists for the selected provider — what the panel's empty state asks. */
-    val isConfigured: Boolean get() = AssistantKeyStore.hasKey(provider)
+    /** True once nothing is left to fill in — what the panel's empty state asks. */
+    val isConfigured: Boolean get() = configurationProblem == null
+
+    /**
+     * What is still missing, in a sentence, or null when the assistant is ready.
+     *
+     * Reported before a request is built rather than after it fails: a blank base URL makes the
+     * request URI the relative string "/chat/completions", which `HttpRequest` rejects with
+     * "URI with undefined scheme" — a message about nothing the developer typed, at the moment
+     * the useful thing to say is which field is empty.
+     */
+    val configurationProblem: String?
+        get() {
+            val selected = provider
+            if (!AssistantKeyStore.hasKey(selected)) {
+                return "No API key is configured for ${selected.label}."
+            }
+            val missing = selected.missingRequirements(model, baseUrl)
+            if (missing.isEmpty()) return null
+            return "${selected.label} needs ${missing.joinToString(" and ")}."
+        }
 
     /**
      * The tools a conversation may use: the same registry, gate and audit trail the MCP
@@ -104,6 +123,11 @@ class AssistantService : PersistentStateComponent<AssistantSettings> {
 
     private fun newClient(): LlmClient {
         val selected = provider
+        // Belt and braces: the panel will not send while [configurationProblem] is non-null, but
+        // a client built without these throws from deep inside java.net.http about a URI the
+        // developer never saw.
+        configurationProblem?.let { throw LlmException("$it Open Settings > Tools > Spock ADB.") }
+
         val key = { AssistantKeyStore.apiKey(selected) }
         return when (selected) {
             AssistantProvider.ANTHROPIC ->

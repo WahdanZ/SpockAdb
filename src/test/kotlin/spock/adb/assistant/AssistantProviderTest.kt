@@ -59,6 +59,25 @@ class AssistantProviderTest {
     }
 
     @Test
+    fun `an OpenAI-compatible endpoint reports what it is still missing`() {
+        // The defect: with a blank base URL the request URI became the relative string
+        // "/chat/completions", and HttpRequest rejected it with "URI with undefined scheme" —
+        // a message about nothing the developer typed, at the moment the useful thing to say
+        // is which field is empty.
+        val provider = AssistantProvider.OPENAI_COMPATIBLE
+
+        assertEquals(listOf("a model name", "a base URL"), provider.missingRequirements("", ""))
+        assertEquals(listOf("a base URL"), provider.missingRequirements("gpt-4o", ""))
+        assertEquals(listOf("a model name"), provider.missingRequirements("", "https://api.example.com"))
+        assertTrue(provider.missingRequirements("gpt-4o", "https://api.example.com").isEmpty())
+    }
+
+    @Test
+    fun `Anthropic is never missing anything, because it has defaults for both`() {
+        assertTrue(AssistantProvider.ANTHROPIC.missingRequirements("", "").isEmpty())
+    }
+
+    @Test
     fun `every provider has a label for the settings dropdown`() {
         AssistantProvider.entries.forEach {
             assertTrue(it.label.isNotBlank(), "${it.name} needs a label")

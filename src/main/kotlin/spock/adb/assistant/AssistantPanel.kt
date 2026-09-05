@@ -178,8 +178,8 @@ class AssistantPanel(
         val question = inputArea.text.orEmpty().trim()
         if (question.isEmpty()) return
 
-        if (!settings.isConfigured) {
-            note(AssistantTranscript.Kind.ERROR, NO_KEY)
+        settings.configurationProblem?.let {
+            note(AssistantTranscript.Kind.ERROR, "$it\n\n$SETUP_HINT")
             return
         }
 
@@ -251,6 +251,9 @@ class AssistantPanel(
     }
 
     private fun beginTurn() {
+        // The answer streams in through [drainIncoming], which appends raw deltas, so its
+        // separator has to be written here — before the first one arrives.
+        appendSeparator()
         running = true
         cancelled.set(false)
         refreshState()
@@ -305,7 +308,9 @@ class AssistantPanel(
     private fun closeStreamed(text: String) {
         if (text.isBlank()) return
         transcript.add(AssistantTranscript.Kind.ASSISTANT, text)
-        transcriptArea.append("\n\n")
+        // The text is already on screen; only the caret needs catching up, so the view stays
+        // pinned to the newest output rather than sitting a line above it.
+        pinToEnd()
     }
 
     private fun stop() {
@@ -330,9 +335,23 @@ class AssistantPanel(
 
     private fun append(kind: AssistantTranscript.Kind, text: String) {
         transcript.add(kind, text)
-        if (transcriptArea.document.length > 0) transcriptArea.append("\n\n")
+        appendSeparator()
         transcriptArea.append(AssistantTranscript.render(AssistantTranscript.Entry(kind, text)))
-        transcriptArea.append("\n\n")
+        pinToEnd()
+    }
+
+    /**
+     * One blank line between entries, written before an entry rather than after it.
+     *
+     * Doing both gave four newlines between entries and made the on-screen spacing diverge from
+     * [AssistantTranscript.render], which is what Copy Transcript hands over — so the copy and
+     * the screen disagreed about the same conversation.
+     */
+    private fun appendSeparator() {
+        if (transcriptArea.document.length > 0) transcriptArea.append("\n\n")
+    }
+
+    private fun pinToEnd() {
         transcriptArea.caretPosition = transcriptArea.document.length
     }
 
@@ -363,7 +382,8 @@ class AssistantPanel(
         inputArea.isEnabled = configured
 
         if (transcript.isEmpty()) {
-            transcriptArea.text = if (configured) "" else NO_KEY
+            val problem = settings.configurationProblem
+            transcriptArea.text = if (problem == null) "" else "$problem\n\n$SETUP_HINT"
         }
     }
 
@@ -398,9 +418,8 @@ class AssistantPanel(
         /** Not a model-issued call, but the audit trail wants an id like any other. */
         const val CONTEXT_CALL_ID = "attach-context"
 
-        const val NO_KEY =
-            "No API key is configured.\n\n" +
-                "Open Settings > Tools > Spock ADB and add one for your provider.\n\n" +
+        const val SETUP_HINT =
+            "Open Settings > Tools > Spock ADB to finish setting up the assistant.\n\n" +
                 "Note that everything you send here — your questions and every tool result, " +
                 "including screenshots, logcat and package lists — leaves this machine for the " +
                 "provider you configure."

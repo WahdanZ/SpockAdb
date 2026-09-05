@@ -36,6 +36,9 @@ class CollapsibleSection(
 
     private var expanded: Boolean = properties.getBoolean(propertyKey(), expandedByDefault)
 
+    /** Whether the content is showing, for callers that need to put it back as they found it. */
+    val isExpanded: Boolean get() = expanded
+
     init {
         separator.label.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         separator.label.addMouseListener(

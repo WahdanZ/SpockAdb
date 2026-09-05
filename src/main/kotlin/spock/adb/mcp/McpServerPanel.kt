@@ -110,6 +110,16 @@ class McpServerPanel(
     /** Null until the first layout pass, so the first decision always applies. */
     private var compact: Boolean? = null
 
+    /**
+     * Whether Details was open when the panel last went compact.
+     *
+     * Compact mode has to close the section to be worth doing, and roomy mode has to open it or
+     * the splitter shows a title bar above 28% of nothing. Remembering the state across the
+     * transition is what keeps that from quietly discarding a developer who collapsed Details on
+     * purpose — resize away and back, and it comes back the way they left it.
+     */
+    private var expandedBeforeCompact = true
+
     /** Set on dispose, so a transition still in flight cannot update a dead panel. */
     @Volatile
     private var disposed = false
@@ -211,14 +221,16 @@ class McpServerPanel(
         bodyPanel.removeAll()
         if (wantCompact) {
             // Moving the same component between parents; Swing detaches it from the splitter.
+            expandedBeforeCompact = detailsSection.isExpanded
             splitter.secondComponent = null
             detailsSection.setExpandedTransiently(false)
             bodyPanel.add(tabs, BorderLayout.CENTER)
             bodyPanel.add(detailsSection, BorderLayout.SOUTH)
         } else {
-            // Forced open, and transiently: a section left collapsed in the compact layout
-            // would otherwise become 28% of empty box with a title bar on top of it.
-            detailsSection.setExpandedTransiently(true)
+            // Restored, not forced. A developer who collapsed Details on purpose gets it back
+            // collapsed — as a title bar they can click, since dropping it from the splitter
+            // entirely would leave them no way to reopen it.
+            detailsSection.setExpandedTransiently(expandedBeforeCompact)
             splitter.firstComponent = tabs
             splitter.secondComponent = detailsSection
             bodyPanel.add(splitter, BorderLayout.CENTER)
