@@ -22,10 +22,13 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class McpToolContext(
     private val selectedSerial: AtomicReference<String?>,
-    private val projectProvider: () -> Project? = { defaultProject() },
+    /** The agent's project choice, when it has made one. Session state, like the device. */
+    private val selectedProject: AtomicReference<String?> = AtomicReference(null),
+    private val openProjects: () -> List<Project> = { allOpenProjects() },
 ) : ToolContext {
 
-    override val project: Project? get() = projectProvider()
+    override val project: Project?
+        get() = (resolveProject() as? ProjectResolution.Outcome.Resolved)?.project
 
     private val lister: DeviceLister
         get() {
@@ -75,6 +78,63 @@ class McpToolContext(
         return device
     }
 
+    /**
+     * Fails with the reason rather than a null.
+     *
+     * "Nothing is open" and "several are open, say which" need different things from the
+     * agent, and returning null for both taught it the wrong fix for one of them.
+     */
+    override fun requireProject(): Project = when (val outcome = resolveProject()) {
+        is ProjectResolution.Outcome.Resolved -> outcome.project
+
+        ProjectResolution.Outcome.None -> error(
+            "No project is open, which this tool needs to run. Open the Android project in " +
+                "the IDE and let Gradle sync finish.",
+        )
+
+        is ProjectResolution.Outcome.Ambiguous -> error(
+            "Several projects are open, so it is ambiguous which app this call is about: " +
+                outcome.names.joinToString() +
+                ". Call android_select_project first, passing one of those exactly as written.",
+        )
+    }
+
+    override fun selectProject(name: String): String {
+        val open = openProjects()
+        check(open.isNotEmpty()) { "No project is open." }
+        val label = labellerFor(open)
+
+        val match = ProjectResolution.select(open, name, ::keysOf, label) ?: error(
+            "No open project is called '$name'. Open: " +
+                open.joinToString { label(it) } +
+                ". A project may be named by its name, its path, or exactly as listed here.",
+        )
+
+        // Remembered by path, not by name. Two checkouts of one repository are both called
+        // "app", and a selection stored as "app" resolves back to whichever the IDE lists
+        // first — so selecting the fork by its path would silently keep targeting the
+        // original, and every project-dependent tool would answer about the wrong app.
+        selectedProject.set(match.basePath ?: match.name)
+        return label(match)
+    }
+
+    /** Labels that separate two open projects sharing a name. */
+    private fun labellerFor(candidates: List<Project>): (Project) -> String =
+        ProjectResolution.labeller(candidates, nameOf = { it.name }, pathOf = { it.basePath })
+
+    private fun resolveProject(): ProjectResolution.Outcome<Project> {
+        // One snapshot: a project opened or closed between the two reads would label the
+        // candidates against a different set than the one being resolved, and the labels are
+        // what the caller is then told to choose from.
+        val open = openProjects()
+        return ProjectResolution.resolve(
+            candidates = open,
+            selectedKey = selectedProject.get(),
+            keysOf = { keysOf(it) },
+            labelOf = labellerFor(open),
+        )
+    }
+
     override fun projectApplicationId(): String? =
         project?.let { runCatching { GetApplicationIDCommand.resolve(it) }.getOrNull() }
 
@@ -89,7 +149,10 @@ class McpToolContext(
         summary: String,
         device: ConnectedDevice,
     ): Boolean {
-        val currentProject = project ?: return false
+        // Any open frame will do: this dialog is about a device operation, not about a
+        // project, so refusing to ask merely because two projects are open would deny a call
+        // the developer would have approved.
+        val currentProject = project ?: openProjects().firstOrNull() ?: return false
         if (currentProject.isDisposed) return false
 
         var approved = false
@@ -115,8 +178,11 @@ class McpToolContext(
     }
 
     private companion object {
-        /** The single open project, when there is exactly one; otherwise nothing to guess at. */
-        fun defaultProject(): Project? =
-            ProjectManager.getInstance().openProjects.singleOrNull { !it.isDisposed }
+        /** Disposed projects are gone, not candidates. */
+        fun allOpenProjects(): List<Project> =
+            ProjectManager.getInstance().openProjects.filterNot { it.isDisposed }
+
+        /** Everything a project answers to, so a selection can name either. */
+        fun keysOf(project: Project): List<String> = listOfNotNull(project.name, project.basePath)
     }
 }

@@ -1,5 +1,6 @@
 package spock.adb.mcp.tools
 
+import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import spock.adb.command.GetActivityCommand
@@ -17,8 +18,7 @@ class GetCurrentActivityTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.project
-            ?: return ToolResult.error("No project is open, which this tool needs to run.")
+        val project = context.requireProject()
 
         val activity = GetActivityCommand().execute(Any(), project, device.device)
             ?: return ToolResult.error(
@@ -39,8 +39,7 @@ class GetActivityStackTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.project
-            ?: return ToolResult.error("No project is open, which this tool needs to run.")
+        val project = context.requireProject()
 
         val stack = GetBackStackCommand().execute(Any(), project, device.device)
         if (stack.isEmpty()) return ToolResult.text("The activity stack is empty.")
@@ -72,8 +71,7 @@ class GetCurrentFragmentsTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.project
-            ?: return ToolResult.error("No project is open, which this tool needs to run.")
+        val project = context.requireProject()
 
         val fragments = GetFragmentsCommand().execute(
             context.resolvePackage(arguments),
@@ -96,6 +94,63 @@ class GetCurrentFragmentsTool : AdbTool {
     }
 }
 
+/**
+ * Reading logcat, shared by `android_get_logcat` and `android_get_debug_context`.
+ *
+ * Filtering by PID rather than by text lives here so both callers inherit it: matching a
+ * package name against message content both misses lines the app wrote under another tag and
+ * returns unrelated lines that merely mention it.
+ */
+internal object LogcatReader {
+
+    const val DEFAULT_MAX_LINES = 300
+    const val MAX_LINES = 5_000
+
+    /** @param packageName null reads the whole log; otherwise only that package's processes. */
+    fun read(device: IDevice, packageName: String?, minLevel: String, maxLines: Int): Read {
+        val pids = packageName
+            ?.let { McpShell.run(device, "pidof ${ShellQuote.quote(it)}").trim() }
+            ?.split(Regex("\\s+"))
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+        val command = buildString {
+            append("logcat -d -v threadtime -t ").append(maxLines)
+            pids.forEach { append(" --pid=").append(it) }
+            append(" *:").append(minLevel)
+        }
+        return Read(
+            output = McpShell.run(device, command),
+            filteredByPackage = packageName != null,
+            pidCount = pids.size,
+        )
+    }
+
+    data class Read(val output: String, val filteredByPackage: Boolean, val pidCount: Int) {
+
+        /** Why nothing came back, which is not always an error worth alarming the agent with. */
+        val emptyExplanation: String
+            get() = when {
+                filteredByPackage && pidCount == 0 ->
+                    "No matching log lines. The app may not be running — no process was found for it."
+                else -> "Logcat returned nothing."
+            }
+
+        fun textOrExplanation(): String = output.ifBlank { emptyExplanation }
+    }
+
+    /** Absent `packageName` means the open project's app; an explicit empty string means all. */
+    fun JsonObject.logcatPackage(context: ToolContext): String? {
+        if (has("packageName") && optionalString("packageName") == null) return null
+        return optionalString("packageName") ?: context.projectApplicationId()
+    }
+
+    fun JsonObject.logcatLevel(): String = optionalString("minLevel")?.uppercase() ?: "V"
+
+    fun JsonObject.logcatMaxLines(default: Int = DEFAULT_MAX_LINES): Int =
+        optionalInt("maxLines", default).coerceIn(1, MAX_LINES)
+}
+
 /** `android_get_logcat` — recent log, filtered. */
 class GetLogcatTool : AdbTool {
     override val name = "android_get_logcat"
@@ -116,42 +171,15 @@ class GetLogcatTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val maxLines = arguments.optionalInt("maxLines", DEFAULT_MAX_LINES).coerceIn(1, MAX_LINES)
-        val level = arguments.optionalString("minLevel")?.uppercase() ?: "V"
-
-        // Filter by PID rather than by text: matching the package name against message
-        // content both misses lines and returns unrelated ones.
-        val pids = arguments.resolveLogcatPackage(context)
-            ?.let { pkg -> McpShell.run(device, "pidof ${ShellQuote.quote(pkg)}").trim() }
-            ?.split(Regex("\\s+"))
-            ?.filter { it.isNotBlank() }
-            .orEmpty()
-
-        val command = buildString {
-            append("logcat -d -v threadtime -t ").append(maxLines)
-            pids.forEach { append(" --pid=").append(it) }
-            append(" *:").append(level)
-        }
-
-        val output = McpShell.run(device, command)
-        return when {
-            output.isBlank() && pids.isEmpty() -> ToolResult.text("Logcat returned nothing.")
-            output.isBlank() -> ToolResult.text(
-                "No matching log lines. The app may not be running — no process was found for it.",
+        val read = with(LogcatReader) {
+            LogcatReader.read(
+                device = device,
+                packageName = arguments.logcatPackage(context),
+                minLevel = arguments.logcatLevel(),
+                maxLines = arguments.logcatMaxLines(),
             )
-            else -> ToolResult.text(output)
         }
-    }
-
-    private fun JsonObject.resolveLogcatPackage(context: ToolContext): String? {
-        // An explicit empty string is a deliberate "whole log" request.
-        if (has("packageName") && optionalString("packageName") == null) return null
-        return optionalString("packageName") ?: context.projectApplicationId()
-    }
-
-    private companion object {
-        const val DEFAULT_MAX_LINES = 300
-        const val MAX_LINES = 5_000
+        return ToolResult.text(read.textOrExplanation())
     }
 }
 

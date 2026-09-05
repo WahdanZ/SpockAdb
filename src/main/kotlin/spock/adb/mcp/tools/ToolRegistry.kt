@@ -14,6 +14,8 @@ object ToolRegistry {
         ListDevicesTool(),
         GetDeviceInfoTool(),
         SelectDeviceTool(),
+        // Which open project a call is about, for an IDE with more than one open
+        SelectProjectTool(),
         // Applications
         ListPackagesTool(),
         GetPackageInfoTool(),
@@ -32,6 +34,8 @@ object ToolRegistry {
         GetProcessesTool(),
         GetBatteryInfoTool(),
         GetNetworkInfoTool(),
+        // The triage bundle: one round-trip instead of four, all describing the same moment.
+        DebugContextTool(),
         // UI inspection — semantics-first, so it covers Views, Compose and hybrid screens
         TakeScreenshotTool(),
         GetUiTreeTool(),
@@ -52,6 +56,11 @@ object ToolRegistry {
         TapTool(),
         SwipeTool(),
         PressKeyTool(),
+        // Moving files and video off the device, within a deliberately narrow path allow-list
+        PushFileTool(),
+        PullFileTool(),
+        StartScreenRecordTool(),
+        StopScreenRecordTool(),
         // Escape hatch
         RunAdbCommandTool(),
     )

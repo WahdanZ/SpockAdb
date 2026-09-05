@@ -37,6 +37,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     private var settings = McpSettings()
     private val selectedSerial = AtomicReference<String?>(null)
+    private val selectedProject = AtomicReference<String?>(null)
     private val history = McpRequestHistory()
 
     private var server: McpHttpServer? = null
@@ -62,10 +63,16 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     @Synchronized
     fun start(): Result<Int> = runCatching {
+        // Already listening. Starting again would replace the HTTP server and strand the
+        // previous stdio bridge's threads, so a double click, or a start racing an
+        // auto-start, is answered with the port that is already bound. Restarting is
+        // Restart's job.
+        server?.port?.let { return@runCatching it }
+
         if (settings.token.isBlank()) settings.token = generateToken()
 
         val mcpProtocol = McpProtocol(
-            contextProvider = { McpToolContext(selectedSerial) },
+            contextProvider = { McpToolContext(selectedSerial, selectedProject) },
             auditLog = ::record,
         )
         protocol = mcpProtocol
@@ -92,6 +99,35 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         bridge = null
         protocol = null
         settings.enabled = false
+    }
+
+    /**
+     * [start], off the calling thread.
+     *
+     * Both transitions do real blocking work — [start] binds two sockets and writes the
+     * stdio endpoint descriptor, and [stop] waits for live stdio sessions to end before
+     * releasing their threads — so neither belongs on the EDT, where stopping the server
+     * with a client attached froze the tool window until the wait expired.
+     *
+     * [onResult] runs on the pooled thread, not the EDT. Callers marshal it themselves, as
+     * every other background call in the plugin does, so each can also carry its own "is my
+     * component still alive" condition.
+     */
+    fun startAsync(onResult: (Result<Int>) -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread { onResult(start()) }
+    }
+
+    /** [stop], off the calling thread. [onDone] runs on the pooled thread. See [startAsync]. */
+    fun stopAsync(onDone: () -> Unit = {}) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // finally, not a plain sequence: the caller re-enables its controls in [onDone],
+            // and a stop that failed part-way must not leave them disabled for good.
+            try {
+                stop()
+            } finally {
+                onDone()
+            }
+        }
     }
 
     /**

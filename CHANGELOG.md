@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The assistant core** — the machinery behind the in-IDE AI assistant, with no UI yet.
+  `AgentLoop` runs the model ⇄ tool cycle against the same `ToolRegistry` the MCP transports
+  use, so there is one definition of what an agent may do and one safety model: destructive
+  tools still ask the developer per call and still default to denied, and a declined call is
+  reported back to the model in words rather than ending the conversation. Every call is
+  recorded to the same activity history as `spock-assistant`, so one place answers "what
+  touched my device". The loop is capped at 25 iterations, which is the only guard against a
+  surprise bill in this version
+- `AnthropicClient` and `OpenAiCompatibleClient` on `java.net.http` and Gson — no SDK, no new
+  dependency, and no change to the supported IDE range. Provider errors are surfaced verbatim
+  and never retried: retrying a rejected request spends money to be rejected again
+- The API key lives in `PasswordSafe` and nowhere else — never in the settings XML, the audit
+  history or the log
+
 ### Fixed
 
 - **`android_take_screenshot` never worked inside Android Studio.** It called
@@ -11,6 +27,62 @@
   encoded because ddmlib's shell channel decodes its output as text and would otherwise corrupt
   the PNG, and the result is checked for a PNG signature so a `FLAG_SECURE` screen is reported
   as such rather than returned as a broken image
+- **Every project-dependent MCP tool failed whenever two projects were open.** The tool
+  context resolved the project with `openProjects.singleOrNull { !it.isDisposed }`, so a
+  second open project turned `android_get_current_activity`, `android_get_activity_stack`,
+  `android_get_current_fragments` and the default logcat package filter into "No project is
+  open" — a message that was both wrong and unactionable. Resolution now follows the same
+  rule as device resolution: use the selected project, or the only one open, and otherwise
+  **refuse to guess** and name the candidates. Picking the focused window instead would be
+  wrong exactly when it matters most, with an agent working while the developer looks
+  elsewhere
+- **Starting and stopping the MCP server ran on the EDT.** Starting binds two sockets and
+  writes the stdio endpoint descriptor; stopping waits for live stdio sessions to end before
+  releasing their threads. Stopping the server from the MCP panel with a client attached
+  therefore froze the tool window until that wait expired. Both transitions now run on a
+  pooled thread, the controls show the transition and are disabled while it runs, and
+  Restart chains stop → start rather than issuing them together
+- `McpServerService.start()` is idempotent: starting an already-running server returns the
+  bound port instead of replacing the HTTP server and stranding the previous stdio bridge's
+  threads
+
+### Added
+
+- **`android_get_debug_context`** — the whole triage bundle in one call: current activity, the
+  UI semantics tree with its framework identified, recent logcat, and optionally a screenshot.
+  Assembling those separately cost three or four round trips, and by the time the last landed
+  the screen could have moved on, so the bundle described no single moment. A failing section
+  reports its failure in place and the rest still come back — a screenshot blocked by
+  `FLAG_SECURE` must not cost you the crash sitting beside it in logcat
+- **`android_push_file` and `android_pull_file`.** Device paths are restricted to `/sdcard`,
+  `/storage` and `/data/local/tmp`, which is deliberately stricter than `adb`: it will hand over
+  anything the shell user can read, and an agent that can be talked into pulling another app's
+  database is an exfiltration path wearing a debugging tool's clothes. The local destination of
+  a pull is **not** a parameter — a tool that writes where its caller asks lets anything holding
+  the MCP token drop a file anywhere on the filesystem — so pulls land in one known directory
+  and the tool reports where. The source of a push is restricted to the open project or
+  that same directory, so the pair cannot be composed into a read of any file on the
+  machine. Transfers are capped at 50 MB in both directions
+- **`android_start_screen_recording` and `android_stop_screen_recording`**, one session per
+  device, capped at three minutes. Recording stops with `SIGINT` rather than `SIGKILL` so
+  `screenrecord` writes the MP4 index on the way out — a killed recording leaves a file no
+  player will open — and the remote file is deleted only once the pull has succeeded
+- `android_select_project` — says which open project later calls are about, so the ambiguity
+  above names a fix the agent can actually perform. Unnecessary with a single project open
+
+### Internal
+
+- `StubbedIDeviceApiTest` fails the build when anything calls an `IDevice` method Android
+  Studio leaves unimplemented. Each throws "This method is not used in Android
+  Studio" at runtime while compiling and unit-testing cleanly, because a test that builds its
+  own `AndroidDebugBridge` gets stock ddmlib where they all work. It scans compiled bytecode
+  rather than source, since Kotlin's property syntax hides the call — `device.screenshot` is a
+  call to `getScreenshot()` that no text search would find. This is the bug that shipped in
+  `android_take_screenshot`
+- `McpSmokeTest` calls every read-only tool against a real device through a running server.
+  The live checks are opt-in via `SPOCK_MCP_URL` and `SPOCK_MCP_TOKEN`, so an ordinary
+  `./gradlew test` skips them, but its coverage assertion always runs — a read-only tool cannot
+  be added without deciding how it is smoke-tested
 
 ## [4.0.2] - 2026-09-04
 

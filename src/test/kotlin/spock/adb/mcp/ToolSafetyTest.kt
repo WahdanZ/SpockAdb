@@ -52,6 +52,7 @@ class ToolSafetyTest {
                 "android_get_processes",
                 "android_get_battery_info",
                 "android_get_network_info",
+                "android_get_debug_context",
                 "android_take_screenshot",
                 "android_get_ui_tree",
                 "android_find_ui_element",

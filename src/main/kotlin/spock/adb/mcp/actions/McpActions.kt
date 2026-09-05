@@ -4,10 +4,27 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.project.Project
 import spock.adb.mcp.McpServerService
 import spock.adb.notification.CommonNotifier
 import java.awt.datatransfer.StringSelection
+
+/**
+ * Reports the outcome of work that finished on a pooled thread.
+ *
+ * Starting and stopping the server both block — binding sockets, and waiting for live stdio
+ * sessions to end — so they no longer run on the EDT and their results arrive on a
+ * background thread. See [McpServerService.startAsync].
+ */
+private fun notifyLater(
+    project: Project,
+    content: String,
+    type: NotificationType = NotificationType.INFORMATION,
+) = ApplicationManager.getApplication().invokeLater(
+    { CommonNotifier.showNotifier(project = project, content = content, type = type) },
+) { project.isDisposed }
 
 /**
  * Starts or stops the MCP server.
@@ -31,30 +48,33 @@ class ToggleMcpServerAction : AnAction() {
         val service = McpServerService.getInstance()
 
         if (service.isRunning) {
-            service.stop()
-            CommonNotifier.showNotifier(
-                project = project,
-                content = "MCP server stopped. Connected AI agents can no longer reach your devices.",
-            )
+            service.stopAsync {
+                notifyLater(
+                    project = project,
+                    content = "MCP server stopped. Connected AI agents can no longer reach your devices.",
+                )
+            }
             return
         }
 
-        service.start()
-            .onSuccess { port ->
-                CommonNotifier.showNotifier(
-                    project = project,
-                    content = "MCP server listening on 127.0.0.1:$port. " +
-                        "Use 'Spock: Copy MCP Client Configuration (stdio)' — or (HTTP) — to " +
-                        "connect a client.",
-                )
-            }
-            .onFailure { error ->
-                CommonNotifier.showNotifier(
-                    project = project,
-                    content = "Could not start the MCP server: ${error.message}",
-                    type = NotificationType.ERROR,
-                )
-            }
+        service.startAsync { result ->
+            result
+                .onSuccess { port ->
+                    notifyLater(
+                        project = project,
+                        content = "MCP server listening on 127.0.0.1:$port. " +
+                            "Use 'Spock: Copy MCP Client Configuration (stdio)' — or (HTTP) — to " +
+                            "connect a client.",
+                    )
+                }
+                .onFailure { error ->
+                    notifyLater(
+                        project = project,
+                        content = "Could not start the MCP server: ${error.message}",
+                        type = NotificationType.ERROR,
+                    )
+                }
+        }
     }
 }
 
@@ -147,17 +167,23 @@ class RestartMcpServerAction : AnAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
         val service = McpServerService.getInstance()
-        service.stop()
-        service.start()
-            .onSuccess {
-                CommonNotifier.showNotifier(project = project, content = "MCP server restarted on 127.0.0.1:$it.")
+
+        // Chained, not issued together: the start must not begin until the stop has released
+        // the sockets.
+        service.stopAsync {
+            service.startAsync { result ->
+                result
+                    .onSuccess {
+                        notifyLater(project = project, content = "MCP server restarted on 127.0.0.1:$it.")
+                    }
+                    .onFailure {
+                        notifyLater(
+                            project = project,
+                            content = "Could not restart the MCP server: ${it.message}",
+                            type = NotificationType.ERROR,
+                        )
+                    }
             }
-            .onFailure {
-                CommonNotifier.showNotifier(
-                    project = project,
-                    content = "Could not restart the MCP server: ${it.message}",
-                    type = NotificationType.ERROR,
-                )
-            }
+        }
     }
 }

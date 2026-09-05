@@ -30,6 +30,31 @@ object Schema {
         fun boolean(name: String, description: String, required: Boolean = false) =
             property(name, "boolean", description, required)
 
+        /**
+     * An array of strings, optionally constrained to a fixed set.
+     *
+     * Declared here rather than hand-written per tool so the "which sections do you want"
+     * shape used by android_get_debug_context stays consistent with the rest of the schema.
+     */
+        fun stringArray(
+            name: String,
+            description: String,
+            values: List<String>? = null,
+            required: Boolean = false,
+        ) {
+            val items = JsonObject().apply {
+                addProperty("type", "string")
+                values?.let { allowed -> add("enum", JsonArray().also { node -> allowed.forEach(node::add) }) }
+            }
+            val node = JsonObject().apply {
+                addProperty("type", "array")
+                addProperty("description", description)
+                add("items", items)
+            }
+            properties.add(name, node)
+            if (required) this.required.add(name)
+        }
+
         fun enumeration(name: String, description: String, values: List<String>, required: Boolean = false) {
             val node = JsonObject().apply {
                 addProperty("type", "string")
@@ -78,3 +103,15 @@ fun JsonObject.optionalInt(name: String, default: Int): Int =
 
 fun JsonObject.optionalBoolean(name: String, default: Boolean): Boolean =
     get(name)?.takeIf { !it.isJsonNull }?.asBoolean ?: default
+
+/**
+ * A string array argument, tolerating the single bare string clients sometimes send where an
+ * array is declared. Returns null when the caller said nothing, so a tool can tell "omitted"
+ * from "explicitly empty".
+ */
+fun JsonObject.optionalStringList(name: String): List<String>? {
+    val element = get(name)?.takeIf { !it.isJsonNull } ?: return null
+    if (element.isJsonPrimitive) return listOf(element.asString)
+    if (!element.isJsonArray) return null
+    return element.asJsonArray.mapNotNull { it.takeIf { item -> !item.isJsonNull }?.asString }
+}
