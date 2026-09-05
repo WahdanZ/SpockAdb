@@ -138,6 +138,10 @@
             <action id="spock.adb.actions.OpenMcpPanelAction"
                     class="spock.adb.actions.OpenMcpPanelAction"
                     text="Open MCP Server Panel"/>
+            <action id="spock.adb.actions.OpenAssistantAction"
+                    class="spock.adb.actions.OpenAssistantAction"
+                    text="Open AI Assistant"
+                    description="Ask about the connected device and let the model use the plugin's own tools"/>
             <action id="spock.adb.actions.OpenDeveloperOptionsAction"
                     class="spock.adb.actions.OpenDeveloperOptionsAction"
                     text="Open Developer Options on Device"/>

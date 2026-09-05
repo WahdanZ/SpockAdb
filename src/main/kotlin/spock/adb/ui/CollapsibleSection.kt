@@ -64,6 +64,19 @@ class CollapsibleSection(
         repaint()
     }
 
+    /**
+     * Opens or closes the section without recording the change.
+     *
+     * For callers that decide by layout rather than by click: a panel too short to show the
+     * section open should not overwrite the developer's own last choice, which they will want
+     * back the moment the panel is roomy again.
+     */
+    fun setExpandedTransiently(expanded: Boolean) {
+        if (this.expanded == expanded) return
+        this.expanded = expanded
+        applyState()
+    }
+
     /** Hides the whole section, heading included, when every action in it is turned off. */
     fun setSectionVisible(visible: Boolean) {
         isVisible = visible

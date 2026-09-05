@@ -72,6 +72,14 @@ class McpBridgeServer(
 
     private class Session(val channel: SocketChannel, val server: McpStdioServer)
 
+    /**
+     * Connections currently attached, which is the one thing this transport genuinely knows.
+     *
+     * Not "clients": a session is a live socket, and it carries no identity until the client
+     * calls `initialize`. Counting sockets is observed; anything more would be invented.
+     */
+    val sessionCount: Int get() = sessions.size
+
     private val accepts = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "SpockAdb-MCP-bridge-accept").apply { isDaemon = true }
     }

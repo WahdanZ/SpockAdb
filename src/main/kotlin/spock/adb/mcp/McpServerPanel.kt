@@ -18,6 +18,7 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
+import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.WrapLayout
 import spock.adb.ui.renderWith
 import java.awt.BorderLayout
@@ -77,6 +78,37 @@ class McpServerPanel(
     }
 
     private val callListener: (McpCall) -> Unit = { refreshActivityLater() }
+
+    /**
+     * The details view, which moves between two homes depending on how tall the panel is.
+     *
+     * Docked at the bottom of an IDE window the whole panel is often under 500px, and 28% of
+     * that is three lines of a JSON schema — a pane too small to read but still taking room
+     * from the list above it. Below the threshold the details become a collapsible section
+     * instead, closed by default, so the list gets the whole panel until they are asked for.
+     */
+    /** The title lives on the enclosing section, so the row here is buttons only. */
+    private val detailsPane: JComponent by lazy {
+        JPanel(BorderLayout()).apply {
+            add(
+                JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
+                    border = JBUI.Borders.empty(2, GAP)
+                    add(JButton("Copy").apply { addActionListener { copy(detailArea.text) } })
+                    add(JButton("Copy Request").apply { addActionListener { copy(selected()?.arguments) } })
+                    add(JButton("Copy Response").apply { addActionListener { copy(selected()?.result) } })
+                },
+                BorderLayout.NORTH,
+            )
+            add(JBScrollPane(detailArea), BorderLayout.CENTER)
+        }
+    }
+
+    private val detailsSection by lazy { CollapsibleSection("Details", detailsPane, "mcp.details") }
+    private val splitter = OnePixelSplitter(true, SPLIT_PROPORTION)
+    private val bodyPanel = JPanel(BorderLayout())
+
+    /** Null until the first layout pass, so the first decision always applies. */
+    private var compact: Boolean? = null
 
     /** Set on dispose, so a transition still in flight cannot update a dead panel. */
     @Volatile
@@ -145,33 +177,54 @@ class McpServerPanel(
             add(JBScrollPane(activityList), BorderLayout.CENTER)
         }
 
-        val details = JPanel(BorderLayout()).apply {
-            add(
-                JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
-                    border = JBUI.Borders.empty(2, GAP)
-                    add(JBLabel("Details"))
-                    add(JButton("Copy").apply { addActionListener { copy(detailArea.text) } })
-                    add(JButton("Copy Request").apply { addActionListener { copy(selected()?.arguments) } })
-                    add(JButton("Copy Response").apply { addActionListener { copy(selected()?.result) } })
-                },
-                BorderLayout.NORTH,
-            )
-            add(JBScrollPane(detailArea), BorderLayout.CENTER)
-        }
-
         // Activity and Tools share the detail pane below: both answer "what is this call /
         // this tool", so two separate detail views would be redundant in a narrow window.
         val tabs = JBTabbedPane().apply {
             addTab("Activity", activity)
             addTab("Tools (${ToolRegistry.all().size})", toolsPane())
         }
+        splitter.firstComponent = tabs
 
-        // A splitter, not a fixed pane: on a narrow docked tool window the developer decides
-        // how much room the detail view gets.
-        return OnePixelSplitter(true, SPLIT_PROPORTION).apply {
-            firstComponent = tabs
-            secondComponent = details
+        bodyPanel.addComponentListener(
+            object : java.awt.event.ComponentAdapter() {
+                override fun componentResized(event: java.awt.event.ComponentEvent) =
+                    applyDensity(tabs, bodyPanel.height)
+            },
+        )
+        applyDensity(tabs, 0)
+        return bodyPanel
+    }
+
+    /**
+     * Chooses between the splitter and the collapsed section, and only when the answer changes.
+     *
+     * Rebuilding on every resize event would tear the details view down and back up dozens of
+     * times while a developer drags the tool window edge, losing the scroll position each time.
+     */
+    private fun applyDensity(tabs: JComponent, height: Int) {
+        // Height 0 is the pre-layout pass: assume roomy, since that is the docked default and
+        // the first real resize corrects it before anything is on screen.
+        val wantCompact = height in 1 until COMPACT_HEIGHT
+        if (wantCompact == compact) return
+        compact = wantCompact
+
+        bodyPanel.removeAll()
+        if (wantCompact) {
+            // Moving the same component between parents; Swing detaches it from the splitter.
+            splitter.secondComponent = null
+            detailsSection.setExpandedTransiently(false)
+            bodyPanel.add(tabs, BorderLayout.CENTER)
+            bodyPanel.add(detailsSection, BorderLayout.SOUTH)
+        } else {
+            // Forced open, and transiently: a section left collapsed in the compact layout
+            // would otherwise become 28% of empty box with a title bar on top of it.
+            detailsSection.setExpandedTransiently(true)
+            splitter.firstComponent = tabs
+            splitter.secondComponent = detailsSection
+            bodyPanel.add(splitter, BorderLayout.CENTER)
         }
+        bodyPanel.revalidate()
+        bodyPanel.repaint()
     }
 
     /**
@@ -385,8 +438,22 @@ class McpServerPanel(
 
     private fun transports(): String {
         val http = "HTTP (127.0.0.1:${service.port})"
-        val stdio = service.stdioEndpoint?.let { "stdio (${it.describe()})" }
+        // The session count is stdio's alone. HTTP POST is stateless, so it has no sessions to
+        // count, and showing a shared number would attribute stdio's connections to both.
+        val stdio = service.stdioEndpoint?.let { "stdio (${it.describe()}$sessions)" }
         return listOfNotNull(http, stdio).joinToString(", ")
+    }
+
+    /**
+     * Live stdio connections, shown only when there are any.
+     *
+     * A permanent "0 sessions" would read as something being wrong when nothing is: no client
+     * is attached, which is the normal state of a server nobody has pointed a client at yet.
+     */
+    private val sessions: String get() = when (val count = service.stdioSessionCount) {
+        0 -> ""
+        1 -> ", 1 session"
+        else -> ", $count sessions"
     }
 
     /**
@@ -538,6 +605,9 @@ class McpServerPanel(
 
         // Favour the list: the detail pane is empty until something is selected.
         const val SPLIT_PROPORTION = 0.72f
+
+        /** Below this the 28% detail pane is too small to read and too big to spare. */
+        const val COMPACT_HEIGHT = 500
 
         const val EMPTY_DETAIL =
             "Select a request or a tool above to see its details here."

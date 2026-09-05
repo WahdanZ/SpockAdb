@@ -76,6 +76,9 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     /** Where the stdio bridge is listening, or null when it could not be started. */
     val stdioEndpoint: McpBridgeServer.Endpoint? get() = bridge?.endpoint
 
+    /** Live stdio connections. Zero when the bridge is down as well as when nothing is attached. */
+    val stdioSessionCount: Int get() = bridge?.sessionCount ?: 0
+
     override fun getState(): McpSettings = settings
 
     override fun loadState(state: McpSettings) {
@@ -99,7 +102,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         if (settings.token.isBlank()) settings.token = generateToken()
 
         val mcpProtocol = McpProtocol(
-            contextProvider = { McpToolContext(selectedSerial, selectedProject) },
+            contextProvider = { toolContext },
             auditLog = ::record,
             isToolEnabled = ::isToolEnabled,
         )
@@ -223,6 +226,26 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     }
 
     /**
+     * The context every tool call runs against, whichever way it arrived.
+     *
+     * Shared by the MCP transports and the in-IDE assistant on purpose: one device selection,
+     * one project resolution and one confirmation dialog, so "which phone is this acting on"
+     * has a single answer.
+     */
+    val toolContext: spock.adb.mcp.tools.ToolContext
+        get() = McpToolContext(selectedSerial, selectedProject)
+
+    /**
+     * The device MCP clients and the assistant are targeting, or null when none has been
+     * chosen and calls fall through to whichever device is attached.
+     *
+     * Exposed so the Devices tab can show it: this selection and the tool window's own are
+     * independent, and a developer watching one phone while an agent drives another is a trap
+     * worth surfacing rather than documenting.
+     */
+    val targetedSerial: String? get() = selectedSerial.get()
+
+    /**
      * Most recent tool calls, newest first, for the activity view.
      *
      * Reads memory only. The panel calls this on the EDT, and parsing the history file there
@@ -281,7 +304,14 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         history.prepend(historyStore.load())
     }
 
-    private fun record(call: McpCall) {
+    /**
+     * Records one tool call, whichever way it arrived.
+     *
+     * Public because the in-IDE assistant records through it too: "what touched my device"
+     * should have one answer, and a call the assistant made is as much a thing that touched it
+     * as an external agent's.
+     */
+    fun record(call: McpCall) {
         history.record(call)
         historyWriter.record(call)
 

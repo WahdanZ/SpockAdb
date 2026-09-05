@@ -6,12 +6,18 @@ import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
+import spock.adb.assistant.AssistantKeyStore
+import spock.adb.assistant.AssistantProvider
+import spock.adb.assistant.AssistantService
 import spock.adb.mcp.tools.AdbTool
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
 import spock.adb.ui.WrapLayout
+import spock.adb.ui.renderWith
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font
@@ -20,6 +26,7 @@ import java.awt.GridBagLayout
 import java.awt.Insets
 import javax.swing.JButton
 import javax.swing.JCheckBox
+import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JSpinner
@@ -36,8 +43,26 @@ import javax.swing.SpinnerNumberModel
 class SpockAdbConfigurable : Configurable {
 
     private val service = McpServerService.getInstance()
+    private val assistant = AssistantService.getInstance()
     private var historySpinner: JSpinner? = null
     private var panel: JComponent? = null
+
+    private val providerBox = JComboBox(AssistantProvider.entries.toTypedArray()).apply {
+        renderWith { it.label }
+    }
+    private val modelField = JBTextField(FIELD_COLUMNS)
+    private val baseUrlField = JBTextField(FIELD_COLUMNS)
+
+    /**
+     * Write-only, deliberately.
+     *
+     * A key already stored is never read back into this field: a settings screen that renders
+     * a secret puts it on screen, in a screen share and in a screenshot, for no benefit — the
+     * developer cannot check a key by looking at it. Blank means "leave whatever is stored";
+     * Remove Key is how it is cleared.
+     */
+    private val apiKeyField = JBPasswordField().apply { columns = FIELD_COLUMNS }
+    private val keyStatusLabel = JBLabel()
 
     /** One checkbox per registered tool, in registry order within its safety group. */
     private val toolChecks = LinkedHashMap<String, JCheckBox>()
@@ -54,6 +79,7 @@ class SpockAdbConfigurable : Configurable {
         }
 
         content.add(mcpSection(), constraints)
+        content.add(assistantSection(), constraints)
         content.add(toolAccessSection(), constraints)
         content.add(shortcutSection(), constraints)
         content.add(
@@ -99,6 +125,92 @@ class SpockAdbConfigurable : Configurable {
                 add(row, BorderLayout.CENTER)
             },
         )
+    }
+
+    /**
+     * The in-IDE assistant's provider, model and key.
+     *
+     * The privacy note is first and unavoidable: the assistant sends the developer's questions
+     * *and every tool result* — screenshots, logcat, package lists — to whichever provider is
+     * configured here. That is not something to leave to the documentation, because it is the
+     * one consequence a developer cannot undo after the fact.
+     */
+    private fun assistantSection(): JComponent {
+        providerBox.addActionListener { onProviderChanged() }
+
+        val fields = JPanel(GridBagLayout())
+        val labels = GridBagConstraints().apply {
+            gridx = 0
+            anchor = GridBagConstraints.WEST
+            insets = Insets(0, 0, JBUI.scale(2), JBUI.scale(GAP))
+        }
+        val values = GridBagConstraints().apply {
+            gridx = 1
+            anchor = GridBagConstraints.WEST
+            insets = Insets(0, 0, JBUI.scale(2), 0)
+        }
+
+        listOf<Pair<String, JComponent>>(
+            "Provider:" to providerBox,
+            "Model:" to modelField,
+            "Base URL:" to baseUrlField,
+            "API key:" to apiKeyField,
+        ).forEach { (caption, field) ->
+            fields.add(JBLabel(caption), labels)
+            fields.add(field, values)
+        }
+        fields.add(JBLabel(""), labels)
+        fields.add(
+            JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
+                add(keyStatusLabel)
+                add(JButton("Remove Key").apply { addActionListener { removeKey() } })
+            },
+            values,
+        )
+
+        return section(
+            "AI Assistant",
+            JPanel(BorderLayout()).apply {
+                add(
+                    JBLabel(
+                        "<html>Everything you ask the assistant, and every tool result it " +
+                            "reads — screenshots, logcat, package lists — is sent to the " +
+                            "provider configured here. The key is kept in the IDE password " +
+                            "safe, never in a settings file.</html>",
+                    ),
+                    BorderLayout.NORTH,
+                )
+                add(fields, BorderLayout.CENTER)
+            },
+        )
+    }
+
+    /**
+     * Moves the placeholders to the newly chosen provider.
+     *
+     * Only the placeholders: a model the developer typed is left alone, because switching
+     * provider to check the default and switching back should not silently discard it.
+     */
+    private fun onProviderChanged() {
+        val provider = selectedProvider()
+        modelField.emptyText.text = if (provider.needsExplicitModel) "required" else provider.defaultModel
+        baseUrlField.emptyText.text = if (provider.needsExplicitBaseUrl) "required" else provider.defaultBaseUrl
+        refreshKeyStatus()
+    }
+
+    private fun selectedProvider(): AssistantProvider =
+        providerBox.selectedItem as? AssistantProvider ?: AssistantProvider.ANTHROPIC
+
+    private fun refreshKeyStatus() {
+        val stored = AssistantKeyStore.hasKey(selectedProvider())
+        keyStatusLabel.text = if (stored) "A key is stored for this provider." else "No key stored."
+        keyStatusLabel.foreground = if (stored) com.intellij.ui.JBColor.foreground() else com.intellij.ui.JBColor.GRAY
+    }
+
+    private fun removeKey() {
+        AssistantKeyStore.store(selectedProvider(), "")
+        apiKeyField.text = ""
+        refreshKeyStatus()
     }
 
     /**
@@ -255,29 +367,66 @@ class SpockAdbConfigurable : Configurable {
     override fun isModified(): Boolean {
         val historyChanged = (historySpinner?.value as? Int)?.let { it != service.historySize } ?: false
         val toolsChanged = toolChecks.isNotEmpty() && uncheckedTools() != service.disabledTools
-        return historyChanged || toolsChanged
+        return historyChanged || toolsChanged || assistantModified()
     }
+
+    /** A typed key always counts as a change: the field is write-only, so it cannot be compared. */
+    private fun assistantModified(): Boolean =
+        selectedProvider() != assistant.provider ||
+            modelField.text.orEmpty().trim() != storedModelText() ||
+            baseUrlField.text.orEmpty().trim() != storedBaseUrlText() ||
+            apiKeyField.password.isNotEmpty()
 
     override fun apply() {
         (historySpinner?.value as? Int)?.let { service.historySize = it }
         if (toolChecks.isNotEmpty()) service.setDisabledTools(uncheckedTools())
+
+        assistant.provider = selectedProvider()
+        assistant.model = modelField.text.orEmpty()
+        assistant.baseUrl = baseUrlField.text.orEmpty()
+
+        val typed = String(apiKeyField.password)
+        // Blank means "leave what is stored", not "clear it" — otherwise opening Settings for
+        // an unrelated change and pressing OK would silently delete the developer's key.
+        if (typed.isNotBlank()) AssistantKeyStore.store(selectedProvider(), typed)
+        apiKeyField.text = ""
+        refreshKeyStatus()
     }
 
     override fun reset() {
         historySpinner?.value = service.historySize
         toolChecks.forEach { (name, box) -> box.isSelected = service.isToolEnabled(name) }
+
+        providerBox.selectedItem = assistant.provider
+        modelField.text = storedModelText()
+        baseUrlField.text = storedBaseUrlText()
+        apiKeyField.text = ""
+        onProviderChanged()
     }
+
+    /**
+     * What the developer actually typed, not what the provider defaults to.
+     *
+     * Showing the resolved default in the field would store it on the next OK, pinning them to
+     * today's default for ever — the empty field means "follow the default" and has to stay
+     * empty to keep meaning that.
+     */
+    private fun storedModelText(): String = assistant.storedModel
+
+    private fun storedBaseUrlText(): String = assistant.storedBaseUrl
 
     override fun disposeUIResources() {
         panel = null
         historySpinner = null
         toolChecks.clear()
+        apiKeyField.text = ""
     }
 
     private companion object {
         const val GAP = 8
         const val SECTION_GAP = 12
         const val HISTORY_STEP = 50
+        const val FIELD_COLUMNS = 28
         const val NOT_BOUND = "not bound"
         const val KEYMAP_ID = "preferences.keymap"
 
@@ -294,6 +443,7 @@ class SpockAdbConfigurable : Configurable {
             "spock.adb.actions.OpenLogcatAction",
             "spock.adb.actions.OpenCommandCenterAction",
             "spock.adb.actions.OpenMcpPanelAction",
+            "spock.adb.actions.OpenAssistantAction",
             "spock.adb.mcp.ToggleMcpServerAction",
         )
     }

@@ -33,6 +33,7 @@ import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.util.concurrent.TimeUnit
+import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -58,6 +59,17 @@ class UiInspectorPanel(
 
     private val frameworkLabel = JBLabel()
     private val hintLabel = JBLabel()
+
+    /**
+     * Shown when Compose test tags are not exposed.
+     *
+     * A banner rather than the grey hint it used to be: this is the difference between an
+     * agent that can address elements by `testTag` and one reduced to matching on visible text,
+     * and it is fixed by one line the developer can copy from here. As a grey note beside the
+     * framework name it read as trivia, so it was missed by exactly the people it is for.
+     */
+    private val testTagBanner = JPanel(BorderLayout()).apply { isVisible = false }
+    private val testTagBannerLabel = JBLabel()
     private val statusLabel = JBLabel(" ")
 
     private val treeRoot = DefaultMutableTreeNode("No UI captured")
@@ -133,8 +145,38 @@ class UiInspectorPanel(
                 },
                 BorderLayout.CENTER,
             )
-            add(filters, BorderLayout.SOUTH)
+            add(
+                JPanel(BorderLayout()).apply {
+                    add(buildTestTagBanner(), BorderLayout.NORTH)
+                    add(filters, BorderLayout.SOUTH)
+                },
+                BorderLayout.SOUTH,
+            )
         }
+    }
+
+    private fun buildTestTagBanner(): JComponent {
+        testTagBannerLabel.foreground = HYBRID_COLOR
+        testTagBannerLabel.text =
+            "<html><b>Compose test tags are not exposed on this screen.</b> Elements can only " +
+                "be matched by text or content description until you add one modifier.</html>"
+
+        testTagBanner.border = JBUI.Borders.empty(2, GAP)
+        testTagBanner.add(testTagBannerLabel, BorderLayout.CENTER)
+        testTagBanner.add(
+            JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
+                add(
+                    JButton("Copy Modifier").apply {
+                        toolTipText = TEST_TAG_SNIPPET
+                        addActionListener {
+                            CopyPasteManager.getInstance().setContents(StringSelection(TEST_TAG_SNIPPET))
+                        }
+                    },
+                )
+            },
+            BorderLayout.EAST,
+        )
+        return testTagBanner
     }
 
     private fun body(): JComponent {
@@ -193,6 +235,7 @@ class UiInspectorPanel(
                         statusLabel.text = "Capture failed: ${it.message}"
                         frameworkLabel.text = " "
                         hintLabel.text = " "
+                        testTagBanner.isVisible = false
                     }
             }) { project.isDisposed }
         }
@@ -250,14 +293,12 @@ class UiInspectorPanel(
 
         hintLabel.foreground = JBColor.GRAY
         hintLabel.text = when (uiTree.testTagSupport) {
-            UiTree.TestTagSupport.AVAILABLE ->
-                "Compose test tags are visible — match on testTag."
-            UiTree.TestTagSupport.UNAVAILABLE ->
-                "<html>Compose test tags are <b>not</b> visible. Add " +
-                    "<code>Modifier.semantics { testTagsAsResourceId = true }</code> to expose " +
-                    "them; until then, match on text or content description.</html>"
+            UiTree.TestTagSupport.AVAILABLE -> "Compose test tags are visible — match on testTag."
+            // The unavailable case is the banner's, not a grey note's.
+            UiTree.TestTagSupport.UNAVAILABLE -> " "
             UiTree.TestTagSupport.NOT_APPLICABLE -> " "
         }
+        testTagBanner.isVisible = uiTree.testTagSupport == UiTree.TestTagSupport.UNAVAILABLE
     }
 
     // ---------------------------------------------------------------- tree
@@ -433,6 +474,9 @@ class UiInspectorPanel(
         const val SPLIT_PROPORTION = 0.6f
         const val DUMP_TIMEOUT_SECONDS = 30L
         const val MAX_AUTO_EXPAND_ROWS = 200
+
+        /** Exactly what the developer has to add, so Copy Modifier pastes something that compiles. */
+        const val TEST_TAG_SNIPPET = "Modifier.semantics { testTagsAsResourceId = true }"
 
         val COMPOSE_COLOR = JBColor(0x1F6F4A, 0x57BA8C)
         val HYBRID_COLOR = JBColor(0x8A6100, 0xE0A030)
