@@ -186,14 +186,34 @@ conversation yet — that arrives with the UI it exists to serve.
 
 ## Phase 5 — Safety and control (P0)
 
-- [ ] `McpSettings.disabledTools: MutableSet<String>`; predicate consulted in
-      `McpProtocol.dispatch` **and** the assistant loop. The shared registry is never mutated.
-- [ ] A disabled tool returns a clear "disabled by user" error and is still recorded.
-- [ ] Settings UI: checkbox list grouped by safety level.
-- [ ] History persistence: append-only NDJSON under `<config>/spock-adb/`, capped by
+`ToolGate`, `McpHistoryStore`, `McpHistoryWriter`, `McpSettings.disabledTools`, and the
+Tool Access section of `SpockAdbConfigurable`.
+
+- [x] `McpSettings.disabledTools: MutableSet<String>`; predicate consulted in
+      `McpProtocol.toolsCall` **and** `RegistryAgentTools`. The shared registry is never mutated.
+- [x] A disabled tool returns a clear "disabled by user" error and is still recorded.
+- [x] Settings UI: checkbox list grouped by safety level.
+- [x] History persistence: append-only NDJSON under `<config>/spock-adb/`, capped by
       `historySize`, batched writes off the EDT, loaded on start.
-- [ ] Tests: disabled-tool error path, NDJSON round-trip and cap, and a regression asserting
-      no new tool can perform a destructive action unconfirmed (extend `ToolSafetyTest`).
+- [x] Tests: disabled-tool error path, NDJSON round-trip and cap, and a regression asserting
+      no new tool can perform a destructive action unconfirmed (`ToolSafetyTest` already
+      carries it — `no destructive tool can report success without a confirmation` runs over
+      every registered destructive tool, so a tool added later is covered without being named).
+
+Decisions worth keeping:
+
+- **Disabled is stored, not enabled.** An allow-list would silently withhold every tool added
+  by a later update from a developer who had once opened the screen, which reads as the update
+  being broken.
+- **A disabled tool stays in `tools/list` and refuses on call.** Hiding it would send an agent
+  hunting for a tool it can see documented, and would leave the audit trail silent about the
+  attempt. The assistant is the deliberate exception: it is handed a fresh list every turn, so
+  offering it a tool certain to refuse would spend a turn to learn what the list could say.
+- **A refusal is audited like any other result.** An agent reaching for something it was denied
+  is the entry most worth reviewing; it must not be the one kind of call that leaves no trace.
+- **Writes are asynchronous and drained in batches.** The thread recording a call is the one
+  answering it. `McpHistoryWriter.shutdown()` flushes, so the calls made as the IDE closes —
+  exactly the ones worth having — are not the ones lost.
 
 ## Phase 6 — UI/UX polish (P2)
 

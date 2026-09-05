@@ -124,4 +124,59 @@ class McpProtocolTest {
         assertEquals("abc", response.get("id").asString)
         assertNotNull(response.get("result"))
     }
+
+    @Test
+    fun `a disabled tool refuses, says why, and never reaches the device`() {
+        val disabled = McpProtocol(
+            contextProvider = { context },
+            auditLog = { calls += it },
+            isToolEnabled = { it != "android_list_devices" },
+        )
+
+        val result = JsonParser.parseString(
+            disabled.handle(
+                """{"jsonrpc":"2.0","id":9,"method":"tools/call",
+                   "params":{"name":"android_list_devices","arguments":{}}}""",
+            )!!,
+        ).asJsonObject.getAsJsonObject("result")
+
+        assertTrue(result.get("isError").asBoolean)
+        val text = result.getAsJsonArray("content").toString()
+        assertTrue(text.contains("disabled"), text)
+        assertTrue(text.contains("android_list_devices"), text)
+        // The device would have been named had the tool run at all.
+        assertFalse(text.contains("emulator-5554"), text)
+    }
+
+    @Test
+    fun `a blocked attempt is still audited`() {
+        // Otherwise the one kind of call worth reviewing — an agent reaching for something it
+        // was denied — would be the one kind that leaves no trace.
+        val disabled = McpProtocol(
+            contextProvider = { context },
+            auditLog = { calls += it },
+            isToolEnabled = { false },
+        )
+
+        disabled.handle(
+            """{"jsonrpc":"2.0","id":10,"method":"tools/call",
+               "params":{"name":"android_list_devices","arguments":{}}}""",
+        )
+
+        assertEquals(listOf("android_list_devices"), calls.map { it.toolName })
+        assertTrue(calls.single().isError)
+    }
+
+    @Test
+    fun `a disabled tool is still listed and still described`() {
+        // Hiding it would send an agent hunting for a tool it can see documented, and would
+        // make "you turned this off" indistinguishable from "this build does not have it".
+        val disabled = McpProtocol(contextProvider = { context }, isToolEnabled = { false })
+
+        val tools = JsonParser.parseString(
+            disabled.handle("""{"jsonrpc":"2.0","id":11,"method":"tools/list"}""")!!,
+        ).asJsonObject.getAsJsonObject("result").getAsJsonArray("tools")
+
+        assertEquals(ToolRegistry.all().size, tools.size())
+    }
 }

@@ -20,6 +20,13 @@ import spock.adb.mcp.tools.ToolResult
 class McpProtocol(
     private val contextProvider: () -> ToolContext,
     private val auditLog: (McpCall) -> Unit = {},
+    /**
+     * Whether a tool the developer has switched off may run. Consulted here rather than by
+     * removing tools from the registry: a disabled tool stays listed, stays described, and
+     * refuses when called, so an agent is told why instead of hunting for a tool it can see
+     * documented — and the attempt still reaches the audit trail.
+     */
+    private val isToolEnabled: (String) -> Boolean = { true },
 ) {
 
     /**
@@ -131,7 +138,6 @@ class McpProtocol(
         )
     }
 
-    @Suppress("TooGenericExceptionCaught")
     private fun toolsCall(params: JsonObject?): JsonObject {
         val name = params?.get("name")?.asString
             ?: throw IllegalArgumentException("Missing tool name")
@@ -143,12 +149,13 @@ class McpProtocol(
             ).toJson()
 
         val startedAt = System.currentTimeMillis()
-        val result = try {
-            tool.execute(arguments, contextProvider())
-        } catch (e: Exception) {
-            // Surfaced as a tool error rather than a protocol error: the agent can read it,
-            // explain it to the user and try something else, which a JSON-RPC error hides.
-            ToolResult.error(e.message ?: "${e.javaClass.simpleName} while running $name")
+        // A refusal takes the same path as a result: it is audited, timed and returned like
+        // any other tool error, so a blocked attempt is visible in the activity trail rather
+        // than being the one kind of call that leaves no trace.
+        val result = if (isToolEnabled(name)) {
+            run(tool, name, arguments)
+        } else {
+            ToolResult.error(ToolGate.refusal(name))
         }
 
         auditLog(
@@ -164,6 +171,15 @@ class McpProtocol(
             ),
         )
         return result.toJson()
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun run(tool: AdbTool, name: String, arguments: JsonObject): ToolResult = try {
+        tool.execute(arguments, contextProvider())
+    } catch (e: Exception) {
+        // Surfaced as a tool error rather than a protocol error: the agent can read it,
+        // explain it to the user and try something else, which a JSON-RPC error hides.
+        ToolResult.error(e.message ?: "${e.javaClass.simpleName} while running $name")
     }
 
     private fun resourcesList(): JsonObject = JsonObject().apply {

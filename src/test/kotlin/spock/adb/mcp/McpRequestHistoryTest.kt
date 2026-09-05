@@ -46,6 +46,30 @@ class McpRequestHistoryTest {
     }
 
     @Test
+    fun `prepending puts the loaded history behind what is already there`() {
+        // The persisted history loads on a background thread, so a call can be recorded while
+        // the load is in flight. That call is the one the developer is watching for; replacing
+        // the contents instead of prepending would throw it away.
+        val history = McpRequestHistory()
+        history.record(call(tool = "live"))
+
+        history.prepend(listOf(call(tool = "older"), call(tool = "oldest")))
+
+        assertEquals(listOf("live", "oldest", "older"), history.all().map { it.toolName })
+    }
+
+    @Test
+    fun `prepending honours the current cap`() {
+        // A file written when the cap was higher must not restore more than is allowed now.
+        val history = McpRequestHistory(capacity = McpRequestHistory.MIN_CAPACITY)
+
+        history.prepend((1..60).map { call(tool = "t$it") })
+
+        assertEquals(McpRequestHistory.MIN_CAPACITY, history.size())
+        assertEquals("t60", history.all().first().toolName)
+    }
+
+    @Test
     fun `capacity is clamped to a sane range`() {
         val history = McpRequestHistory()
         history.capacity = 1

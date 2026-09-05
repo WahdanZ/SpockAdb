@@ -1,6 +1,7 @@
 package spock.adb.assistant
 
 import spock.adb.mcp.McpCall
+import spock.adb.mcp.ToolGate
 import spock.adb.mcp.tools.ToolContent
 import spock.adb.mcp.tools.ToolContext
 import spock.adb.mcp.tools.ToolRegistry
@@ -23,9 +24,20 @@ import spock.adb.mcp.tools.ToolResult
 class RegistryAgentTools(
     private val contextProvider: () -> ToolContext,
     private val audit: (McpCall) -> Unit = {},
+    /** The same switch the MCP transports consult — one setting, both ways in. */
+    private val isToolEnabled: (String) -> Boolean = { true },
 ) : AgentTools {
 
-    override fun specs(): List<ToolSpec> = ToolRegistry.all().toToolSpecs()
+    /**
+     * Only the tools that may actually run.
+     *
+     * Unlike the MCP transports, which list everything and refuse on call because a client may
+     * cache a tool list across a settings change, the model is given a fresh list every turn.
+     * Offering it a tool that is certain to refuse would spend a turn and a tool call to learn
+     * something the list could have said.
+     */
+    override fun specs(): List<ToolSpec> =
+        ToolRegistry.all().filter { isToolEnabled(it.name) }.toToolSpecs()
 
     // A tool boundary must not be able to end the conversation: whatever went wrong is a
     // result the model can read and act on, and an exception here would instead be a stack
@@ -40,12 +52,20 @@ class RegistryAgentTools(
             )
 
         val startedAt = System.currentTimeMillis()
-        val result = try {
-            tool.execute(call.arguments, contextProvider())
-        } catch (e: Exception) {
-            // Includes a declined confirmation, which reaches here as a thrown refusal. The
-            // model needs to be told "no" in words; silence would look like a tool that hung.
-            ToolResult.error(e.message ?: "${e.javaClass.simpleName} while running ${call.name}")
+        // The check is still needed despite the filtered list: a tool switched off part-way
+        // through a conversation is still in the history the model is reasoning from. It falls
+        // through to the audit below rather than returning early, so a blocked attempt shows in
+        // the Activity tab exactly as one over MCP does.
+        val result = if (!isToolEnabled(call.name)) {
+            ToolResult.error(ToolGate.refusal(call.name))
+        } else {
+            try {
+                tool.execute(call.arguments, contextProvider())
+            } catch (e: Exception) {
+                // Includes a declined confirmation, which reaches here as a thrown refusal. The
+                // model needs to be told "no" in words; silence would look like a tool that hung.
+                ToolResult.error(e.message ?: "${e.javaClass.simpleName} while running ${call.name}")
+            }
         }
 
         val text = result.content.joinToString("\n") { item ->
