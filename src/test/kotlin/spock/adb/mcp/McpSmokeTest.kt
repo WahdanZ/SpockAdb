@@ -17,7 +17,7 @@ import java.time.Duration
  * Calls every read-only tool against a real device, through a real running server.
  *
  * This exists because the failure mode it looks for cannot be reached any other way.
- * Android Studio supplies an `IDevice` whose implementation leaves nineteen methods
+ * Android Studio supplies an `IDevice` whose implementation leaves a number of methods
  * unimplemented, and a tool that calls one of them returns an error to every caller while
  * compiling cleanly and passing its unit tests — a test that builds its own
  * `AndroidDebugBridge` gets stock ddmlib, where those methods work. `android_take_screenshot`

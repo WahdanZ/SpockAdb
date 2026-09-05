@@ -61,8 +61,9 @@ class SelectProjectToolTest {
     @Test
     fun `a tool needing a project fails with the reason, not a bare null`() {
         // McpProtocol turns a thrown IllegalStateException into a tool error result, so the
-        // agent reads the actionable message rather than "no project is open" for a case
-        // that is really "say which project".
+        // agent reads why the call failed instead of receiving a bare null. This is the case
+        // where nothing is open at all; the ambiguous one, where several are open and the
+        // answer is "say which project", is covered by ProjectResolutionTest.
         val protocol = McpProtocol(contextProvider = { FakeToolContext(project = null) })
         val response = protocol.handle(
             """{"jsonrpc":"2.0","id":1,"method":"tools/call",""" +

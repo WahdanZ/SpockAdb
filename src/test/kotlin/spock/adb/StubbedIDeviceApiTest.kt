@@ -8,9 +8,14 @@ import java.io.File
  * Guards against calling `IDevice` methods that Android Studio does not implement.
  *
  * Android Studio does not supply ddmlib's own `DeviceImpl`. It supplies
- * `com.android.adblib.ddmlibcompatibility.debugging.AdblibIDeviceWrapper`, which leaves
- * nineteen `IDevice` methods unimplemented: each one throws
+ * `com.android.adblib.ddmlibcompatibility.debugging.AdblibIDeviceWrapper`, which leaves a
+ * number of `IDevice` methods unimplemented: each one throws
  * `"This method is not used in Android Studio"`.
+ *
+ * [UNIMPLEMENTED_IN_ANDROID_STUDIO] is the authority on which ones, and no count is repeated
+ * in prose — a number here would go stale the first time that set changed, and a stale one
+ * reads as if the set were complete. It is not claimed to be: it holds the stubs found so far,
+ * and finding another one means adding it rather than working around this test.
  *
  * Nothing catches this at compile time — the methods are on the interface and are perfectly
  * real in stock ddmlib — and no unit test catches it either, because a test that builds its

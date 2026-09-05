@@ -20,7 +20,7 @@ MCP". It is: close the documented gaps, bring the AI agent inside the IDE, and p
 |---|---|---|
 | LLM providers in v1 | **Anthropic + a generic OpenAI-compatible client** | Two implementations behind `LlmClient` cover Anthropic, OpenAI, local Ollama and corporate proxies via a configurable base URL. |
 | History persistence | **On by default, 500-entry cap, Settings toggle to disable and clear** | The audit trail's value is surviving the restart that loses in-memory state. Local file in the same trust boundary as the `idea.log` entries destructive calls already write. Off-by-default would disable it exactly when it is needed. |
-| `android_pull_file` scope | Allow-list `/sdcard/**` and `/data/local/tmp/**`; anything else is `DESTRUCTIVE` and prompts | Pulling arbitrary device paths is a data-exfiltration vector. Being stricter than raw `adb` here is a deliberate product choice. |
+| `android_pull_file` scope | Allow-list `/sdcard`, `/storage` and `/data/local/tmp`; anything else is **refused**, naming `android_run_adb_command` as the escape hatch | Pulling arbitrary device paths is a data-exfiltration vector. Being stricter than raw `adb` here is a deliberate product choice. Refusing beats prompting: a prompt puts the judgement on a developer mid-flow, where the safe answer is the one the agent already has a documented, confirmed route to. |
 | Chat UI toolkit | **Swing**, not JCEF | Matches every other panel; JCEF is heavy and version-sensitive across AS 231+. Revisit only if markdown fidelity becomes a requirement. |
 | Messaging | "Extending the MCP toolkit and bringing the AI agent into the IDE" | 4.x already shipped MCP. |
 

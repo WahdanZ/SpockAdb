@@ -386,7 +386,7 @@ Recorded honestly so the gaps are not mistaken for features:
 ## Testing
 
 Two guards exist because of bugs that reached users. `StubbedIDeviceApiTest` fails the build
-when anything calls one of the nineteen `IDevice` methods Android Studio leaves unimplemented —
+when anything calls one of the `IDevice` methods Android Studio leaves unimplemented —
 each throws "This method is not used in Android Studio" at runtime while compiling and
 unit-testing cleanly, because a test that builds its own `AndroidDebugBridge` gets stock ddmlib
 where they all work. It reads compiled bytecode rather than source, since Kotlin's property

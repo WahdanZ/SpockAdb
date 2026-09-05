@@ -37,7 +37,7 @@ class DebugContextToolTest {
      * canned reply would let a bug that sends the wrong command to the wrong section pass.
      */
     private fun routedDevice(
-        dumpReply: String = "UI hierchary dumped to: /sdcard/spock-adb-ui-dump.xml",
+        dumpReply: String = "UI hierarchy dumped to: /sdcard/spock-adb-ui-dump.xml",
         logcatReply: String = "01-01 00:00:00.000  1234  1234 E MyApp: boom",
     ): ConnectedDevice {
         val device = mockk<IDevice>(relaxed = true)
