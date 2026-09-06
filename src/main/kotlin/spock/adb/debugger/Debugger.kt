@@ -172,7 +172,7 @@ class AttachToClient(
      */
     private fun declaredAttachMethods(): List<java.lang.reflect.Method> {
         val methods = mutableListOf<java.lang.reflect.Method>()
-        var current = androidDebugger.javaClass
+        var current: Class<*>? = androidDebugger.javaClass
         while (current != null) {
             methods += current.declaredMethods.filter { it.name == ATTACH }
             current = current.superclass
