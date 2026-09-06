@@ -12,6 +12,9 @@ import com.intellij.openapi.project.Project
 import org.joor.Reflect
 import org.joor.Reflect.on
 import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Modifier
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
 
 
 class Debugger(private val project: Project, private val device: IDevice, private val packageName: String) {
@@ -100,8 +103,14 @@ class AttachToClient(
     private val client: Client
 ) : BackwardCompatibleGetter<Unit>() {
 
-    /** AS 2024+ takes a trailing run configuration, which is optional and unused here. */
+    /**
+     * Current Android Studio versions attach through [DebugSessionStarter] rather than through
+     * [AndroidDebugger]. Try that path first, while keeping the old API below for older IDEs.
+     */
     override fun getCurrentImplementation() {
+        if (ModernDebuggerAttach.attach(androidDebugger, project, client)) return
+
+        // AS 2024+ takes a trailing run configuration, which is optional and unused here.
         on(androidDebugger).call(ATTACH, project, client, null)
     }
 
@@ -180,6 +189,99 @@ class AttachToClient(
             } + "."
         }
     }
+}
+
+/**
+ * Android Studio moved debugger attachment out of [AndroidDebugger]. The replacement
+ * is intentionally looked up at runtime: it is absent from the older Studio builds that this
+ * plugin supports, and directly linking it would prevent the plugin from loading there.
+ */
+internal object ModernDebuggerAttach {
+    private const val STARTER_CLASS =
+        "com.android.tools.idea.execution.common.debug.DebugSessionStarter"
+    private const val ATTACH_TO_CLIENT_AND_SHOW_TAB = "attachDebuggerToClientAndShowTab"
+    private const val CREATE_STATE = "createState"
+
+    /**
+     * Invokes the current Android Studio debugger entry point when available.
+     *
+     * `false` means this IDE does not have a compatible shape, so the caller may try the legacy
+     * `AndroidDebugger.attachToClient` path. Once the current method is invoked, its exception is
+     * propagated — falling back after a genuine attach failure would mask the useful error.
+     */
+    fun attach(androidDebugger: Any, project: Any, client: Any): Boolean {
+        val starterClass = try {
+            Class.forName(STARTER_CLASS, false, androidDebugger.javaClass.classLoader)
+        } catch (_: ClassNotFoundException) {
+            return false
+        }
+        return attach(starterClass, androidDebugger, project, client)
+    }
+
+    /** Kept separate so the signature matching is testable without an Android Studio runtime. */
+    internal fun attach(
+        starterClass: Class<*>,
+        androidDebugger: Any,
+        project: Any,
+        client: Any,
+    ): Boolean {
+        val stateFactory = androidDebugger.javaClass.methods.singleOrNull {
+            it.name == CREATE_STATE && it.parameterCount == 0
+        } ?: return false
+        val state = try {
+            stateFactory.invoke(androidDebugger)
+        } catch (e: InvocationTargetException) {
+            throw e.targetException ?: e
+        } catch (_: ReflectiveOperationException) {
+            return false
+        }
+        val attachMethod = starterClass.methods.singleOrNull { method ->
+            method.name == ATTACH_TO_CLIENT_AND_SHOW_TAB &&
+                method.parameterCount in ATTACH_PARAMETER_COUNTS &&
+                method.parameterTypes[0].isInstance(project) &&
+                method.parameterTypes[1].isInstance(client) &&
+                method.parameterTypes[2].isInstance(androidDebugger) &&
+                method.parameterTypes[3].isInstance(state)
+        } ?: return false
+
+        val receiver = if (Modifier.isStatic(attachMethod.modifiers)) {
+            null
+        } else {
+            try {
+                starterClass.getField("INSTANCE").get(null)
+            } catch (_: ReflectiveOperationException) {
+                return false
+            }
+        }
+        try {
+            val arguments = arrayOf(project, client, androidDebugger, state)
+            if (attachMethod.parameterCount == SUSPEND_ATTACH_PARAMETER_COUNT) {
+                attachMethod.invoke(receiver, *arguments, AttachContinuation)
+            } else {
+                attachMethod.invoke(receiver, *arguments)
+            }
+        } catch (e: InvocationTargetException) {
+            throw e.targetException ?: e
+        } catch (_: ReflectiveOperationException) {
+            return false
+        }
+        return true
+    }
+
+    /**
+     * Android Studio 2025.1 declares this as a suspend function. Its fifth Java-level parameter
+     * is a [Continuation]; later releases expose a regular four-argument function instead.
+     */
+    private object AttachContinuation : Continuation<Any?> {
+        override val context = EmptyCoroutineContext
+
+        override fun resumeWith(result: Result<Any?>) {
+            result.getOrThrow()
+        }
+    }
+
+    private const val SUSPEND_ATTACH_PARAMETER_COUNT = 5
+    private val ATTACH_PARAMETER_COUNTS = 4..SUSPEND_ATTACH_PARAMETER_COUNT
 }
 
 private class RunningProcessesGetter(

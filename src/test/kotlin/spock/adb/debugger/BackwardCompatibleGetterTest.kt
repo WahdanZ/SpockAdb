@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import kotlin.coroutines.Continuation
 
 /**
  * The rule that decides whether to fall back to an older API.
@@ -17,6 +18,41 @@ import org.junit.jupiter.api.assertThrows
  * Android Studio whose `attachToClient` had a different arity crashed instead of falling back.
  */
 class BackwardCompatibleGetterTest {
+
+    private class FakeDebugger {
+        fun createState() = FakeState()
+    }
+
+    private class FakeState
+
+    private object FakeDebugSessionStarter {
+        var received: List<Any>? = null
+
+        @JvmStatic
+        fun attachDebuggerToClientAndShowTab(
+            project: Any,
+            client: Any,
+            debugger: FakeDebugger,
+            state: FakeState,
+        ) {
+            received = listOf(project, client, debugger, state)
+        }
+    }
+
+    private object SuspendFakeDebugSessionStarter {
+        var received: List<Any>? = null
+
+        fun attachDebuggerToClientAndShowTab(
+            project: Any,
+            client: Any,
+            debugger: FakeDebugger,
+            state: FakeState,
+            continuation: Continuation<Any?>,
+        ) {
+            received = listOf(project, client, debugger, state)
+            continuation.resumeWith(Result.success(Unit))
+        }
+    }
 
     private class Getter(
         private val current: () -> String,
@@ -99,5 +135,52 @@ class BackwardCompatibleGetterTest {
         val outer = ReflectException(root)
 
         assertEquals(listOf(outer, root), BackwardCompatibleGetter.causes(outer))
+    }
+
+    @Test
+    fun `the current Studio attach API uses the debugger state`() {
+        val debugger = FakeDebugger()
+        val project = Any()
+        val client = Any()
+
+        assertTrue(ModernDebuggerAttach.attach(FakeDebugSessionStarter::class.java, debugger, project, client))
+
+        val received = requireNotNull(FakeDebugSessionStarter.received)
+        assertEquals(project, received[0])
+        assertEquals(client, received[1])
+        assertEquals(debugger, received[2])
+        assertTrue(received[3] is FakeState)
+    }
+
+    @Test
+    fun `the suspend current Studio attach API receives a continuation`() {
+        val debugger = FakeDebugger()
+        val project = Any()
+        val client = Any()
+
+        assertTrue(
+            ModernDebuggerAttach.attach(
+                SuspendFakeDebugSessionStarter::class.java,
+                debugger,
+                project,
+                client,
+            )
+        )
+
+        assertEquals(listOf(project, client, debugger), requireNotNull(SuspendFakeDebugSessionStarter.received).take(3))
+    }
+
+    @Test
+    fun `an incompatible current Studio attach API falls back to legacy`() {
+        val missingStateDebugger = Any()
+
+        assertFalse(
+            ModernDebuggerAttach.attach(
+                FakeDebugSessionStarter::class.java,
+                missingStateDebugger,
+                Any(),
+                Any(),
+            )
+        )
     }
 }
