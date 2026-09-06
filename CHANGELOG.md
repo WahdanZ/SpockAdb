@@ -33,6 +33,19 @@
 
 ### Fixed
 
+- **Restart with Debugger crashed instead of falling back on newer Android Studio.**
+  `AndroidJavaDebugger.attachToClient` has gained and lost a trailing parameter across releases,
+  and the plugin was written to try the new shape and fall back to the old one — but the fallback
+  was unreachable. jOOR reports a missing method as a `ReflectException` *caused by*
+  `NoSuchMethodException`, and the check that decided "this IDE has a different API" looked only
+  at the throwable it was handed, never at what that wrapped. Every miss was therefore treated as
+  a real error, so the compatibility path never ran and the developer got
+  `RuntimeException: ReflectException: NoSuchMethodException: No similar method attachToClient`.
+  The check now walks the cause chain, cycle-guarded because it runs on the EDT. If neither known
+  shape fits, the attach is driven from the signature the class actually declares, and if that
+  fails too the message names the real signature instead of a reflection library — so the next
+  report of this carries what is needed to fix it. `BackwardCompatibleGetter` moved to its own
+  file, free of IntelliJ types, so the rule is covered by tests rather than only by inspection
 - **`android_take_screenshot` never worked inside Android Studio.** It called
   `IDevice.getScreenshot()`, which the IDE ships as a stub that fails with "This method is not
   used in Android Studio", so every call returned that message instead of an image. Capture now
