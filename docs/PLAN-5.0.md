@@ -172,17 +172,40 @@ conversation yet — that arrives with the UI it exists to serve.
 
 ## Phase 4 — Assistant UI (P0)
 
-- [ ] `assistant/AssistantPanel.kt` — Swing: transcript, input, Send, Stop, "attach debugging
+`AssistantPanel`, `AssistantService`, `AssistantProvider`, `AssistantTranscript`,
+`AssistantPrompt`, and the AI Assistant section of `SpockAdbConfigurable`.
+
+- [x] `assistant/AssistantPanel.kt` — Swing: transcript, input, Send, Stop, "attach debugging
       context" toggle that injects a `android_get_debug_context` result into the first message.
-- [ ] Tab in `spock/AdbDrawerViewer.kt`, disposer registered like its siblings.
-- [ ] `OpenAssistantAction`, following `OpenMcpPanelAction`. No default keyboard shortcut —
+- [x] Tab in `spock/AdbDrawerViewer.kt`, disposer registered like its siblings.
+- [x] `OpenAssistantAction`, following `OpenMcpPanelAction`. No default keyboard shortcut —
       established project policy, users bind via Keymap.
-- [ ] Settings section: provider dropdown, model, base URL, write-only API key field.
-- [ ] States: empty (no key → link to Settings), loading (Send disabled, Stop enabled), error
+- [x] Settings section: provider dropdown, model, base URL, write-only API key field.
+- [x] States: empty (no key → link to Settings), loading (Send disabled, Stop enabled), error
       (rendered as a transcript line with the HTTP status, not a modal). Destructive
       confirmation stays the existing IDE modal — never an inline chat approval.
-- [ ] Streaming appends throttled to the EDT on the Logcat panel's 100ms flush pattern.
-- [ ] Transcript bounded (~500 messages), `JBColor`/`JBUI` only, Ctrl+Enter sends, Esc stops.
+- [x] Streaming appends throttled to the EDT on the Logcat panel's 100ms flush pattern.
+- [x] Transcript bounded (~500 messages), `JBColor`/`JBUI` only, Ctrl+Enter sends, Esc stops.
+
+Decisions worth keeping:
+
+- **One tool context, shared with MCP.** `McpServerService.toolContext` is what both the
+  transports and the assistant run against, so the device selection, the project resolution and
+  the confirmation dialog have one implementation — and an assistant call lands in the same
+  activity history, tagged `spock-assistant`.
+- **The API key field is write-only.** A stored key is never read back into it: a settings
+  screen that renders a secret puts it in every screen share and screenshot for no benefit,
+  since a developer cannot verify a key by looking at it. Blank means "keep what is stored";
+  Remove Key is how it is cleared.
+- **An empty model or base URL means "follow the provider's default".** The field shows the
+  default as placeholder text rather than as a value, because storing it would pin the developer
+  to today's default for ever.
+- **The privacy warning is in the panel and in Settings, not only in the docs.** Everything the
+  assistant reads — screenshots, logcat, package lists — leaves the machine, and that is the one
+  consequence a developer cannot undo after the fact.
+- **`AssistantProvider` is its own type, free of IntelliJ.** It decides the client, the defaults
+  and the dropdown label, and only incidentally which credential entry is read — which also makes
+  the defaults and the unknown-name fallback directly testable.
 
 ## Phase 5 — Safety and control (P0)
 
@@ -217,15 +240,19 @@ Decisions worth keeping:
 
 ## Phase 6 — UI/UX polish (P2)
 
-- [ ] Devices tab: show which device MCP clients are targeting — `McpServerService.selectedSerial`
+- [x] Devices tab: show which device MCP clients are targeting — `McpServerService.selectedSerial`
       and the tool-window selection are independent today, which is a real "agent hit the wrong
-      phone" trap.
-- [ ] MCP panel: stdio session count in the header, reporting only what `McpBridgeServer` can
-      actually observe.
-- [ ] UI Inspector: promote `TestTagSupport.UNAVAILABLE` from a note to a banner carrying the
-      exact `testTagsAsResourceId = true` snippet.
-- [ ] `McpServerPanel`: collapse the 72/28 details split below ~500px using the existing
-      `CollapsibleSection`.
+      phone" trap. Shown only on a mismatch: a permanent "these agree" banner would train the
+      developer to stop reading the one line that matters.
+- [x] MCP panel: stdio session count in the header, reporting only what `McpBridgeServer` can
+      actually observe — live sockets, not clients, and only when there are any. HTTP is
+      stateless and so has no session count to show.
+- [x] UI Inspector: promote `TestTagSupport.UNAVAILABLE` from a note to a banner carrying the
+      exact `testTagsAsResourceId = true` snippet, with a Copy Modifier button.
+- [x] `McpServerPanel`: collapse the 72/28 details split below ~500px using the existing
+      `CollapsibleSection`. Forced open again when the panel is roomy, and without persisting
+      either change — a layout decision must not overwrite the developer's own last click.
+- [x] Tool window tab order: MCP Server moved second, behind Devices (shipped separately in #73).
 
 ## Phase 7 — Compatibility gate (P0)
 

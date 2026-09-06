@@ -4,13 +4,38 @@
 
 ### Added
 
-- **The assistant core** — the machinery behind the in-IDE AI assistant, with no UI yet.
-  `AgentLoop` runs the model ⇄ tool cycle against the same `ToolRegistry` the MCP transports
-  use, so there is one definition of what an agent may do and one safety model: destructive
-  tools still ask the developer per call and still default to denied, and a declined call is
-  reported back to the model in words rather than ending the conversation. Every call is
-  recorded to the same activity history as `spock-assistant`, so one place answers "what
-  touched my device". The loop is capped at 25 iterations, which is the only guard against a
+- **The in-IDE AI assistant.** A new `Assistant` tab: ask about the connected device and the
+  model uses the plugin's own tools to answer, rather than describing what is usually true of
+  Android. It runs against the same `ToolContext` the MCP transports do — one device selection,
+  one project resolution, one confirmation dialog — and every call lands in the same activity
+  history as `spock-assistant`. Destructive tools still ask per call in the IDE's own modal,
+  never as an inline chat approval, and tools switched off in Tool Access refuse here too.
+  "Attach debugging context" runs `android_get_debug_context` once at the start of a
+  conversation, so the model begins with the activity, the UI semantics and recent logcat in
+  hand. Ctrl+Enter sends, Esc stops at the next step rather than mid-request, and closing the
+  tool window cancels a turn in flight
+- **Everything the assistant reads leaves your machine** — your questions and every tool result,
+  screenshots and logcat included, go to the configured provider. That is stated in the panel
+  and in Settings, not only in the docs, because it is the one consequence a developer cannot
+  undo afterwards. Configure it under `Settings → Tools → Spock ADB → AI Assistant`; the API key
+  field is write-only, and a stored key is never rendered back into it
+- `docs/AI.md`, with the privacy section first
+- **The Devices tab now says when AI agents are targeting a different phone.** The agent's
+  `android_select_device` choice and the tool window dropdown are independent, so a developer
+  could be watching one device while an agent cleared app data on another. Shown only on a
+  mismatch — a permanent "these agree" banner would train you to stop reading it
+- The MCP panel header reports live stdio sessions, and only when there are any. Sockets, not
+  clients: neither transport knows who is calling until the client says so
+- The UI Inspector's "Compose test tags are not exposed" note is now a banner with a Copy
+  Modifier button. As a grey line beside the framework name it read as trivia, so it was missed
+  by exactly the people it is for — it is the difference between an agent that can address
+  elements by `testTag` and one reduced to matching visible text
+- Docked below ~500px, the MCP panel's detail pane becomes a collapsible section instead of a
+  28% split that is too small to read and too big to spare
+- **The assistant core** behind it: `AgentLoop` runs the model ⇄ tool cycle against the same
+  `ToolRegistry` the MCP transports use, so there is one definition of what an agent may do and
+  one safety model. A declined call is reported back to the model in words rather than ending
+  the conversation. The loop is capped at 25 iterations, which is the only guard against a
   surprise bill in this version
 - `AnthropicClient` and `OpenAiCompatibleClient` on `java.net.http` and Gson — no SDK, no new
   dependency, and no change to the supported IDE range. Provider errors are surfaced verbatim

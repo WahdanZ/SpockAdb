@@ -6,6 +6,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import spock.adb.SpockAdbService
 import spock.adb.SpockAdbViewer
+import spock.adb.assistant.AssistantPanel
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.logcat.LogcatPanel
 import spock.adb.mcp.McpServerPanel
@@ -22,6 +23,7 @@ class AdbDrawerViewer : ToolWindowFactory {
         val logcatPanel = LogcatPanel(project)
         val commandCenterPanel = CommandCenterPanel(project)
         val mcpPanel = McpServerPanel(project)
+        val assistantPanel = AssistantPanel(project)
         val uiInspectorPanel = UiInspectorPanel(project)
 
         // Both panels are disposed with the tool window, which stops the logcat stream and
@@ -29,6 +31,9 @@ class AdbDrawerViewer : ToolWindowFactory {
         Disposer.register(toolWindow.disposable, logcatPanel)
         Disposer.register(toolWindow.disposable, commandCenterPanel)
         Disposer.register(toolWindow.disposable, mcpPanel)
+        // Disposing the assistant also cancels a turn still in flight, so closing the tool
+        // window does not leave a model call running against a device no one is watching.
+        Disposer.register(toolWindow.disposable, assistantPanel)
         Disposer.register(toolWindow.disposable, uiInspectorPanel)
 
         val viewer = SpockAdbViewer(project, toolWindow.disposable)
@@ -50,6 +55,9 @@ class AdbDrawerViewer : ToolWindowFactory {
         )
         contentManager.addContent(
             contentManager.factory.createContent(mcpPanel, "MCP Server", false),
+        )
+        contentManager.addContent(
+            contentManager.factory.createContent(assistantPanel, "Assistant", false),
         )
         contentManager.addContent(
             contentManager.factory.createContent(logcatPanel, "Logcat", false),

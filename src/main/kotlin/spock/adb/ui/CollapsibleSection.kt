@@ -36,6 +36,17 @@ class CollapsibleSection(
 
     private var expanded: Boolean = properties.getBoolean(propertyKey(), expandedByDefault)
 
+    /** Whether the content is showing. */
+    val isExpanded: Boolean get() = expanded
+
+    /**
+     * Called after the developer expands or collapses this section.
+     *
+     * For a container whose arrangement depends on the state — so it can follow the click rather
+     * than override it on the next resize.
+     */
+    var onToggled: (() -> Unit)? = null
+
     init {
         separator.label.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         separator.label.addMouseListener(
@@ -54,6 +65,7 @@ class CollapsibleSection(
         expanded = !expanded
         properties.setValue(propertyKey(), expanded, true)
         applyState()
+        onToggled?.invoke()
     }
 
     private fun applyState() {

@@ -6,6 +6,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.components.JBLabel
@@ -14,6 +15,8 @@ import com.intellij.util.ui.JBUI
 import spock.adb.command.*
 import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
+import spock.adb.mcp.McpCall
+import spock.adb.mcp.McpServerService
 import spock.adb.premission.CheckBoxDialog
 import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.VerticallyScrollablePanel
@@ -36,6 +39,16 @@ class SpockAdbViewer(
     private val setting = JButton(AllIcons.General.Settings).apply {
         toolTipText = "Choose which actions are shown"
     }
+
+    /**
+     * Which device AI agents are driving, when that is not the one selected here.
+     *
+     * These two selections are genuinely independent: an agent chooses with
+     * `android_select_device` and this dropdown does not follow it, so a developer can be
+     * watching one phone while an agent clears app data on another. Nothing surfaced that
+     * before, which made it a trap rather than a choice.
+     */
+    private val agentTargetLabel = JBLabel().apply { isVisible = false }
 
     private val currentActivityButton = JButton("Current Activity")
     private val currentFragmentButton = JButton("Current Fragment")
@@ -103,6 +116,9 @@ class SpockAdbViewer(
         set(value) {
             field = value
             deviceListeners.forEach { it(value) }
+            // The mismatch is between this and the agent's choice, so changing either side
+            // has to re-evaluate it.
+            refreshAgentTarget()
         }
 
     /** Notified whenever the selected device changes, so other tool window tabs follow it. */
@@ -239,8 +255,56 @@ class SpockAdbViewer(
         // A long device label must not widen the panel; the combo elides instead.
         devicesListComboBox.minimumSize = java.awt.Dimension(0, devicesListComboBox.preferredSize.height)
         devicesListComboBox.prototypeDisplayValue = ""
-        add(devicesListComboBox, BorderLayout.CENTER)
+
+        add(
+            JPanel(BorderLayout()).apply {
+                add(devicesListComboBox, BorderLayout.CENTER)
+                add(agentTargetLabel, BorderLayout.SOUTH)
+            },
+            BorderLayout.CENTER,
+        )
         add(setting, BorderLayout.EAST)
+    }
+
+    /**
+     * Refreshed on every recorded MCP call rather than on a timer.
+     *
+     * The agent's target only changes through `android_select_device`, which is itself a
+     * recorded call, so the one event that can make this label wrong is the one that fires it.
+     */
+    private val mcpCallListener: (McpCall) -> Unit = {
+        ApplicationManager.getApplication().invokeLater(
+            { refreshAgentTarget() },
+        ) { project.isDisposed }
+    }
+
+    private fun watchAgentTarget() {
+        val service = McpServerService.getInstance()
+        service.addCallListener(mcpCallListener)
+        Disposer.register(parentDisposable) { service.removeCallListener(mcpCallListener) }
+        refreshAgentTarget()
+    }
+
+    /**
+     * Says something only when there is something to say.
+     *
+     * Silent when the server is stopped, and silent when the agent is on the same device the
+     * developer is looking at — a permanent "everything agrees" banner would train them to stop
+     * reading it, which is the opposite of what the mismatch case needs.
+     */
+    private fun refreshAgentTarget() {
+        val service = McpServerService.getInstance()
+        val target = service.targetedSerial
+
+        val mismatched = service.isRunning && target != null && target != selectedDevice?.serialNumber
+        agentTargetLabel.isVisible = mismatched
+        if (!mismatched) return
+
+        agentTargetLabel.text = "<html>⚠ AI agents are targeting <b>$target</b>, not the device selected here.</html>"
+        agentTargetLabel.foreground = AGENT_MISMATCH
+        agentTargetLabel.toolTipText =
+            "An agent chose this device with android_select_device. Actions you run from this " +
+                "panel still apply to the device in the dropdown above."
     }
 
     /** Two buttons per row; an odd count leaves the last one on its own row. */
@@ -316,6 +380,7 @@ class SpockAdbViewer(
         // `adbController` is a lateinit property, so subscribing from the constructor risked
         // an UninitializedPropertyAccessException on an early tool window state change.
         setToolWindowListener()
+        watchAgentTarget()
 
         updateDevicesList()
 
@@ -697,6 +762,7 @@ class SpockAdbViewer(
 
     private companion object {
         const val TOOL_WINDOW_ID = "Spock ADB"
+        val AGENT_MISMATCH = com.intellij.ui.JBColor(0x8A6100, 0xE0A030)
         const val GAP = 4
         const val COLUMNS = 2
         val ANIMATION_SCALES = arrayOf("0.0", "0.5", "1.0", "1.5", "2.0", "5.0", "10.0")

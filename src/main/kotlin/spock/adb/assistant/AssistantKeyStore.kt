@@ -17,10 +17,10 @@ import com.intellij.ide.passwordSafe.PasswordSafe
  */
 object AssistantKeyStore {
 
-    fun apiKey(provider: Provider): String =
+    fun apiKey(provider: AssistantProvider): String =
         PasswordSafe.instance.getPassword(attributesFor(provider)).orEmpty()
 
-    fun store(provider: Provider, key: String) {
+    fun store(provider: AssistantProvider, key: String) {
         val attributes = attributesFor(provider)
         // A blank key clears the entry rather than storing an empty secret, so "no key" is one
         // state instead of two that behave the same but read differently.
@@ -31,12 +31,10 @@ object AssistantKeyStore {
         }
     }
 
-    fun hasKey(provider: Provider): Boolean = apiKey(provider).isNotBlank()
+    fun hasKey(provider: AssistantProvider): Boolean = apiKey(provider).isNotBlank()
 
-    private fun attributesFor(provider: Provider) =
+    private fun attributesFor(provider: AssistantProvider) =
         CredentialAttributes(generateServiceName(SERVICE, provider.name), provider.name)
-
-    enum class Provider { ANTHROPIC, OPENAI_COMPATIBLE }
 
     private const val SERVICE = "Spock ADB assistant"
 }
