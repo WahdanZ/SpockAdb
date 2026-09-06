@@ -23,6 +23,10 @@ class BackwardCompatibleGetterTest {
         fun createState() = FakeState()
     }
 
+    private class PrivateFakeDebugger {
+        private fun createState() = FakeState()
+    }
+
     private class FakeState
 
     private object FakeDebugSessionStarter {
@@ -51,6 +55,18 @@ class BackwardCompatibleGetterTest {
         ) {
             received = listOf(project, client, debugger, state)
             continuation.resumeWith(Result.success(Unit))
+        }
+    }
+
+    private object FakeNonSuspendDebugSessionStarter {
+        fun attachDebuggerToClientAndShowTab(
+            project: Any,
+            client: Any,
+            debugger: FakeDebugger,
+            state: FakeState,
+            unsupported: String,
+        ) {
+            error("wrong overload")
         }
     }
 
@@ -168,6 +184,34 @@ class BackwardCompatibleGetterTest {
         )
 
         assertEquals(listOf(project, client, debugger), requireNotNull(SuspendFakeDebugSessionStarter.received).take(3))
+    }
+
+    @Test
+    fun `private createState methods are still discovered`() {
+        val debugger = PrivateFakeDebugger()
+
+        assertTrue(
+            ModernDebuggerAttach.attach(
+                FakeDebugSessionStarter::class.java,
+                debugger,
+                Any(),
+                Any(),
+            )
+        )
+    }
+
+    @Test
+    fun `a suspend-looking overload without a continuation parameter is ignored`() {
+        val debugger = FakeDebugger()
+
+        assertFalse(
+            ModernDebuggerAttach.attach(
+                FakeNonSuspendDebugSessionStarter::class.java,
+                debugger,
+                Any(),
+                Any(),
+            )
+        )
     }
 
     @Test

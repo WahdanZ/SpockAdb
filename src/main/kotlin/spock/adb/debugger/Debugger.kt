@@ -141,13 +141,14 @@ class AttachToClient(
     // reported as the first, which is the mistake this whole change is fixing.
     @Suppress("SpreadOperator", "ThrowsCount")
     private fun attachByDeclaredSignature(cause: Throwable) {
-        val candidates = androidDebugger.javaClass.methods.filter { it.name == ATTACH }
+        val candidates = declaredAttachMethods()
         val method = candidates.singleOrNull()?.takeIf { it.parameterCount >= REQUIRED_PARAMETERS }
             ?: throw unsupported(candidates, cause)
 
         val arguments = arrayOfNulls<Any?>(method.parameterCount)
         arguments[0] = project
         arguments[1] = client
+        method.trySetAccessible()
         try {
             method.invoke(androidDebugger, *arguments)
         } catch (e: InvocationTargetException) {
@@ -169,6 +170,16 @@ class AttachToClient(
      * The point of the message: the next report of this failure carries the real signature, so
      * the fix is reading one line rather than installing that Android Studio version.
      */
+    private fun declaredAttachMethods(): List<java.lang.reflect.Method> {
+        val methods = mutableListOf<java.lang.reflect.Method>()
+        var current = androidDebugger.javaClass
+        while (current != null) {
+            methods += current.declaredMethods.filter { it.name == ATTACH }
+            current = current.superclass
+        }
+        return methods.distinct()
+    }
+
     private fun unsupported(candidates: List<java.lang.reflect.Method>, cause: Throwable) =
         UnsupportedOperationException(
             "Could not attach the debugger. ${androidDebugger.javaClass.name} does not accept " +
@@ -232,9 +243,10 @@ internal object ModernDebuggerAttach {
     }
 
     private fun createState(androidDebugger: Any): Any? {
-        val factory = androidDebugger.javaClass.methods.singleOrNull {
-            it.name == CREATE_STATE && it.parameterCount == NO_PARAMETERS
-        } ?: return null
+        val factory = declaredMethodsFor(androidDebugger.javaClass, CREATE_STATE)
+            .singleOrNull { it.parameterCount == NO_PARAMETERS }
+            ?: return null
+        factory.trySetAccessible()
         return invokeStateOrNull(factory, androidDebugger)
     }
 
@@ -245,9 +257,10 @@ internal object ModernDebuggerAttach {
         androidDebugger: Any,
         state: Any,
     ): AttachCall? {
-        val method = starterClass.methods.singleOrNull {
+        val method = declaredMethodsFor(starterClass, ATTACH_TO_CLIENT_AND_SHOW_TAB).singleOrNull {
             it.matchesAttachSignature(project, client, androidDebugger, state)
         } ?: return null
+        method.trySetAccessible()
         val receiver = if (Modifier.isStatic(method.modifiers)) null else starterInstance(starterClass) ?: return null
         return AttachCall(method, receiver)
     }
@@ -257,11 +270,21 @@ internal object ModernDebuggerAttach {
         client: Any,
         androidDebugger: Any,
         state: Any,
-    ): Boolean = name == ATTACH_TO_CLIENT_AND_SHOW_TAB &&
-        parameterCount in ATTACH_PARAMETER_COUNTS &&
-        parameterTypes.zip(listOf(project, client, androidDebugger, state)).all { (type, argument) ->
-            type.isInstance(argument)
+    ): Boolean {
+        if (name != ATTACH_TO_CLIENT_AND_SHOW_TAB || parameterCount !in ATTACH_PARAMETER_COUNTS) return false
+
+        val commonArguments = listOf(project, client, androidDebugger, state)
+        val commonMatch = parameterTypes.take(commonArguments.size)
+            .zip(commonArguments)
+            .all { (type, argument) -> type.isInstance(argument) }
+
+        return when (parameterCount) {
+            REGULAR_ATTACH_PARAMETER_COUNT -> commonMatch
+            SUSPEND_ATTACH_PARAMETER_COUNT -> commonMatch &&
+                Continuation::class.java.isAssignableFrom(parameterTypes.last())
+            else -> false
         }
+    }
 
     private fun starterInstance(starterClass: Class<*>): Any? = try {
         starterClass.getField("INSTANCE").get(null)
@@ -283,6 +306,16 @@ internal object ModernDebuggerAttach {
             call.method.invoke(call.receiver, project, client, androidDebugger, state)
         }
         else -> false
+    }
+
+    private fun declaredMethodsFor(type: Class<*>, name: String): List<Method> {
+        val methods = mutableListOf<Method>()
+        var current: Class<*>? = type
+        while (current != null) {
+            methods += current.declaredMethods.filter { it.name == name }
+            current = current.superclass
+        }
+        return methods
     }
 
     private fun invokeStateOrNull(method: Method, receiver: Any): Any? = try {
