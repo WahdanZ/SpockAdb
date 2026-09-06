@@ -107,18 +107,19 @@ class McpServerPanel(
     private val splitter = OnePixelSplitter(true, SPLIT_PROPORTION)
     private val bodyPanel = JPanel(BorderLayout())
 
-    /** Null until the first layout pass, so the first decision always applies. */
-    private var compact: Boolean? = null
+    /**
+     * How the body is arranged. Null until the first pass, so the first decision always applies.
+     */
+    private var arrangement: Arrangement? = null
+
+    /** The last height seen, so a click on the section can re-evaluate without a resize. */
+    private var lastHeight = 0
 
     /**
-     * Whether Details was open when the panel last went compact.
-     *
-     * Compact mode has to close the section to be worth doing, and roomy mode has to open it or
-     * the splitter shows a title bar above 28% of nothing. Remembering the state across the
-     * transition is what keeps that from quietly discarding a developer who collapsed Details on
-     * purpose — resize away and back, and it comes back the way they left it.
+     * The splitter gives Details a share of the panel; stacking gives it a title bar at the
+     * bottom and the tabs everything else.
      */
-    private var expandedBeforeCompact = true
+    private enum class Arrangement { SPLIT, STACKED }
 
     /** Set on dispose, so a transition still in flight cannot update a dead panel. */
     @Volatile
@@ -201,39 +202,46 @@ class McpServerPanel(
                     applyDensity(tabs, bodyPanel.height)
             },
         )
+        // Expanding Details in the stacked layout should move it into the splitter when there is
+        // room, rather than waiting for a resize that may never come.
+        detailsSection.onToggled = { applyDensity(tabs, lastHeight) }
         applyDensity(tabs, 0)
         return bodyPanel
     }
 
     /**
-     * Chooses between the splitter and the collapsed section, and only when the answer changes.
+     * Arranges the body, and only when the arrangement actually changes.
+     *
+     * **The layout follows the developer's click; it never sets it.** An earlier version
+     * collapsed Details on the way into the compact layout and restored a snapshot on the way
+     * out, which meant expanding it while the panel was short was undone by the next resize.
+     * Reading `isExpanded` instead of writing it makes that impossible: the splitter is used
+     * when there is room *and* Details is open, and otherwise the section sits at the bottom,
+     * where collapsed costs one title-bar row and open costs what the developer asked for.
      *
      * Rebuilding on every resize event would tear the details view down and back up dozens of
-     * times while a developer drags the tool window edge, losing the scroll position each time.
+     * times while the tool window edge is dragged, losing the scroll position each time — so
+     * this returns unless the answer has changed.
      */
     private fun applyDensity(tabs: JComponent, height: Int) {
+        lastHeight = height
         // Height 0 is the pre-layout pass: assume roomy, since that is the docked default and
         // the first real resize corrects it before anything is on screen.
-        val wantCompact = height in 1 until COMPACT_HEIGHT
-        if (wantCompact == compact) return
-        compact = wantCompact
+        val roomy = height == 0 || height >= COMPACT_HEIGHT
+        val wanted = if (roomy && detailsSection.isExpanded) Arrangement.SPLIT else Arrangement.STACKED
+        if (wanted == arrangement) return
+        arrangement = wanted
 
         bodyPanel.removeAll()
-        if (wantCompact) {
-            // Moving the same component between parents; Swing detaches it from the splitter.
-            expandedBeforeCompact = detailsSection.isExpanded
-            splitter.secondComponent = null
-            detailsSection.setExpandedTransiently(false)
-            bodyPanel.add(tabs, BorderLayout.CENTER)
-            bodyPanel.add(detailsSection, BorderLayout.SOUTH)
-        } else {
-            // Restored, not forced. A developer who collapsed Details on purpose gets it back
-            // collapsed — as a title bar they can click, since dropping it from the splitter
-            // entirely would leave them no way to reopen it.
-            detailsSection.setExpandedTransiently(expandedBeforeCompact)
+        if (wanted == Arrangement.SPLIT) {
             splitter.firstComponent = tabs
             splitter.secondComponent = detailsSection
             bodyPanel.add(splitter, BorderLayout.CENTER)
+        } else {
+            // Moving the same component between parents; Swing detaches it from the splitter.
+            splitter.secondComponent = null
+            bodyPanel.add(tabs, BorderLayout.CENTER)
+            bodyPanel.add(detailsSection, BorderLayout.SOUTH)
         }
         bodyPanel.revalidate()
         bodyPanel.repaint()

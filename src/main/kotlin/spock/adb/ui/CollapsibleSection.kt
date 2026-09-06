@@ -36,8 +36,16 @@ class CollapsibleSection(
 
     private var expanded: Boolean = properties.getBoolean(propertyKey(), expandedByDefault)
 
-    /** Whether the content is showing, for callers that need to put it back as they found it. */
+    /** Whether the content is showing. */
     val isExpanded: Boolean get() = expanded
+
+    /**
+     * Called after the developer expands or collapses this section.
+     *
+     * For a container whose arrangement depends on the state — so it can follow the click rather
+     * than override it on the next resize.
+     */
+    var onToggled: (() -> Unit)? = null
 
     init {
         separator.label.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
@@ -57,6 +65,7 @@ class CollapsibleSection(
         expanded = !expanded
         properties.setValue(propertyKey(), expanded, true)
         applyState()
+        onToggled?.invoke()
     }
 
     private fun applyState() {
@@ -65,19 +74,6 @@ class CollapsibleSection(
         separator.label.text = "$marker  $plainTitle"
         revalidate()
         repaint()
-    }
-
-    /**
-     * Opens or closes the section without recording the change.
-     *
-     * For callers that decide by layout rather than by click: a panel too short to show the
-     * section open should not overwrite the developer's own last choice, which they will want
-     * back the moment the panel is roomy again.
-     */
-    fun setExpandedTransiently(expanded: Boolean) {
-        if (this.expanded == expanded) return
-        this.expanded = expanded
-        applyState()
     }
 
     /** Hides the whole section, heading included, when every action in it is turned off. */
