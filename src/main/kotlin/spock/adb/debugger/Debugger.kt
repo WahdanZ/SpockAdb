@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import org.joor.Reflect
 import org.joor.Reflect.on
 import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
@@ -225,47 +226,80 @@ internal object ModernDebuggerAttach {
         project: Any,
         client: Any,
     ): Boolean {
-        val stateFactory = androidDebugger.javaClass.methods.singleOrNull {
-            it.name == CREATE_STATE && it.parameterCount == 0
-        } ?: return false
-        val state = try {
-            stateFactory.invoke(androidDebugger)
-        } catch (e: InvocationTargetException) {
-            throw e.targetException ?: e
-        } catch (_: ReflectiveOperationException) {
-            return false
-        }
-        val attachMethod = starterClass.methods.singleOrNull { method ->
-            method.name == ATTACH_TO_CLIENT_AND_SHOW_TAB &&
-                method.parameterCount in ATTACH_PARAMETER_COUNTS &&
-                method.parameterTypes[0].isInstance(project) &&
-                method.parameterTypes[1].isInstance(client) &&
-                method.parameterTypes[2].isInstance(androidDebugger) &&
-                method.parameterTypes[3].isInstance(state)
-        } ?: return false
+        val state = createState(androidDebugger) ?: return false
+        val call = attachCall(starterClass, project, client, androidDebugger, state) ?: return false
+        return invokeAttach(call, project, client, androidDebugger, state)
+    }
 
-        val receiver = if (Modifier.isStatic(attachMethod.modifiers)) {
-            null
-        } else {
-            try {
-                starterClass.getField("INSTANCE").get(null)
-            } catch (_: ReflectiveOperationException) {
-                return false
-            }
+    private fun createState(androidDebugger: Any): Any? {
+        val factory = androidDebugger.javaClass.methods.singleOrNull {
+            it.name == CREATE_STATE && it.parameterCount == NO_PARAMETERS
+        } ?: return null
+        return invokeStateOrNull(factory, androidDebugger)
+    }
+
+    private fun attachCall(
+        starterClass: Class<*>,
+        project: Any,
+        client: Any,
+        androidDebugger: Any,
+        state: Any,
+    ): AttachCall? {
+        val method = starterClass.methods.singleOrNull {
+            it.matchesAttachSignature(project, client, androidDebugger, state)
+        } ?: return null
+        val receiver = if (Modifier.isStatic(method.modifiers)) null else starterInstance(starterClass) ?: return null
+        return AttachCall(method, receiver)
+    }
+
+    private fun Method.matchesAttachSignature(
+        project: Any,
+        client: Any,
+        androidDebugger: Any,
+        state: Any,
+    ): Boolean = name == ATTACH_TO_CLIENT_AND_SHOW_TAB &&
+        parameterCount in ATTACH_PARAMETER_COUNTS &&
+        parameterTypes.zip(listOf(project, client, androidDebugger, state)).all { (type, argument) ->
+            type.isInstance(argument)
         }
-        try {
-            val arguments = arrayOf(project, client, androidDebugger, state)
-            if (attachMethod.parameterCount == SUSPEND_ATTACH_PARAMETER_COUNT) {
-                attachMethod.invoke(receiver, *arguments, AttachContinuation)
-            } else {
-                attachMethod.invoke(receiver, *arguments)
-            }
-        } catch (e: InvocationTargetException) {
-            throw e.targetException ?: e
-        } catch (_: ReflectiveOperationException) {
-            return false
+
+    private fun starterInstance(starterClass: Class<*>): Any? = try {
+        starterClass.getField("INSTANCE").get(null)
+    } catch (_: ReflectiveOperationException) {
+        null
+    }
+
+    private fun invokeAttach(
+        call: AttachCall,
+        project: Any,
+        client: Any,
+        androidDebugger: Any,
+        state: Any,
+    ): Boolean = when (call.method.parameterCount) {
+        SUSPEND_ATTACH_PARAMETER_COUNT -> invokeOrFalse {
+            call.method.invoke(call.receiver, project, client, androidDebugger, state, AttachContinuation)
         }
-        return true
+        REGULAR_ATTACH_PARAMETER_COUNT -> invokeOrFalse {
+            call.method.invoke(call.receiver, project, client, androidDebugger, state)
+        }
+        else -> false
+    }
+
+    private fun invokeStateOrNull(method: Method, receiver: Any): Any? = try {
+        method.invoke(receiver)
+    } catch (e: InvocationTargetException) {
+        throw e.targetException ?: e
+    } catch (_: ReflectiveOperationException) {
+        null
+    }
+
+    private fun invokeOrFalse(invocation: () -> Any?): Boolean = try {
+        invocation()
+        true
+    } catch (e: InvocationTargetException) {
+        throw e.targetException ?: e
+    } catch (_: ReflectiveOperationException) {
+        false
     }
 
     /**
@@ -280,8 +314,12 @@ internal object ModernDebuggerAttach {
         }
     }
 
+    private data class AttachCall(val method: Method, val receiver: Any?)
+
+    private const val NO_PARAMETERS = 0
+    private const val REGULAR_ATTACH_PARAMETER_COUNT = 4
     private const val SUSPEND_ATTACH_PARAMETER_COUNT = 5
-    private val ATTACH_PARAMETER_COUNTS = 4..SUSPEND_ATTACH_PARAMETER_COUNT
+    private val ATTACH_PARAMETER_COUNTS = REGULAR_ATTACH_PARAMETER_COUNT..SUSPEND_ATTACH_PARAMETER_COUNT
 }
 
 private class RunningProcessesGetter(
