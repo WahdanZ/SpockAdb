@@ -158,9 +158,12 @@ class InputTextIntoElementTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        // Read before resolving the element: the tool is also reachable from callers that do
+        // not go through McpProtocol's argument check, and failing on the element would
+        // misreport a caller that simply omitted the text.
+        val value = arguments.requiredString("value")
         val (_, target) = context.resolveElement(arguments, requireInteractive = true)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val value = arguments.requiredString("value")
 
         McpShell.run(device, "input tap ${target.bounds.centerX} ${target.bounds.centerY}")
         McpShell.run(device, "input text ${ShellQuote.quote(value)}")
