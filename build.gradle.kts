@@ -139,8 +139,10 @@ intellijPlatform {
     }
 
     pluginVerification {
-        // Problems that are understood and handled at runtime, each justified in the file.
-        ignoredProblemsFile = file("verifier-ignored-problems.txt")
+        // No ignored-problems file. There was one, for a single finding on IntelliJ IDEA
+        // 2023.1, and it is what let the Marketplace verifier report Critical while CI stayed
+        // green. With the floor at 232 the finding is gone from every verified build, so the
+        // suppression is gone too: nothing here is told to look away.
 
         failureLevel = listOf(
             org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,

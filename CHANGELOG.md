@@ -32,6 +32,10 @@
   package, so raising the floor removes the problem rather than hiding it
 - The verification matrix moves with it: Android Studio `2023.2.1.25` and IntelliJ IDEA
   Community `2023.2.8` are the new floors
+- **`verifier-ignored-problems.txt` is deleted.** It held exactly one entry, for that 2023.1
+  finding, and it is the mechanism by which the local verifier and the Marketplace verifier
+  came to disagree. `./gradlew verifyPlugin` now reports Compatible on all five targets with
+  nothing suppressed at all
 
 ### Added
 

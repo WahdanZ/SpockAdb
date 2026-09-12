@@ -110,8 +110,11 @@ the class before the `Debugger` class is loaded:
 - the action is hidden in the tool window when unavailable, and
 - the command reports a clear message instead of dying with `NoClassDefFoundError`.
 
-The corresponding verifier finding is listed in `verifier-ignored-problems.txt` with the
-reasoning. **If the guard is removed, delete that entry and let the verifier fail.**
+The guard stays, because it is what keeps the plugin loadable on an IDE without the Android
+execution stack. There is no longer an ignored-problems file: the one entry it held covered
+IntelliJ IDEA 2023.1, and with the floor at 232 no verified build produces that finding.
+**Do not add one back.** A suppression is how the local verifier and the Marketplace verifier
+came to disagree, and the Marketplace is the one users see.
 
 ## The `sinceBuild` trap, and why compiling against a newer platform is not free
 
