@@ -92,6 +92,12 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
 
 tasks.test {
     useJUnitPlatform()
+    // ChangelogShapeTest reads CHANGELOG.md, which is not otherwise an input to this task —
+    // so an edit that silently drops entries from the release notes would be met with an
+    // up-to-date pass instead of a failure.
+    inputs.file("CHANGELOG.md")
+        .withPropertyName("changelog")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     testLogging {
         events("failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
