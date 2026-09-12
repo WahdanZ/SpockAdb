@@ -21,6 +21,15 @@
   parameters that are the point of the fixture, now suppressed where they are declared with
   the reason stated
 
+### Build
+
+- **Gradle and Kotlin daemon memory are now configured.** Gradle's defaults — 512 MiB heap,
+  384 MiB metaspace — are no longer enough for this project: CI failed the Plugin Verifier job
+  with "Gradle build daemon has been stopped: since the JVM garbage collector is thrashing"
+  during `compileJava`, before verification began, and the Kotlin compile daemon failed locally
+  with "Not enough memory to run compilation". The Kotlin daemon is a separate process and does
+  not inherit `org.gradle.jvmargs`, so it is sized on its own line
+
 ### Compatibility
 
 - **`sinceBuild` raised from `231` to `232`**, dropping Android Studio Hedgehog (2023.1) and
