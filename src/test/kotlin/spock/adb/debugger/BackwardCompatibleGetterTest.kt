@@ -24,6 +24,9 @@ class BackwardCompatibleGetterTest {
     }
 
     private class PrivateFakeDebugger {
+        // Unused from Kotlin's point of view, and that is the test: the production code has to
+        // find it reflectively on a private method and call trySetAccessible.
+        @Suppress("UnusedPrivateMember")
         private fun createState() = FakeState()
     }
 
@@ -37,6 +40,26 @@ class BackwardCompatibleGetterTest {
             project: Any,
             client: Any,
             debugger: FakeDebugger,
+            state: FakeState,
+        ) {
+            received = listOf(project, client, debugger, state)
+        }
+    }
+
+    /**
+     * The private-createState fixture needs its own starter: the matcher checks that each
+     * argument is an instance of the declared parameter type, and [PrivateFakeDebugger] is not
+     * a [FakeDebugger], so reusing [FakeDebugSessionStarter] could never match whatever
+     * createState did.
+     */
+    private object PrivateDebuggerStarter {
+        var received: List<Any>? = null
+
+        @JvmStatic
+        fun attachDebuggerToClientAndShowTab(
+            project: Any,
+            client: Any,
+            debugger: PrivateFakeDebugger,
             state: FakeState,
         ) {
             received = listOf(project, client, debugger, state)
@@ -59,6 +82,11 @@ class BackwardCompatibleGetterTest {
     }
 
     private object FakeNonSuspendDebugSessionStarter {
+        // The parameters are the fixture. This overload exists so the matcher sees five of them
+        // with a trailing type that is not a Continuation, and must reject it rather than call
+        // it — so the bodies never use them, and naming them `_` would erase what is being
+        // matched on.
+        @Suppress("UnusedParameter")
         fun attachDebuggerToClientAndShowTab(
             project: Any,
             client: Any,
@@ -192,12 +220,15 @@ class BackwardCompatibleGetterTest {
 
         assertTrue(
             ModernDebuggerAttach.attach(
-                FakeDebugSessionStarter::class.java,
+                PrivateDebuggerStarter::class.java,
                 debugger,
                 Any(),
                 Any(),
             )
         )
+        // The state reaching the starter is what proves the private factory was invoked, not
+        // merely that the attach call matched a signature.
+        assertTrue(requireNotNull(PrivateDebuggerStarter.received).last() is FakeState)
     }
 
     @Test

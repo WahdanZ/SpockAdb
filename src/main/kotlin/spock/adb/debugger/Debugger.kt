@@ -172,7 +172,9 @@ class AttachToClient(
      */
     private fun declaredAttachMethods(): List<java.lang.reflect.Method> {
         val methods = mutableListOf<java.lang.reflect.Method>()
-        var current = androidDebugger.javaClass
+        // Class<*>?, not the inferred Class<AndroidDebugger<*>>: getSuperclass() is declared
+        // Class<? super T>, so walking up the hierarchy cannot typecheck against the start type.
+        var current: Class<*>? = androidDebugger.javaClass
         while (current != null) {
             methods += current.declaredMethods.filter { it.name == ATTACH }
             current = current.superclass
@@ -280,8 +282,8 @@ internal object ModernDebuggerAttach {
 
         return when (parameterCount) {
             REGULAR_ATTACH_PARAMETER_COUNT -> commonMatch
-            SUSPEND_ATTACH_PARAMETER_COUNT -> commonMatch &&
-                Continuation::class.java.isAssignableFrom(parameterTypes.last())
+            SUSPEND_ATTACH_PARAMETER_COUNT ->
+                commonMatch && Continuation::class.java.isAssignableFrom(parameterTypes.last())
             else -> false
         }
     }

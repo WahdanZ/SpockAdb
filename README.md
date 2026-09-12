@@ -144,8 +144,8 @@ Actions are context-aware: they disable themselves and say why, for example
 
 | IDE | Versions |
 |---|---|
-| **Android Studio** | 2023.1 (Hedgehog) and later |
-| **IntelliJ IDEA** | 2023.1 and later, with the bundled Android plugin |
+| **Android Studio** | 2023.2 (Iguana) and later |
+| **IntelliJ IDEA** | 2023.2 and later, with the Android plugin installed |
 
 Every release is checked against **five IDE builds** with JetBrains Plugin Verifier before it
 ships. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the matrix and the reasoning.
