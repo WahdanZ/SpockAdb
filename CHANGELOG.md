@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`master` did not compile.** `declaredAttachMethods()` walked the class hierarchy with
+  `var current = androidDebugger.javaClass`, which Kotlin infers as
+  `Class<AndroidDebugger<*>>`, while `getSuperclass()` is declared `Class<? super T>` — so the
+  reassignment could never typecheck. The variable is now `Class<*>?`, matching
+  `declaredMethodsFor` a few lines below, which had it right
+- **`BackwardCompatibleGetterTest` could not pass.** `private createState methods are still
+  discovered` handed a `PrivateFakeDebugger` to `FakeDebugSessionStarter`, whose method
+  declares `debugger: FakeDebugger`. The signature matcher correctly rejects an argument that
+  is not an instance of the declared parameter type, so the call never matched and `attach`
+  returned false. The fixture now has its own starter, and the test asserts the state object
+  reached it — which is what proves the private factory was invoked, rather than only that a
+  signature matched. Neither failure had ever run in CI: the compile error stopped the `test`
+  task before it started
+- Three Detekt violations in the same change: a wrapped `->` body, and unused fixture
+  parameters that are the point of the fixture, now suppressed where they are declared with
+  the reason stated
+
+### Compatibility
+
+- **`sinceBuild` raised from `231` to `232`**, dropping Android Studio Hedgehog (2023.1) and
+  IntelliJ IDEA 2023.1. The Marketplace verifier reported IDEA 2023.1.7 as **Critical**: the
+  Android plugin bundled there has no `com.android.tools.idea.execution`, which
+  `Restart App With Debugger` links against. `verifier-ignored-problems.txt` suppressed that
+  finding for the local verifier, so CI passed while the Marketplace did not — the two
+  disagreed because one of them was told to look away. 2023.1 is the only build missing the
+  package, so raising the floor removes the problem rather than hiding it
+- The verification matrix moves with it: Android Studio `2023.2.1.25` and IntelliJ IDEA
+  Community `2023.2.8` are the new floors
+
 ### Added
 
 - **The in-IDE AI assistant.** A new `Assistant` tab: ask about the connected device and the

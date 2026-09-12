@@ -149,8 +149,8 @@ intellijPlatform {
         )
 
         ides {
-            // Oldest supported Android Studio (Hedgehog, build AI-231) — the sinceBuild floor.
-            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.AndroidStudio, "2023.1.1.28")
+            // Oldest supported Android Studio (Iguana, build AI-232) — the sinceBuild floor.
+            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.AndroidStudio, "2023.2.1.25")
             // A mid-range Android Studio, to catch breakage between the two ends.
             ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.AndroidStudio, "2024.2.1.12")
             // Current stable Android Studio — the compile target.
@@ -158,7 +158,7 @@ intellijPlatform {
             // IntelliJ IDEA with the bundled Android plugin. The plugin no longer declares
             // com.intellij.modules.androidstudio, so IDEA is a supported target and must be
             // verified rather than assumed.
-            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaCommunity, "2023.1.5")
+            ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaCommunity, "2023.2.8")
             ide(org.jetbrains.intellij.platform.gradle.IntelliJPlatformType.IntellijIdeaCommunity, "2025.1")
         }
     }

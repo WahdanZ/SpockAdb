@@ -7,10 +7,10 @@ is. Every claim below is produced by `./gradlew verifyPlugin`, not by inspection
 
 | Target | Builds | Status |
 |---|---|---|
-| Android Studio | 2023.1 (Hedgehog) and later | Supported, verified |
-| IntelliJ IDEA | 2023.1 and later, with the bundled Android plugin | Supported, verified |
+| Android Studio | 2023.2 (Iguana) and later | Supported, verified |
+| IntelliJ IDEA | 2023.2 and later, with the Android plugin installed | Supported, verified |
 
-- `sinceBuild = 231`
+- `sinceBuild = 232`
 - `untilBuild` is left open so new IDE releases do not require a republish.
 - Compiled against Android Studio 2025.1.1.14 (platform 251), Java 17, Kotlin 2.2.
 
@@ -98,8 +98,11 @@ Two dependencies were added at the same time:
 
 `Restart App With Debugger` needs
 `com.android.tools.idea.execution.common.debug.AndroidDebugger`, part of the Android Studio
-execution stack. It is present in every supported Android Studio build and in IntelliJ IDEA
-2025.1, but not in the Android plugin bundled with IntelliJ IDEA 2023.1.
+execution stack. It was absent from the Android plugin bundled with IntelliJ IDEA 2023.1,
+which is why the Marketplace verifier reported 2023.1.7 as Critical while CI stayed green —
+the finding was suppressed locally. **The floor is now 232, where the package is present**, so
+the suppression no longer covers any verified build; it is kept only until a verifier run
+confirms it can go.
 
 Rather than gate the whole plugin on it, `spock.adb.compat.DebuggerSupport` feature-detects
 the class before the `Debugger` class is loaded:
@@ -222,10 +225,10 @@ plus a midpoint, on both IDEs:
 
 | IDE | Version | Why |
 |---|---|---|
-| Android Studio | 2023.1.1.28 | The `sinceBuild` floor |
+| Android Studio | 2023.2.1.25 | The `sinceBuild` floor |
 | Android Studio | 2024.2.1.12 | Midpoint, catches breakage between the ends |
 | Android Studio | 2025.1.1.14 | Current stable, the compile target |
-| IntelliJ IDEA Community | 2023.1.5 | IDEA floor, no Android execution tooling |
+| IntelliJ IDEA Community | 2023.2.8 | IDEA floor |
 | IntelliJ IDEA Community | 2025.1 | Current IDEA |
 
 CI runs this on every push and pull request as the `Plugin Verifier` job, and uploads the
