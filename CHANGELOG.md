@@ -2,42 +2,10 @@
 
 ## [Unreleased]
 
+## [4.0.3] - 2026-09-12
+
 ### Fixed
 
-- **The MCP Server panel lost its tab strip and filter row.** Resizing the tool window short
-  and back, or collapsing and re-expanding Details, left an empty body: no Activity/Tools
-  tabs, and no Search/Tool/outcome controls, while the request counter kept climbing. The
-  panel moves those tabs between a splitter and the body panel as space allows, and it cleared
-  only the splitter's `secondComponent` on the way out. Re-parenting a component detaches it
-  from the splitter's container but leaves the splitter holding its reference, and the setter
-  ignores a component it believes it already has — so handing the tabs back did nothing and
-  they were left with no parent at all. Details survived only because its reference *was*
-  being cleared. Both are now cleared, symmetrically
-- **A call missing a required argument was reported as something else entirely.** Each tool
-  reads its arguments in its own order, so one that resolved an element or queried the device
-  first blamed *that* step. `android_input_text_into_element` without `value` answered "No
-  element matched testTag='…' and text='…'" — pointing an agent at the screen when the fault
-  was in its own call, and folding the text-to-type into the message as though it were part of
-  the selector. Arguments are now checked in `McpProtocol` before the tool runs, so it holds
-  for every tool rather than the ones whose authors happened to read arguments first, and all
-  the missing names are listed at once instead of one per round-trip. A number or flag only
-  has to be present, so `0` and `false` stay values rather than omissions
-- **`master` did not compile.** `declaredAttachMethods()` walked the class hierarchy with
-  `var current = androidDebugger.javaClass`, which Kotlin infers as
-  `Class<AndroidDebugger<*>>`, while `getSuperclass()` is declared `Class<? super T>` — so the
-  reassignment could never typecheck. The variable is now `Class<*>?`, matching
-  `declaredMethodsFor` a few lines below, which had it right
-- **`BackwardCompatibleGetterTest` could not pass.** `private createState methods are still
-  discovered` handed a `PrivateFakeDebugger` to `FakeDebugSessionStarter`, whose method
-  declares `debugger: FakeDebugger`. The signature matcher correctly rejects an argument that
-  is not an instance of the declared parameter type, so the call never matched and `attach`
-  returned false. The fixture now has its own starter, and the test asserts the state object
-  reached it — which is what proves the private factory was invoked, rather than only that a
-  signature matched. Neither failure had ever run in CI: the compile error stopped the `test`
-  task before it started
-- Three Detekt violations in the same change: a wrapped `->` body, and unused fixture
-  parameters that are the point of the fixture, now suppressed where they are declared with
-  the reason stated
 - **Restart with Debugger crashed instead of falling back on newer Android Studio.**
   `AndroidJavaDebugger.attachToClient` has gained and lost a trailing parameter across releases,
   and the plugin was written to try the new shape and fall back to the old one — but the fallback
@@ -104,57 +72,6 @@
 
 ### Added
 
-- **The in-IDE AI assistant.** A new `Assistant` tab: ask about the connected device and the
-  model uses the plugin's own tools to answer, rather than describing what is usually true of
-  Android. It runs against the same `ToolContext` the MCP transports do — one device selection,
-  one project resolution, one confirmation dialog — and every call lands in the same activity
-  history as `spock-assistant`. Destructive tools still ask per call in the IDE's own modal,
-  never as an inline chat approval, and tools switched off in Tool Access refuse here too.
-  "Attach debugging context" runs `android_get_debug_context` once at the start of a
-  conversation, so the model begins with the activity, the UI semantics and recent logcat in
-  hand. Ctrl+Enter sends, Esc stops at the next step rather than mid-request, and closing the
-  tool window cancels a turn in flight
-- **Everything the assistant reads leaves your machine** — your questions and every tool result,
-  screenshots and logcat included, go to the configured provider. That is stated in the panel
-  and in Settings, not only in the docs, because it is the one consequence a developer cannot
-  undo afterwards. Configure it under `Settings → Tools → Spock ADB → AI Assistant`; the API key
-  field is write-only, and a stored key is never rendered back into it
-- `docs/AI.md`, with the privacy section first
-- **The Devices tab now says when AI agents are targeting a different phone.** The agent's
-  `android_select_device` choice and the tool window dropdown are independent, so a developer
-  could be watching one device while an agent cleared app data on another. Shown only on a
-  mismatch — a permanent "these agree" banner would train you to stop reading it
-- The MCP panel header reports live stdio sessions, and only when there are any. Sockets, not
-  clients: neither transport knows who is calling until the client says so
-- The UI Inspector's "Compose test tags are not exposed" note is now a banner with a Copy
-  Modifier button. As a grey line beside the framework name it read as trivia, so it was missed
-  by exactly the people it is for — it is the difference between an agent that can address
-  elements by `testTag` and one reduced to matching visible text
-- Docked below ~500px, the MCP panel's detail pane becomes a collapsible section instead of a
-  28% split that is too small to read and too big to spare
-- **The assistant core** behind it: `AgentLoop` runs the model ⇄ tool cycle against the same
-  `ToolRegistry` the MCP transports use, so there is one definition of what an agent may do and
-  one safety model. A declined call is reported back to the model in words rather than ending
-  the conversation. The loop is capped at 25 iterations, which is the only guard against a
-  surprise bill in this version
-- `AnthropicClient` and `OpenAiCompatibleClient` on `java.net.http` and Gson — no SDK, no new
-  dependency, and no change to the supported IDE range. Provider errors are surfaced verbatim
-  and never retried: retrying a rejected request spends money to be rejected again
-- The API key lives in `PasswordSafe` and nowhere else — never in the settings XML, the audit
-  history or the log
-- **Per-tool access control.** `Settings → Tools → Spock ADB → Tool Access` lists every tool
-  grouped by safety level, with "Enable all" and "Read-only only". Confirmation alone could not
-  express this: it sees one call at a time, and `android_push_file` and `android_pull_file` are
-  individually reasonable but compose into reading any file on the machine. A disabled tool is
-  still listed and still described, and refuses when called naming itself and where the switch
-  is, so an agent is told it was turned off rather than hunting for a tool it can see
-  documented. The refusal is audited like any other call — an agent reaching for something it
-  was denied is the entry most worth reviewing. Both ways in consult the same setting
-- **The activity history now survives a restart.** Calls are appended as newline-delimited JSON
-  under the IDE config directory, capped by the existing "keep the most recent N requests"
-  setting and written off the calling thread in batches, so an agent never waits on a disk
-  write. A file truncated by a crash costs one record rather than the history, and a failure to
-  persist is logged rather than failing the tool call that was being recorded
 - **`android_get_debug_context`** — the whole triage bundle in one call: current activity, the
   UI semantics tree with its framework identified, recent logcat, and optionally a screenshot.
   Assembling those separately cost three or four round trips, and by the time the last landed
@@ -191,6 +108,7 @@
   `./gradlew test` skips them, but its coverage assertion always runs — a read-only tool cannot
   be added without deciding how it is smoke-tested
 
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.2...HEAD
 ## [4.0.2] - 2026-09-04
 
 ### Added
@@ -379,7 +297,8 @@
 - Enable and Disable Permissions of your application
 - Kill or Restart Application
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.2...HEAD
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...HEAD
+[4.0.3]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.2...v4.0.3
 [4.0.2]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/WahdanZ/SpockAdb/compare/v3.0.1...v4.0.0
