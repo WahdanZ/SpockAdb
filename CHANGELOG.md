@@ -38,6 +38,44 @@
 - Three Detekt violations in the same change: a wrapped `->` body, and unused fixture
   parameters that are the point of the fixture, now suppressed where they are declared with
   the reason stated
+- **Restart with Debugger crashed instead of falling back on newer Android Studio.**
+  `AndroidJavaDebugger.attachToClient` has gained and lost a trailing parameter across releases,
+  and the plugin was written to try the new shape and fall back to the old one — but the fallback
+  was unreachable. jOOR reports a missing method as a `ReflectException` *caused by*
+  `NoSuchMethodException`, and the check that decided "this IDE has a different API" looked only
+  at the throwable it was handed, never at what that wrapped. Every miss was therefore treated as
+  a real error, so the compatibility path never ran and the developer got
+  `RuntimeException: ReflectException: NoSuchMethodException: No similar method attachToClient`.
+  The check now walks the cause chain, cycle-guarded because it runs on the EDT. If neither known
+  shape fits, the attach is driven from the signature the class actually declares, and if that
+  fails too the message names the real signature instead of a reflection library — so the next
+  report of this carries what is needed to fix it. `BackwardCompatibleGetter` moved to its own
+  file, free of IntelliJ types, so the rule is covered by tests rather than only by inspection
+- **`android_take_screenshot` never worked inside Android Studio.** It called
+  `IDevice.getScreenshot()`, which the IDE ships as a stub that fails with "This method is not
+  used in Android Studio", so every call returned that message instead of an image. Capture now
+  goes through `screencap -p` on the shell, like every other tool. The bytes come back base64
+  encoded because ddmlib's shell channel decodes its output as text and would otherwise corrupt
+  the PNG, and the result is checked for a PNG signature so a `FLAG_SECURE` screen is reported
+  as such rather than returned as a broken image
+- **Every project-dependent MCP tool failed whenever two projects were open.** The tool
+  context resolved the project with `openProjects.singleOrNull { !it.isDisposed }`, so a
+  second open project turned `android_get_current_activity`, `android_get_activity_stack`,
+  `android_get_current_fragments` and the default logcat package filter into "No project is
+  open" — a message that was both wrong and unactionable. Resolution now follows the same
+  rule as device resolution: use the selected project, or the only one open, and otherwise
+  **refuse to guess** and name the candidates. Picking the focused window instead would be
+  wrong exactly when it matters most, with an agent working while the developer looks
+  elsewhere
+- **Starting and stopping the MCP server ran on the EDT.** Starting binds two sockets and
+  writes the stdio endpoint descriptor; stopping waits for live stdio sessions to end before
+  releasing their threads. Stopping the server from the MCP panel with a client attached
+  therefore froze the tool window until that wait expired. Both transitions now run on a
+  pooled thread, the controls show the transition and are disabled while it runs, and
+  Restart chains stop → start rather than issuing them together
+- `McpServerService.start()` is idempotent: starting an already-running server returns the
+  bound port instead of replacing the HTTP server and stranding the previous stdio bridge's
+  threads
 
 ### Build
 
@@ -117,50 +155,6 @@
   setting and written off the calling thread in batches, so an agent never waits on a disk
   write. A file truncated by a crash costs one record rather than the history, and a failure to
   persist is logged rather than failing the tool call that was being recorded
-
-### Fixed
-
-- **Restart with Debugger crashed instead of falling back on newer Android Studio.**
-  `AndroidJavaDebugger.attachToClient` has gained and lost a trailing parameter across releases,
-  and the plugin was written to try the new shape and fall back to the old one — but the fallback
-  was unreachable. jOOR reports a missing method as a `ReflectException` *caused by*
-  `NoSuchMethodException`, and the check that decided "this IDE has a different API" looked only
-  at the throwable it was handed, never at what that wrapped. Every miss was therefore treated as
-  a real error, so the compatibility path never ran and the developer got
-  `RuntimeException: ReflectException: NoSuchMethodException: No similar method attachToClient`.
-  The check now walks the cause chain, cycle-guarded because it runs on the EDT. If neither known
-  shape fits, the attach is driven from the signature the class actually declares, and if that
-  fails too the message names the real signature instead of a reflection library — so the next
-  report of this carries what is needed to fix it. `BackwardCompatibleGetter` moved to its own
-  file, free of IntelliJ types, so the rule is covered by tests rather than only by inspection
-- **`android_take_screenshot` never worked inside Android Studio.** It called
-  `IDevice.getScreenshot()`, which the IDE ships as a stub that fails with "This method is not
-  used in Android Studio", so every call returned that message instead of an image. Capture now
-  goes through `screencap -p` on the shell, like every other tool. The bytes come back base64
-  encoded because ddmlib's shell channel decodes its output as text and would otherwise corrupt
-  the PNG, and the result is checked for a PNG signature so a `FLAG_SECURE` screen is reported
-  as such rather than returned as a broken image
-- **Every project-dependent MCP tool failed whenever two projects were open.** The tool
-  context resolved the project with `openProjects.singleOrNull { !it.isDisposed }`, so a
-  second open project turned `android_get_current_activity`, `android_get_activity_stack`,
-  `android_get_current_fragments` and the default logcat package filter into "No project is
-  open" — a message that was both wrong and unactionable. Resolution now follows the same
-  rule as device resolution: use the selected project, or the only one open, and otherwise
-  **refuse to guess** and name the candidates. Picking the focused window instead would be
-  wrong exactly when it matters most, with an agent working while the developer looks
-  elsewhere
-- **Starting and stopping the MCP server ran on the EDT.** Starting binds two sockets and
-  writes the stdio endpoint descriptor; stopping waits for live stdio sessions to end before
-  releasing their threads. Stopping the server from the MCP panel with a client attached
-  therefore froze the tool window until that wait expired. Both transitions now run on a
-  pooled thread, the controls show the transition and are disabled while it runs, and
-  Restart chains stop → start rather than issuing them together
-- `McpServerService.start()` is idempotent: starting an already-running server returns the
-  bound port instead of replacing the HTTP server and stranding the previous stdio bridge's
-  threads
-
-### Added
-
 - **`android_get_debug_context`** — the whole triage bundle in one call: current activity, the
   UI semantics tree with its framework identified, recent logcat, and optionally a screenshot.
   Assembling those separately cost three or four round trips, and by the time the last landed
@@ -218,7 +212,6 @@
   claims the real stdout and redirects `System.out` to stderr, so no log line can corrupt the
   protocol stream
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.1...HEAD
 ## [4.0.1] - 2026-09-04
 
 ### Added
