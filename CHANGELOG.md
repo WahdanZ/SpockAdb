@@ -4,6 +4,15 @@
 
 ### Fixed
 
+- **The MCP Server panel lost its tab strip and filter row.** Resizing the tool window short
+  and back, or collapsing and re-expanding Details, left an empty body: no Activity/Tools
+  tabs, and no Search/Tool/outcome controls, while the request counter kept climbing. The
+  panel moves those tabs between a splitter and the body panel as space allows, and it cleared
+  only the splitter's `secondComponent` on the way out. Re-parenting a component detaches it
+  from the splitter's container but leaves the splitter holding its reference, and the setter
+  ignores a component it believes it already has — so handing the tabs back did nothing and
+  they were left with no parent at all. Details survived only because its reference *was*
+  being cleared. Both are now cleared, symmetrically
 - **`master` did not compile.** `declaredAttachMethods()` walked the class hierarchy with
   `var current = androidDebugger.javaClass`, which Kotlin infers as
   `Class<AndroidDebugger<*>>`, while `getSuperclass()` is declared `Class<? super T>` — so the

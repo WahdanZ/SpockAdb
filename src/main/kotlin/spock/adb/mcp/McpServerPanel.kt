@@ -238,7 +238,12 @@ class McpServerPanel(
             splitter.secondComponent = detailsSection
             bodyPanel.add(splitter, BorderLayout.CENTER)
         } else {
-            // Moving the same component between parents; Swing detaches it from the splitter.
+            // Both components move to a new parent, which detaches them from the splitter's
+            // container but leaves the splitter still referencing them. Its setters ignore a
+            // component they already hold, so failing to clear them here makes the re-add
+            // above a no-op on the way back: the tabs would be removed from bodyPanel and
+            // never returned to the splitter, leaving an empty body with no filter row.
+            splitter.firstComponent = null
             splitter.secondComponent = null
             bodyPanel.add(tabs, BorderLayout.CENTER)
             bodyPanel.add(detailsSection, BorderLayout.SOUTH)
