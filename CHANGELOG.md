@@ -4,6 +4,15 @@
 
 ### Fixed
 
+- **A call missing a required argument was reported as something else entirely.** Each tool
+  reads its arguments in its own order, so one that resolved an element or queried the device
+  first blamed *that* step. `android_input_text_into_element` without `value` answered "No
+  element matched testTag='…' and text='…'" — pointing an agent at the screen when the fault
+  was in its own call, and folding the text-to-type into the message as though it were part of
+  the selector. Arguments are now checked in `McpProtocol` before the tool runs, so it holds
+  for every tool rather than the ones whose authors happened to read arguments first, and all
+  the missing names are listed at once instead of one per round-trip. A number or flag only
+  has to be present, so `0` and `false` stay values rather than omissions
 - **`master` did not compile.** `declaredAttachMethods()` walked the class hierarchy with
   `var current = androidDebugger.javaClass`, which Kotlin infers as
   `Class<AndroidDebugger<*>>`, while `getSuperclass()` is declared `Class<? super T>` — so the

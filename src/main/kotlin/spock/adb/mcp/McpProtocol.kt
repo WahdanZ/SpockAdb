@@ -174,12 +174,48 @@ class McpProtocol(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun run(tool: AdbTool, name: String, arguments: JsonObject): ToolResult = try {
-        tool.execute(arguments, contextProvider())
-    } catch (e: Exception) {
-        // Surfaced as a tool error rather than a protocol error: the agent can read it,
-        // explain it to the user and try something else, which a JSON-RPC error hides.
-        ToolResult.error(e.message ?: "${e.javaClass.simpleName} while running $name")
+    private fun run(tool: AdbTool, name: String, arguments: JsonObject): ToolResult {
+        // Checked before the tool runs. A tool reads its arguments in whatever order suits
+        // it, so one that resolves an element or talks to the device first will report that
+        // step failing rather than the argument the caller left out — which is how a missing
+        // `value` on android_input_text_into_element surfaced as "no element matched",
+        // sending the agent to inspect the screen instead of fixing its own call.
+        val missing = missingArguments(tool, arguments)
+        if (missing.isNotEmpty()) {
+            val label = if (missing.size == 1) "argument" else "arguments"
+            return ToolResult.error(
+                "$name is missing required $label: ${missing.joinToString(", ")}. " +
+                    "Check the tool's inputSchema in tools/list for what it expects.",
+            )
+        }
+
+        return try {
+            tool.execute(arguments, contextProvider())
+        } catch (e: Exception) {
+            // Surfaced as a tool error rather than a protocol error: the agent can read it,
+            // explain it to the user and try something else, which a JSON-RPC error hides.
+            ToolResult.error(e.message ?: "${e.javaClass.simpleName} while running $name")
+        }
+    }
+
+    /**
+     * The required arguments this call left out, in the order the schema declares them.
+     *
+     * "Left out" means what the argument accessors already mean by it: a string that is
+     * absent, null or blank counts as missing, matching `requiredString`, while a number or
+     * flag only has to be present, so `0` and `false` are values rather than omissions.
+     */
+    private fun missingArguments(tool: AdbTool, arguments: JsonObject): List<String> {
+        val required = tool.inputSchema.getAsJsonArray("required") ?: return emptyList()
+        val properties = tool.inputSchema.getAsJsonObject("properties")
+        return required.map { it.asString }.filter { field ->
+            val value = arguments.get(field)
+            when {
+                value == null || value.isJsonNull -> true
+                properties?.getAsJsonObject(field)?.get("type")?.asString != "string" -> false
+                else -> value.isJsonPrimitive && value.asString.isBlank()
+            }
+        }
     }
 
     private fun resourcesList(): JsonObject = JsonObject().apply {
