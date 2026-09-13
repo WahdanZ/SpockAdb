@@ -1,13 +1,16 @@
 package spock.adb.mcp
 
 import com.google.gson.JsonObject
+import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import spock.adb.mcp.tools.RunAdbCommandTool
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
+import java.util.concurrent.TimeUnit
 
 /**
  * The safety model is the part of the MCP layer that must not be wrong: it is what stands
@@ -98,16 +101,49 @@ class ToolSafetyTest {
                 addProperty("reason", "testing")
                 addProperty("permission", "android.permission.CAMERA")
                 addProperty("packageName", "com.example.app")
+                addProperty("host", "192.168.1.10")
+                addProperty("port", 8888)
             }
 
-            val result = runCatching { tool.execute(arguments, context) }.getOrNull()
+            // A throw means these arguments never got the tool as far as its decision, so
+            // nothing was checked. This used to be swallowed, which is how set_http_proxy
+            // passed while never asking at all.
+            val result = runCatching { tool.execute(arguments, context) }.getOrElse { error ->
+                fail("${tool.name} threw before reaching its confirmation, so it went unchecked: $error")
+            }
 
-            if (result != null && !result.isError) {
+            if (tool.name in context.confirmations) {
+                assertTrue(result.isError, "${tool.name} carried on after the developer declined")
+            } else {
+                assertTrue(result.isError, "${tool.name} succeeded without asking the developer")
+                // An error without asking is only acceptable as a known precondition failure;
+                // anything else is a tool that skipped its confirmation and failed for some
+                // other reason.
                 assertTrue(
-                    context.confirmations.contains(tool.name),
-                    "${tool.name} succeeded without asking the developer",
+                    tool.name in SHORT_CIRCUIT_BEFORE_ASKING,
+                    "${tool.name} returned an error without asking: ${result.text()}",
                 )
             }
+        }
+    }
+
+    @Test
+    fun `a declined proxy change never writes to the device`() {
+        val target = FakeToolContext.device("emulator-5554")
+        val context = FakeToolContext(available = listOf(target), confirmationAnswer = false)
+
+        val result = ToolRegistry.find("android_set_http_proxy")!!.execute(
+            JsonObject().apply {
+                addProperty("host", "192.168.1.10")
+                addProperty("port", 8888)
+            },
+            context,
+        )
+
+        assertTrue(result.isError)
+        assertEquals(listOf("android_set_http_proxy"), context.confirmations)
+        verify(exactly = 0) {
+            target.device.executeShellCommand(match { it.startsWith("settings put") }, any(), any(), any<TimeUnit>())
         }
     }
 
@@ -193,5 +229,14 @@ class ToolSafetyTest {
         ToolRegistry.bySafety(ToolSafety.SAFE_ACTION).forEach { tool ->
             assertFalse(tool.safety == ToolSafety.READ_ONLY, tool.name)
         }
+    }
+
+    private companion object {
+        /**
+         * Destructive tools that, against the fake device, stop at a precondition before
+         * asking. The fake reports no packages installed, so there is nothing to clear or
+         * uninstall. Pinned so a tool cannot join this list by accident.
+         */
+        val SHORT_CIRCUIT_BEFORE_ASKING = setOf("android_clear_app_data", "android_uninstall_app")
     }
 }

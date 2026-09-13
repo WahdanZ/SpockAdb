@@ -3,6 +3,7 @@ package spock.adb
 import com.android.ddmlib.IDevice
 import spock.adb.command.DontKeepActivitiesState
 import spock.adb.command.HttpProxy
+import spock.adb.command.HttpProxyWrite
 import spock.adb.command.Network
 import spock.adb.command.NetworkState
 import spock.adb.command.ShowLayoutBoundsState
@@ -167,19 +168,22 @@ fun IDevice.getHttpProxy(): HttpProxy? {
     return HttpProxy.parse(outputReceiver.toString())
 }
 
-fun IDevice.setHttpProxy(proxy: HttpProxy) {
-    executeShellCommand(
-        "settings put global http_proxy ${ShellQuote.quote(proxy.toString())}",
-        ShellOutputReceiver(),
-        15L,
-        TimeUnit.SECONDS,
-    )
+/** Sets the proxy, then reads it back. See [HttpProxyWrite] for why the result is not assumed. */
+fun IDevice.setHttpProxy(proxy: HttpProxy): HttpProxyWrite {
+    putHttpProxy(proxy.toString())
+    return HttpProxyWrite(requested = proxy, applied = getHttpProxy())
 }
 
-/** Android clears the proxy by writing `:0`, not by removing the setting. */
-fun IDevice.clearHttpProxy() {
+/** Android clears the proxy by writing `:0`, not by removing the setting. Read back likewise. */
+fun IDevice.clearHttpProxy(): HttpProxyWrite {
+    putHttpProxy(HttpProxy.CLEARED)
+    return HttpProxyWrite(requested = null, applied = getHttpProxy())
+}
+
+/** Private so the panel and the MCP tools cannot write the proxy without reading it back. */
+private fun IDevice.putHttpProxy(value: String) {
     executeShellCommand(
-        "settings put global http_proxy ${ShellQuote.quote(HttpProxy.CLEARED)}",
+        "settings put global http_proxy ${ShellQuote.quote(value)}",
         ShellOutputReceiver(),
         15L,
         TimeUnit.SECONDS,

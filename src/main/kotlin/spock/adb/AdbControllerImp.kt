@@ -510,8 +510,11 @@ class AdbControllerImp(
      * The previous version discarded the exception entirely and showed `e.message ?: "not
      * found"`, so a null-message exception surfaced to the user as the word "not found"
      * with no stack trace recorded anywhere.
+     *
+     * @param onDone runs on the EDT once [block] has finished, whether or not it threw, for a
+     *   caller that has to re-read what it shows.
      */
-    private fun execute(block: () -> Unit) {
+    private fun execute(onDone: (() -> Unit)? = null, block: () -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 block()
@@ -520,6 +523,8 @@ class AdbControllerImp(
             } catch (e: Exception) {
                 log.warn("Spock ADB command failed", e)
                 showError(e.message?.takeIf { it.isNotBlank() } ?: "${e.javaClass.simpleName} — see idea.log")
+            } finally {
+                onDone?.let { onEdt(it) }
             }
         }
     }
@@ -565,49 +570,38 @@ class AdbControllerImp(
         }
     }
 
+    override fun setHttpProxy(proxy: HttpProxy, device: IDevice, onDone: () -> Unit) {
+        execute(onDone) {
+            showProxyWrite(SetHttpProxyCommand().execute(proxy, project, device))
+        }
+    }
+
+    override fun clearHttpProxy(device: IDevice, onDone: () -> Unit) {
+        execute(onDone) {
+            showProxyWrite(ClearHttpProxyCommand().execute(Any(), project, device))
+        }
+    }
+
     /**
-     * Writes the proxy, then reads it back and reports what the device actually holds.
-     *
-     * Reporting the value we wrote would hide the case that matters: `settings put` exits 0
-     * even where the write does not stick, and a developer who is told the proxy is set but
-     * whose traffic still goes direct has no way to tell which half is lying.
+     * Reports what the device holds after the write rather than what was sent — see
+     * [HttpProxyWrite]. A write that did not take is an error, not a success with a caveat.
      */
-    override fun setHttpProxy(proxy: String, device: IDevice) {
-        execute {
-            val parsed = HttpProxy.fromInput(proxy)
-            SetHttpProxyCommand().execute(parsed, project, device)
-            val applied = GetHttpProxyCommand().execute(Any(), project, device)
-            if (applied == parsed) {
-                showSuccess("HTTP proxy set to $applied")
-            } else {
-                showError(
-                    "Asked the device for $parsed but it reports " +
-                        "${applied ?: "no proxy"}. The setting did not stick.",
-                )
-            }
-        }
-    }
+    private fun showProxyWrite(write: HttpProxyWrite) =
+        if (write.took) showSuccess(write.message) else showError(write.message)
 
-    override fun clearHttpProxy(device: IDevice) {
-        execute {
-            val result = ClearHttpProxyCommand().execute(Any(), project, device)
-            showSuccess(result)
-        }
-    }
-
-    override fun currentHttpProxy(device: IDevice, block: (proxy: HttpProxy?) -> Unit) {
+    override fun currentHttpProxy(device: IDevice, block: (read: Result<HttpProxy?>) -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val proxy = try {
-                GetHttpProxyCommand().execute(Any(), project, device)
+            val read = try {
+                Result.success(GetHttpProxyCommand().execute(Any(), project, device))
             } catch (e: ProcessCanceledException) {
                 throw e
             } catch (e: Exception) {
-                // A device that disconnects mid-read must not blank the field with a stale
-                // "no proxy"; the caller is told nothing changed instead.
+                // A device that disconnects mid-read is reported as unknown, never as "no
+                // proxy" — that would be a guess presented as a reading.
                 log.warn("Could not read the device HTTP proxy", e)
-                return@executeOnPooledThread
+                Result.failure(e)
             }
-            onEdt { block(proxy) }
+            onEdt { block(read) }
         }
     }
 

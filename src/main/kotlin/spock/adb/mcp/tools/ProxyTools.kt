@@ -3,6 +3,7 @@ package spock.adb.mcp.tools
 import com.google.gson.JsonObject
 import spock.adb.clearHttpProxy
 import spock.adb.command.HttpProxy
+import spock.adb.command.HttpProxyWrite
 import spock.adb.getHttpProxy
 import spock.adb.setHttpProxy
 
@@ -59,25 +60,22 @@ class SetHttpProxyTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val target = context.requireDevice(arguments.optionalString("deviceSerial"))
         val requested = HttpProxy.of(
             arguments.requiredString("host"),
             arguments.requiredInt("port"),
         )
 
-        device.setHttpProxy(requested)
-
-        // `settings put` exits 0 even where the write does not take, so report what the
-        // device actually holds rather than what we asked for.
-        val applied = device.getHttpProxy()
-        return if (applied == requested) {
-            ToolResult.text("HTTP proxy set to $applied.")
-        } else {
-            ToolResult.error(
-                "Asked the device for $requested but it reports ${applied ?: "no proxy"}. " +
-                    "The setting did not stick.",
-            )
+        val approved = context.confirmDestructive(
+            name,
+            "Route all of this device's traffic through $requested. The setting is global " +
+                "and survives a reboot until it is cleared.",
+            target,
+        )
+        if (!approved) {
+            return ToolResult.error("The developer declined to set the HTTP proxy to $requested.")
         }
+        return target.device.setHttpProxy(requested).toToolResult()
     }
 }
 
@@ -89,15 +87,13 @@ class ClearHttpProxyTool : AdbTool {
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
-    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        device.clearHttpProxy()
-
-        val remaining = device.getHttpProxy()
-        return if (remaining == null) {
-            ToolResult.text("HTTP proxy cleared; the device connects directly.")
-        } else {
-            ToolResult.error("Cleared the proxy but the device still reports $remaining.")
-        }
-    }
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult =
+        context.requireIDevice(arguments.optionalString("deviceSerial")).clearHttpProxy().toToolResult()
 }
+
+/**
+ * Reports what the device holds after a write, not what was asked for — the same read-back
+ * the tool window reports from, so the two cannot disagree about whether a write took.
+ */
+private fun HttpProxyWrite.toToolResult(): ToolResult =
+    if (took) ToolResult.text(message) else ToolResult.error(message)

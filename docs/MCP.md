@@ -391,15 +391,17 @@ action: you do it by hand routinely and undo it by clearing. What moves it up a 
 failure mode. The setting is global, it survives a reboot, and it redirects *all* device
 traffic through a host — so a device left pointing at a proxy that is no longer listening
 fails every request with nothing on screen to explain why. That is the kind of state an agent
-should not be able to leave behind without you agreeing to that specific call.
+should not be able to leave behind without you agreeing to that specific call. The
+confirmation names the host the traffic would go through.
 
 Clearing is a safe action: it restores the device to its normal state and repeating it is
 harmless. Reading is read-only, which is what makes either mutation safe to reason about —
 an agent can always check before and after without needing approval for the check.
 
-Both mutating tools read the value back and report what the device actually holds. `settings
-put` exits 0 even where the write does not take, and telling an agent the proxy is set while
-traffic still goes direct is worse than reporting the failure.
+Both mutating tools read the value back and report what the device actually holds, through the
+same write-and-read-back step the tool window uses. `settings put` exits 0 even where the
+write does not take, and telling an agent the proxy is set while traffic still goes direct is
+worse than reporting the failure. An IPv6 host must be bracketed, for example `[::1]`.
 
 It does not capture everything: apps that use their own HTTP stack, or that pin
 certificates, will not route through it.

@@ -10,19 +10,24 @@
   remembering to clear it afterwards. A device left pointing at a proxy that is no longer
   listening fails every request with nothing on screen to say why, and the next person to
   pick it up has no reason to suspect the proxy. The Network section now has an HTTP proxy
-  field with Set and Clear, the value is remembered between sessions so it does not have to
-  be retyped, and selecting a device reads back what that device actually holds so a proxy
-  left over from yesterday is visible rather than rediscovered. The same operations are
-  exposed to agents as `android_get_http_proxy`, `android_set_http_proxy` and
-  `android_clear_http_proxy`, over the same commands the panel uses rather than a second
-  implementation. Setting a proxy asks first: it destroys nothing, so by the letter of the
-  safety model it is a safe action, but it redirects *all* device traffic through a host and
-  survives a reboot, which is not something an agent should be able to leave behind
+  field with Set and Clear, and the value is remembered between sessions so it does not have
+  to be retyped. Beneath it the panel shows what the selected device actually holds — direct,
+  via a host, or unknown when it cannot be read — refreshed when a device is selected or
+  reconnects and after every Set and Clear, so a proxy left over from yesterday is visible
+  rather than rediscovered, and a cleared device does not look proxied just because the field
+  still holds the last value. The same operations are exposed to agents as
+  `android_get_http_proxy`, `android_set_http_proxy` and `android_clear_http_proxy`, sharing
+  the panel's write-and-read-back step rather than keeping a second copy of it. Setting a
+  proxy asks the developer first, naming the host: it destroys nothing, so by the letter of
+  the safety model it is a safe action, but it redirects *all* device traffic through a host
+  and survives a reboot, which is not something an agent should be able to leave behind
   unnoticed. Clearing is a safe action, and reading is read-only, so an agent can always
-  check the state before and after without needing approval for the check. Both mutations
-  read the value back and report what the device holds rather than what was asked for —
-  `settings put` exits 0 even where the write does not take, and a developer told the proxy
-  is set while traffic still goes direct has no way to tell which half is lying
+  check the state before and after without needing approval for the check. Both mutations,
+  from the panel and from agents, read the value back and report what the device holds
+  rather than what was asked for — `settings put` exits 0 even where the write does not
+  take, and a developer told the proxy is set while traffic still goes direct has no way to
+  tell which half is lying. An IPv6 proxy has to be bracketed, as in `[::1]:8888`; unbracketed,
+  `fe80::1` is refused rather than quietly read as host `fe80:` on port 1
 
 ### Fixed
 
