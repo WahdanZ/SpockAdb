@@ -3,7 +3,6 @@ package spock.adb.command
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
-import spock.adb.ShellQuote
 import spock.adb.isAppInstall
 import java.util.concurrent.TimeUnit
 
@@ -36,7 +35,7 @@ internal object AppCacheShell {
     val CACHE_DIRS = listOf("cache", "code_cache")
 
     fun clearCommand(packageName: String): String =
-        runAs(packageName, "rm -rf ${CACHE_DIRS.joinToString(" ") { "./$it" }}; echo rc=$?")
+        RunAs.command(packageName, "rm -rf ${CACHE_DIRS.joinToString(" ") { "./$it" }}; echo rc=$?")
 
     /**
      * `null` when the device reported `rc=0`, which is the `rm` saying it succeeded.
@@ -45,42 +44,28 @@ internal object AppCacheShell {
      * status line is missing entirely — the two shapes it actually produces get an actionable
      * sentence, and anything else is quoted verbatim rather than flattened into "failed".
      */
-    fun failureMessage(packageName: String, output: String): String? {
-        val said = output.trim()
-        val lines = said.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        val tail = lines.lastOrNull()
-        val status = tail?.let { EXIT_STATUS.matchEntire(it) }
-        // Whatever the device printed before the status line: rm's own diagnostics, or the
-        // refusal from run-as when the status line never arrived.
-        val noise = if (status != null) lines.dropLast(1).joinToString("\n").trim() else said
-
-        // The echo runs only if run-as handed the script to a shell at all, so rc=0 is proof
-        // the rm ran and succeeded — regardless of anything else printed on the way.
-        if (status != null && status.groupValues[1] == "0") return null
-
-        return when {
-            noise.contains("not debuggable", ignoreCase = true) ->
+    fun failureMessage(packageName: String, output: String): String? =
+        when (val outcome = RunAs.classify(output)) {
+            // The echo runs only if run-as handed the script to a shell at all, so rc=0 is proof
+            // the rm ran and succeeded — regardless of anything else printed on the way.
+            is RunAsOutcome.Succeeded -> null
+            is RunAsOutcome.NotDebuggable ->
                 "'$packageName' is not a debuggable build on this device, so its cache cannot " +
                     "be cleared on its own. Install the debug variant, or use Clear Data to " +
                     "wipe everything."
-            noise.contains("unknown", ignoreCase = true) || noise.contains("not found", ignoreCase = true) ->
-                "run-as could not reach '$packageName' on this device ($noise). Cache-only " +
+            is RunAsOutcome.Unreachable ->
+                "run-as could not reach '$packageName' on this device (${outcome.said}). Cache-only " +
                     "clearing needs a debuggable build installed for the current user."
-            noise.isNotEmpty() -> "Could not clear the cache for '$packageName': $noise"
-            status != null ->
-                "Could not clear the cache for '$packageName': rm exited with " +
-                    "${status.groupValues[1]} and said nothing."
-            else ->
-                "Could not clear the cache for '$packageName': the device reported no exit " +
-                    "status, so run-as does not appear to be usable here."
+            is RunAsOutcome.Failed -> when {
+                outcome.said.isNotEmpty() -> "Could not clear the cache for '$packageName': ${outcome.said}"
+                outcome.status != null ->
+                    "Could not clear the cache for '$packageName': rm exited with " +
+                        "${outcome.status} and said nothing."
+                else ->
+                    "Could not clear the cache for '$packageName': the device reported no exit " +
+                        "status, so run-as does not appear to be usable here."
+            }
         }
-    }
-
-    /** Anchored at the end: the app's own output may well contain something that looks like this. */
-    private val EXIT_STATUS = Regex("""rc=(-?\d+)\s*$""")
-
-    private fun runAs(packageName: String, script: String): String =
-        "run-as ${ShellQuote.quote(packageName)} sh -c ${ShellQuote.quote(script)}"
 }
 
 private const val TIMEOUT_SECONDS = 15L
