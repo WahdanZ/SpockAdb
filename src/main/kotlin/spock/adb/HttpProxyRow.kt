@@ -45,6 +45,9 @@ class HttpProxyRow(
     private var controller: AdbController? = null
     private var selectedDevice: () -> ConnectedDevice? = { null }
 
+    /** Started and answered on the EDT: [refresh] runs from listeners and the read's callback. */
+    private val reads = LatestRequest()
+
     init {
         alignmentX = LEFT_ALIGNMENT
         maximumSize = Dimension(
@@ -109,19 +112,25 @@ class HttpProxyRow(
      * over from an earlier session is visible rather than something to rediscover when
      * requests start failing.
      *
-     * Does nothing before [attach] or while the row is hidden. A read that lands after a
-     * different device has been selected is dropped: it describes a device the user is no
-     * longer looking at.
+     * Does nothing before [attach] or while the row is hidden. Only the latest refresh may
+     * write the status line. Reads run concurrently and finish in any order, so one started
+     * before a Set or Clear, or before a reconnect, can land after the read that followed it;
+     * matching the device serial did not catch that, because it is the same device. A device
+     * change triggers a refresh too, so a read for a device no longer selected is dropped by
+     * the same rule.
      */
     fun refresh() {
         val controller = controller ?: return
+        // Taken before the early returns, so a refresh that reads nothing — hidden, or no
+        // device — still retires a read in flight rather than letting it overwrite NOT_READ.
+        val request = reads.begin()
         if (!isVisible) return
         val target = selectedDevice() ?: run {
             status.text = NOT_READ
             return
         }
         controller.currentHttpProxy(target.device) { read ->
-            if (selectedDevice()?.serialNumber == target.serialNumber) {
+            if (reads.isLatest(request)) {
                 status.text = HttpProxy.describeDevice(read)
             }
         }
