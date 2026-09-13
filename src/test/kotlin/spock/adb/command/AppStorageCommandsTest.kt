@@ -1,0 +1,195 @@
+package spock.adb.command
+
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import spock.adb.storage.AppStoragePaths
+import spock.adb.storage.StorageKind
+
+/**
+ * The device path of the storage editor, against a scripted device.
+ *
+ * What these pin is order and cleanup: the app is stopped before anything is read for
+ * comparison or written, a stale read refuses to write, the staged copy is removed on every
+ * path, and success is decided by reading the file back.
+ */
+class AppStorageCommandsTest {
+
+    private val prefs = AppStoragePaths.parse("shared_prefs/settings.xml")
+    private val datastore = AppStoragePaths.parse("files/datastore/settings.preferences_pb")
+
+    @Test
+    fun `lists preference files and leaves working files out`() {
+        val device = FakeStorageDevice().apply {
+            files["shared_prefs/settings.xml"] = "<map />".toByteArray()
+            files["shared_prefs/settings.xml.bak"] = ByteArray(0)
+            files["files/datastore/settings.preferences_pb"] = ByteArray(0)
+            files["files/datastore/user.pb"] = ByteArray(0)
+        }
+
+        val listed = device.device.listAppStorage(FakeStorageDevice.PKG)
+
+        assertEquals(
+            listOf(
+                "files/datastore/settings.preferences_pb" to StorageKind.PREFERENCES_DATASTORE,
+                "files/datastore/user.pb" to StorageKind.PROTO_DATASTORE,
+                "shared_prefs/settings.xml" to StorageKind.SHARED_PREFERENCES,
+            ),
+            listed.map { it.path to it.kind },
+        )
+    }
+
+    @Test
+    fun `a release build is refused with the reason`() {
+        val device = FakeStorageDevice(debuggable = false)
+
+        val thrown = assertThrows<IllegalStateException> { device.device.listAppStorage(FakeStorageDevice.PKG) }
+
+        assertTrue(thrown.message!!.contains("not a debuggable build"), thrown.message)
+    }
+
+    @Test
+    fun `reads a file byte for byte`() {
+        val bytes = ByteArray(1000) { (it * 7).toByte() }
+        val device = FakeStorageDevice().apply { files[datastore.path] = bytes }
+
+        assertArrayEquals(bytes, device.device.readAppStorageFile(FakeStorageDevice.PKG, datastore))
+    }
+
+    @Test
+    fun `a missing file says it was not found`() {
+        val device = FakeStorageDevice()
+
+        val thrown = assertThrows<IllegalStateException> {
+            device.device.readAppStorageFile(FakeStorageDevice.PKG, prefs)
+        }
+
+        assertTrue(thrown.message!!.contains("not found"), thrown.message)
+    }
+
+    @Test
+    fun `writes after stopping the app, verifies, and cleans up`() {
+        val device = FakeStorageDevice().apply { files[prefs.path] = OLD }
+
+        val result = device.device.writeAppStorageFile(
+            FakeStorageDevice.PKG,
+            prefs,
+            NEW,
+            expected = OLD,
+            restart = false,
+        )
+
+        assertArrayEquals(NEW, device.files[prefs.path])
+        assertArrayEquals(OLD, result.previous)
+        assertFalse(result.restarted)
+
+        val stop = device.commands.indexOfFirst { it.startsWith("am force-stop") }
+        val firstRead = device.commands.indexOfFirst { it.contains("base64") }
+        val write = device.commands.indexOfFirst { it.startsWith("cat '/data/local/tmp/") }
+        assertTrue(stop in 0 until firstRead, "the app must be stopped before the file is read: ${device.commands}")
+        assertTrue(firstRead < write, "the comparison read must come before the write: ${device.commands}")
+        assertTrue(device.staged.isEmpty(), "the staged copy must be removed")
+    }
+
+    @Test
+    fun `a SharedPreferences write removes the backup, a DataStore write has none to remove`() {
+        val prefsWrite = AppStorageShell.writeCommand(FakeStorageDevice.PKG, "/data/local/tmp/x", prefs, 3)
+        val datastoreWrite = AppStorageShell.writeCommand(FakeStorageDevice.PKG, "/data/local/tmp/x", datastore, 3)
+
+        assertTrue(prefsWrite.contains("settings.xml.bak"), prefsWrite)
+        assertFalse(datastoreWrite.contains(".bak"), datastoreWrite)
+    }
+
+    @Test
+    fun `the write only replaces the file once its size matches`() {
+        val command = AppStorageShell.writeCommand(FakeStorageDevice.PKG, "/data/local/tmp/x", datastore, 42)
+        val script = command.substringAfter("sh -c ")
+
+        assertTrue(command.startsWith("cat '/data/local/tmp/x' | run-as 'com.example.app' sh -c "), command)
+        val sizeCheck = script.indexOf("-eq 42")
+        val move = script.indexOf("mv ")
+        assertTrue(sizeCheck in 0 until move, "the size must be checked before the move: $script")
+    }
+
+    @Test
+    fun `a file that changed since it was read is not overwritten`() {
+        val device = FakeStorageDevice().apply { files[prefs.path] = "changed by the app".toByteArray() }
+
+        val thrown = assertThrows<IllegalStateException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = OLD, restart = false)
+        }
+
+        assertTrue(thrown.message!!.contains("changed on the device"), thrown.message)
+        assertArrayEquals("changed by the app".toByteArray(), device.files[prefs.path])
+        assertTrue(device.pushed.isEmpty(), "nothing may be pushed: ${device.pushed}")
+    }
+
+    @Test
+    fun `a refused write is reported and still cleans up`() {
+        val device = FakeStorageDevice().apply {
+            files[prefs.path] = OLD
+            refuseWrites = true
+        }
+
+        val thrown = assertThrows<IllegalStateException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = null, restart = false)
+        }
+
+        assertTrue(thrown.message!!.contains("No space left on device"), thrown.message)
+        assertArrayEquals(OLD, device.files[prefs.path])
+        assertTrue(device.staged.isEmpty(), "the staged copy must be removed after a failure too")
+    }
+
+    @Test
+    fun `a write the device did not keep is a failure`() {
+        val device = FakeStorageDevice().apply {
+            files[prefs.path] = OLD
+            corruptWrites = true
+        }
+
+        val thrown = assertThrows<IllegalStateException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = OLD, restart = false)
+        }
+
+        assertTrue(thrown.message!!.contains("differ"), thrown.message)
+    }
+
+    @Test
+    fun `an app that is not installed is never stopped`() {
+        val device = FakeStorageDevice(installed = false)
+
+        assertThrows<IllegalStateException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = null, restart = false)
+        }
+
+        assertTrue(device.commands.none { it.startsWith("am force-stop") }, "${device.commands}")
+    }
+
+    @Test
+    fun `an unsupported file cannot be written`() {
+        val device = FakeStorageDevice()
+        val proto = AppStoragePaths.parse("files/datastore/user.pb")
+
+        assertThrows<IllegalArgumentException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, proto, NEW, expected = null, restart = false)
+        }
+        assertTrue(device.commands.isEmpty(), "${device.commands}")
+    }
+
+    @Test
+    fun `a quote in a file name stays inside its quotes`() {
+        val file = AppStoragePaths.parse("shared_prefs/it's.xml")
+
+        val command = AppStorageShell.readCommand(FakeStorageDevice.PKG, file.path)
+
+        assertTrue(command.contains("f='\\''shared_prefs/it'\\''\\'\\'''\\''s.xml'\\''"), command)
+    }
+
+    private companion object {
+        val OLD = "<map />".toByteArray()
+        val NEW = "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map />\n".toByteArray()
+    }
+}
