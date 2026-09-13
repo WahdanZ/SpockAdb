@@ -44,7 +44,10 @@ class RunAsTest {
             RunAsOutcome.Unreachable("run-as: unknown package: com.example"),
             RunAs.classify("run-as: unknown package: com.example"),
         )
-        assertEquals(RunAsOutcome.Failed(null, "run-as: Operation not permitted"), RunAs.classify("run-as: Operation not permitted"))
+        assertEquals(
+            RunAsOutcome.Failed(null, "run-as: Operation not permitted"),
+            RunAs.classify("run-as: Operation not permitted"),
+        )
         assertEquals(RunAsOutcome.Failed(null, ""), RunAs.classify(" \n"))
     }
 
