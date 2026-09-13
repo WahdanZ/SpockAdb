@@ -247,6 +247,7 @@ class McpSmokeTest {
             "android_take_screenshot" to "{}",
             "android_get_ui_tree" to "{}",
             "android_accessibility_audit" to "{}",
+            "android_get_http_proxy" to "{}",
             // Default sections only: the screenshot section is covered by its own tool above.
             "android_get_debug_context" to "{}",
         )

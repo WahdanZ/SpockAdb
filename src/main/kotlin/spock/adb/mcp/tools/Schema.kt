@@ -1,6 +1,7 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 
 /**
@@ -98,8 +99,58 @@ fun JsonObject.optionalString(name: String): String? =
 fun JsonObject.requiredString(name: String): String =
     optionalString(name) ?: throw IllegalArgumentException("Missing required argument '$name'")
 
-fun JsonObject.optionalInt(name: String, default: Int): Int =
-    get(name)?.takeIf { !it.isJsonNull }?.asInt ?: default
+/**
+ * A required whole-number argument.
+ *
+ * Lived in InteractionTools while tap and swipe were the only tools taking coordinates;
+ * moved here next to the other accessors once the proxy tools needed a port.
+ *
+ * @throws IllegalArgumentException when absent, or when the value is not a whole number; see
+ *   [asStrictInt].
+ */
+fun JsonObject.requiredInt(name: String): Int {
+    val element = get(name)?.takeIf { !it.isJsonNull }
+        ?: throw IllegalArgumentException("Missing required argument '$name'")
+    return element.asStrictInt(name)
+}
+
+/**
+ * An optional whole-number argument with a default. A value that is present is held to the
+ * same rules as [requiredInt] — sending one that is wrong is not the same as leaving it out.
+ */
+fun JsonObject.optionalInt(name: String, default: Int): Int = optionalInt(name) ?: default
+
+/** As [optionalInt], but null when omitted, for a tool whose fallback is not a constant. */
+fun JsonObject.optionalInt(name: String): Int? =
+    get(name)?.takeIf { !it.isJsonNull }?.asStrictInt(name)
+
+/**
+ * The value as an Int, or an error naming [name] and what is wrong with it.
+ *
+ * Gson's `asInt` truncates, so a port of `8888.9` quietly became 8888 and `"8888"` was parsed
+ * out of a string, neither of which an agent that sent them would have meant. A number with a
+ * zero fractional part such as `8888.0` is accepted, because JSON Schema's `integer` accepts
+ * it too; one with a real fraction, or outside Int's range, is refused. Read as a BigDecimal
+ * rather than a Double so a large value is not rounded or clamped into something that looks
+ * valid before it is checked.
+ */
+private fun JsonElement.asStrictInt(name: String): Int {
+    require(isJsonPrimitive) {
+        "Argument '$name' must be a whole number, not ${if (isJsonArray) "an array" else "an object"}."
+    }
+    val primitive = asJsonPrimitive
+    require(primitive.isNumber) { "Argument '$name' must be a whole number, got $primitive." }
+
+    val number = primitive.asBigDecimal.stripTrailingZeros()
+    require(number.scale() <= 0) {
+        "Argument '$name' must be a whole number, got ${primitive.asString}."
+    }
+    return try {
+        number.intValueExact()
+    } catch (e: ArithmeticException) {
+        throw IllegalArgumentException("Argument '$name' is out of range: ${primitive.asString}.", e)
+    }
+}
 
 fun JsonObject.optionalBoolean(name: String, default: Boolean): Boolean =
     get(name)?.takeIf { !it.isJsonNull }?.asBoolean ?: default

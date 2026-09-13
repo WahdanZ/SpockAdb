@@ -23,6 +23,9 @@ class FakeToolContext(
 ) : ToolContext {
 
     val confirmations = mutableListOf<String>()
+
+    /** What each confirmation told the developer, in step with [confirmations]. */
+    val confirmationSummaries = mutableListOf<String>()
     private var selected: String? = null
 
     var selectedProject: String? = null
@@ -50,6 +53,7 @@ class FakeToolContext(
         device: ConnectedDevice,
     ): Boolean {
         confirmations += toolName
+        confirmationSummaries += summary
         return confirmationAnswer
     }
 

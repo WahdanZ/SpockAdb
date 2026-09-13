@@ -124,6 +124,13 @@ class ClearAppCacheTest {
     }
 
     @Test
+    fun `an rc line is not success when another non-empty line follows it`() {
+        val message = AppCacheShell.failureMessage(pkg, "rc=0\nrun-as: unknown package")
+
+        assertTrue(message != null && message.contains("run-as could not reach"), message)
+    }
+
+    @Test
     fun `clearing takes exactly one shell round trip`() {
         // The second round trip is what raced a running app refilling its own cache.
         val (device, commands) = scriptedDevice { "rc=0" }

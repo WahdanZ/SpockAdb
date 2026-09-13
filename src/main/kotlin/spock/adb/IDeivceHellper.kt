@@ -2,6 +2,8 @@ package spock.adb
 
 import com.android.ddmlib.IDevice
 import spock.adb.command.DontKeepActivitiesState
+import spock.adb.command.HttpProxy
+import spock.adb.command.HttpProxyWrite
 import spock.adb.command.Network
 import spock.adb.command.NetworkState
 import spock.adb.command.ShowLayoutBoundsState
@@ -152,4 +154,38 @@ fun IDevice.apiLevel(): Int? {
     val outputReceiver = ShellOutputReceiver()
     executeShellCommand("getprop ro.build.version.sdk", outputReceiver, 15L, TimeUnit.SECONDS)
     return outputReceiver.toString().trim().toIntOrNull()
+}
+
+/**
+ * The device's global HTTP proxy, or null when none is set.
+ *
+ * See [HttpProxy.parse] for why "null", "" and ":0" all mean the same thing here.
+ */
+fun IDevice.getHttpProxy(): HttpProxy? {
+    val outputReceiver = ShellOutputReceiver()
+    executeShellCommand("settings get global http_proxy", outputReceiver, 15L, TimeUnit.SECONDS)
+
+    return HttpProxy.parse(outputReceiver.toString())
+}
+
+/** Sets the proxy, then reads it back. See [HttpProxyWrite] for why the result is not assumed. */
+fun IDevice.setHttpProxy(proxy: HttpProxy): HttpProxyWrite {
+    putHttpProxy(proxy.toString())
+    return HttpProxyWrite(requested = proxy, applied = getHttpProxy())
+}
+
+/** Android clears the proxy by writing `:0`, not by removing the setting. Read back likewise. */
+fun IDevice.clearHttpProxy(): HttpProxyWrite {
+    putHttpProxy(HttpProxy.CLEARED)
+    return HttpProxyWrite(requested = null, applied = getHttpProxy())
+}
+
+/** Private so the panel and the MCP tools cannot write the proxy without reading it back. */
+private fun IDevice.putHttpProxy(value: String) {
+    executeShellCommand(
+        "settings put global http_proxy ${ShellQuote.quote(value)}",
+        ShellOutputReceiver(),
+        15L,
+        TimeUnit.SECONDS,
+    )
 }

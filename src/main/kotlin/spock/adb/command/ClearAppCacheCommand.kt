@@ -47,10 +47,12 @@ internal object AppCacheShell {
      */
     fun failureMessage(packageName: String, output: String): String? {
         val said = output.trim()
-        val status = EXIT_STATUS.find(said)
+        val lines = said.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+        val tail = lines.lastOrNull()
+        val status = tail?.let { EXIT_STATUS.matchEntire(it) }
         // Whatever the device printed before the status line: rm's own diagnostics, or the
         // refusal from run-as when the status line never arrived.
-        val noise = status?.let { said.take(it.range.first).trim() } ?: said
+        val noise = if (status != null) lines.dropLast(1).joinToString("\n").trim() else said
 
         // The echo runs only if run-as handed the script to a shell at all, so rc=0 is proof
         // the rm ran and succeeded — regardless of anything else printed on the way.
@@ -92,7 +94,7 @@ private const val TIMEOUT_SECONDS = 15L
  * @throws IllegalStateException when `run-as` refuses or the `rm` reports a non-zero status,
  *   carrying what the device said.
  */
-fun IDevice.clearAppCacheOrThrow(packageName: String): String {
+internal fun IDevice.clearAppCacheOrThrow(packageName: String): String {
     val output = ShellOutputReceiver()
     executeShellCommand(AppCacheShell.clearCommand(packageName), output, TIMEOUT_SECONDS, TimeUnit.SECONDS)
     AppCacheShell.failureMessage(packageName, output.toString())?.let { error(it) }

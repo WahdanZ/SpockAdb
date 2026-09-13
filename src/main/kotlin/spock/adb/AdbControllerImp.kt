@@ -518,8 +518,11 @@ class AdbControllerImp(
      * The previous version discarded the exception entirely and showed `e.message ?: "not
      * found"`, so a null-message exception surfaced to the user as the word "not found"
      * with no stack trace recorded anywhere.
+     *
+     * @param onDone runs on the EDT once [block] has finished, whether or not it threw, for a
+     *   caller that has to re-read what it shows.
      */
-    private fun execute(block: () -> Unit) {
+    private fun execute(onDone: (() -> Unit)? = null, block: () -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 block()
@@ -528,6 +531,8 @@ class AdbControllerImp(
             } catch (e: Exception) {
                 log.warn("Spock ADB command failed", e)
                 showError(e.message?.takeIf { it.isNotBlank() } ?: "${e.javaClass.simpleName} — see idea.log")
+            } finally {
+                onDone?.let { onEdt(it) }
             }
         }
     }
@@ -570,6 +575,41 @@ class AdbControllerImp(
         execute {
             val result = OpenDeepLinkCommand().execute(input, project, device)
             showSuccess(result)
+        }
+    }
+
+    override fun setHttpProxy(proxy: HttpProxy, device: IDevice, onDone: () -> Unit) {
+        execute(onDone) {
+            showProxyWrite(SetHttpProxyCommand().execute(proxy, project, device))
+        }
+    }
+
+    override fun clearHttpProxy(device: IDevice, onDone: () -> Unit) {
+        execute(onDone) {
+            showProxyWrite(ClearHttpProxyCommand().execute(Any(), project, device))
+        }
+    }
+
+    /**
+     * Reports what the device holds after the write rather than what was sent — see
+     * [HttpProxyWrite]. A write that did not take is an error, not a success with a caveat.
+     */
+    private fun showProxyWrite(write: HttpProxyWrite) =
+        if (write.took) showSuccess(write.message) else showError(write.message)
+
+    override fun currentHttpProxy(device: IDevice, block: (read: Result<HttpProxy?>) -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val read = try {
+                Result.success(GetHttpProxyCommand().execute(Any(), project, device))
+            } catch (e: ProcessCanceledException) {
+                throw e
+            } catch (e: Exception) {
+                // A device that disconnects mid-read is reported as unknown, never as "no
+                // proxy" — that would be a guess presented as a reading.
+                log.warn("Could not read the device HTTP proxy", e)
+                Result.failure(e)
+            }
+            onEdt { block(read) }
         }
     }
 

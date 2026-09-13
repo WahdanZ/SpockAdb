@@ -104,6 +104,8 @@ class SpockAdbViewer(
     private val openDeepLinkTextField = JBTextField()
     private val openDeepLinkButton = JButton("Open")
 
+    private val httpProxyRow = HttpProxyRow(project, GAP)
+
     /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
     private val adbWifi = JButton()
 
@@ -117,6 +119,9 @@ class SpockAdbViewer(
     private lateinit var developerSection: CollapsibleSection
     private lateinit var networkSection: CollapsibleSection
     private lateinit var sendSection: CollapsibleSection
+
+    /** Hidden as a whole, so switched-off toggles do not leave an empty padded band. */
+    private lateinit var networkToggles: JPanel
     private var selectedDevice: ConnectedDevice? = null
         set(value) {
             field = value
@@ -232,7 +237,7 @@ class SpockAdbViewer(
             grid(permissionButton, grantAllPermissionsButton, revokeAllPermissionsButton),
         )
         developerSection = section("Developer options", "developer", developerOptionsContent())
-        networkSection = section("Network", "network", grid(wifiToggle, mobileDataToggle))
+        networkSection = section("Network", "network", networkContent())
         sendSection = section("Send to device", "send", sendContent())
 
         val content = VerticallyScrollablePanel().apply {
@@ -356,6 +361,17 @@ class SpockAdbViewer(
         add(fieldRow("Deep link", openDeepLinkTextField, openDeepLinkButton))
     }
 
+    /**
+     * The network toggles plus the HTTP proxy row, which lives here rather than under "Send
+     * to device" because a developer looking for why traffic stopped will look under Network.
+     */
+    private fun networkContent(): JPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        networkToggles = grid(wifiToggle, mobileDataToggle)
+        add(networkToggles)
+        add(httpProxyRow)
+    }
+
     private fun fieldRow(label: String, field: JBTextField, button: JButton): JPanel =
         JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
             alignmentX = LEFT_ALIGNMENT
@@ -418,6 +434,7 @@ class SpockAdbViewer(
             if (event.stateChange == ItemEvent.SELECTED) {
                 selectedDevice = devices.getOrNull(devicesListComboBox.selectedIndex)
                 rememberSelectedDevice()
+                httpProxyRow.refresh()
             }
         }
         activitiesBackStackButton.addActionListener {
@@ -548,6 +565,8 @@ class SpockAdbViewer(
             }
         }
         openDeepLinkTextField.addActionListener { openDeepLinkButton.doClick() }
+
+        httpProxyRow.attach(adbController) { selectedDevice }
     }
 
     private fun updateUi(it: AppSetting) {
@@ -577,7 +596,7 @@ class SpockAdbViewer(
                 SpockAction.TEST_PROCESS_DEATH -> testProcessDeathButton.isVisible = it.isSelected
                 SpockAction.FORCE_KILL -> forceKillAppButton.isVisible = it.isSelected
                 SpockAction.UNINSTALL -> uninstallAppButton.isVisible = it.isSelected
-                SpockAction.TOGGLE_NETWORK -> networkSection.setSectionVisible(it.isSelected)
+                SpockAction.TOGGLE_NETWORK -> networkToggles.isVisible = it.isSelected
                 SpockAction.PERMISSIONS -> permissionSection.setSectionVisible(it.isSelected)
                 SpockAction.DEVELOPER_OPTIONS -> developerSection.setSectionVisible(it.isSelected)
                 SpockAction.INPUT -> {
@@ -588,6 +607,7 @@ class SpockAdbViewer(
                     openDeepLinkButton.isVisible = it.isSelected
                     openDeepLinkTextField.isVisible = it.isSelected
                 }
+                SpockAction.HTTP_PROXY -> httpProxyRow.setActionVisible(it.isSelected)
             }
         }
         refreshSectionVisibility()
@@ -624,6 +644,11 @@ class SpockAdbViewer(
         )
         sendSection.setSectionVisible(
             inputOnDeviceButton.isVisible || openDeepLinkButton.isVisible,
+        )
+        // The proxy row and the toggles are switched on separately, so the heading has to
+        // follow whether anything inside it is left rather than a single action.
+        networkSection.setSectionVisible(
+            networkToggles.isVisible || httpProxyRow.isVisible,
         )
         revalidate()
         repaint()
@@ -665,6 +690,9 @@ class SpockAdbViewer(
                 devicesListComboBox.toolTipText = selectedDevice?.info?.describe()
             }
             rememberSelectedDevice()
+            // Swapping the model fires no SELECTED event when the chosen index is 0 — a single
+            // device, first load, a reconnect — so the item listener cannot be relied on here.
+            httpProxyRow.refresh()
         }
     }
 

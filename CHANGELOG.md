@@ -4,6 +4,30 @@
 
 ### Added
 
+- **Route a device's traffic through a local debugging proxy, without leaving the IDE.**
+  Pointing a test device at Charles, Proxyman or mitmproxy meant dropping to a terminal,
+  remembering `settings put global http_proxy`, and — the part that actually bites —
+  remembering to clear it afterwards. A device left pointing at a proxy that is no longer
+  listening fails every request with nothing on screen to say why, and the next person to
+  pick it up has no reason to suspect the proxy. The Network section now has an HTTP proxy
+  field with Set and Clear, and the value is remembered between sessions so it does not have
+  to be retyped. Beneath it the panel shows what the selected device actually holds — direct,
+  via a host, or unknown when it cannot be read — refreshed when a device is selected or
+  reconnects and after every Set and Clear, so a proxy left over from yesterday is visible
+  rather than rediscovered, and a cleared device does not look proxied just because the field
+  still holds the last value. The same operations are exposed to agents as
+  `android_get_http_proxy`, `android_set_http_proxy` and `android_clear_http_proxy`, sharing
+  the panel's write-and-read-back step rather than keeping a second copy of it. Setting a
+  proxy asks the developer first, naming the host: it destroys nothing, so by the letter of
+  the safety model it is a safe action, but it redirects *all* device traffic through a host
+  and survives a reboot, which is not something an agent should be able to leave behind
+  unnoticed. Clearing is a safe action, and reading is read-only, so an agent can always
+  check the state before and after without needing approval for the check. Both mutations,
+  from the panel and from agents, read the value back and report what the device holds
+  rather than what was asked for — `settings put` exits 0 even where the write does not
+  take, and a developer told the proxy is set while traffic still goes direct has no way to
+  tell which half is lying. An IPv6 proxy has to be bracketed, as in `[::1]:8888`; unbracketed,
+  `fe80::1` is refused rather than quietly read as host `fe80:` on port 1
 - **Clear Cache, without losing everything else.** The only way to reset an app from the panel
   was Clear Data, which runs `pm clear` and takes the login session, databases and shared
   preferences with it — so every test of an image or HTTP cache cost a re-login and a re-seed.
@@ -15,6 +39,17 @@
   Success is not inferred from a silent `rm` either — the `rm` reports its own exit status in
   the same command, so a failure is reported as one instead of being announced as a clear. It
   asks no confirmation, since nothing it deletes is something the app cannot rebuild
+
+### Fixed
+
+- **An action added in a new release never reached anyone who already had settings.** The
+  visible-actions list is built from `SpockAction` once, on first run, and loading stored
+  settings then replaced it wholesale — so an action introduced later was absent from every
+  existing user's list. Because the settings dialog is built from that same list, there was
+  no entry to switch the new action on or off with; it was not merely off, it was
+  unreachable. Actions missing from stored settings are now merged in on load, switched on,
+  as a fresh install would have had them. Choices already made are untouched, and entries
+  for actions that no longer exist are still left alone
 
 ## [4.0.3] - 2026-09-12
 
