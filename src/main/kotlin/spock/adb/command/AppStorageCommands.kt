@@ -40,11 +40,14 @@ internal object AppStorageShell {
     /**
      * Regular files only, one per line. The status is literal rather than `$?`: the loop's own
      * status is that of its last `[ -f ]`, which is 1 whenever a directory is empty or missing.
+     *
+     * A name holding a newline is skipped on the device. The output is split into lines, so the
+     * app could otherwise name one file to be listed as several, including ones that do not exist.
      */
     fun listCommand(packageName: String): String = RunAs.command(
         packageName,
         "for f in ${AppStoragePaths.SHARED_PREFS_DIR}/* ${AppStoragePaths.DATASTORE_DIR}/*; " +
-            "do [ -f \"\$f\" ] && echo \"\$f\"; done; echo rc=0",
+            "do case \"\$f\" in *'\n'*) continue;; esac; [ -f \"\$f\" ] && echo \"\$f\"; done; echo rc=0",
     )
 
     /**
@@ -84,6 +87,9 @@ internal object AppStorageShell {
         }
         return "cat ${ShellQuote.quote(staged)} | ${RunAs.command(packageName, script)}"
     }
+
+    /** The staged copy holds app state, and `adb push` may leave it readable by every app on the device. */
+    fun restrictStagedCommand(staged: String): String = "chmod 600 ${ShellQuote.quote(staged)}"
 
     fun removeStagedCommand(staged: String): String = "rm -f ${ShellQuote.quote(staged)}"
 
@@ -241,6 +247,7 @@ private fun IDevice.staged(content: ByteArray, use: (String) -> Unit) {
     try {
         Files.write(local, content)
         pushFile(local.toString(), remote)
+        shell(AppStorageShell.restrictStagedCommand(remote))
         use(remote)
     } finally {
         runCatching { shell(AppStorageShell.removeStagedCommand(remote)) }

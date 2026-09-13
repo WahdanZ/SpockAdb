@@ -43,6 +43,22 @@ class AppStorageCommandsTest {
     }
 
     @Test
+    fun `a file name holding a newline is skipped, not listed as the names it spells`() {
+        val command = AppStorageShell.listCommand(FakeStorageDevice.PKG)
+        assertTrue(command.contains("case \"\$f\" in *'\\''\n'\\''*) continue;; esac;"), command)
+
+        val device = FakeStorageDevice().apply {
+            files["shared_prefs/settings.xml"] = "<map />".toByteArray()
+            // A name cannot hold '/', so the forgery is the line before the newline.
+            files["shared_prefs/forged.xml\nrest"] = "<map />".toByteArray()
+        }
+
+        val listed = device.device.listAppStorage(FakeStorageDevice.PKG)
+
+        assertEquals(listOf("shared_prefs/settings.xml"), listed.map { it.path })
+    }
+
+    @Test
     fun `a release build is refused with the reason`() {
         val device = FakeStorageDevice(debuggable = false)
 
@@ -95,6 +111,23 @@ class AppStorageCommandsTest {
             "the file must be compared again between the stop and the write: ${device.commands}",
         )
         assertTrue(device.staged.isEmpty(), "the staged copy must be removed")
+    }
+
+    @Test
+    fun `the staged copy is made private before it is written from, and removed after`() {
+        val device = FakeStorageDevice().apply { files[prefs.path] = OLD }
+
+        device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = OLD, restart = false)
+
+        val remote = device.pushed.single()
+        assertEquals("chmod 600 '$remote'", AppStorageShell.restrictStagedCommand(remote))
+        val push = device.commands.indexOf("push $remote")
+        val chmod = device.commands.indexOf(AppStorageShell.restrictStagedCommand(remote))
+        val write = device.commands.indexOfFirst { it.startsWith("cat '$remote' |") }
+        val remove = device.commands.indexOf(AppStorageShell.removeStagedCommand(remote))
+        assertTrue(push in 0 until chmod, "push, then chmod: ${device.commands}")
+        assertTrue(chmod < write, "chmod, then the write: ${device.commands}")
+        assertTrue(write < remove, "the write, then rm: ${device.commands}")
     }
 
     @Test

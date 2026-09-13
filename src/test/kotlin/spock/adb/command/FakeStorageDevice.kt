@@ -32,6 +32,7 @@ class FakeStorageDevice(
     /** Every path ever pushed. */
     val pushed = mutableListOf<String>()
 
+    /** Every shell command, in order, with each push recorded among them as `push <remote>`. */
     val commands = mutableListOf<String>()
 
     /** Makes the copy into the app's directory fail, as a full disk would. */
@@ -58,6 +59,7 @@ class FakeStorageDevice(
         val remote = slot<String>()
         every { device.pushFile(capture(local), capture(remote)) } answers {
             pushed += remote.captured
+            commands += "push ${remote.captured}"
             staged[remote.captured] = Files.readAllBytes(Path.of(local.captured))
         }
     }
@@ -68,13 +70,17 @@ class FakeStorageDevice(
         command.startsWith("run-as") || command.startsWith("cat ") && !debuggable ->
             if (debuggable) runAs(command) else "run-as: package not debuggable: $PKG"
         command.startsWith("cat ") -> write(command)
+        command.startsWith("chmod 600 '/data/local/tmp/") -> ""
         command.startsWith("rm -f '/data/local/tmp/") -> "".also { staged.keys.removeIf { command.contains(it) } }
         unresponsiveLaunch -> throw IOException("device went away: $command")
         else -> ""
     }
 
     private fun runAs(command: String): String {
-        if (command == AppStorageShell.listCommand(PKG)) return files.keys.joinToString("\n") + "\nrc=0"
+        if (command == AppStorageShell.listCommand(PKG)) {
+            // As the script does: a name holding a newline is skipped rather than echoed.
+            return files.keys.filterNot { '\n' in it }.joinToString("\n") + "\nrc=0"
+        }
         val path = (files.keys + CANDIDATES).firstOrNull { command == AppStorageShell.readCommand(PKG, it) }
             ?: return "unexpected run-as command: $command"
         val bytes = files[path] ?: return "$path was not found\nrc=90"
