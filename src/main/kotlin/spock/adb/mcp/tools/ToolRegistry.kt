@@ -23,6 +23,7 @@ object ToolRegistry {
         StopAppTool(),
         RestartAppTool(),
         ClearAppDataTool(),
+        ClearAppCacheTool(),
         UninstallAppTool(),
         GrantPermissionTool(),
         RevokePermissionTool(),

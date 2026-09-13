@@ -3,6 +3,7 @@ package spock.adb.mcp.tools
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import spock.adb.clearAppData
+import spock.adb.command.clearAppCacheOrThrow
 import spock.adb.forceKillApp
 import spock.adb.getDefaultActivityForApplication
 import spock.adb.isAppInstall
@@ -177,6 +178,33 @@ class ClearAppDataTool : AdbTool {
         }
         target.device.clearAppData(packageName, McpShell.DEFAULT_TIMEOUT_SECONDS)
         return ToolResult.text("Cleared all data for $packageName.")
+    }
+}
+
+/** `android_clear_app_cache` — cache only, so nothing a developer has to re-seed is lost. */
+class ClearAppCacheTool : AdbTool {
+    override val name = "android_clear_app_cache"
+    override val description =
+        "Delete only an app's internal cache and code_cache. Shared preferences, databases " +
+            "and files are left alone. Requires a debuggable build; use " +
+            "android_clear_app_data to wipe everything."
+    override val safety = ToolSafety.SAFE_ACTION
+    override val inputSchema: JsonObject = Schema.obj {
+        string("packageName", "Package whose cache to clear. Defaults to the open project's application ID.")
+        deviceSerial()
+    }
+
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val packageName = context.resolvePackage(arguments)
+
+        if (!device.isAppInstall(packageName)) {
+            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        }
+        return runCatching { device.clearAppCacheOrThrow(packageName) }.fold(
+            onSuccess = { ToolResult.text(it) },
+            onFailure = { ToolResult.error(it.message ?: "Could not clear the cache for $packageName.") },
+        )
     }
 }
 

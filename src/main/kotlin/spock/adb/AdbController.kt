@@ -29,6 +29,12 @@ interface AdbController {
     fun restartAppWithDebugger(device: IDevice)
     fun clearAppData(device: IDevice)
     fun clearAppDataAndRestart(device: IDevice)
+
+    /**
+     * Clears only the app's internal `cache/` and `code_cache/`, leaving shared preferences,
+     * databases and files intact. Goes through `run-as`, so it needs a debuggable build.
+     */
+    fun clearAppCache(device: IDevice)
     fun uninstallApp(device: IDevice)
     fun getApplicationPermissions(device: IDevice, block: (devices: List<ListItem>) -> Unit)
     fun grantOrRevokeAllPermissions(device: IDevice, permissionOperation: GetApplicationPermission.PermissionOperation)
