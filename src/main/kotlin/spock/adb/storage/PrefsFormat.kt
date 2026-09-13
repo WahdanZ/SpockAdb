@@ -62,7 +62,9 @@ private const val ENCRYPTED_PREFS_KEY_PREFIX = "__androidx_security_crypto_encry
  *
  * A changed key keeps its position, so a diff of the file shows the edit and nothing else. A
  * key the file holds more than once is collapsed into the first position: both formats let the
- * last one win on read, so the survivor has to be the value that was asked for.
+ * last one win on read, so the survivor has to be the value that was asked for. Position comes
+ * from the first duplicate, but what `build` carries over as `previous` comes from the last,
+ * live one — the first is state the app never sees, and carrying it would revive it.
  */
 internal fun <N> List<N>.applying(
     changes: List<PrefChange>,
@@ -82,7 +84,7 @@ internal fun <N> List<N>.applying(
                 require(change.value.type in types) {
                     "This file cannot store a ${change.value.type.label}. It can store: ${types.joinToString()}."
                 }
-                result.put(held, build(change.key, change.value, held.firstOrNull()?.let { result[it] }))
+                result.put(held, build(change.key, change.value, held.lastOrNull()?.let { result[it] }))
             }
             is PrefChange.Remove -> {
                 require(held.isNotEmpty()) { "'${change.key}' is not in this file." }

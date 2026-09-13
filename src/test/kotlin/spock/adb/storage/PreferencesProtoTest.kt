@@ -138,6 +138,21 @@ class PreferencesProtoTest {
     }
 
     @Test
+    fun `an edit of a repeated key carries the unknown fields of the live, last entry`() {
+        val file = hex(
+            // entry { key "a", value { int 3: 10 }, unknown entry field 3 = 99 } — shadowed on read
+            "0a 09 0a 01 61 12 02 18 0a 18 63" +
+                // entry { key "a", value { int 3: 20 }, unknown entry field 3 = 1 } — the live one
+                " 0a 09 0a 01 61 12 02 18 14 18 01",
+        )
+
+        val written = PreferencesProto.write(file, listOf(PrefChange.Put("a", PrefValue.IntValue(99))))
+
+        // One entry: value { int 3: 99 } (18 63), then the live entry's unknown field 3 = 1 (18 01).
+        assertArrayEquals(hex("0a 09 0a 01 61 12 02 18 63 18 01"), written)
+    }
+
+    @Test
     fun `removing an entry keeps the others in order`() {
         val file = PreferencesProto.write(
             ByteArray(0),
