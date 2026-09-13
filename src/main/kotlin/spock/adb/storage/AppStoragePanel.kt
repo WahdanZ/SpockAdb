@@ -25,6 +25,7 @@ import spock.adb.DestructiveActionConfirmation
 import spock.adb.LatestRequest
 import spock.adb.command.AppStorageFileRequest
 import spock.adb.command.AppStorageShell
+import spock.adb.command.AppStorageUnverifiedWriteException
 import spock.adb.command.AppStorageWrite
 import spock.adb.command.AppStorageWriteRequest
 import spock.adb.command.GetApplicationIDCommand
@@ -236,23 +237,30 @@ class AppStoragePanel(
     }
 
     private fun fileSelected() {
+        val target = device ?: return status(NO_DEVICE)
         val file = fileList.selectedValue ?: return
         if (file == session?.file) return
         if (!confirmDiscard()) {
             withoutSelectionEvents { fileList.setSelectedValue(session?.file, true) }
             return
         }
-        listedPackage?.let { open(file, it) }
+        listedPackage?.let { open(target, file, it) }
     }
 
     private fun reload() {
+        val target = device ?: return status(NO_DEVICE)
         val current = session ?: return
-        if (confirmDiscard()) listedPackage?.let { open(current.file, it) }
+        if (confirmDiscard()) listedPackage?.let { open(target, current.file, it) }
     }
 
-    /** Reads [file] and shows it, with [message] as the status once it is shown. */
-    private fun open(file: StorageFile, packageName: String, message: String? = null) {
-        val target = device ?: return status(NO_DEVICE)
+    /**
+     * Reads [file] from [target] and shows it, with [message] as the status once it is shown.
+     *
+     * The device is passed in rather than taken from the field: a caller finishing earlier work
+     * has to read from the device that work was about, and decide for itself whether that is
+     * still the one shown — see [isStillShowing].
+     */
+    private fun open(target: ConnectedDevice, file: StorageFile, packageName: String, message: String? = null) {
         val request = reads.begin()
         status(message ?: "Reading ${file.path}…")
         background({
@@ -334,9 +342,11 @@ class AppStoragePanel(
         val point = lastWrite ?: return
         val target = device?.takeIf { it.serialNumber == point.serial }
             ?: return status("The last apply was to another device. Select it to undo the apply.")
-        if (!confirmDiscard()) return
+        if (listedPackage != point.packageName) {
+            return status("The last apply was to ${point.packageName}. List its files to undo the apply.")
+        }
         val action = "Restore ${point.file.path} to what it held before the last apply"
-        if (!confirmWrite(target, point.packageName, action)) return
+        if (!confirmDiscard() || !confirmWrite(target, point.packageName, action, undoable = false)) return
         write(
             target,
             point.packageName,
@@ -366,19 +376,24 @@ class AppStoragePanel(
         background({ WriteAppStorageFileCommand().execute(request, project, target.device) }) { result ->
             busy = false
             updateControls()
-            result
-                .onSuccess { write ->
-                    lastWrite = if (undoable) {
-                        UndoPoint(target.serialNumber, packageName, file, write.previous, content)
-                    } else {
-                        null
-                    }
-                    // Shows what the device now holds, not what was sent.
-                    open(file, packageName, "$done ${afterWrite(write, restart, packageName)}")
-                }
-                .onFailure { open(file, packageName, it.message ?: "Could not write ${file.path}.") }
+            val write = result.getOrNull()
+            // A write that landed but did not read back still replaced the file, so it can be undone.
+            val unverified = result.exceptionOrNull() as? AppStorageUnverifiedWriteException
+            val previous = write?.previous ?: unverified?.previous
+            if (previous != null) {
+                lastWrite = if (undoable) UndoPoint(target.serialNumber, packageName, file, previous, content) else null
+            }
+            val message = write?.let { "$done ${afterWrite(it, restart, packageName)}" }
+                ?: result.exceptionOrNull()?.message
+                ?: "Could not write ${file.path}."
+            // Shows what the device now holds, not what was sent — unless the tab has moved on meanwhile.
+            if (isStillShowing(target, packageName)) open(target, file, packageName, message) else status(message)
         }
     }
+
+    /** Whether the tab still shows [packageName] on [target], as it did when the work now finishing began. */
+    private fun isStillShowing(target: ConnectedDevice, packageName: String): Boolean =
+        device?.serialNumber == target.serialNumber && listedPackage == packageName
 
     // ---------------------------------------------------------------- export and import
 
@@ -419,6 +434,11 @@ class AppStoragePanel(
     ) {
         background({ contentsOf(chosen) }) { result ->
             val bytes = result.getOrElse { return@background status(it.message ?: "Could not read ${chosen.name}.") }
+            if (!isStillShowing(target, packageName) || session !== current) {
+                return@background status(
+                    "${chosen.name} was not imported: the device or package changed while it was read.",
+                )
+            }
             // Refused unless the editor could read it as this kind of file: a write is not a way to
             // put something the app cannot load in place of its preferences.
             PrefsEditSession(current.file, bytes).readOnlyReason?.let {
@@ -430,23 +450,21 @@ class AppStoragePanel(
         }
     }
 
-    private fun contentsOf(file: VirtualFile): ByteArray {
-        require(file.length <= AppStorageShell.MAX_FILE_BYTES) {
-            "${file.name} is larger than ${AppStorageShell.MAX_FILE_BYTES} bytes, which is no preferences file."
-        }
-        return file.contentsToByteArray()
-    }
-
     // ---------------------------------------------------------------- helpers
 
-    private fun confirmWrite(target: ConnectedDevice, packageName: String, action: String): Boolean =
-        DestructiveActionConfirmation.confirmAppStorageWrite(
-            project,
-            target.info,
-            packageName,
-            action,
-            restartAfterWrite.isSelected,
-        )
+    private fun confirmWrite(
+        target: ConnectedDevice,
+        packageName: String,
+        action: String,
+        undoable: Boolean = true,
+    ): Boolean = DestructiveActionConfirmation.confirmAppStorageWrite(
+        project,
+        target.info,
+        packageName,
+        action,
+        restartAfterWrite.isSelected,
+        undoable,
+    )
 
     private fun confirmDiscard(): Boolean {
         val current = session ?: return true
@@ -468,7 +486,10 @@ class AppStoragePanel(
         val rows = current?.rows.orEmpty()
         val selected = table.selectedRows.toList().mapNotNull { index -> rows.getOrNull(index) }
         listButton.isEnabled = !busy && device != null
+        // While a write runs, nothing may change what its callback reopens or what it wrote over.
+        packageField.isEnabled = !busy
         fileList.isEnabled = !busy
+        model.editable = !busy
         addButton.isEnabled = editable
         deleteButton.isEnabled = editable && selected.any { it.editable }
         applyButton.isEnabled = editable && current?.isDirty == true
@@ -547,6 +568,13 @@ class AppStoragePanel(
     }
 }
 
+private fun contentsOf(file: VirtualFile): ByteArray {
+    require(file.length <= AppStorageShell.MAX_FILE_BYTES) {
+        "${file.name} is larger than ${AppStorageShell.MAX_FILE_BYTES} bytes, which is no preferences file."
+    }
+    return file.contentsToByteArray()
+}
+
 /** What happened to the app after a write, for the status line. */
 private fun afterWrite(write: AppStorageWrite, restart: Boolean, packageName: String): String = when {
     write.restarted -> "$packageName was stopped and started again."
@@ -565,6 +593,9 @@ private class PrefsTableModel : AbstractTableModel() {
 
     var onEdited: () -> Unit = {}
 
+    /** False while a write runs, so no cell can be edited against a file that is being replaced. */
+    var editable: Boolean = true
+
     override fun getRowCount(): Int = session?.rows?.size ?: 0
 
     override fun getColumnCount(): Int = COLUMNS.size
@@ -582,7 +613,8 @@ private class PrefsTableModel : AbstractTableModel() {
         }
     }
 
-    override fun isCellEditable(row: Int, column: Int): Boolean = session?.rows?.getOrNull(row)?.editable == true
+    override fun isCellEditable(row: Int, column: Int): Boolean =
+        editable && session?.rows?.getOrNull(row)?.editable == true
 
     override fun setValueAt(value: Any?, row: Int, column: Int) {
         val entry = session?.rows?.getOrNull(row) ?: return

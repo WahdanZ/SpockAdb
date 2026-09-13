@@ -38,21 +38,32 @@ object DestructiveActionConfirmation {
         yesText = "Revoke All",
     )
 
+    /** @param undoable false when this write is itself the undo, which leaves nothing to undo afterwards. */
+    @Suppress("LongParameterList")
     fun confirmAppStorageWrite(
         project: Project,
         device: DeviceInfo,
         packageName: String,
         action: String,
         restart: Boolean,
+        undoable: Boolean,
     ): Boolean = ask(
         project,
         title = "Write App Storage",
-        message = "$action in $packageName on ${device.describe()}?\n\n" +
-            "The app is force-stopped first, so a running app cannot write its old values back over " +
-            "the change" + (if (restart) ", and is started again afterwards." else ".") +
-            " Undo Last Apply can restore the previous file.",
+        message = appStorageWriteMessage(device, packageName, action, restart, undoable),
         yesText = "Stop App and Write",
     )
+
+    internal fun appStorageWriteMessage(
+        device: DeviceInfo,
+        packageName: String,
+        action: String,
+        restart: Boolean,
+        undoable: Boolean,
+    ): String = "$action in $packageName on ${device.describe()}?\n\n" +
+        "The app is force-stopped first, so a running app cannot write its old values back over " +
+        "the change" + (if (restart) ", and is started again afterwards." else ".") +
+        (if (undoable) " Undo Last Apply can restore the previous file." else "")
 
     private fun ask(project: Project, title: String, message: String, yesText: String): Boolean =
         MessageDialogBuilder
