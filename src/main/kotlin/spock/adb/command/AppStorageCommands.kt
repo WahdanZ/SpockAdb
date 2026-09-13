@@ -187,7 +187,7 @@ internal fun IDevice.writeAppStorageFile(
     val written = readAppStorageFile(packageName, file)
     check(written.contentEquals(content)) {
         "${file.path} was written, but the device now holds ${written.size} bytes that differ from the " +
-            "${content.size} sent. The previous content is kept for undo."
+            "${content.size} sent. Read it again to see what it holds."
     }
     return AppStorageWrite(file, previous, restarted = restart && relaunch(packageName))
 }

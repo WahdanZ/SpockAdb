@@ -38,6 +38,22 @@ object DestructiveActionConfirmation {
         yesText = "Revoke All",
     )
 
+    fun confirmAppStorageWrite(
+        project: Project,
+        device: DeviceInfo,
+        packageName: String,
+        action: String,
+        restart: Boolean,
+    ): Boolean = ask(
+        project,
+        title = "Write App Storage",
+        message = "$action in $packageName on ${device.describe()}?\n\n" +
+            "The app is force-stopped first, so a running app cannot write its old values back over " +
+            "the change" + (if (restart) ", and is started again afterwards." else ".") +
+            " Undo Last Apply can restore the previous file.",
+        yesText = "Stop App and Write",
+    )
+
     private fun ask(project: Project, title: String, message: String, yesText: String): Boolean =
         MessageDialogBuilder
             .yesNo(title, message)

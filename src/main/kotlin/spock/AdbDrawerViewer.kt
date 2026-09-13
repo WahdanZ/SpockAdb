@@ -10,6 +10,7 @@ import spock.adb.assistant.AssistantPanel
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.logcat.LogcatPanel
 import spock.adb.mcp.McpServerPanel
+import spock.adb.storage.AppStoragePanel
 import spock.adb.uitree.UiInspectorPanel
 
 class AdbDrawerViewer : ToolWindowFactory {
@@ -25,6 +26,7 @@ class AdbDrawerViewer : ToolWindowFactory {
         val mcpPanel = McpServerPanel(project)
         val assistantPanel = AssistantPanel(project)
         val uiInspectorPanel = UiInspectorPanel(project)
+        val appStoragePanel = AppStoragePanel(project)
 
         // Both panels are disposed with the tool window, which stops the logcat stream and
         // cancels any running command rather than leaking an ADB reader thread.
@@ -35,6 +37,8 @@ class AdbDrawerViewer : ToolWindowFactory {
         // window does not leave a model call running against a device no one is watching.
         Disposer.register(toolWindow.disposable, assistantPanel)
         Disposer.register(toolWindow.disposable, uiInspectorPanel)
+        // Drops the answers to storage reads and writes still in flight when the window closes.
+        Disposer.register(toolWindow.disposable, appStoragePanel)
 
         val viewer = SpockAdbViewer(project, toolWindow.disposable)
         // The device chosen in the Devices tab is the target for every tab, so there is one
@@ -43,6 +47,7 @@ class AdbDrawerViewer : ToolWindowFactory {
             logcatPanel.setDevice(selected)
             commandCenterPanel.setDevice(selected)
             uiInspectorPanel.setDevice(selected)
+            appStoragePanel.setDevice(selected)
         }
         viewer.initPlugin(adbController)
 
@@ -67,6 +72,9 @@ class AdbDrawerViewer : ToolWindowFactory {
         )
         contentManager.addContent(
             contentManager.factory.createContent(uiInspectorPanel, "UI Inspector", false),
+        )
+        contentManager.addContent(
+            contentManager.factory.createContent(appStoragePanel, "App Storage", false),
         )
     }
 }
