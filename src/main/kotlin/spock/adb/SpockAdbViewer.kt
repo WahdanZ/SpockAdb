@@ -70,6 +70,11 @@ class SpockAdbViewer(
 
     // Destructive actions carry an ellipsis: they open a confirmation rather than acting.
     private val clearAppDataButton = JButton("Clear Data...")
+
+    // No ellipsis: this one asks nothing, because it destroys nothing the app cannot rebuild.
+    private val clearAppCacheButton = JButton("Clear Cache").apply {
+        toolTipText = "Delete only the app's internal cache and code_cache; needs a debuggable build"
+    }
     private val clearAppDataAndRestartButton = JButton("Clear & Restart...").apply {
         toolTipText = "Delete all app data, then relaunch the app"
     }
@@ -224,7 +229,7 @@ class SpockAdbViewer(
         dangerSection = section(
             "Destructive",
             "destructive",
-            grid(clearAppDataButton, clearAppDataAndRestartButton, uninstallAppButton),
+            grid(clearAppDataButton, clearAppCacheButton, clearAppDataAndRestartButton, uninstallAppButton),
         )
         permissionSection = section(
             "Permissions",
@@ -479,6 +484,11 @@ class SpockAdbViewer(
                 }
             }
         }
+        clearAppCacheButton.addActionListener {
+            selectedIDevice?.let { device ->
+                adbController.clearAppCache(device)
+            }
+        }
         clearAppDataAndRestartButton.addActionListener {
             selectedDevice?.let { (device, deviceInfo) ->
                 if (DestructiveActionConfirmation.confirmClearData(project, deviceInfo, andRestart = true)) {
@@ -576,6 +586,7 @@ class SpockAdbViewer(
                 SpockAction.BACK_STACK -> activitiesBackStackButton.isVisible = it.isSelected
                 SpockAction.CLEAR_APP_DATA -> clearAppDataButton.isVisible = it.isSelected
                 SpockAction.CLEAR_APP_DATA_RESTART -> clearAppDataAndRestartButton.isVisible = it.isSelected
+                SpockAction.CLEAR_APP_CACHE -> clearAppCacheButton.isVisible = it.isSelected
                 SpockAction.RESTART -> restartAppButton.isVisible = it.isSelected
                 // Attaching a debugger needs the Android Studio execution tooling, which is
                 // absent in some IDEs that bundle the Android plugin. Hide the action there
@@ -624,7 +635,12 @@ class SpockAdbViewer(
             ).any { it.isVisible },
         )
         dangerSection.setSectionVisible(
-            listOf(clearAppDataButton, clearAppDataAndRestartButton, uninstallAppButton).any { it.isVisible },
+            listOf(
+                clearAppDataButton,
+                clearAppCacheButton,
+                clearAppDataAndRestartButton,
+                uninstallAppButton,
+            ).any { it.isVisible },
         )
         sendSection.setSectionVisible(
             inputOnDeviceButton.isVisible || openDeepLinkButton.isVisible,

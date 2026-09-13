@@ -327,6 +327,14 @@ class AdbControllerImp(
         }
     }
 
+    override fun clearAppCache(device: IDevice) {
+        execute {
+            val applicationID = getApplicationID(device)
+            ClearAppCacheCommand().execute(applicationID, project, device)
+            showSuccess("Cleared the cache for $applicationID (cache and code_cache)")
+        }
+    }
+
     override fun uninstallApp(device: IDevice) {
         execute {
             val applicationID = getApplicationID(device)

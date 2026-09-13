@@ -28,6 +28,17 @@
   take, and a developer told the proxy is set while traffic still goes direct has no way to
   tell which half is lying. An IPv6 proxy has to be bracketed, as in `[::1]:8888`; unbracketed,
   `fe80::1` is refused rather than quietly read as host `fe80:` on port 1
+- **Clear Cache, without losing everything else.** The only way to reset an app from the panel
+  was Clear Data, which runs `pm clear` and takes the login session, databases and shared
+  preferences with it — so every test of an image or HTTP cache cost a re-login and a re-seed.
+  A new **Clear Cache** button, and a matching `android_clear_app_cache` MCP tool, delete only
+  the app's internal `cache/` and `code_cache/`. It goes through `run-as` with relative paths
+  rather than `pm clear --cache-only`, because a device that predates that flag ignores it and
+  clears the package in full — a silent total wipe when a cache drop was asked for. The price is
+  that it needs a debuggable build; on a release build it says so and points at Clear Data.
+  Success is not inferred from a silent `rm` either — the `rm` reports its own exit status in
+  the same command, so a failure is reported as one instead of being announced as a clear. It
+  asks no confirmation, since nothing it deletes is something the app cannot rebuild
 
 ### Fixed
 

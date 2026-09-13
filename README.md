@@ -9,7 +9,7 @@ Full control of your Android device directly from your IDE — no terminal neede
 
 Spock ADB puts the most common ADB workflows into a single tool window: navigate to the active Activity or Fragment in your editor, manage app lifecycle, stream logcat, run ADB commands, and inspect the UI of Views <em>and</em> Jetpack Compose screens.
 
-It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cursor or any MCP client safe, structured access to a connected device. 45 strongly typed tools rather than a raw shell, and anything destructive asks you first, every time.
+It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cursor or any MCP client safe, structured access to a connected device. 46 strongly typed tools rather than a raw shell, and anything destructive asks you first, every time.
 
 Works in Android Studio and IntelliJ IDEA.
 <!-- Plugin description end -->
@@ -48,7 +48,8 @@ between sessions, and every other tab targets it.
 | **Open Current Fragment** | Jump to the visible Fragment, nested ones included |
 | **Back stacks** | The app's Activity/Fragment stack, or the system-wide one |
 | **Restart / Force Stop / Test Process Death** | App lifecycle, one click each |
-| **Clear Data · Uninstall** | Destructive — always confirmed, and the prompt names the device |
+| **Clear Data · Uninstall** | Unrecoverable — confirmed first, and the prompt names the device |
+| **Clear Cache** | Deletes only the app's internal cache and code_cache, so logins and databases survive; no prompt, because nothing the app cannot rebuild is lost |
 | **Permissions** | Toggle runtime permissions individually, or grant/revoke all |
 | **Developer options** | Show Taps, Layout Bounds, Don't Keep Activities, animation scales |
 | **Network** | Toggle Wi-Fi and mobile data |
@@ -103,7 +104,7 @@ accessibility tree where Compose publishes its semantics rather than assuming a 
 Give an AI agent — Claude Code, Claude Desktop, Cursor — safe, structured access to a connected
 device. **Off by default**; you start it deliberately.
 
-- **45 strongly typed tools** instead of a raw shell, so an agent can reason about what an
+- **46 strongly typed tools** instead of a raw shell, so an agent can reason about what an
   operation *means* and you can audit it
 - **Live activity monitor**: every call with a safety marker, outcome and duration. Expand one to
   see arguments, result, client, target device — and whether you approved or denied it
