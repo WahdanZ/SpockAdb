@@ -94,7 +94,7 @@ private const val TIMEOUT_SECONDS = 15L
  * @throws IllegalStateException when `run-as` refuses or the `rm` reports a non-zero status,
  *   carrying what the device said.
  */
-fun IDevice.clearAppCacheOrThrow(packageName: String): String {
+internal fun IDevice.clearAppCacheOrThrow(packageName: String): String {
     val output = ShellOutputReceiver()
     executeShellCommand(AppCacheShell.clearCommand(packageName), output, TIMEOUT_SECONDS, TimeUnit.SECONDS)
     AppCacheShell.failureMessage(packageName, output.toString())?.let { error(it) }
