@@ -48,7 +48,8 @@ between sessions, and every other tab targets it.
 | **Open Current Fragment** | Jump to the visible Fragment, nested ones included |
 | **Back stacks** | The app's Activity/Fragment stack, or the system-wide one |
 | **Restart / Force Stop / Test Process Death** | App lifecycle, one click each |
-| **Clear Data · Uninstall** | Destructive — always confirmed, and the prompt names the device |
+| **Clear Data · Uninstall** | Unrecoverable — confirmed first, and the prompt names the device |
+| **Clear Cache** | Deletes only the app's internal cache and code_cache, so logins and databases survive; no prompt, because nothing the app cannot rebuild is lost |
 | **Permissions** | Toggle runtime permissions individually, or grant/revoke all |
 | **Developer options** | Show Taps, Layout Bounds, Don't Keep Activities, animation scales |
 | **Network** | Toggle Wi-Fi and mobile data |

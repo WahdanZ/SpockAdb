@@ -12,9 +12,9 @@
   rather than `pm clear --cache-only`, because a device that predates that flag ignores it and
   clears the package in full — a silent total wipe when a cache drop was asked for. The price is
   that it needs a debuggable build; on a release build it says so and points at Clear Data.
-  Success is not inferred from a silent `rm`: the directories are read back, and anything left
-  is named. It asks no confirmation, since nothing it deletes is something the app cannot
-  rebuild
+  Success is not inferred from a silent `rm` either — the `rm` reports its own exit status in
+  the same command, so a failure is reported as one instead of being announced as a clear. It
+  asks no confirmation, since nothing it deletes is something the app cannot rebuild
 
 ## [4.0.3] - 2026-09-12
 

@@ -6,6 +6,7 @@ import com.google.gson.JsonObject
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -22,14 +23,20 @@ class ClearAppCacheToolTest {
 
     @Test
     fun `clears without asking for confirmation`() {
-        val (context, _) = contextWith { command ->
-            if (command.startsWith("pm list packages")) "package:$pkg" else ""
+        val (context, commands) = contextWith { command ->
+            when {
+                command.startsWith("pm list packages") -> "package:$pkg"
+                // What a successful rm reports back: its own exit status, in the same call.
+                command.startsWith("run-as") -> "rc=0"
+                else -> ""
+            }
         }
 
         val result = ClearAppCacheTool().execute(JsonObject(), context)
 
         assertFalse(result.isError, result.text())
         assertTrue(context.confirmations.isEmpty(), "a safe action must not ask")
+        assertEquals(1, commands.count { it.startsWith("run-as") }, "one round trip: $commands")
     }
 
     @Test

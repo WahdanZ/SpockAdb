@@ -15,19 +15,23 @@ import java.util.concurrent.TimeUnit
 
 /**
  * "Clear cache" must never turn into "clear data". These tests pin the command that reaches
- * the device, how `run-as` refusals are reported, and that success is proven by a readback
- * rather than assumed from a silent `rm`.
+ * the device, and that success is decided by the `rm`'s own exit status rather than by
+ * reading the directories back afterwards — a readback mis-reported an empty cache as two
+ * leftover files, and raced a running app refilling its cache.
  */
 class ClearAppCacheTest {
 
     private val pkg = "com.example.app"
 
     @Test
-    fun `clear command removes only the relative cache directories under run-as`() {
+    fun `clear command removes only the relative cache directories and reports its own status`() {
         assertEquals(
-            "run-as 'com.example.app' sh -c 'rm -rf ./cache ./code_cache'",
+            "run-as 'com.example.app' sh -c 'rm -rf ./cache ./code_cache; echo rc=$?'",
             AppCacheShell.clearCommand(pkg),
         )
+        // Built from the character rather than written inline, so a `$` lost to Kotlin string
+        // templating cannot go unnoticed by matching an equally broken expectation above.
+        assertTrue(AppCacheShell.clearCommand(pkg).endsWith("echo rc=" + '$' + "?'"))
     }
 
     @Test
@@ -44,15 +48,44 @@ class ClearAppCacheTest {
     @Test
     fun `a quote in the package name cannot escape into a second command`() {
         assertEquals(
-            "run-as 'com.evil'\\''; rm -rf /' sh -c 'rm -rf ./cache ./code_cache'",
+            "run-as 'com.evil'\\''; rm -rf /' sh -c 'rm -rf ./cache ./code_cache; echo rc=$?'",
             AppCacheShell.clearCommand("com.evil'; rm -rf /"),
         )
     }
 
     @Test
-    fun `silence is success`() {
+    fun `rc=0 is success, whatever else the device printed first`() {
+        listOf(
+            "rc=0",
+            "rc=0\n",
+            "  rc=0  ",
+            // The echo only runs if the script ran, so anything ahead of it is noise.
+            "WARNING: linker: unused DT entry\nrc=0",
+        ).forEach {
+            assertNull(AppCacheShell.failureMessage(pkg, it), "'$it' should be success")
+        }
+    }
+
+    @Test
+    fun `a non-zero status is a failure that surfaces what rm said`() {
+        val message = AppCacheShell.failureMessage(pkg, "rm: ./cache/x: Permission denied\nrc=1")!!
+
+        assertTrue(message.contains("Permission denied"), message)
+        assertTrue(message.contains(pkg), message)
+    }
+
+    @Test
+    fun `a non-zero status with nothing else still fails rather than passing silently`() {
+        val message = AppCacheShell.failureMessage(pkg, "rc=1")!!
+
+        assertTrue(message.contains("1"), message)
+    }
+
+    @Test
+    fun `no status line at all is a failure, because that is what a refused run-as looks like`() {
         listOf("", "\n", "   \n ").forEach {
-            assertNull(AppCacheShell.failureMessage(pkg, it), "blank output '$it' is not a failure")
+            val message = AppCacheShell.failureMessage(pkg, it)
+            assertTrue(message != null && message.contains("no exit status"), "'$it' must not read as success")
         }
     }
 
@@ -83,26 +116,25 @@ class ClearAppCacheTest {
     }
 
     @Test
-    fun `leftovers are the non-blank lines of the readback`() {
-        assertTrue(AppCacheShell.leftovers("").isEmpty())
-        assertEquals(listOf("images", "http-cache"), AppCacheShell.leftovers("images\nhttp-cache\n"))
+    fun `an rc printed by the app itself does not decide the outcome`() {
+        // Only the trailing status line is ours; a stray `rc=0` in the app's own output is not.
+        val message = AppCacheShell.failureMessage(pkg, "rc=0 something the app logged\nrun-as: unknown package")
+
+        assertTrue(message != null && message.contains("run-as could not reach"), message)
     }
 
     @Test
-    fun `clears first and reads back second`() {
-        val (device, commands) = scriptedDevice { "" }
+    fun `clearing takes exactly one shell round trip`() {
+        // The second round trip is what raced a running app refilling its own cache.
+        val (device, commands) = scriptedDevice { "rc=0" }
 
         device.clearAppCacheOrThrow(pkg)
 
-        assertEquals(
-            listOf(AppCacheShell.clearCommand(pkg), AppCacheShell.verifyCommand(pkg)),
-            commands,
-            "the readback proves nothing unless it runs after the rm",
-        )
+        assertEquals(listOf(AppCacheShell.clearCommand(pkg)), commands)
     }
 
     @Test
-    fun `a run-as refusal throws and skips the readback`() {
+    fun `a run-as refusal throws with the device's own words`() {
         val (device, commands) = scriptedDevice { "run-as: Package '$pkg' is not debuggable" }
 
         val thrown = assertThrows<IllegalStateException> { device.clearAppCacheOrThrow(pkg) }
@@ -112,14 +144,12 @@ class ClearAppCacheTest {
     }
 
     @Test
-    fun `a readback that still finds files throws and names them`() {
-        val (device, _) = scriptedDevice { command ->
-            if (command == AppCacheShell.verifyCommand(pkg)) "images\n" else ""
-        }
+    fun `a failed rm throws and names what it could not remove`() {
+        val (device, _) = scriptedDevice { "rm: ./code_cache/locked: Permission denied\nrc=1" }
 
         val thrown = assertThrows<IllegalStateException> { device.clearAppCacheOrThrow(pkg) }
 
-        assertTrue(thrown.message!!.contains("images"), thrown.message)
+        assertTrue(thrown.message!!.contains("code_cache/locked"), thrown.message)
     }
 
     /** A device whose shell answers each command with [reply], recording commands in order. */
