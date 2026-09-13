@@ -37,6 +37,9 @@ class ToolSafetyTest {
                 // Not state-destroying in the literal sense, but it redirects all device
                 // traffic through a host and survives a reboot, so it asks first.
                 "android_set_http_proxy",
+                // They replace app state nothing else restores, and stop the app to do it.
+                "android_set_app_preference",
+                "android_delete_app_preference",
                 "android_run_adb_command",
             ),
             ToolRegistry.bySafety(ToolSafety.DESTRUCTIVE).map { it.name }.toSet(),
@@ -67,6 +70,8 @@ class ToolSafetyTest {
                 "android_assert_enabled",
                 "android_assert_text",
                 "android_get_http_proxy",
+                "android_list_app_storage",
+                "android_read_app_storage",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )
@@ -103,6 +108,10 @@ class ToolSafetyTest {
                 addProperty("packageName", "com.example.app")
                 addProperty("host", "192.168.1.10")
                 addProperty("port", 8888)
+                addProperty("file", "shared_prefs/settings.xml")
+                addProperty("key", "onboarding_seen")
+                addProperty("type", "boolean")
+                addProperty("value", "true")
             }
 
             // A throw means these arguments never got the tool as far as its decision, so
@@ -237,6 +246,11 @@ class ToolSafetyTest {
          * asking. The fake reports no packages installed, so there is nothing to clear or
          * uninstall. Pinned so a tool cannot join this list by accident.
          */
-        val SHORT_CIRCUIT_BEFORE_ASKING = setOf("android_clear_app_data", "android_uninstall_app")
+        val SHORT_CIRCUIT_BEFORE_ASKING = setOf(
+            "android_clear_app_data",
+            "android_uninstall_app",
+            "android_set_app_preference",
+            "android_delete_app_preference",
+        )
     }
 }

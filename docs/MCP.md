@@ -175,13 +175,13 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-46 tools, in three levels.
+50 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (20) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy` |
+| **Read-only** (22) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage` |
 | **Safe action** (21) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy` |
-| **Destructive** (5) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_run_adb_command` |
+| **Destructive** (7) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command` |
 
 Rules that hold regardless of what a client asks for:
 
@@ -411,6 +411,26 @@ worse than reporting the failure. An IPv6 host must be bracketed, for example `[
 
 It does not capture everything: apps that use their own HTTP stack, or that pin
 certificates, will not route through it.
+
+### App storage tools
+
+`android_list_app_storage` and `android_read_app_storage` show an app's SharedPreferences
+(`shared_prefs/*.xml`) and Preferences DataStore (`files/datastore/*.preferences_pb`) files as
+typed entries. `android_set_app_preference` and `android_delete_app_preference` change one key.
+All four go through `run-as`, so the app must be a debuggable build, and they reach only files
+directly inside those two directories.
+
+The two edits are **destructive**. The change replaces app state that no normal action
+restores, and the write force-stops the app — a running app holds its preferences in memory and
+writes them back on its next `apply()`, which would silently undo the edit. Everything that can be
+refused is refused before you are asked: a key that is not in the file, a type the file cannot
+store (SharedPreferences has no double or bytes), or an EncryptedSharedPreferences file, which is
+read-only. The confirmation names the value before and after.
+
+A write re-reads the file after stopping the app and refuses if it changed since it was read, then
+replaces it and reads it back. What the editor does not understand is preserved: unknown XML
+elements and unknown protobuf fields survive an edit. Proto DataStore files with the app's own
+schema are listed as unsupported and never decoded.
 
 ### `android_select_project`
 
