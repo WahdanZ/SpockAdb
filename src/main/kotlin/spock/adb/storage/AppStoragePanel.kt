@@ -400,12 +400,15 @@ class AppStoragePanel(
     private fun export() {
         val current = session ?: return
 
-        // The vararg constructor, as in the logcat export: the two-argument one is missing before 2025.1.
-        @Suppress("DEPRECATION")
+        // The vararg constructor, as in the logcat export: the others are missing before 2025.1. With a
+        // single extension, Kotlin would otherwise pick the (String, String, String) overload, which
+        // Plugin Verifier reports as a NoSuchMethodError on 232 and 242 — the spread forces the vararg one.
+        // Kotlin has no other way to reach a vararg overload, and copying one element costs nothing.
+        @Suppress("DEPRECATION", "SpreadOperator")
         val descriptor = FileSaverDescriptor(
             "Export ${current.file.name}",
             "Save the file as last read from the device",
-            current.file.name.substringAfterLast('.'),
+            *arrayOf(current.file.name.substringAfterLast('.')),
         )
         val dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project)
         val target = dialog.save(null as Path?, current.file.name) ?: return
