@@ -118,6 +118,23 @@ class AppStorageToolsTest {
     }
 
     @Test
+    fun `a key and value full of newlines cannot push the warning out of the confirmation`() {
+        val context = context(approve = false)
+        val flood = "\n\r".repeat(200)
+
+        SetAppPreferenceTool().execute(
+            args("file" to PREFS, "key" to "injected$flood", "type" to "string", "value" to "value$flood\tend"),
+            context,
+        )
+
+        val summary = context.confirmationSummaries.single()
+        assertFalse(summary.contains('\n') || summary.contains('\r'), summary)
+        assertTrue(summary.contains("injected\\n\\r"), summary)
+        assertTrue(summary.endsWith("stops the app."), summary)
+        assertTrue(summary.length < 400, "a flood must be cut, not shown whole: ${summary.length} chars")
+    }
+
+    @Test
     fun `an impossible change is refused before the developer is asked`() {
         val context = context()
 

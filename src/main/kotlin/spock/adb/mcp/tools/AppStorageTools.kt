@@ -202,13 +202,13 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
     override fun summary(change: PrefChange, before: PrefItem?, where: String): String {
         val put = change as PrefChange.Put
         return when (before) {
-            null -> "Add '${put.key}' = ${shown(put.value)} to $where."
-            else -> "Change '${put.key}' in $where from ${shown(before)} to ${shown(put.value)}."
+            null -> "Add '${plain(put.key)}' = ${shown(put.value)} to $where."
+            else -> "Change '${plain(put.key)}' in $where from ${shown(before)} to ${shown(put.value)}."
         }
     }
 
     override fun done(change: PrefChange, where: String): String =
-        "Set '${change.key}' = ${shown((change as PrefChange.Put).value)} in $where."
+        "Set '${plain(change.key)}' = ${shown((change as PrefChange.Put).value)} in $where."
 }
 
 class DeleteAppPreferenceTool : AppPreferenceEditTool() {
@@ -228,9 +228,9 @@ class DeleteAppPreferenceTool : AppPreferenceEditTool() {
     override fun changeFrom(arguments: JsonObject): PrefChange = PrefChange.Remove(arguments.requiredString("key"))
 
     override fun summary(change: PrefChange, before: PrefItem?, where: String): String =
-        "Delete '${change.key}'${before?.let { " (currently ${shown(it)})" }.orEmpty()} from $where."
+        "Delete '${plain(change.key)}'${before?.let { " (currently ${shown(it)})" }.orEmpty()} from $where."
 
-    override fun done(change: PrefChange, where: String): String = "Deleted '${change.key}' from $where."
+    override fun done(change: PrefChange, where: String): String = "Deleted '${plain(change.key)}' from $where."
 }
 
 /** Entries as text an agent can read back: `key (type) = value`, one per line. */
@@ -260,14 +260,31 @@ private fun notInstalled(packageName: String) = "Package '$packageName' is not i
 
 private fun shown(item: PrefItem): String = when (item) {
     is PrefItem.Typed -> shown(item.value)
-    is PrefItem.Opaque -> item.description
+    is PrefItem.Opaque -> plain(item.description)
 }
 
-/** Long values are cut in a confirmation, which the developer has to be able to read at a glance. */
-private fun shown(value: PrefValue): String {
-    val text = value.text()
-    val cut = if (text.length > MAX_SHOWN_CHARS) text.take(MAX_SHOWN_CHARS) + "…" else text
-    return "$cut (${value.type.argument})"
+private fun shown(value: PrefValue): String = "${plain(value.text())} (${value.type.argument})"
+
+/**
+ * Text from the app's file or from an agent, as one bounded line for a confirmation or a result.
+ *
+ * Either source is free to put anything in a key or value. Control characters are shown as
+ * escapes, so a run of newlines cannot push "This stops the app." out of the dialog, and the
+ * length is capped, so the developer can read the whole sentence at a glance.
+ */
+private fun plain(text: String): String {
+    val escaped = buildString {
+        text.forEach { char ->
+            when {
+                char == '\n' -> append("\\n")
+                char == '\r' -> append("\\r")
+                char == '\t' -> append("\\t")
+                char.isISOControl() -> append("\\u%04x".format(char.code))
+                else -> append(char)
+            }
+        }
+    }
+    return if (escaped.length > MAX_SHOWN_CHARS) escaped.take(MAX_SHOWN_CHARS) + "…" else escaped
 }
 
 private const val MAX_SHOWN_CHARS = 120
