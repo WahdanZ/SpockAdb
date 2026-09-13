@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
+import spock.adb.command.AppStorageUnverifiedWriteException
 import spock.adb.command.listAppStorage
 import spock.adb.command.readAppStorageFile
 import spock.adb.command.writeAppStorageFile
@@ -103,6 +104,9 @@ abstract class AppPreferenceEditTool : AdbTool {
         if (!target.device.isAppInstall(packageName)) return ToolResult.error(notInstalled(packageName))
         return try {
             apply(edit, context)
+        } catch (e: AppStorageUnverifiedWriteException) {
+            // Not "could not change": the old content is gone, and an agent told otherwise would retry.
+            ToolResult.error("The change to ${edit.where} was written but not verified. ${e.message}")
         } catch (e: IllegalArgumentException) {
             ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
         } catch (e: IllegalStateException) {

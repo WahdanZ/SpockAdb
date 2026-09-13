@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import spock.adb.storage.AppStoragePaths
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
@@ -39,6 +40,9 @@ class FakeStorageDevice(
     /** Makes the device keep different bytes from the ones it was sent. */
     var corruptWrites = false
 
+    /** Makes every command the fake does not model — resolving and starting the launcher activity — fail. */
+    var unresponsiveLaunch = false
+
     val device: IDevice = mockk(relaxed = true)
 
     init {
@@ -65,6 +69,7 @@ class FakeStorageDevice(
             if (debuggable) runAs(command) else "run-as: package not debuggable: $PKG"
         command.startsWith("cat ") -> write(command)
         command.startsWith("rm -f '/data/local/tmp/") -> "".also { staged.keys.removeIf { command.contains(it) } }
+        unresponsiveLaunch -> throw IOException("device went away: $command")
         else -> ""
     }
 

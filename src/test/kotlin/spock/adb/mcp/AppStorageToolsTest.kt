@@ -104,6 +104,20 @@ class AppStorageToolsTest {
     }
 
     @Test
+    fun `a write that landed but did not read back is reported as written, not as failed`() {
+        storage.corruptWrites = true
+
+        val result = SetAppPreferenceTool().execute(
+            args("file" to PREFS, "key" to "onboarding_seen", "type" to "boolean", "value" to "true"),
+            context(approve = true),
+        )
+
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("was written but not verified"), result.text())
+        assertFalse(result.text().contains("could not change", ignoreCase = true), result.text())
+    }
+
+    @Test
     fun `an impossible change is refused before the developer is asked`() {
         val context = context()
 

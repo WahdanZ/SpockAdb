@@ -12,9 +12,9 @@ import spock.adb.storage.StorageKind
 /**
  * The device path of the storage editor, against a scripted device.
  *
- * What these pin is order and cleanup: the app is stopped before anything is read for
- * comparison or written, a stale read refuses to write, the staged copy is removed on every
- * path, and success is decided by reading the file back.
+ * What these pin is order and cleanup: a stale edit is refused before the app is stopped, the
+ * app is stopped before the final comparison read and the write, the staged copy is removed on
+ * every path, and success is decided by reading the file back.
  */
 class AppStorageCommandsTest {
 
@@ -87,10 +87,13 @@ class AppStorageCommandsTest {
         assertFalse(result.restarted)
 
         val stop = device.commands.indexOfFirst { it.startsWith("am force-stop") }
-        val firstRead = device.commands.indexOfFirst { it.contains("base64") }
         val write = device.commands.indexOfFirst { it.startsWith("cat '/data/local/tmp/") }
-        assertTrue(stop in 0 until firstRead, "the app must be stopped before the file is read: ${device.commands}")
-        assertTrue(firstRead < write, "the comparison read must come before the write: ${device.commands}")
+        val reads = device.commands.indices.filter { device.commands[it].contains("base64") }
+        assertTrue(stop >= 0 && stop < write, "the app must be stopped before the write: ${device.commands}")
+        assertTrue(
+            reads.any { it in stop + 1 until write },
+            "the file must be compared again between the stop and the write: ${device.commands}",
+        )
         assertTrue(device.staged.isEmpty(), "the staged copy must be removed")
     }
 
@@ -125,6 +128,10 @@ class AppStorageCommandsTest {
         assertTrue(thrown.message!!.contains("changed on the device"), thrown.message)
         assertArrayEquals("changed by the app".toByteArray(), device.files[prefs.path])
         assertTrue(device.pushed.isEmpty(), "nothing may be pushed: ${device.pushed}")
+        assertTrue(
+            device.commands.none { it.startsWith("am force-stop") },
+            "a stale edit must not stop the app: ${device.commands}",
+        )
     }
 
     @Test
@@ -144,17 +151,38 @@ class AppStorageCommandsTest {
     }
 
     @Test
-    fun `a write the device did not keep is a failure`() {
+    fun `a write the device did not keep is unverified and still carries what the file held`() {
         val device = FakeStorageDevice().apply {
             files[prefs.path] = OLD
             corruptWrites = true
         }
 
-        val thrown = assertThrows<IllegalStateException> {
+        val thrown = assertThrows<AppStorageUnverifiedWriteException> {
             device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = OLD, restart = false)
         }
 
         assertTrue(thrown.message!!.contains("differ"), thrown.message)
+        assertArrayEquals(OLD, thrown.previous)
+    }
+
+    @Test
+    fun `a restart that fails does not turn a verified write into a failure`() {
+        val device = FakeStorageDevice().apply {
+            files[prefs.path] = OLD
+            unresponsiveLaunch = true
+        }
+
+        val result = device.device.writeAppStorageFile(
+            FakeStorageDevice.PKG,
+            prefs,
+            NEW,
+            expected = OLD,
+            restart = true,
+        )
+
+        assertArrayEquals(NEW, device.files[prefs.path])
+        assertArrayEquals(OLD, result.previous)
+        assertFalse(result.restarted)
     }
 
     @Test

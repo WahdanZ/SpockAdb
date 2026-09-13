@@ -116,6 +116,18 @@ class AppStorageWrite(
     val restarted: Boolean,
 )
 
+/**
+ * The file was replaced, but reading it back failed or showed other bytes than were sent.
+ *
+ * Distinct from a failed write because the old content is gone either way: [previous] is what the
+ * file held before, so the caller can still offer to put it back.
+ */
+class AppStorageUnverifiedWriteException(
+    message: String,
+    val previous: ByteArray,
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
+
 /** SharedPreferences and DataStore files of [packageName], sorted by path. */
 internal fun IDevice.listAppStorage(packageName: String): List<StorageFile> {
     ShellQuote.requireValidComponent(packageName, "Package name")
@@ -142,17 +154,25 @@ internal fun IDevice.readAppStorageFile(packageName: String, file: StorageFile):
  * Replaces [file] with [content], for an app that is stopped first.
  *
  * In order:
- *  1. **Force-stop.** A running app holds its preferences in memory and writes them back on its
+ *  1. **Compare with [expected]** while the app still runs, and refuse when the file no longer
+ *     matches — the app wrote it after the editor read it. A stale edit is refused before it
+ *     costs the developer a running app.
+ *  2. **Force-stop.** A running app holds its preferences in memory and writes them back on its
  *     next `apply()`, so without the stop the edit silently disappears.
- *  2. **Read the file again**, now nothing can change it, and refuse when it no longer matches
- *     [expected] — the app wrote it after the editor read it, and writing now would discard that.
- *  3. **Stage, copy, move** — see [AppStorageShell.writeCommand]. The staged copy is removed on
+ *  3. **Read the file again**, now nothing can change it, and compare once more: the app may
+ *     have written between the first read and the stop.
+ *  4. **Stage, copy, move** — see [AppStorageShell.writeCommand]. The staged copy is removed on
  *     every path, including failures.
- *  4. **Read it back** and compare. The device's word that a write succeeded is not the same as
+ *  5. **Read it back** and compare. The device's word that a write succeeded is not the same as
  *     the file holding the bytes that were sent.
+ *
+ * Once the move has succeeded the write has landed, whatever follows: a restart that fails only
+ * means [AppStorageWrite.restarted] is false.
  *
  * @param expected the bytes the edit was made against, or null to write whatever is there now.
  * @param restart launch the app again once the write is verified.
+ * @throws AppStorageUnverifiedWriteException when the file was replaced but could not be read
+ *   back as the bytes sent.
  * @throws IllegalStateException with a message naming what failed; nothing after the failing
  *   step has run.
  */
@@ -170,12 +190,10 @@ internal fun IDevice.writeAppStorageFile(
     }
     check(isAppInstall(packageName)) { "Package '$packageName' is not installed on this device." }
 
+    if (expected != null) checkUnchanged(file, readAppStorageFile(packageName, file), expected)
     forceKillApp(packageName, STORAGE_TIMEOUT_SECONDS)
     val previous = readAppStorageFile(packageName, file)
-    check(expected == null || previous.contentEquals(expected)) {
-        "${file.path} changed on the device after it was read, so nothing was written. Reload it and " +
-            "make the change again."
-    }
+    if (expected != null) checkUnchanged(file, previous, expected)
 
     staged(content) { remote ->
         val outcome = RunAs.classify(shell(AppStorageShell.writeCommand(packageName, remote, file, content.size)))
@@ -184,12 +202,35 @@ internal fun IDevice.writeAppStorageFile(
         }
     }
 
-    val written = readAppStorageFile(packageName, file)
-    check(written.contentEquals(content)) {
-        "${file.path} was written, but the device now holds ${written.size} bytes that differ from the " +
-            "${content.size} sent. Read it again to see what it holds."
+    verifyWritten(packageName, file, content, previous)
+    val restarted = restart && runCatching { relaunch(packageName) }.getOrDefault(false)
+    return AppStorageWrite(file, previous, restarted)
+}
+
+private fun checkUnchanged(file: StorageFile, current: ByteArray, expected: ByteArray) {
+    check(current.contentEquals(expected)) {
+        "${file.path} changed on the device after it was read, so nothing was written. Reload it and " +
+            "make the change again."
     }
-    return AppStorageWrite(file, previous, restarted = restart && relaunch(packageName))
+}
+
+/** @throws AppStorageUnverifiedWriteException carrying [previous], as the file has already been replaced. */
+private fun IDevice.verifyWritten(packageName: String, file: StorageFile, content: ByteArray, previous: ByteArray) {
+    val written = runCatching { readAppStorageFile(packageName, file) }.getOrElse {
+        throw AppStorageUnverifiedWriteException(
+            "${file.path} was replaced, but reading it back failed, so the write could not be verified: " +
+                "${it.message}",
+            previous,
+            it,
+        )
+    }
+    if (!written.contentEquals(content)) {
+        throw AppStorageUnverifiedWriteException(
+            "${file.path} was replaced, but the device now holds ${written.size} bytes that differ from the " +
+                "${content.size} sent, so the write could not be verified. Read it again to see what it holds.",
+            previous,
+        )
+    }
 }
 
 /** Pushes [content] to a fresh path under [AppStorageShell.TEMP_DIR], and removes it again whatever [use] does. */

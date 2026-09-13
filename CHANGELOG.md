@@ -11,9 +11,10 @@
   `shared_prefs/*.xml` and `files/datastore/*.preferences_pb` file of a debuggable app and shows
   each as a typed table — boolean, int, long, float, double, string, string set, bytes — to edit,
   add to or delete from, then **Apply**. Apply force-stops the app first, because a running app
-  writes its in-memory preferences back on its next `apply()` and silently undoes the edit; it
-  then refuses if the file changed since it was read, writes, and reads the file back rather than
-  trusting the write. **Undo Last Apply** restores what the file held before, and **Export** and
+  writes its in-memory preferences back on its next `apply()` and silently undoes the edit. It
+  refuses if the file changed since it was read — checked before the stop, so a stale edit costs
+  nothing, and again after it — then writes, and reads the file back rather than trusting the
+  write. **Undo Last Apply** restores what the file held before, and **Export** and
   **Import** save a known state and put it back. Nothing the editor does not understand is lost:
   unknown XML elements and unknown protobuf fields survive an edit, and the DataStore format is
   parsed by hand, so the plugin gains no protobuf dependency. EncryptedSharedPreferences are shown
