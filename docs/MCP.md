@@ -385,6 +385,12 @@ file no player will open — and the remote file is deleted only once the pull h
 Points the device's global HTTP proxy at a debugging proxy on your machine — Charles,
 Proxyman, mitmproxy — so an agent can inspect what the app actually sends.
 
+`android_set_http_proxy` takes `host` and `port`, and both are optional: each one left out
+defaults to the proxy last set in the tool window's HTTP proxy field, so an agent can turn your
+usual proxy on without being told its address, or change only the port. With nothing set there
+and an argument missing, the call fails and says to pass both or set a proxy in the tool window
+once. The tool reads that remembered proxy but never changes it — only the tool window does.
+
 `android_set_http_proxy` is the one tool here that is **destructive by judgement rather than
 by definition**. It destroys nothing, and by the letter of the safety model it is a safe
 action: you do it by hand routinely and undo it by clearing. What moves it up a level is the

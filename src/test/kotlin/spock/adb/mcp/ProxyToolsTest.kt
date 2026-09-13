@@ -80,6 +80,110 @@ class ProxyToolsTest {
     }
 
     @Test
+    fun `a call that names both host and port never reads the remembered proxy`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = true)
+        // Outside the IDE the real lookup has no Application to ask, so reading it here would throw.
+        val tool = SetHttpProxyTool(rememberedProxy = { error("the remembered proxy should not be read") })
+
+        val result = tool.execute(proxyArguments(), context)
+
+        assertFalse(result.isError, result.text())
+        assertEquals("192.168.1.10:8888", settings.stored)
+    }
+
+    @Test
+    fun `omitted host and port use the proxy remembered by the tool window`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = true)
+
+        val result = SetHttpProxyTool(rememberedProxy = { "10.0.2.2:9090" }).execute(JsonObject(), context)
+
+        assertFalse(result.isError, result.text())
+        assertEquals("10.0.2.2:9090", settings.stored)
+        assertTrue(
+            context.confirmationSummaries.single().contains("10.0.2.2:9090"),
+            "the developer should be asked about the resolved proxy: ${context.confirmationSummaries}",
+        )
+    }
+
+    @Test
+    fun `explicit host and port override the remembered proxy`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = true)
+
+        val result = SetHttpProxyTool(rememberedProxy = { "10.0.2.2:9090" }).execute(proxyArguments(), context)
+
+        assertFalse(result.isError, result.text())
+        assertEquals("192.168.1.10:8888", settings.stored)
+    }
+
+    @Test
+    fun `a host on its own keeps the remembered port`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = true)
+        val arguments = JsonObject().apply { addProperty("host", "192.168.1.10") }
+
+        val result = SetHttpProxyTool(rememberedProxy = { "10.0.2.2:9090" }).execute(arguments, context)
+
+        assertFalse(result.isError, result.text())
+        assertEquals("192.168.1.10:9090", settings.stored)
+        assertTrue(context.confirmationSummaries.single().contains("192.168.1.10:9090"))
+    }
+
+    @Test
+    fun `a port on its own keeps the remembered host`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = true)
+        val arguments = JsonObject().apply { addProperty("port", 8888) }
+
+        val result = SetHttpProxyTool(rememberedProxy = { "10.0.2.2:9090" }).execute(arguments, context)
+
+        assertFalse(result.isError, result.text())
+        assertEquals("10.0.2.2:8888", settings.stored)
+    }
+
+    @Test
+    fun `nothing remembered and a missing argument is an error, before asking or writing`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = true)
+        val arguments = JsonObject().apply { addProperty("host", "192.168.1.10") }
+
+        val result = SetHttpProxyTool(rememberedProxy = { "" }).execute(arguments, context)
+
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("No port given"), result.text())
+        assertTrue(result.text().contains("Pass host and port"), result.text())
+        assertTrue(context.confirmations.isEmpty(), "nothing to set, so nothing to ask about")
+        assertEquals("null", settings.stored)
+    }
+
+    @Test
+    fun `an unusable remembered proxy is an error, not an exception`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = true)
+
+        val result = SetHttpProxyTool(rememberedProxy = { "not-a-proxy" }).execute(JsonObject(), context)
+
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("'not-a-proxy'"), result.text())
+        assertTrue(context.confirmations.isEmpty())
+        assertEquals("null", settings.stored)
+    }
+
+    @Test
+    fun `a declined remembered proxy is never written`() {
+        val settings = FakeSettings(initial = "null")
+        val context = FakeToolContext(available = listOf(settings.connected), confirmationAnswer = false)
+
+        val result = SetHttpProxyTool(rememberedProxy = { "10.0.2.2:9090" }).execute(JsonObject(), context)
+
+        assertTrue(result.isError)
+        assertEquals(listOf("android_set_http_proxy"), context.confirmations)
+        assertEquals("null", settings.stored)
+    }
+
+    @Test
     fun `clearing reports a direct connection once the device agrees`() {
         val settings = FakeSettings(initial = "192.168.1.10:8888")
 

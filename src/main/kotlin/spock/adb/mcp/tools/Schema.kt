@@ -118,10 +118,11 @@ fun JsonObject.requiredInt(name: String): Int {
  * An optional whole-number argument with a default. A value that is present is held to the
  * same rules as [requiredInt] — sending one that is wrong is not the same as leaving it out.
  */
-fun JsonObject.optionalInt(name: String, default: Int): Int {
-    val element = get(name)?.takeIf { !it.isJsonNull } ?: return default
-    return element.asStrictInt(name)
-}
+fun JsonObject.optionalInt(name: String, default: Int): Int = optionalInt(name) ?: default
+
+/** As [optionalInt], but null when omitted, for a tool whose fallback is not a constant. */
+fun JsonObject.optionalInt(name: String): Int? =
+    get(name)?.takeIf { !it.isJsonNull }?.asStrictInt(name)
 
 /**
  * The value as an Int, or an error naming [name] and what is wrong with it.
