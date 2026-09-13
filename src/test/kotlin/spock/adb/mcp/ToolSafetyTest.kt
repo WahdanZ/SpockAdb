@@ -31,6 +31,9 @@ class ToolSafetyTest {
                 "android_clear_app_data",
                 "android_uninstall_app",
                 "android_revoke_permission",
+                // Not state-destroying in the literal sense, but it redirects all device
+                // traffic through a host and survives a reboot, so it asks first.
+                "android_set_http_proxy",
                 "android_run_adb_command",
             ),
             ToolRegistry.bySafety(ToolSafety.DESTRUCTIVE).map { it.name }.toSet(),
@@ -60,6 +63,7 @@ class ToolSafetyTest {
                 "android_assert_visible",
                 "android_assert_enabled",
                 "android_assert_text",
+                "android_get_http_proxy",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )

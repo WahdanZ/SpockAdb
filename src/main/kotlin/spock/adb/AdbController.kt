@@ -2,6 +2,7 @@ package spock.adb
 
 import com.android.ddmlib.IDevice
 import spock.adb.command.GetApplicationPermission
+import spock.adb.command.HttpProxy
 import spock.adb.command.Network
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.ListItem
@@ -45,4 +46,12 @@ interface AdbController {
     fun inputOnDevice(input: String, device: IDevice)
     fun openDeveloperOptions(device: IDevice)
     fun openDeepLink(input: String, device: IDevice)
+
+    /** Points the device at a debugging proxy. [proxy] is user input in `host:port` form. */
+    fun setHttpProxy(proxy: String, device: IDevice)
+
+    fun clearHttpProxy(device: IDevice)
+
+    /** Reads the device proxy. [block] is invoked on the EDT; null means no proxy is set. */
+    fun currentHttpProxy(device: IDevice, block: (proxy: HttpProxy?) -> Unit)
 }

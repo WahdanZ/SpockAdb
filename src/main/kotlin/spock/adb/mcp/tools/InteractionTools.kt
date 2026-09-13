@@ -190,7 +190,3 @@ class PressKeyTool : AdbTool {
         )
     }
 }
-
-private fun JsonObject.requiredInt(name: String): Int =
-    get(name)?.takeIf { !it.isJsonNull }?.asInt
-        ?: throw IllegalArgumentException("Missing required argument '$name'")

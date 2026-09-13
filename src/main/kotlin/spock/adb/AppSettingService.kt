@@ -26,8 +26,31 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
     }
 
     override fun loadState(state: AppSetting) {
-        localData = state
+        localData = state.copy(list = state.list.withActionsAddedSince())
     }
+
+    /**
+     * Adds actions the stored list has never seen.
+     *
+     * The defaults are built from [SpockAction] once, on first run, and [loadState] then
+     * replaces them wholesale. An action introduced in a later release was therefore absent
+     * from every existing user's settings — and since the settings dialog is built from this
+     * same list, there was no entry to switch it on or off with. New actions default to
+     * shown, which is what a fresh install would have given them.
+     */
+    private fun List<ListItem>.withActionsAddedSince(): List<ListItem> {
+        val stored = mapTo(mutableSetOf()) { it.name.replace(" ", "_") }
+        return this + SpockAction.entries
+            .filterNot { it.name in stored }
+            .map { ListItem(it.name.replace("_", " "), true) }
+    }
+
+    /** Remembers the proxy the user last set, so it survives a restart. */
+    fun saveHttpProxy(value: String) {
+        localData = localData.copy(httpProxy = value)
+    }
+
+    fun lastHttpProxy(): String = localData.httpProxy
 
     companion object {
         @JvmStatic
@@ -37,7 +60,16 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
     }
 }
 
-data class AppSetting(val selectedDevice: String? = "", val list: List<ListItem>)
+/**
+ * @param httpProxy the last proxy the user set, as `host:port`, so it does not have to be
+ *   retyped every session. Application-scoped rather than per-project because the proxy runs
+ *   on this machine, not in the project.
+ */
+data class AppSetting(
+    val selectedDevice: String? = "",
+    val list: List<ListItem>,
+    val httpProxy: String = "",
+)
 enum class SpockAction {
     CURRENT_ACTIVITY,
     CURRENT_FRAGMENT,
@@ -55,4 +87,5 @@ enum class SpockAction {
     DEVELOPER_OPTIONS,
     INPUT,
     DEEP_LINK,
+    HTTP_PROXY,
 }

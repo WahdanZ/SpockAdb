@@ -175,13 +175,13 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-42 tools, in three levels.
+45 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (19) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text` |
-| **Safe action** (19) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording` |
-| **Destructive** (4) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_run_adb_command` |
+| **Read-only** (20) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy` |
+| **Safe action** (20) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy` |
+| **Destructive** (5) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_run_adb_command` |
 
 Rules that hold regardless of what a client asks for:
 
@@ -379,6 +379,30 @@ it straight back, which is an arbitrary local read wearing a debugging tool's cl
 One session per device, capped at three minutes. Recording stops with `SIGINT` rather than
 `SIGKILL` so `screenrecord` writes the MP4 index on the way out — a killed recording leaves a
 file no player will open — and the remote file is deleted only once the pull has succeeded.
+
+### `android_set_http_proxy` and `android_clear_http_proxy`
+
+Points the device's global HTTP proxy at a debugging proxy on your machine — Charles,
+Proxyman, mitmproxy — so an agent can inspect what the app actually sends.
+
+`android_set_http_proxy` is the one tool here that is **destructive by judgement rather than
+by definition**. It destroys nothing, and by the letter of the safety model it is a safe
+action: you do it by hand routinely and undo it by clearing. What moves it up a level is the
+failure mode. The setting is global, it survives a reboot, and it redirects *all* device
+traffic through a host — so a device left pointing at a proxy that is no longer listening
+fails every request with nothing on screen to explain why. That is the kind of state an agent
+should not be able to leave behind without you agreeing to that specific call.
+
+Clearing is a safe action: it restores the device to its normal state and repeating it is
+harmless. Reading is read-only, which is what makes either mutation safe to reason about —
+an agent can always check before and after without needing approval for the check.
+
+Both mutating tools read the value back and report what the device actually holds. `settings
+put` exits 0 even where the write does not take, and telling an agent the proxy is set while
+traffic still goes direct is worse than reporting the failure.
+
+It does not capture everything: apps that use their own HTTP stack, or that pin
+certificates, will not route through it.
 
 ### `android_select_project`
 

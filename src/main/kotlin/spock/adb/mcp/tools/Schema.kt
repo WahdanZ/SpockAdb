@@ -98,6 +98,16 @@ fun JsonObject.optionalString(name: String): String? =
 fun JsonObject.requiredString(name: String): String =
     optionalString(name) ?: throw IllegalArgumentException("Missing required argument '$name'")
 
+/**
+ * A required whole-number argument.
+ *
+ * Lived in InteractionTools while tap and swipe were the only tools taking coordinates;
+ * moved here next to the other accessors once the proxy tools needed a port.
+ */
+fun JsonObject.requiredInt(name: String): Int =
+    get(name)?.takeIf { !it.isJsonNull }?.asInt
+        ?: throw IllegalArgumentException("Missing required argument '$name'")
+
 fun JsonObject.optionalInt(name: String, default: Int): Int =
     get(name)?.takeIf { !it.isJsonNull }?.asInt ?: default
 

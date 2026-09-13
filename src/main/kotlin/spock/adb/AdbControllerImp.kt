@@ -565,6 +565,52 @@ class AdbControllerImp(
         }
     }
 
+    /**
+     * Writes the proxy, then reads it back and reports what the device actually holds.
+     *
+     * Reporting the value we wrote would hide the case that matters: `settings put` exits 0
+     * even where the write does not stick, and a developer who is told the proxy is set but
+     * whose traffic still goes direct has no way to tell which half is lying.
+     */
+    override fun setHttpProxy(proxy: String, device: IDevice) {
+        execute {
+            val parsed = HttpProxy.fromInput(proxy)
+            SetHttpProxyCommand().execute(parsed, project, device)
+            val applied = GetHttpProxyCommand().execute(Any(), project, device)
+            if (applied == parsed) {
+                showSuccess("HTTP proxy set to $applied")
+            } else {
+                showError(
+                    "Asked the device for $parsed but it reports " +
+                        "${applied ?: "no proxy"}. The setting did not stick.",
+                )
+            }
+        }
+    }
+
+    override fun clearHttpProxy(device: IDevice) {
+        execute {
+            val result = ClearHttpProxyCommand().execute(Any(), project, device)
+            showSuccess(result)
+        }
+    }
+
+    override fun currentHttpProxy(device: IDevice, block: (proxy: HttpProxy?) -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val proxy = try {
+                GetHttpProxyCommand().execute(Any(), project, device)
+            } catch (e: ProcessCanceledException) {
+                throw e
+            } catch (e: Exception) {
+                // A device that disconnects mid-read must not blank the field with a stale
+                // "no proxy"; the caller is told nothing changed instead.
+                log.warn("Could not read the device HTTP proxy", e)
+                return@executeOnPooledThread
+            }
+            onEdt { block(proxy) }
+        }
+    }
+
     override fun dispose() {
         AndroidDebugBridge.removeDeviceChangeListener(this)
         deviceObservers.clear()

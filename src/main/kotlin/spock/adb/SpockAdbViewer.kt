@@ -99,6 +99,8 @@ class SpockAdbViewer(
     private val openDeepLinkTextField = JBTextField()
     private val openDeepLinkButton = JButton("Open")
 
+    private val httpProxyRow = HttpProxyRow(GAP)
+
     /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
     private val adbWifi = JButton()
 
@@ -227,7 +229,7 @@ class SpockAdbViewer(
             grid(permissionButton, grantAllPermissionsButton, revokeAllPermissionsButton),
         )
         developerSection = section("Developer options", "developer", developerOptionsContent())
-        networkSection = section("Network", "network", grid(wifiToggle, mobileDataToggle))
+        networkSection = section("Network", "network", networkContent())
         sendSection = section("Send to device", "send", sendContent())
 
         val content = VerticallyScrollablePanel().apply {
@@ -351,6 +353,16 @@ class SpockAdbViewer(
         add(fieldRow("Deep link", openDeepLinkTextField, openDeepLinkButton))
     }
 
+    /**
+     * The network toggles plus the HTTP proxy row, which lives here rather than under "Send
+     * to device" because a developer looking for why traffic stopped will look under Network.
+     */
+    private fun networkContent(): JPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        add(grid(wifiToggle, mobileDataToggle))
+        add(httpProxyRow)
+    }
+
     private fun fieldRow(label: String, field: JBTextField, button: JButton): JPanel =
         JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
             alignmentX = LEFT_ALIGNMENT
@@ -413,6 +425,7 @@ class SpockAdbViewer(
             if (event.stateChange == ItemEvent.SELECTED) {
                 selectedDevice = devices.getOrNull(devicesListComboBox.selectedIndex)
                 rememberSelectedDevice()
+                httpProxyRow.refresh(adbController, selectedIDevice)
             }
         }
         activitiesBackStackButton.addActionListener {
@@ -538,6 +551,8 @@ class SpockAdbViewer(
             }
         }
         openDeepLinkTextField.addActionListener { openDeepLinkButton.doClick() }
+
+        httpProxyRow.attach(adbController) { selectedIDevice }
     }
 
     private fun updateUi(it: AppSetting) {
@@ -566,7 +581,10 @@ class SpockAdbViewer(
                 SpockAction.TEST_PROCESS_DEATH -> testProcessDeathButton.isVisible = it.isSelected
                 SpockAction.FORCE_KILL -> forceKillAppButton.isVisible = it.isSelected
                 SpockAction.UNINSTALL -> uninstallAppButton.isVisible = it.isSelected
-                SpockAction.TOGGLE_NETWORK -> networkSection.setSectionVisible(it.isSelected)
+                SpockAction.TOGGLE_NETWORK -> {
+                    wifiToggle.isVisible = it.isSelected
+                    mobileDataToggle.isVisible = it.isSelected
+                }
                 SpockAction.PERMISSIONS -> permissionSection.setSectionVisible(it.isSelected)
                 SpockAction.DEVELOPER_OPTIONS -> developerSection.setSectionVisible(it.isSelected)
                 SpockAction.INPUT -> {
@@ -577,6 +595,7 @@ class SpockAdbViewer(
                     openDeepLinkButton.isVisible = it.isSelected
                     openDeepLinkTextField.isVisible = it.isSelected
                 }
+                SpockAction.HTTP_PROXY -> httpProxyRow.setActionVisible(it.isSelected)
             }
         }
         refreshSectionVisibility()
@@ -608,6 +627,11 @@ class SpockAdbViewer(
         )
         sendSection.setSectionVisible(
             inputOnDeviceButton.isVisible || openDeepLinkButton.isVisible,
+        )
+        // The proxy row and the toggles are switched on separately, so the heading has to
+        // follow whether anything inside it is left rather than a single action.
+        networkSection.setSectionVisible(
+            wifiToggle.isVisible || mobileDataToggle.isVisible || httpProxyRow.isVisible,
         )
         revalidate()
         repaint()

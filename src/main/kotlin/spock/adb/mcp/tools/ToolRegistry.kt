@@ -61,6 +61,10 @@ object ToolRegistry {
         PullFileTool(),
         StartScreenRecordTool(),
         StopScreenRecordTool(),
+        // Proxying device traffic through a local debugging proxy
+        GetHttpProxyTool(),
+        SetHttpProxyTool(),
+        ClearHttpProxyTool(),
         // Escape hatch
         RunAdbCommandTool(),
     )

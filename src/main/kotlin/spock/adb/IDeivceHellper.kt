@@ -2,6 +2,7 @@ package spock.adb
 
 import com.android.ddmlib.IDevice
 import spock.adb.command.DontKeepActivitiesState
+import spock.adb.command.HttpProxy
 import spock.adb.command.Network
 import spock.adb.command.NetworkState
 import spock.adb.command.ShowLayoutBoundsState
@@ -152,4 +153,35 @@ fun IDevice.apiLevel(): Int? {
     val outputReceiver = ShellOutputReceiver()
     executeShellCommand("getprop ro.build.version.sdk", outputReceiver, 15L, TimeUnit.SECONDS)
     return outputReceiver.toString().trim().toIntOrNull()
+}
+
+/**
+ * The device's global HTTP proxy, or null when none is set.
+ *
+ * See [HttpProxy.parse] for why "null", "" and ":0" all mean the same thing here.
+ */
+fun IDevice.getHttpProxy(): HttpProxy? {
+    val outputReceiver = ShellOutputReceiver()
+    executeShellCommand("settings get global http_proxy", outputReceiver, 15L, TimeUnit.SECONDS)
+
+    return HttpProxy.parse(outputReceiver.toString())
+}
+
+fun IDevice.setHttpProxy(proxy: HttpProxy) {
+    executeShellCommand(
+        "settings put global http_proxy ${ShellQuote.quote(proxy.toString())}",
+        ShellOutputReceiver(),
+        15L,
+        TimeUnit.SECONDS,
+    )
+}
+
+/** Android clears the proxy by writing `:0`, not by removing the setting. */
+fun IDevice.clearHttpProxy() {
+    executeShellCommand(
+        "settings put global http_proxy ${ShellQuote.quote(HttpProxy.CLEARED)}",
+        ShellOutputReceiver(),
+        15L,
+        TimeUnit.SECONDS,
+    )
 }

@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Route a device's traffic through a local debugging proxy, without leaving the IDE.**
+  Pointing a test device at Charles, Proxyman or mitmproxy meant dropping to a terminal,
+  remembering `settings put global http_proxy`, and — the part that actually bites —
+  remembering to clear it afterwards. A device left pointing at a proxy that is no longer
+  listening fails every request with nothing on screen to say why, and the next person to
+  pick it up has no reason to suspect the proxy. The Network section now has an HTTP proxy
+  field with Set and Clear, the value is remembered between sessions so it does not have to
+  be retyped, and selecting a device reads back what that device actually holds so a proxy
+  left over from yesterday is visible rather than rediscovered. The same operations are
+  exposed to agents as `android_get_http_proxy`, `android_set_http_proxy` and
+  `android_clear_http_proxy`, over the same commands the panel uses rather than a second
+  implementation. Setting a proxy asks first: it destroys nothing, so by the letter of the
+  safety model it is a safe action, but it redirects *all* device traffic through a host and
+  survives a reboot, which is not something an agent should be able to leave behind
+  unnoticed. Clearing is a safe action, and reading is read-only, so an agent can always
+  check the state before and after without needing approval for the check. Both mutations
+  read the value back and report what the device holds rather than what was asked for —
+  `settings put` exits 0 even where the write does not take, and a developer told the proxy
+  is set while traffic still goes direct has no way to tell which half is lying
+
+### Fixed
+
+- **An action added in a new release never reached anyone who already had settings.** The
+  visible-actions list is built from `SpockAction` once, on first run, and loading stored
+  settings then replaced it wholesale — so an action introduced later was absent from every
+  existing user's list. Because the settings dialog is built from that same list, there was
+  no entry to switch the new action on or off with; it was not merely off, it was
+  unreachable. Actions missing from stored settings are now merged in on load, switched on,
+  as a fresh install would have had them. Choices already made are untouched, and entries
+  for actions that no longer exist are still left alone
+
 ## [4.0.3] - 2026-09-12
 
 ### Fixed
