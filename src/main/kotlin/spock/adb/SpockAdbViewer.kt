@@ -79,6 +79,9 @@ class SpockAdbViewer(
         toolTipText = "Delete all app data, then relaunch the app"
     }
     private val uninstallAppButton = JButton("Uninstall...")
+    private val appStorageButton = JButton("App Storage").apply {
+        toolTipText = "View and edit SharedPreferences and DataStore"
+    }
 
     private val permissionButton = JButton("Manage...").apply {
         toolTipText = "Grant or revoke individual runtime permissions"
@@ -229,7 +232,13 @@ class SpockAdbViewer(
         dangerSection = section(
             "Destructive",
             "destructive",
-            grid(clearAppDataButton, clearAppCacheButton, clearAppDataAndRestartButton, uninstallAppButton),
+            grid(
+                clearAppDataButton,
+                clearAppCacheButton,
+                clearAppDataAndRestartButton,
+                uninstallAppButton,
+                appStorageButton,
+            ),
         )
         permissionSection = section(
             "Permissions",
@@ -503,6 +512,15 @@ class SpockAdbViewer(
                 }
             }
         }
+        appStorageButton.addActionListener {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)
+                ?: return@addActionListener
+            toolWindow.activate {
+                toolWindow.contentManager.contents
+                    .firstOrNull { it.displayName == "App Storage" }
+                    ?.let { toolWindow.contentManager.setSelectedContent(it) }
+            }
+        }
 
         permissionButton.addActionListener {
             selectedIDevice?.let { device ->
@@ -608,6 +626,7 @@ class SpockAdbViewer(
                     openDeepLinkTextField.isVisible = it.isSelected
                 }
                 SpockAction.HTTP_PROXY -> httpProxyRow.setActionVisible(it.isSelected)
+                SpockAction.APP_STORAGE -> appStorageButton.isVisible = it.isSelected
             }
         }
         refreshSectionVisibility()
@@ -640,6 +659,7 @@ class SpockAdbViewer(
                 clearAppCacheButton,
                 clearAppDataAndRestartButton,
                 uninstallAppButton,
+                appStorageButton,
             ).any { it.isVisible },
         )
         sendSection.setSectionVisible(
@@ -715,29 +735,10 @@ class SpockAdbViewer(
     }
 
     private fun removeDeveloperOptionsListeners() {
-        enableDisableDontKeepActivities.actionListeners.forEach {
-            enableDisableDontKeepActivities.removeActionListener(it)
-        }
-
-        enableDisableShowTaps.actionListeners.forEach {
-            enableDisableShowTaps.removeActionListener(it)
-        }
-
-        enableDisableShowLayoutBounds.actionListeners.forEach {
-            enableDisableShowLayoutBounds.removeActionListener(it)
-        }
-
-        windowAnimatorScaleComboBox.actionListeners.forEach {
-            windowAnimatorScaleComboBox.removeActionListener(it)
-        }
-
-        transitionAnimatorScaleComboBox.actionListeners.forEach {
-            transitionAnimatorScaleComboBox.removeActionListener(it)
-        }
-
-        animatorDurationScaleComboBox.actionListeners.forEach {
-            animatorDurationScaleComboBox.removeActionListener(it)
-        }
+        listOf(enableDisableDontKeepActivities, enableDisableShowTaps, enableDisableShowLayoutBounds)
+            .forEach { box -> box.actionListeners.forEach { box.removeActionListener(it) } }
+        listOf(windowAnimatorScaleComboBox, transitionAnimatorScaleComboBox, animatorDurationScaleComboBox)
+            .forEach { combo -> combo.actionListeners.forEach { combo.removeActionListener(it) } }
     }
 
     private fun setDeveloperOptionsValues() {

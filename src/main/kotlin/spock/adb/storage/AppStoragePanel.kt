@@ -18,7 +18,6 @@ import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextField
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import spock.adb.DestructiveActionConfirmation
@@ -28,7 +27,6 @@ import spock.adb.command.AppStorageShell
 import spock.adb.command.AppStorageUnverifiedWriteException
 import spock.adb.command.AppStorageWrite
 import spock.adb.command.AppStorageWriteRequest
-import spock.adb.command.GetApplicationIDCommand
 import spock.adb.command.ListAppStorageCommand
 import spock.adb.command.ReadAppStorageFileCommand
 import spock.adb.command.WriteAppStorageFileCommand
@@ -65,8 +63,7 @@ class AppStoragePanel(
     private val project: Project,
 ) : SimpleToolWindowPanel(true, true), Disposable {
 
-    private val packageField = JBTextField(PACKAGE_COLUMNS)
-    private val listButton = JButton("List Files")
+    private val packagePicker = AppPackagePicker(project, isAlive = { !disposed })
     private val restartAfterWrite = JCheckBox("Restart app after writing")
 
     private val files = CollectionListModel<StorageFile>()
@@ -122,7 +119,6 @@ class AppStoragePanel(
             table.setDefaultRenderer(Any::class.java, renderer)
             table.setDefaultRenderer(String::class.java, renderer)
         }
-        packageField.text = runCatching { GetApplicationIDCommand.resolve(project) }.getOrNull().orEmpty()
 
         setToolbar(header())
         setContent(body())
@@ -140,8 +136,9 @@ class AppStoragePanel(
             listedPackage = null
             withoutSelectionEvents { files.removeAll() }
             showSession(null)
-            status(if (connected == null) NO_DEVICE else "Enter the package of a debuggable app and list its files.")
+            status(if (connected == null) NO_DEVICE else "Enter or choose the package of a debuggable app.")
         }
+        packagePicker.load(connected, keepSelection = sameDevice)
         updateControls()
     }
 
@@ -155,8 +152,7 @@ class AppStoragePanel(
     private fun header(): JComponent = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
         border = JBUI.Borders.empty(2, GAP)
         add(JBLabel("Package:"))
-        add(packageField.apply { toolTipText = "Application ID of a debuggable build" })
-        add(listButton)
+        add(packagePicker)
         add(
             restartAfterWrite.apply {
                 toolTipText = "Every write stops the app first. Tick this to launch it again afterwards."
@@ -192,8 +188,8 @@ class AppStoragePanel(
     }
 
     private fun wire() {
-        listButton.addActionListener { listFiles() }
-        packageField.addActionListener { listFiles() }
+        packagePicker.onChosen = { packageName -> listFiles(packageName) }
+        packagePicker.onFailure = { status(it) }
         fileList.addListSelectionListener { event ->
             if (!event.valueIsAdjusting && !ignoreSelection) fileSelected()
         }
@@ -210,10 +206,14 @@ class AppStoragePanel(
 
     // ---------------------------------------------------------------- reading
 
-    private fun listFiles() {
+    private fun listFiles(chosenPackage: String? = null) {
         val target = device ?: return status(NO_DEVICE)
-        val packageName = packageField.text.trim().ifEmpty { return status("Enter the package of a debuggable app.") }
-        if (!confirmDiscard()) return
+        val packageName = (chosenPackage ?: packagePicker.selected)
+            ?.trim()?.ifEmpty { null } ?: return status("Enter or choose the package of a debuggable app.")
+        if (!confirmDiscard()) {
+            packagePicker.revertTo(listedPackage)
+            return
+        }
 
         val request = reads.begin()
         status("Listing the storage of $packageName…")
@@ -488,9 +488,8 @@ class AppStoragePanel(
         val editable = current != null && current.readOnlyReason == null && !busy
         val rows = current?.rows.orEmpty()
         val selected = table.selectedRows.toList().mapNotNull { index -> rows.getOrNull(index) }
-        listButton.isEnabled = !busy && device != null
         // While a write runs, nothing may change what its callback reopens or what it wrote over.
-        packageField.isEnabled = !busy
+        packagePicker.isEnabled = !busy && device != null
         fileList.isEnabled = !busy
         model.editable = !busy
         addButton.isEnabled = editable
@@ -554,7 +553,6 @@ class AppStoragePanel(
 
     private companion object {
         const val GAP = 4
-        const val PACKAGE_COLUMNS = 28
         const val SPLIT_PROPORTION = 0.3f
         const val KEY_COLUMN = 0
         const val TYPE_COLUMN = 1
