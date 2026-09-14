@@ -4,6 +4,29 @@
 
 ### Added
 
+- **View and edit an app's SharedPreferences and DataStore, without clearing data or adding a
+  debug menu.** Reproducing a bug that depends on stored state meant clearing data and walking
+  back through the app, and inspecting that state meant pulling a file through `run-as` and, for
+  DataStore, decoding protobuf by hand. A new **App storage** section in the Devices tab lists every
+  `shared_prefs/*.xml` and `files/datastore/*.preferences_pb` file of a debuggable app — the open
+  project's app is selected and listed as soon as a device is, and any other installed app can be
+  picked from a list or typed — and shows
+  each as a typed table — boolean, int, long, float, double, string, string set, bytes — to edit,
+  add to or delete from, then **Apply**. Apply force-stops the app first, because a running app
+  writes its in-memory preferences back on its next `apply()` and silently undoes the edit. It
+  refuses if the file changed since it was read — checked before the stop, so a stale edit costs
+  nothing, and again after it — then writes, and reads the file back rather than trusting the
+  write. **Undo Last Apply** restores what the file held before, and **Export** and
+  **Import** save a known state and put it back. Nothing the editor does not understand is lost:
+  unknown XML elements and unknown protobuf fields survive an edit, and the DataStore format is
+  parsed by hand, so the plugin gains no protobuf dependency. EncryptedSharedPreferences are shown
+  read-only, and Proto DataStore files with the app's own schema are listed as unsupported rather
+  than decoded as garbage. Agents get the same through `android_list_app_storage` and
+  `android_read_app_storage`, which are read-only, and `android_set_app_preference` and
+  `android_delete_app_preference`, which are destructive and ask first, naming the value before
+  and after. The `run-as` quoting and refusal handling from Clear Cache now lives in one shared
+  helper; one consequence is that when a script ran and failed, its own error is reported rather
+  than being mistaken for `run-as` failing to reach the app
 - **Route a device's traffic through a local debugging proxy, without leaving the IDE.**
   Pointing a test device at Charles, Proxyman or mitmproxy meant dropping to a terminal,
   remembering `settings put global http_proxy`, and — the part that actually bites —

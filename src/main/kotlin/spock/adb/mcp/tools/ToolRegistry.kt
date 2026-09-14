@@ -27,6 +27,11 @@ object ToolRegistry {
         UninstallAppTool(),
         GrantPermissionTool(),
         RevokePermissionTool(),
+        // App storage: SharedPreferences and Preferences DataStore, through run-as
+        ListAppStorageTool(),
+        ReadAppStorageTool(),
+        SetAppPreferenceTool(),
+        DeleteAppPreferenceTool(),
         // Inspection
         GetCurrentActivityTool(),
         GetActivityStackTool(),

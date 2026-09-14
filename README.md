@@ -9,7 +9,7 @@ Full control of your Android device directly from your IDE — no terminal neede
 
 Spock ADB puts the most common ADB workflows into a single tool window: navigate to the active Activity or Fragment in your editor, manage app lifecycle, stream logcat, run ADB commands, and inspect the UI of Views <em>and</em> Jetpack Compose screens.
 
-It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cursor or any MCP client safe, structured access to a connected device. 46 strongly typed tools rather than a raw shell, and anything destructive asks you first, every time.
+It also ships an <b>Android MCP server</b>: give Claude Code, Claude Desktop, Cursor or any MCP client safe, structured access to a connected device. 50 strongly typed tools rather than a raw shell, and anything destructive asks you first, every time.
 
 Works in Android Studio and IntelliJ IDEA.
 <!-- Plugin description end -->
@@ -104,7 +104,7 @@ accessibility tree where Compose publishes its semantics rather than assuming a 
 Give an AI agent — Claude Code, Claude Desktop, Cursor — safe, structured access to a connected
 device. **Off by default**; you start it deliberately.
 
-- **46 strongly typed tools** instead of a raw shell, so an agent can reason about what an
+- **50 strongly typed tools** instead of a raw shell, so an agent can reason about what an
   operation *means* and you can audit it
 - **Live activity monitor**: every call with a safety marker, outcome and duration. Expand one to
   see arguments, result, client, target device — and whether you approved or denied it
@@ -120,7 +120,7 @@ rather than approves.
 |---|---|
 | ✓ **Read-only** | Device info, packages, logcat, screenshots, UI tree — run automatically |
 | ⚡ **Actions** | Launch, tap, input text, deep links — run automatically |
-| ⚠ **Destructive** | Clear data, uninstall, revoke permission, arbitrary shell — **always confirmed** |
+| ⚠ **Destructive** | Clear data, uninstall, revoke permission, edit app preferences, arbitrary shell — **always confirmed** |
 
 See **[docs/MCP.md](docs/MCP.md)** for setup, the full tool list, the safety model and example
 agent workflows.

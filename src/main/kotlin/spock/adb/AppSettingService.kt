@@ -89,4 +89,5 @@ enum class SpockAction {
     INPUT,
     DEEP_LINK,
     HTTP_PROXY,
+    APP_STORAGE,
 }
