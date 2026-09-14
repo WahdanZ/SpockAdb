@@ -7,7 +7,7 @@
 - **View and edit an app's SharedPreferences and DataStore, without clearing data or adding a
   debug menu.** Reproducing a bug that depends on stored state meant clearing data and walking
   back through the app, and inspecting that state meant pulling a file through `run-as` and, for
-  DataStore, decoding protobuf by hand. A new **App Storage** tab lists every
+  DataStore, decoding protobuf by hand. A new **App storage** section in the Devices tab lists every
   `shared_prefs/*.xml` and `files/datastore/*.preferences_pb` file of a debuggable app — the open
   project's app is selected and listed as soon as a device is, and any other installed app can be
   picked from a list or typed — and shows

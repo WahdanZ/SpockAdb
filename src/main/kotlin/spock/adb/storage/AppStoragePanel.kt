@@ -34,6 +34,7 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.Component
+import java.awt.Dimension
 import java.awt.FlowLayout
 import java.nio.file.Path
 import javax.swing.DefaultCellEditor
@@ -50,7 +51,8 @@ import javax.swing.table.DefaultTableCellRenderer
 /**
  * View and edit a debuggable app's SharedPreferences and Preferences DataStore, from the IDE.
  *
- * A tab of its own rather than more controls on the Devices panel, which is already at the size
+ * A section of the Devices tab, so storage sits beside every other action on the selected device,
+ * but a component of its own rather than more controls on the viewer, which is already at the size
  * Detekt flags. It reaches the device only through the storage commands, which are the same
  * device functions the MCP tools use, so the panel and an agent cannot differ on what a write
  * does: stop the app, check the file has not changed, write, read back.
@@ -107,6 +109,10 @@ class AppStoragePanel(
     )
 
     init {
+        // The Devices tab is a scrolling column that sizes each section by its preferred height,
+        // so this asks for enough room for the file list and the table, and never for any width.
+        preferredSize = Dimension(0, JBUI.scale(EMBEDDED_HEIGHT))
+        maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(EMBEDDED_HEIGHT))
         fileList.selectionMode = ListSelectionModel.SINGLE_SELECTION
         fileList.cellRenderer = SimpleListCellRenderer.create { label, file, _ ->
             label.putClientProperty(HTML_DISABLE, true)
@@ -553,6 +559,7 @@ class AppStoragePanel(
 
     private companion object {
         const val GAP = 4
+        const val EMBEDDED_HEIGHT = 420
         const val SPLIT_PROPORTION = 0.3f
         const val KEY_COLUMN = 0
         const val TYPE_COLUMN = 1
@@ -561,7 +568,7 @@ class AppStoragePanel(
         /** Swing's client property that stops a component rendering text that starts with `<html>`. */
         const val HTML_DISABLE = "html.disable"
 
-        const val NO_DEVICE = "No device selected. Choose one in the Devices tab."
+        const val NO_DEVICE = "No device selected. Choose one at the top of this tab."
 
         val SINGLE_FILE = FileChooserDescriptor(true, false, false, false, false, false)
 
