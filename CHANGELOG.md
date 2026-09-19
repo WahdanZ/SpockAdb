@@ -65,6 +65,18 @@
 
 ### Changed
 
+- **One tool window instead of seven tabs that each found their own way to a device.** The
+  plugin registered six IDE content tabs; the Devices tab owned the device dropdown and pushed
+  its choice at the others, so Logcat, Commands and the UI Inspector showed no sign of what they
+  were attached to — and the app was nowhere at all, because every action resolved the open
+  project's app module for itself. There is now a single content: a header naming the device and
+  the app, a row of tabs beneath it, and a status line under those. What is chosen in the header
+  is what every tab and every action uses, so **the app is a real choice** rather than whatever
+  the project happened to resolve to — App storage takes its app from there too, instead of
+  carrying a second picker that could disagree with the first. The status line keeps the last
+  result on screen with how long it took (`✓ App restarted · 420 ms`), where a balloon said it
+  once and went away. The tab row shows as many tabs as fit and puts the rest behind **More**,
+  so a tool window docked at 300px still has its content rather than four rows of tabs
 - **The device and the app an action is about are now pinned above the Devices tab.** The
   device dropdown was the first row of a scrolling column, so by the time you had scrolled to
   Network or App storage it was off screen — and the app was never on screen at all: every app

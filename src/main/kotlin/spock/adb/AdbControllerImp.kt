@@ -33,6 +33,24 @@ class AdbControllerImp(
 
     private val log = Logger.getInstance(AdbControllerImp::class.java)
 
+    /** When the action running on this thread began, for the duration reported with its result. */
+    private val startedAt = ThreadLocal<Long?>()
+
+    private val resultListeners = java.util.concurrent.CopyOnWriteArrayList<(ActionResult) -> Unit>()
+
+    override fun onResult(listener: (ActionResult) -> Unit) {
+        resultListeners.addIfAbsent(listener)
+    }
+
+    /**
+     * The app every action acts on, which is the one chosen in the tool window's header.
+     *
+     * Null until something chooses, and then it is the answer rather than the project's app
+     * module: the header offers every installed app, and an action that quietly used a
+     * different one than the header shows would be worse than having no header at all.
+     */
+    override var selectedApp: String? = null
+
     /**
      * Device-list observers.
      *
@@ -76,10 +94,12 @@ class AdbControllerImp(
      * actionable message instead.
      */
     private fun getApplicationID(device: IDevice): String =
-        GetApplicationIDCommand().execute(Any(), project, device)
+        selectedApp?.takeIf { it.isNotBlank() }
+            ?: GetApplicationIDCommand().execute(Any(), project, device)
             ?: throw IllegalStateException(
-                "Could not determine the application ID for this project. " +
-                    "Open an Android project and make sure its Gradle sync has finished.",
+                "No app is selected, and none could be resolved for this project. " +
+                    "Choose one at the top of the tool window, or open an Android project and " +
+                    "let its Gradle sync finish.",
             )
 
     /**
@@ -511,12 +531,26 @@ class AdbControllerImp(
         }
     }
 
-    private fun showError(message: String) = onEdt {
-        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.ERROR)
+    private fun showError(message: String) = report(message, ok = false).also {
+        onEdt { CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.ERROR) }
     }
 
-    private fun showSuccess(message: String) = onEdt {
-        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.INFORMATION)
+    private fun showSuccess(message: String) = report(message, ok = true).also {
+        onEdt {
+            CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.INFORMATION)
+        }
+    }
+
+    /**
+     * Tells the tool window what an action did, and how long it took.
+     *
+     * A balloon says what happened and then goes away, which is the wrong shape for the answer
+     * to "did that work?" — the one question a developer asks after every button. The tool
+     * window keeps the last one on screen.
+     */
+    private fun report(message: String, ok: Boolean) {
+        val elapsed = startedAt.get()?.let { System.currentTimeMillis() - it }
+        onEdt { resultListeners.forEach { it(ActionResult(message, ok, elapsed)) } }
     }
 
     /**
@@ -531,6 +565,10 @@ class AdbControllerImp(
      */
     private fun execute(onDone: (() -> Unit)? = null, block: () -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
+            // How long the action took, read by whichever showSuccess/showError the block
+            // reaches. A thread local rather than a field: pooled threads run actions
+            // concurrently, and each one has to time its own.
+            startedAt.set(System.currentTimeMillis())
             try {
                 block()
             } catch (e: ProcessCanceledException) {
@@ -539,6 +577,7 @@ class AdbControllerImp(
                 log.warn("Spock ADB command failed", e)
                 showError(e.message?.takeIf { it.isNotBlank() } ?: "${e.javaClass.simpleName} — see idea.log")
             } finally {
+                startedAt.remove()
                 onDone?.let { onEdt(it) }
             }
         }

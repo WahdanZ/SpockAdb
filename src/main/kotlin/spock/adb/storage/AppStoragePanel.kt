@@ -68,7 +68,12 @@ class AppStoragePanel(
     private val project: Project,
 ) : SimpleToolWindowPanel(true, true), Disposable {
 
-    private val packagePicker = AppPackagePicker(project, isAlive = { !disposed })
+    /**
+     * Called when a change of app was refused because of unapplied edits, with the app this
+     * panel is still showing — so whoever chose can put their choice back.
+     */
+    var onAppKept: (String?) -> Unit = {}
+
     private val restartAfterWrite = JCheckBox("Restart app after writing")
 
     private val fileList = StorageFileList()
@@ -173,10 +178,27 @@ class AppStoragePanel(
             listedPackage = null
             fileList.clear()
             showSession(null)
-            status(if (connected == null) NO_DEVICE else "Enter or choose the package of a debuggable app.")
+            status(if (connected == null) NO_DEVICE else CHOOSE_APP)
         }
-        packagePicker.load(connected, keepSelection = sameDevice)
         updateControls()
+    }
+
+    /**
+     * Shows the storage of [packageName], which is the app chosen in the tool window's header.
+     *
+     * The panel had a package picker of its own. With one in the header there would be two on
+     * screen disagreeing about which app the tab is showing.
+     */
+    fun setApp(packageName: String?) {
+        val wanted = packageName?.trim()?.ifEmpty { null }
+        if (wanted == listedPackage) return
+        if (wanted == null) {
+            listedPackage = null
+            fileList.clear()
+            showSession(null)
+            return status(CHOOSE_APP)
+        }
+        listFiles(wanted)
     }
 
     override fun dispose() {
@@ -188,8 +210,6 @@ class AppStoragePanel(
 
     private fun header(): JComponent = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
         border = JBUI.Borders.empty(2, GAP)
-        add(JBLabel("Package:"))
-        add(packagePicker)
         add(
             restartAfterWrite.apply {
                 toolTipText = "Every write stops the app first. Tick this to launch it again afterwards."
@@ -252,8 +272,6 @@ class AppStoragePanel(
     }
 
     private fun wire() {
-        packagePicker.onChosen = { packageName -> listFiles(packageName) }
-        packagePicker.onFailure = { status(it) }
         fileList.onSelected = { fileSelected() }
         table.selectionModel.addListSelectionListener { updateControls() }
         model.onEdited = { updateControls() }
@@ -277,10 +295,11 @@ class AppStoragePanel(
 
     private fun listFiles(chosenPackage: String? = null) {
         val target = device ?: return status(NO_DEVICE)
-        val packageName = (chosenPackage ?: packagePicker.selected)
-            ?.trim()?.ifEmpty { null } ?: return status("Enter or choose the package of a debuggable app.")
+        val packageName = (chosenPackage ?: listedPackage)
+            ?.trim()?.ifEmpty { null } ?: return status(CHOOSE_APP)
         if (!confirmDiscard()) {
-            packagePicker.revertTo(listedPackage)
+            // The app was chosen elsewhere, so the refusal has to travel back to whoever chose.
+            onAppKept(listedPackage)
             return
         }
 
@@ -369,7 +388,7 @@ class AppStoragePanel(
     // ---------------------------------------------------------------- editing
 
     private fun addRow() {
-        stopEditing()
+        table.stopEditing()
         val current = session ?: return
         // A new row has to be visible to be typed into, and its generated key matches no search.
         if (keyFilter.text.isNotEmpty()) keyFilter.text = ""
@@ -385,7 +404,7 @@ class AppStoragePanel(
     }
 
     private fun deleteRows() {
-        stopEditing()
+        table.stopEditing()
         val current = session ?: return
         table.selectedModelRows().sortedDescending()
             .filter { current.rows.getOrNull(it)?.editable == true }
@@ -395,7 +414,7 @@ class AppStoragePanel(
     }
 
     private fun apply() {
-        stopEditing()
+        table.stopEditing()
         val current = session ?: return
         val target = device ?: return status(NO_DEVICE)
         val packageName = listedPackage ?: return
@@ -420,7 +439,7 @@ class AppStoragePanel(
     }
 
     private fun undo() {
-        stopEditing()
+        table.stopEditing()
         val point = lastWrite ?: return
         val target = device?.takeIf { it.serialNumber == point.serial }
             ?: return status("The last apply was to another device. Select it to undo the apply.")
@@ -524,7 +543,7 @@ class AppStoragePanel(
     }
 
     private fun import() {
-        stopEditing()
+        table.stopEditing()
         val current = session ?: return
         val target = device ?: return status(NO_DEVICE)
         val packageName = listedPackage ?: return
@@ -589,10 +608,6 @@ class AppStoragePanel(
             .ask(project)
     }
 
-    private fun stopEditing() {
-        if (table.isEditing) table.cellEditor.stopCellEditing()
-    }
-
     private fun updateControls() {
         val current = session
         val editable = current != null && current.readOnlyReason == null && !busy
@@ -600,7 +615,6 @@ class AppStoragePanel(
         val rows = current?.rows.orEmpty()
         val selected = table.selectedModelRows().mapNotNull { index -> rows.getOrNull(index) }
         // While a write runs, nothing may change what its callback reopens or what it wrote over.
-        packagePicker.isEnabled = !busy && device != null
         fileList.isEnabled = !busy
         model.editable = !busy
         addButton.isEnabled = editable
@@ -672,7 +686,8 @@ class AppStoragePanel(
         /** Swing's client property that stops a component rendering text that starts with `<html>`. */
         const val HTML_DISABLE = StoragePanelUi.HTML_DISABLE
 
-        const val NO_DEVICE = "No device selected. Choose one at the top of this tab."
+        const val NO_DEVICE = "No device selected. Choose one at the top of the tool window."
+        const val CHOOSE_APP = "Choose a debuggable app at the top of the tool window."
         const val NO_FILE = "No file open"
 
         val SINGLE_FILE = FileChooserDescriptor(true, false, false, false, false, false)
@@ -740,6 +755,11 @@ private const val STALE_HINT = "Another write — the app itself, an agent, or a
  * With a search in the key field the two differ, and deleting by the row on screen would delete
  * whatever the session holds at that position instead.
  */
+/** Commits whatever cell is being typed into, so what is read next is what is on screen. */
+private fun JBTable.stopEditing() {
+    if (isEditing) cellEditor.stopCellEditing()
+}
+
 private fun JBTable.selectedModelRows(): List<Int> = selectedRows.map { convertRowIndexToModel(it) }
 
 /** The table's key column, for the row filter, which sees the model rather than the panel. */
