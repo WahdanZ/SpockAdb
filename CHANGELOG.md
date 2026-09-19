@@ -179,6 +179,16 @@
   still carries the fragments, and which fixes a second thing the old command got wrong: `top`
   is whatever is in the foreground, so with another app in front it reported that app's
   fragments, or nothing, without ever saying it had looked somewhere else
+- **The MCP tab hid its details, and put them back every time you opened them.** The panel
+  chooses between a splitter and a stacked layout from its own height, against a threshold
+  chosen when it was a tool window tab with the whole window to itself. Under the shared header
+  and tab row, with the status line below, it has some ninety pixels less — so an ordinary tool
+  window fell under the threshold, the details collapsed to a title bar, and expanding them
+  re-ran the same check and collapsed them again. The threshold is now stated as what a split
+  actually needs, a list worth scrolling plus a pane worth reading, so it does not have to be
+  re-tuned the next time something is added above the panel. Stacked, the details pane also
+  took its preferred height — for a pretty-printed response, most of the panel — and squeezed
+  out the list it was explaining; it is capped now
 - **The Wi-Fi and mobile data buttons could be dead without looking it.** The row took the
   button's enabled state from the read that fills its label in, so every path where that read
   did not land — the row attached after the device list had already been published, a read
