@@ -1,6 +1,7 @@
 package spock.adb.storage
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -61,16 +62,12 @@ class StorageEditorStateTest {
     }
 
     @Test
-    fun `searching files matches the whole path, not only the name`() {
-        val files = listOf(
-            StorageFile("shared_prefs/settings.xml", StorageKind.SHARED_PREFERENCES),
-            StorageFile("files/datastore/settings.preferences_pb", StorageKind.PREFERENCES_DATASTORE),
-            StorageFile("shared_prefs/feature_flags.xml", StorageKind.SHARED_PREFERENCES),
-        )
-
-        assertEquals(files, matchingStorageFiles(files, "  "), "a blank search hides nothing")
-        assertEquals(files.take(1) + files.drop(2), matchingStorageFiles(files, "shared_prefs"))
-        assertEquals(files.take(2), matchingStorageFiles(files, "SETTINGS"), "the search ignores case")
-        assertEquals(emptyList<StorageFile>(), matchingStorageFiles(files, "nothing"))
+    fun `searching the tree matches an entry's own name`() {
+        // The tree shows where a file is by where it sits, so matching the path as well would
+        // light up every file under shared_prefs for the word "prefs".
+        assertTrue(matchesStorageSearch("feature_flags.xml", "flags"))
+        assertTrue(matchesStorageSearch("feature_flags.xml", "FLAGS"), "the search ignores case")
+        assertTrue(matchesStorageSearch("anything", "   "), "a blank search hides nothing")
+        assertFalse(matchesStorageSearch("feature_flags.xml", "prefs"))
     }
 }

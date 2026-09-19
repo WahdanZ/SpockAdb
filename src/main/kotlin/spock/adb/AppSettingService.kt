@@ -109,6 +109,7 @@ data class AppSetting(
     val pinned: List<String> = emptyList(),
 )
 enum class SpockAction {
+    APP_INFO,
     CURRENT_ACTIVITY,
     CURRENT_FRAGMENT,
     CURRENT_APP_STACK,

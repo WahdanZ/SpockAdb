@@ -388,8 +388,9 @@ class AdbControllerImp(
     override fun grantOrRevokeAllPermissions(
         device: IDevice,
         permissionOperation: GetApplicationPermission.PermissionOperation,
+        onDone: () -> Unit,
     ) {
-        execute {
+        execute(onDone) {
             val applicationID = getApplicationID(device)
             val permissions = GetApplicationPermission().execute(applicationID, project, device)
             if (permissions.isEmpty()) {
@@ -404,17 +405,33 @@ class AdbControllerImp(
                     { permission -> RevokePermissionCommand().execute(applicationID, permission, project, device) }
             }
 
-            permissions.forEach(operation)
-            showSuccess("All permissions ${permissionOperation.operationResult}")
+            // One permission the platform will not change must not stop the other thirty-one:
+            // the failures are collected and named, rather than aborting the batch or — as
+            // before, when the output was discarded — being announced as a success.
+            val refused = permissions.mapNotNull { permission ->
+                runCatching { operation(permission) }.exceptionOrNull()?.message
+            }
+            val changed = permissions.size - refused.size
+            check(refused.size < permissions.size) {
+                "No permission could be ${permissionOperation.operationResult}. ${refused.first()}"
+            }
+            showSuccess(
+                if (refused.isEmpty()) {
+                    "All $changed permissions ${permissionOperation.operationResult}"
+                } else {
+                    "$changed of ${permissions.size} permissions ${permissionOperation.operationResult}; " +
+                        "the device refused ${refused.size}: ${refused.joinToString("; ")}"
+                },
+            )
         }
     }
 
     override fun revokePermission(
         device: IDevice,
         listItem: ListItem,
-
-        ) {
-        execute {
+        onDone: () -> Unit,
+    ) {
+        execute(onDone) {
             val applicationID = getApplicationID(device)
             RevokePermissionCommand().execute(applicationID, listItem, project, device)
             showSuccess("permission $listItem revoked")
@@ -424,9 +441,9 @@ class AdbControllerImp(
     override fun grantPermission(
         device: IDevice,
         listItem: ListItem,
-
-        ) {
-        execute {
+        onDone: () -> Unit,
+    ) {
+        execute(onDone) {
             val applicationID = getApplicationID(device)
             GrantPermissionCommand().execute(applicationID, listItem, project, device)
             showSuccess("permission $listItem granted")
@@ -511,6 +528,35 @@ class AdbControllerImp(
         execute(onDone) {
             val result = ToggleNetworkCommand().execute(network, project, device)
             showSuccess(result)
+        }
+    }
+
+    override fun wifiStatus(device: IDevice, block: (status: Result<WifiStatus>) -> Unit) =
+        read(block) { WifiStatusCommand().execute(Any(), project, device) }
+
+    override fun appInfo(device: IDevice, block: (info: Result<AppInfo>) -> Unit) =
+        read(block) { AppInfoCommand().execute(getApplicationID(device), project, device) }
+
+    override fun permissionSummary(device: IDevice, block: (summary: Result<PermissionSummary>) -> Unit) =
+        read(block) {
+            val permissions = GetApplicationPermission().execute(getApplicationID(device), project, device)
+            PermissionSummary(
+                granted = permissions.count { it.isSelected },
+                denied = permissions.count { !it.isSelected },
+            )
+        }
+
+    /**
+     * Reads something from the device on a pooled thread and answers on the EDT.
+     *
+     * A read rather than an action: nothing is reported to the user and nothing is logged,
+     * because the caller is filling in a label and a device that cannot answer should leave it
+     * empty rather than raise a balloon.
+     */
+    private fun <T> read(block: (Result<T>) -> Unit, work: () -> T) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val result = runCatching(work)
+            onEdt { block(result) }
         }
     }
 

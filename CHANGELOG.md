@@ -65,6 +65,32 @@
 
 ### Changed
 
+- **App storage browses the whole of an app's data, not just its preference files.** The panel
+  listed `shared_prefs` and `files/datastore` and nothing else, which answered "what can I edit"
+  and no other question — a developer looking for the database their app had just written, or
+  wanting to confirm a cache was empty, could not see that any of it existed. It is a tree now:
+  `databases`, `files`, `cache`, and whatever else the app has written, read one directory at a
+  time as they are opened, because an app's cache can hold thousands of files and reading them
+  to draw a row nobody expanded costs a round trip for nothing. **Listing is not editing.** A
+  preference file opens in the table and can be written as before; everything else is shown as
+  read-only text, and the boundary that decides which is which is the same one it always was —
+  a write takes a file the editor has classified, which is why `android_set_app_preference`
+  reaches exactly the files it always did
+- **The Device tab is cards, and it says what the app actually is.** Seven titled separators
+  read as one long list, so the grouping had to be read before it could be seen; each group is
+  now a card with a heading and an icon, still collapsible and still remembering what you
+  collapsed. They lay out in as many columns as the width allows — one in a tool window docked
+  at 300px, two or three in a wide one, where a single column left the right-hand half empty.
+  A new **App information** card answers which app the header is naming: package, version and
+  build, UID, and whether it is running — a debug build and a release one look identical by name
+  alone, and "not running" is what explains why Force stop appeared to do nothing. **Permissions**
+  now says `8 granted / 2 denied` above its buttons, where the only way to see what the app held
+  was to open the dialog and read a list. **Wi-Fi** names the network it is joined to rather than
+  only saying the radio is on — an enabled radio with no connection read exactly like the office
+  network. Destructive is **Danger zone**, and the three actions that destroy something are
+  outlined in red rather than looking like the four beside them. Quick actions starts with
+  Restart app, Attach debugger and Current activity pinned, so the row is useful before anybody
+  has pinned anything; pin or unpin once and your list is the list
 - **One tool window instead of seven tabs that each found their own way to a device.** The
   plugin registered six IDE content tabs; the Devices tab owned the device dropdown and pushed
   its choice at the others, so Logcat, Commands and the UI Inspector showed no sign of what they
@@ -189,6 +215,28 @@
   re-tuned the next time something is added above the panel. Stacked, the details pane also
   took its preferred height — for a pretty-printed response, most of the panel — and squeezed
   out the list it was explaining; it is capped now
+- **Half of an app's runtime permissions were invisible, and Grant all granted half of them.**
+  The permission reader filtered what the device reported against a list of names written into
+  the plugin — the dangerous permissions as they stood in Android 6 — so every runtime
+  permission added since was silently dropped: `POST_NOTIFICATIONS`, the whole `READ_MEDIA_*`
+  family, the Android 12 Bluetooth permissions, `ACCESS_BACKGROUND_LOCATION`,
+  `ACTIVITY_RECOGNITION`. On an API 34 emulator that is fifteen of the thirty-two permissions
+  Chrome holds. The match was a substring one as well, so a custom `com.example.permission.CAMERA`
+  counted as the Android permission of that name. The filtering is gone: `dumpsys package` has a
+  `runtime permissions:` section, which is the device itself saying which of the app's
+  permissions are runtime ones, current for whatever Android it is running. **Manage
+  permissions** now lists all of them and **Grant all** grants all of them
+- **Every failed permission change was announced as a success.** `pm grant` and `pm revoke`
+  print nothing when they work and an exception when they do not, and set no exit status either
+  way — and the plugin discarded their output, so a permission the app had never requested, or
+  one granted at install and unchangeable, was reported as granted. They are read now. **Grant
+  all** no longer stops at the first refusal either: it names how many changed and what the
+  device refused, so one permission the platform will not touch does not silently cost you the
+  other thirty-one
+- **The package name reached `pidof` unquoted.** `dumpsys` was given a quoted argument and
+  `pidof` was not, and the validator deliberately allows `$` because component names contain
+  it — so a package with a `$` in its name was expanded by the shell first, and the card
+  reported whatever process that expansion happened to name
 - **The Wi-Fi and mobile data buttons could be dead without looking it.** The row took the
   button's enabled state from the read that fills its label in, so every path where that read
   did not land — the row attached after the device list had already been published, a read
