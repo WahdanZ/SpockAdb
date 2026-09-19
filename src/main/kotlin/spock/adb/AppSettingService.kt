@@ -52,12 +52,35 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
         localData = localData.copy(pinned = pinned.map { it.name })
     }
 
-    /** Remembers the proxy the user last set, so it survives a restart. */
+    /**
+     * Remembers a proxy that was set, most recent first, so it survives a restart.
+     *
+     * Recorded when Set is pressed rather than when the device confirms it: a proxy the device
+     * refused is exactly the one worth having back in the list to try again.
+     */
     fun saveHttpProxy(value: String) {
-        localData = localData.copy(httpProxy = value)
+        localData = localData.copy(
+            httpProxy = value,
+            httpProxyHistory = proxyHistoryWith(httpProxyHistory(), value),
+        )
     }
 
     fun lastHttpProxy(): String = localData.httpProxy
+
+    /**
+     * Every proxy set on this machine, most recent first.
+     *
+     * Seeded from [AppSetting.httpProxy] when the stored list is empty, so the one proxy a
+     * developer already had remembered is the first entry of their history rather than lost to
+     * the upgrade that introduced the list.
+     */
+    fun httpProxyHistory(): List<String> = localData.httpProxyHistory
+        .ifEmpty { listOfNotNull(localData.httpProxy.takeIf { it.isNotBlank() }) }
+
+    /** Forgets the proxies offered in the dropdown, keeping whatever the device holds. */
+    fun clearHttpProxyHistory() {
+        localData = localData.copy(httpProxy = "", httpProxyHistory = emptyList())
+    }
 
     companion object {
         @JvmStatic
@@ -68,9 +91,13 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
 }
 
 /**
- * @param httpProxy the last proxy the user set, as `host:port`, so it does not have to be
- *   retyped every session. Application-scoped rather than per-project because the proxy runs
- *   on this machine, not in the project.
+ * @param httpProxy the proxy the user set last, as `host:port`. Kept alongside
+ *   [httpProxyHistory] because it is what settings written before the history existed hold,
+ *   and it seeds the list for anyone upgrading.
+ * @param httpProxyHistory every proxy set on this machine, most recent first, so switching
+ *   between a local Charles and a device-lab proxy is a pick rather than a retype. Both are
+ *   application-scoped rather than per-project because a proxy runs on this machine, not in
+ *   the project.
  * @param pinned the [QuickAction] names pinned to the Quick actions row, in the order shown.
  *   Order is the whole point, so this is a list rather than the set it would otherwise be.
  */
@@ -78,6 +105,7 @@ data class AppSetting(
     val selectedDevice: String? = "",
     val list: List<ListItem>,
     val httpProxy: String = "",
+    val httpProxyHistory: List<String> = emptyList(),
     val pinned: List<String> = emptyList(),
 )
 enum class SpockAction {
@@ -101,3 +129,22 @@ enum class SpockAction {
     HTTP_PROXY,
     APP_STORAGE,
 }
+
+/**
+ * [existing] with [value] at the front: no duplicates, and no longer than [max].
+ *
+ * Setting the same proxy again moves it up rather than adding it twice, which is what keeps a
+ * list of eight useful to somebody who switches between two of them all day.
+ */
+internal fun proxyHistoryWith(
+    existing: List<String>,
+    value: String,
+    max: Int = MAX_REMEMBERED_PROXIES,
+): List<String> {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return existing
+    return (listOf(trimmed) + existing.filterNot { it.equals(trimmed, ignoreCase = true) }).take(max)
+}
+
+/** Enough to cover the proxies one developer switches between; not a log of everything ever typed. */
+internal const val MAX_REMEMBERED_PROXIES = 8

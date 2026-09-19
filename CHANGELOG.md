@@ -130,6 +130,16 @@
   it appears beside Copy Config and takes itself back down, and the line about clients now
   reads "No client connected yet. Copy the configuration to connect one.", with the protocol
   reason moved into its tooltip
+- **The HTTP proxy field remembers every proxy you have set, not just the last one.** One
+  remembered value covered the developer who always points at the same Charles; it did nothing
+  for the one switching between a local proxy and a device lab, who retyped the other one every
+  time. The field is now a dropdown of the proxies set on this machine, most recent first —
+  setting one again moves it up rather than listing it twice, and the list holds eight, so it
+  stays a working set rather than a log of everything ever typed. Picking one fills the field
+  and nothing else: it reaches the device when **Set** is pressed, never on a click in the
+  dropdown. Right-click the field to forget the list, which changes nothing on the device. The
+  single proxy remembered by an earlier version becomes the first entry rather than being lost
+  to the upgrade
 - **The Commands tab says what it is about to run on, and what happened when it did.** The
   target device was a line at the bottom of the panel, far from Run; it now sits under the
   command it applies to. The field shows an example of what goes after `adb shell`. The state
