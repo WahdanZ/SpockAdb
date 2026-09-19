@@ -63,14 +63,20 @@ class NetworkToggleRow(
         }
     }
 
-    /** Reads the device's setting into the row. Does nothing before [attach] or while hidden. */
+    /**
+     * Reads the device's setting into the row. Reads nothing before [attach] or while hidden.
+     *
+     * Every path ends in [showState], which is also what re-enables the button: a refresh that
+     * gave up early would otherwise leave it disabled for good, since the click that started
+     * the toggle disables it and only the read that follows puts it back.
+     */
     fun refresh() {
-        val controller = controller ?: return
+        val controller = controller
         // Taken before the early returns, so a refresh that reads nothing still retires a read
         // in flight rather than letting its answer land on a row about another device.
         val request = reads.begin()
-        if (!isVisible) return
-        val target = selectedDevice() ?: return showState(null)
+        val target = selectedDevice()
+        if (controller == null || target == null || !isVisible) return showState(null)
 
         button.isEnabled = false
         state.text = READING_TEXT
