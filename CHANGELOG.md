@@ -76,7 +76,10 @@
   carrying a second picker that could disagree with the first. The status line keeps the last
   result on screen with how long it took (`✓ App restarted · 420 ms`), where a balloon said it
   once and went away. The tab row shows as many tabs as fit and puts the rest behind **More**,
-  so a tool window docked at 300px still has its content rather than four rows of tabs
+  so a tool window docked at 300px still has its content rather than four rows of tabs. The tab
+  you are on is drawn as such — the accent colour and an underline — because a toggle button in
+  the IDE's own look is all but indistinguishable selected from not, which left the open tab to
+  be inferred from whatever was below it
 - **The device and the app an action is about are now pinned above the Devices tab.** The
   device dropdown was the first row of a scrolling column, so by the time you had scrolled to
   Network or App storage it was off screen — and the app was never on screen at all: every app

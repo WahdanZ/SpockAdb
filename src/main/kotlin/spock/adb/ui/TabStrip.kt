@@ -1,8 +1,14 @@
 package spock.adb.ui
 
+import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import java.awt.CardLayout
+import java.awt.Cursor
 import java.awt.Dimension
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.RenderingHints
 import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JComponent
@@ -49,11 +55,7 @@ internal class TabStrip : JPanel(null) {
     }
 
     fun addTab(title: String, tab: JComponent) {
-        val button = JToggleButton(title).apply {
-            toolTipText = title
-            isFocusable = false
-            addActionListener { select(title) }
-        }
+        val button = TabButton(title).apply { addActionListener { select(title) } }
         buttons[title] = button
         group.add(button)
         add(button)
@@ -61,10 +63,13 @@ internal class TabStrip : JPanel(null) {
         if (selected == null) select(title)
     }
 
+    /** The tab showing now. */
+    val selectedTitle: String? get() = selected
+
     fun select(title: String) {
         if (title !in buttons) return
         selected = title
-        buttons[title]?.isSelected = true
+        buttons.forEach { (name, button) -> button.isSelected = name == title }
         cards.show(content, title)
         revalidate()
         repaint()
@@ -130,6 +135,62 @@ internal class TabStrip : JPanel(null) {
                 add(JMenuItem(title).apply { addActionListener { select(title) } })
             }
         }.show(more, 0, more.height)
+    }
+
+    /**
+     * One tab, drawn as a tab rather than as a button.
+     *
+     * A `JToggleButton` in the IDE's own look is all but indistinguishable selected from not —
+     * a faintly different shade of the same button — so which tab you were on had to be
+     * inferred from what was below it. This paints the two states apart: the selected tab takes
+     * the accent colour and an underline, the rest stay quiet until the pointer is over them.
+     */
+    private class TabButton(title: String) : JToggleButton(title) {
+        init {
+            toolTipText = title
+            isFocusable = false
+            isContentAreaFilled = false
+            isBorderPainted = false
+            isFocusPainted = false
+            isOpaque = false
+            isRolloverEnabled = true
+            border = JBUI.Borders.empty(PAD_V, PAD_H)
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        }
+
+        override fun paintComponent(g: Graphics) {
+            val g2 = g.create() as Graphics2D
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                // Quiet until it is the one being pointed at: a background on every tab would
+                // put seven boxes where there is one row.
+                if (model.isRollover && !isSelected) {
+                    g2.color = HOVER
+                    g2.fillRoundRect(0, 0, width, height - underline(), JBUI.scale(ARC), JBUI.scale(ARC))
+                }
+                foreground = if (isSelected) ACCENT else UIUtil.getInactiveTextColor()
+                super.paintComponent(g2)
+                if (isSelected) {
+                    g2.color = ACCENT
+                    g2.fillRect(0, height - underline(), width, underline())
+                }
+            } finally {
+                g2.dispose()
+            }
+        }
+
+        private fun underline() = JBUI.scale(UNDERLINE)
+
+        private companion object {
+            const val PAD_V = 4
+            const val PAD_H = 10
+            const val ARC = 6
+            const val UNDERLINE = 2
+
+            /** The IDE's own accent where the theme names one, so the row belongs to the theme. */
+            val ACCENT = JBColor.namedColor("Component.focusColor", JBColor(0x3574F0, 0x548AF7))
+            val HOVER = JBColor.namedColor("ActionButton.hoverBackground", JBColor(0xEDEDED, 0x3E4245))
+        }
     }
 
     private companion object {

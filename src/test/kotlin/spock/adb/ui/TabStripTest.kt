@@ -93,6 +93,36 @@ class TabStripTest {
     }
 
     @Test
+    fun `exactly one tab is the selected one, and it is the one showing`() {
+        val strip = strip(WIDE)
+
+        val selected = strip.components.filterIsInstance<JToggleButton>().filter { it.isSelected }
+        assertEquals(1, selected.size, "a tab row with two active tabs says nothing about where you are")
+        assertEquals("Device", selected.single().text, "the first tab added is the one open")
+        assertEquals("Device", strip.selectedTitle)
+
+        strip.select("Logcat")
+
+        val after = strip.components.filterIsInstance<JToggleButton>().filter { it.isSelected }
+        assertEquals(listOf("Logcat"), after.map { it.text }, "the previous tab has to let go")
+        assertEquals("Logcat", strip.selectedTitle)
+    }
+
+    @Test
+    fun `a tab reached through More becomes the active one`() {
+        val strip = strip(DOCKED)
+        val hidden = titles.last()
+
+        strip.select(hidden)
+
+        assertEquals(hidden, strip.selectedTitle)
+        assertEquals(
+            listOf(hidden),
+            strip.components.filterIsInstance<JToggleButton>().filter { it.isSelected }.map { it.text },
+        )
+    }
+
+    @Test
     fun `the row asks for one line of height and no width of its own`() {
         val strip = strip(WIDE)
 
