@@ -10,7 +10,6 @@ import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
@@ -22,21 +21,16 @@ import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.WrapLayout
 import spock.adb.ui.renderWith
 import java.awt.BorderLayout
-import java.awt.Component
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import javax.swing.DefaultListModel
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JPanel
-import javax.swing.ListCellRenderer
-import javax.swing.ListSelectionModel
 
 /**
  * A first-class panel for the MCP server, rather than a checkbox buried in Settings.
@@ -58,18 +52,36 @@ class McpServerPanel(
     private val restartButton = JButton("Restart")
     private val copyConfigButton = JButton("Copy Config")
 
-    private val activityModel = DefaultListModel<McpCall>()
-    private val activityList = JBList(activityModel)
+    private val activityTable = McpActivityTable()
     private val detailArea = JBTextArea().apply {
         isEditable = false
         font = JBUI.Fonts.create(Font.MONOSPACED, font.size)
+        // An error long enough to matter is longer than a docked tool window is wide, and it
+        // was the part that got cut off.
+        lineWrap = true
+        wrapStyleWord = true
         text = EMPTY_DETAIL
     }
 
-    private val toolsModel = DefaultListModel<ToolRow>()
-    private val toolsList = JBList(toolsModel)
-    private val toolSearchField = JBTextField(SEARCH_COLUMNS)
-    private val showDestructiveOnly = JCheckBox("Destructive only")
+    private val copyDetailsButton = JButton("Copy details")
+    private val copyRequestButton = JButton("Copy request")
+    private val copyResponseButton = JButton("Copy response")
+
+    private val toolsPane = McpToolsPane()
+
+    /**
+     * What just happened, beside the button that did it.
+     *
+     * Kept apart from [detailLabel], which says what the server *is*: "Configuration copied"
+     * used to replace the transports and the tool count, so a permanent fact was overwritten by
+     * a passing one and never came back until the next status refresh.
+     */
+    private val feedbackLabel = JBLabel(" ").apply { foreground = JBColor.GRAY }
+
+    /** Clears [feedbackLabel]: a message about something that happened once should not persist. */
+    private val feedbackTimer = javax.swing.Timer(FEEDBACK_MS) { feedbackLabel.text = " " }.apply {
+        isRepeats = false
+    }
 
     private val searchField = JBTextField(SEARCH_COLUMNS)
     private val toolFilter = JComboBox<String>()
@@ -93,9 +105,9 @@ class McpServerPanel(
             add(
                 JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
                     border = JBUI.Borders.empty(2, GAP)
-                    add(JButton("Copy").apply { addActionListener { copy(detailArea.text) } })
-                    add(JButton("Copy Request").apply { addActionListener { copy(selected()?.arguments) } })
-                    add(JButton("Copy Response").apply { addActionListener { copy(selected()?.result) } })
+                    add(copyDetailsButton.apply { addActionListener { copy(detailArea.text) } })
+                    add(copyRequestButton.apply { addActionListener { copy(selected()?.arguments) } })
+                    add(copyResponseButton.apply { addActionListener { copy(selected()?.result) } })
                 },
                 BorderLayout.NORTH,
             )
@@ -129,6 +141,11 @@ class McpServerPanel(
         setToolbar(header())
         setContent(body())
 
+        toolsPane.onSelected = { details ->
+            detailArea.text = details ?: EMPTY_DETAIL
+            detailArea.caretPosition = 0
+            updateCopyButtons()
+        }
         service.addCallListener(callListener)
         wire()
         refreshStatus()
@@ -150,6 +167,7 @@ class McpServerPanel(
             add(restartButton)
             add(copyConfigButton)
             add(JButton("Settings").apply { addActionListener { openSettings() } })
+            add(feedbackLabel)
         }
 
         return JPanel(BorderLayout()).apply {
@@ -168,10 +186,7 @@ class McpServerPanel(
     // ------------------------------------------------------------------ body
 
     private fun body(): JComponent {
-        activityList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        activityList.cellRenderer = ActivityRenderer()
-        activityList.setEmptyText("No MCP requests yet.")
-        activityList.addListSelectionListener { showDetails() }
+        activityTable.onSelected = { showDetails() }
 
         val filters = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
             border = JBUI.Borders.empty(2, GAP)
@@ -179,20 +194,22 @@ class McpServerPanel(
             add(searchField)
             add(JBLabel("Tool:"))
             add(toolFilter)
+            // The dropdown said "Any", which answered a question nobody had asked yet.
+            add(JBLabel("Result:"))
             add(outcomeFilter)
             add(JButton("Clear History").apply { addActionListener { clearHistory() } })
         }
 
         val activity = JPanel(BorderLayout()).apply {
             add(filters, BorderLayout.NORTH)
-            add(JBScrollPane(activityList), BorderLayout.CENTER)
+            add(activityTable, BorderLayout.CENTER)
         }
 
         // Activity and Tools share the detail pane below: both answer "what is this call /
         // this tool", so two separate detail views would be redundant in a narrow window.
         val tabs = JBTabbedPane().apply {
             addTab("Activity", activity)
-            addTab("Tools (${ToolRegistry.all().size})", toolsPane())
+            addTab("Tools (${ToolRegistry.all().size})", toolsPane)
         }
         splitter.firstComponent = tabs
 
@@ -252,121 +269,6 @@ class McpServerPanel(
         bodyPanel.repaint()
     }
 
-    /**
-     * The catalogue of what an agent can actually do to the device.
-     *
-     * The panel previously reported only a count, which told a developer nothing about what
-     * they were exposing when they pressed Start. Grouping by safety level is the point:
-     * the three destructive tools are the ones worth reading before turning the server on.
-     */
-    private fun toolsPane(): JComponent {
-        toolsList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        toolsList.cellRenderer = ToolRenderer()
-        toolsList.addListSelectionListener { showToolDetails() }
-
-        val filters = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
-            border = JBUI.Borders.empty(2, GAP)
-            add(JBLabel("Search:"))
-            add(toolSearchField)
-            add(showDestructiveOnly)
-        }
-
-        toolSearchField.addKeyListener(
-            object : java.awt.event.KeyAdapter() {
-                override fun keyReleased(e: java.awt.event.KeyEvent) = refreshTools()
-            },
-        )
-        showDestructiveOnly.addActionListener { refreshTools() }
-
-        refreshTools()
-        return JPanel(BorderLayout()).apply {
-            add(filters, BorderLayout.NORTH)
-            add(JBScrollPane(toolsList), BorderLayout.CENTER)
-        }
-    }
-
-    private fun refreshTools() {
-        val query = toolSearchField.text.orEmpty()
-        val destructiveOnly = showDestructiveOnly.isSelected
-
-        toolsModel.clear()
-        // Destructive first: the tools a developer most needs to know about should not be
-        // buried at the bottom of an alphabetical list.
-        ToolSafety.entries.sortedByDescending { it.ordinal }.forEach { safety ->
-            if (destructiveOnly && safety != ToolSafety.DESTRUCTIVE) return@forEach
-
-            val matching = ToolRegistry.bySafety(safety)
-                .filter { query.isBlank() || it.name.contains(query, true) || it.description.contains(query, true) }
-                .sortedBy { it.name }
-            if (matching.isEmpty()) return@forEach
-
-            toolsModel.addElement(ToolRow.Header(safety, matching.size))
-            matching.forEach { toolsModel.addElement(ToolRow.Entry(it)) }
-        }
-    }
-
-    private fun showToolDetails() {
-        val tool = (toolsList.selectedValue as? ToolRow.Entry)?.tool ?: return
-        detailArea.text = buildString {
-            appendLine(tool.name)
-            appendLine()
-            appendLine("Safety: ${tool.safety.describe()}")
-            if (tool.safety == ToolSafety.DESTRUCTIVE) {
-                appendLine("         You are asked to approve every call, and denial is the default.")
-            }
-            appendLine()
-            appendLine("Description:")
-            appendLine(tool.description)
-            appendLine()
-            appendLine("Arguments:")
-            append(prettyJson(tool.inputSchema))
-        }
-        detailArea.caretPosition = 0
-    }
-
-    private fun prettyJson(json: com.google.gson.JsonObject): String =
-        runCatching { com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json) }
-            .getOrDefault(json.toString())
-
-    /** A row is either a safety heading or a tool, so one list renders the grouping. */
-    private sealed interface ToolRow {
-        data class Header(val safety: ToolSafety, val count: Int) : ToolRow
-        data class Entry(val tool: spock.adb.mcp.tools.AdbTool) : ToolRow
-    }
-
-    private class ToolRenderer : ListCellRenderer<ToolRow> {
-        private val label = JBLabel().apply { border = JBUI.Borders.empty(ROW_PAD_V + 1, ROW_PAD_H) }
-
-        override fun getListCellRendererComponent(
-            list: javax.swing.JList<out ToolRow>,
-            value: ToolRow,
-            index: Int,
-            isSelected: Boolean,
-            cellHasFocus: Boolean,
-        ): Component {
-            label.isOpaque = true
-            label.background = if (isSelected) list.selectionBackground else list.background
-
-            when (value) {
-                is ToolRow.Header -> {
-                    label.text = "  ${value.safety.marker()}  ${value.safety.heading()} (${value.count})"
-                    label.font = list.font.deriveFont(Font.BOLD)
-                    label.foreground = if (isSelected) list.selectionForeground else value.safety.colour()
-                }
-                is ToolRow.Entry -> {
-                    label.text = TOOL_INDENT + value.tool.name
-                    label.font = JBUI.Fonts.create(Font.MONOSPACED, list.font.size)
-                    label.foreground = when {
-                        isSelected -> list.selectionForeground
-                        value.tool.safety == ToolSafety.DESTRUCTIVE -> DESTRUCTIVE
-                        else -> JBColor.foreground()
-                    }
-                }
-            }
-            return label
-        }
-    }
-
     // ------------------------------------------------------------------ state
 
     private fun wire() {
@@ -374,7 +276,7 @@ class McpServerPanel(
         restartButton.addActionListener { restartServer() }
         copyConfigButton.addActionListener {
             copy(service.clientConfiguration())
-            detailLabel.text = "Configuration copied — it contains an access token for your devices."
+            say("Copied — the configuration contains an access token for your devices.")
         }
         searchField.addKeyListener(
             object : java.awt.event.KeyAdapter() {
@@ -475,6 +377,11 @@ class McpServerPanel(
      * A permanent "0 sessions" would read as something being wrong when nothing is: no client
      * is attached, which is the normal state of a server nobody has pointed a client at yet.
      */
+    private fun requests(): String = when (val count = service.recentCalls().size) {
+        1 -> "1 request"
+        else -> "$count requests"
+    }
+
     private val sessions: String get() = when (val count = service.stdioSessionCount) {
         0 -> ""
         1 -> ", 1 session"
@@ -493,18 +400,19 @@ class McpServerPanel(
     private fun refreshClientLabel(running: Boolean) {
         val client = service.connectedClient()
         clientLabel.foreground = JBColor.GRAY
+        // Wrapped as HTML so a plain JBLabel wraps rather than clipping in a docked tool
+        // window — but only where the text is ours. A client's name is whatever it sent.
         clientLabel.text = when {
             !running -> " "
-            // Wrapped as HTML: a plain JBLabel clips rather than wrapping, and this sentence
-            // is longer than a docked tool window is wide.
-            client == null ->
-                "<html>No client has identified itself yet — on either transport, a client " +
-                    "is only known once it calls initialize.</html>"
+            client == null -> "<html>No client connected yet. Copy the configuration to connect one.</html>"
             else -> {
                 val version = client.version?.let { " $it" }.orEmpty()
-                "Last client: ${client.name}$version   ·   requests: ${service.recentCalls().size}"
+                "Last client: ${client.name}$version   ·   ${requests()}"
             }
         }
+        // The protocol reason sits here rather than on the line: it explains why the panel
+        // cannot say more, which is worth having once and not worth reading twice.
+        clientLabel.toolTipText = if (running && client == null) UNIDENTIFIED_HINT else null
     }
 
     // ------------------------------------------------------------------ activity
@@ -518,12 +426,9 @@ class McpServerPanel(
             outcome = outcomeFilter.selectedItem as McpHistoryFilter.Outcome,
         )
 
-        val previouslySelected = selected()
-        activityModel.clear()
-        service.queryHistory(filter).forEach(activityModel::addElement)
-
+        // The table keeps the selected call selected when the filter still lets it through.
+        activityTable.show(service.queryHistory(filter))
         refreshToolFilterOptions()
-        previouslySelected?.let { restoreSelection(it) }
         refreshClientLabel(service.isRunning)
     }
 
@@ -537,45 +442,85 @@ class McpServerPanel(
         toolFilter.selectedItem = selectedTool?.takeIf { it in expected } ?: ANY_TOOL
     }
 
-    private fun restoreSelection(call: McpCall) {
-        val index = (0 until activityModel.size()).firstOrNull {
-            activityModel.get(it).timestamp == call.timestamp && activityModel.get(it).toolName == call.toolName
-        } ?: return
-        activityList.selectedIndex = index
+    private fun selected(): McpCall? = activityTable.selected
+
+    /** Says something that just happened, and takes it back down again. */
+    private fun say(message: String) {
+        feedbackLabel.text = message
+        feedbackTimer.restart()
     }
 
-    private fun selected(): McpCall? = activityList.selectedValue
+    /** Copy request and copy response are about a call; with none selected they copy nothing. */
+    private fun updateCopyButtons() {
+        val call = selected()
+        copyRequestButton.isEnabled = call != null
+        copyResponseButton.isEnabled = call != null
+        copyDetailsButton.isEnabled = detailArea.text != EMPTY_DETAIL
+    }
 
+    /**
+     * What one call did, with what went wrong at the top.
+     *
+     * The failure used to be the third line of a metadata block and its message the last thing
+     * in the pane, under the arguments — so diagnosing a failed call started with scrolling
+     * past the request that caused it.
+     */
     private fun showDetails() {
         val call = selected() ?: run {
             detailArea.text = EMPTY_DETAIL
+            updateCopyButtons()
             return
         }
         detailArea.text = buildString {
-            appendLine("Tool:         ${call.toolName}")
-            appendLine("Safety:       ${call.safety.describe()}")
-            appendLine("Status:       ${if (call.isError) "Error" else "Success"}")
-            appendLine("Duration:     ${call.durationMs} ms")
-            appendLine("Time:         ${TIME_FORMAT.format(Date(call.timestamp))}")
-            appendLine("Client:       ${call.client ?: "unidentified"}")
-            appendLine("Device:       ${call.deviceSerial ?: "default (selected device)"}")
-            if (call.safety == ToolSafety.DESTRUCTIVE) {
-                appendLine("Confirmation: ${if (call.wasConfirmed) "approved by you" else "denied or failed"}")
+            appendLine("Tool:     ${call.toolName}")
+            appendLine("Access:   ${call.safety.describe()}")
+            appendLine("Result:   ${if (call.isError) "Error" else "Success"}")
+            if (call.isError) {
+                appendLine()
+                appendLine("Error")
+                appendLine(call.result.trim())
             }
             appendLine()
-            appendLine("Arguments:")
-            appendLine(call.arguments)
+            appendLine("Duration: ${call.durationMs} ms")
+            appendLine("Time:     ${TIME_FORMAT.format(Date(call.timestamp))}")
+            appendLine("Client:   ${call.client ?: "unidentified"}")
+            appendLine("Device:   ${call.deviceSerial ?: "default (selected device)"}")
+            if (call.safety == ToolSafety.DESTRUCTIVE) {
+                appendLine("Approval: ${if (call.wasConfirmed) "approved by you" else "denied or failed"}")
+            }
             appendLine()
-            appendLine("Result:")
-            append(call.result)
+            appendLine("Request")
+            appendLine(readable(call.arguments))
+            if (!call.isError) {
+                appendLine()
+                appendLine("Response")
+                append(readable(call.result))
+            }
         }
         detailArea.caretPosition = 0
+        updateCopyButtons()
+    }
+
+    /**
+     * JSON laid out over several lines, and anything else exactly as it came back.
+     *
+     * A tool's arguments and its result are one long line as they travel, which in a pane this
+     * narrow is a paragraph of punctuation.
+     */
+    private fun readable(raw: String): String {
+        val trimmed = raw.trim()
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return trimmed
+        return runCatching {
+            com.google.gson.GsonBuilder().setPrettyPrinting().create()
+                .toJson(com.google.gson.JsonParser.parseString(trimmed))
+        }.getOrDefault(trimmed)
     }
 
     private fun clearHistory() {
         service.clearHistory()
-        activityModel.clear()
+        activityTable.clear()
         detailArea.text = EMPTY_DETAIL
+        updateCopyButtons()
     }
 
     private fun copy(value: String?) {
@@ -593,40 +538,13 @@ class McpServerPanel(
 
     // ------------------------------------------------------------------ rendering
 
-    private class ActivityRenderer : ListCellRenderer<McpCall> {
-        private val label = JBLabel().apply { border = JBUI.Borders.empty(ROW_PAD_V, ROW_PAD_H) }
-
-        override fun getListCellRendererComponent(
-            list: javax.swing.JList<out McpCall>,
-            value: McpCall,
-            index: Int,
-            isSelected: Boolean,
-            cellHasFocus: Boolean,
-        ): Component {
-            label.font = JBUI.Fonts.create(Font.MONOSPACED, list.font.size)
-            label.isOpaque = true
-            label.background = if (isSelected) list.selectionBackground else list.background
-            label.text = ACTIVITY_ROW_FORMAT.format(
-                TIME_FORMAT.format(Date(value.timestamp)),
-                value.safety.marker(),
-                value.toolName,
-                if (value.isError) "✗" else "✓",
-                value.durationMs,
-            )
-            label.foreground = when {
-                isSelected -> list.selectionForeground
-                value.isError -> ERROR
-                value.safety == ToolSafety.DESTRUCTIVE -> DESTRUCTIVE
-                else -> JBColor.foreground()
-            }
-            return label
-        }
-    }
-
     private companion object {
         const val GAP = 4
         const val SEARCH_COLUMNS = 14
         const val ANY_TOOL = "All tools"
+
+        /** Long enough to read the line, short enough that it is gone before it becomes furniture. */
+        const val FEEDBACK_MS = 6000
 
         // Favour the list: the detail pane is empty until something is selected.
         const val SPLIT_PROPORTION = 0.72f
@@ -634,10 +552,12 @@ class McpServerPanel(
         /** Below this the 28% detail pane is too small to read and too big to spare. */
         const val COMPACT_HEIGHT = 500
 
+        const val UNIDENTIFIED_HINT = "A client is only known once it calls initialize: plain HTTP POST is " +
+            "stateless, and a stdio session carries no identity before that first message."
+
         const val EMPTY_DETAIL =
             "Select a request or a tool above to see its details here."
 
-        const val ACTIVITY_ROW_FORMAT = "%s  %s %-32s %s %5d ms"
         const val ROW_PAD_V = 1
         const val ROW_PAD_H = 6
         const val TOOL_INDENT = "        "

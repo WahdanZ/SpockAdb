@@ -117,6 +117,19 @@
   system settings screen calls them — rather than `0.0`, `0.5`, `1.0`, and a scale that is not
   **1×** is shown in bold, with a **Reset animation scales** button that is enabled only when
   there is something to reset
+- **MCP activity is a table with headings, and the server's status stays put.** A row carried
+  a tick and a cross side by side — one for how much the tool was allowed to do, the other for
+  whether the call worked — with no headings to say which was which. They are two questions, so
+  they are now two of five columns: **Time · Tool · Access · Result · Duration**, with the
+  unlabelled `Any` dropdown above them now labelled **Result**. Selecting a call puts the error
+  first, before the request that caused it, and long messages wrap instead of running off the
+  edge; request and response are laid out over several lines rather than arriving as one. The
+  generic **Copy** is **Copy details**, and copy request and copy response are disabled when no
+  call is selected. On the Tools tab each of the fifty-odd identifiers now carries its one-line
+  description. "Configuration copied" no longer overwrites the transports and the tool count:
+  it appears beside Copy Config and takes itself back down, and the line about clients now
+  reads "No client connected yet. Copy the configuration to connect one.", with the protocol
+  reason moved into its tooltip
 - **Actions are labelled with what they do.** **Debugger** is **Attach debugger**, **Process
   Death** is **Simulate process death**, **Manage…** is **Manage permissions…**, **Open on
   Device** is **Open developer options**, **Clear & Restart…** is **Clear data and restart…**,
@@ -126,6 +139,13 @@
 
 ### Fixed
 
+- **Wi-Fi and mobile data announced changes the device had refused.** `svc wifi disable` exits
+  0 whether or not it did anything, and from Android 10 a good many builds do not let the adb
+  shell switch Wi-Fi at all — so the plugin ran the command, the device ignored it, and the
+  tool window reported "Disabled Wifi network" over a connection that was still up. The state
+  is now read back after every toggle and a device that did not move says so, quoting whatever
+  the shell said and, for Wi-Fi, why a modern device refuses. Wi-Fi also goes through
+  `cmd -w wifi set-wifi-enabled`, the route that still works, on Android 11 and later
 - **The animation scales showed the wrong device, and sometimes the wrong value.** Developer
   options were read only when the tool window was shown, so selecting a second device left the
   first one's switches and scales on screen — ready to be changed on a device they were never
