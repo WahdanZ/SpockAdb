@@ -18,6 +18,7 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerService
 import spock.adb.premission.CheckBoxDialog
+import spock.adb.storage.AppStoragePanel
 import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.VerticallyScrollablePanel
 import java.awt.BorderLayout
@@ -106,6 +107,9 @@ class SpockAdbViewer(
 
     private val httpProxyRow = HttpProxyRow(project, GAP)
 
+    /** Disposed with the tool window, which drops the answers to storage reads and writes still in flight. */
+    private val appStorage = AppStoragePanel(project).also { Disposer.register(parentDisposable, it) }
+
     /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
     private val adbWifi = JButton()
 
@@ -119,6 +123,7 @@ class SpockAdbViewer(
     private lateinit var developerSection: CollapsibleSection
     private lateinit var networkSection: CollapsibleSection
     private lateinit var sendSection: CollapsibleSection
+    private lateinit var storageSection: CollapsibleSection
 
     /** Hidden as a whole, so switched-off toggles do not leave an empty padded band. */
     private lateinit var networkToggles: JPanel
@@ -205,6 +210,7 @@ class SpockAdbViewer(
         AppSettingService.getInstance().run {
             updateUi(state)
         }
+        onDeviceSelected { appStorage.setDevice(it) }
     }
 
     /**
@@ -239,6 +245,8 @@ class SpockAdbViewer(
         developerSection = section("Developer options", "developer", developerOptionsContent())
         networkSection = section("Network", "network", networkContent())
         sendSection = section("Send to device", "send", sendContent())
+        // Last, because it is by far the tallest: the buttons above stay in view without scrolling past a table.
+        storageSection = section("App storage", "storage", appStorage)
 
         val content = VerticallyScrollablePanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -252,6 +260,7 @@ class SpockAdbViewer(
                 developerSection,
                 networkSection,
                 sendSection,
+                storageSection,
             ).forEach { add(it) }
             // Absorbs the slack so the sections stay at the top instead of stretching.
             add(Box.createVerticalGlue())
@@ -608,6 +617,7 @@ class SpockAdbViewer(
                     openDeepLinkTextField.isVisible = it.isSelected
                 }
                 SpockAction.HTTP_PROXY -> httpProxyRow.setActionVisible(it.isSelected)
+                SpockAction.APP_STORAGE -> storageSection.setSectionVisible(it.isSelected)
             }
         }
         refreshSectionVisibility()
@@ -715,29 +725,10 @@ class SpockAdbViewer(
     }
 
     private fun removeDeveloperOptionsListeners() {
-        enableDisableDontKeepActivities.actionListeners.forEach {
-            enableDisableDontKeepActivities.removeActionListener(it)
-        }
-
-        enableDisableShowTaps.actionListeners.forEach {
-            enableDisableShowTaps.removeActionListener(it)
-        }
-
-        enableDisableShowLayoutBounds.actionListeners.forEach {
-            enableDisableShowLayoutBounds.removeActionListener(it)
-        }
-
-        windowAnimatorScaleComboBox.actionListeners.forEach {
-            windowAnimatorScaleComboBox.removeActionListener(it)
-        }
-
-        transitionAnimatorScaleComboBox.actionListeners.forEach {
-            transitionAnimatorScaleComboBox.removeActionListener(it)
-        }
-
-        animatorDurationScaleComboBox.actionListeners.forEach {
-            animatorDurationScaleComboBox.removeActionListener(it)
-        }
+        listOf(enableDisableDontKeepActivities, enableDisableShowTaps, enableDisableShowLayoutBounds)
+            .forEach { box -> box.actionListeners.forEach { box.removeActionListener(it) } }
+        listOf(windowAnimatorScaleComboBox, transitionAnimatorScaleComboBox, animatorDurationScaleComboBox)
+            .forEach { combo -> combo.actionListeners.forEach { combo.removeActionListener(it) } }
     }
 
     private fun setDeveloperOptionsValues() {

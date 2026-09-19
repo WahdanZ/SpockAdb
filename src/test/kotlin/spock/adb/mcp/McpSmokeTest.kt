@@ -248,6 +248,8 @@ class McpSmokeTest {
             "android_get_ui_tree" to "{}",
             "android_accessibility_audit" to "{}",
             "android_get_http_proxy" to "{}",
+            // The open project's app, which must be installed as a debuggable build.
+            "android_list_app_storage" to "{}",
             // Default sections only: the screenshot section is covered by its own tool above.
             "android_get_debug_context" to "{}",
         )
@@ -258,6 +260,7 @@ class McpSmokeTest {
             "android_assert_visible" to """{"text":"$ABSENT"}""",
             "android_assert_enabled" to """{"text":"$ABSENT"}""",
             "android_assert_text" to """{"text":"$ABSENT"}""",
+            "android_read_app_storage" to """{"file":"shared_prefs/$ABSENT.xml"}""",
         )
     }
 }

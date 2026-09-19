@@ -204,15 +204,20 @@ class McpProtocol(
      * "Left out" means what the argument accessors already mean by it: a string that is
      * absent, null or blank counts as missing, matching `requiredString`, while a number or
      * flag only has to be present, so `0` and `false` are values rather than omissions.
+     *
+     * A string the schema declares as `minLength: 0` is the exception: it says an empty string
+     * is a value there, so only an absent or null argument is missing.
      */
     private fun missingArguments(tool: AdbTool, arguments: JsonObject): List<String> {
         val required = tool.inputSchema.getAsJsonArray("required") ?: return emptyList()
         val properties = tool.inputSchema.getAsJsonObject("properties")
         return required.map { it.asString }.filter { field ->
             val value = arguments.get(field)
+            val property = properties?.getAsJsonObject(field)
             when {
                 value == null || value.isJsonNull -> true
-                properties?.getAsJsonObject(field)?.get("type")?.asString != "string" -> false
+                property?.get("type")?.asString != "string" -> false
+                property.get("minLength")?.asInt == 0 -> false
                 else -> value.isJsonPrimitive && value.asString.isBlank()
             }
         }

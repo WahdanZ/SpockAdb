@@ -22,8 +22,15 @@ object Schema {
         private val properties = JsonObject()
         private val required = JsonArray()
 
-        fun string(name: String, description: String, required: Boolean = false) =
-            property(name, "string", description, required)
+        /**
+         * With [mayBeEmpty], an empty string is a value rather than an omission — declared as
+         * `minLength: 0`, which is both what JSON Schema says and what the dispatcher reads
+         * before it refuses a call for a missing argument.
+         */
+        fun string(name: String, description: String, required: Boolean = false, mayBeEmpty: Boolean = false) =
+            property(name, "string", description, required) {
+                if (mayBeEmpty) addProperty("minLength", 0)
+            }
 
         fun integer(name: String, description: String, required: Boolean = false) =
             property(name, "integer", description, required)
@@ -73,12 +80,19 @@ object Schema {
                 "android_select_device, or the only attached device.",
         )
 
-        private fun property(name: String, type: String, description: String, isRequired: Boolean) {
+        private fun property(
+            name: String,
+            type: String,
+            description: String,
+            isRequired: Boolean,
+            extras: JsonObject.() -> Unit = {},
+        ) {
             properties.add(
                 name,
                 JsonObject().apply {
                     addProperty("type", type)
                     addProperty("description", description)
+                    extras()
                 },
             )
             if (isRequired) required.add(name)
@@ -98,6 +112,16 @@ fun JsonObject.optionalString(name: String): String? =
 
 fun JsonObject.requiredString(name: String): String =
     optionalString(name) ?: throw IllegalArgumentException("Missing required argument '$name'")
+
+/**
+ * A required string argument that may be empty, for a field where "" is a value: a preference
+ * key, which both storage formats allow, is one. Only an absent or null argument is missing.
+ */
+fun JsonObject.requiredText(name: String): String {
+    val element = get(name)?.takeIf { !it.isJsonNull && it.isJsonPrimitive }
+        ?: throw IllegalArgumentException("Missing required argument '$name'")
+    return element.asString
+}
 
 /**
  * A required whole-number argument.
