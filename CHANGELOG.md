@@ -109,6 +109,14 @@
   no action buttons — Developer options, Network, Send to device, App storage — match on what
   they hold, so "proxy" finds the proxy field and "animation" finds the scales. A search that
   matches nothing says so rather than leaving the tab blank
+- **Developer options reads as a form rather than two columns at opposite edges.** The
+  animation labels sat at the far left and their dropdowns at the far right, so matching a
+  setting to its value meant tracking across the width of the tool window. Label and dropdown
+  now sit side by side, the three dropdowns share a width, and there is more air between groups
+  than between the controls inside one. The values read **Off**, **0.5×**, **1×** — what the
+  system settings screen calls them — rather than `0.0`, `0.5`, `1.0`, and a scale that is not
+  **1×** is shown in bold, with a **Reset animation scales** button that is enabled only when
+  there is something to reset
 - **Actions are labelled with what they do.** **Debugger** is **Attach debugger**, **Process
   Death** is **Simulate process death**, **Manage…** is **Manage permissions…**, **Open on
   Device** is **Open developer options**, **Clear & Restart…** is **Clear data and restart…**,
@@ -118,6 +126,14 @@
 
 ### Fixed
 
+- **The animation scales showed the wrong device, and sometimes the wrong value.** Developer
+  options were read only when the tool window was shown, so selecting a second device left the
+  first one's switches and scales on screen — ready to be changed on a device they were never
+  read from. They are now re-read whenever the selected device changes. The value was matched
+  against the dropdown as text, so a device answering `1` where the list holds `1.0` selected
+  nothing, and anything unreadable fell back to `0.0`, which the dropdown showed as **Off**: a
+  device with animations running, displayed as a device with them switched off. The answer is
+  now matched as a number, and one that names no scale selects nothing rather than guessing
 - **An action switched off left a hole where it had been, and a label with nothing under it.**
   The action grids were laid out from source order and merely hid what was switched off, so a
   two-column section with one action off showed a gap rather than closing up — and switching

@@ -570,11 +570,18 @@ class SpockAdbViewer(
         mobileDataRow.attach(adbController) { selectedDevice }
     }
 
-    /** Re-reads everything in the Network section, which is state the device holds, not the plugin. */
+    /**
+     * Re-reads everything on the tab that is state the device holds rather than the plugin's.
+     *
+     * Developer options belong here too: they were read only when the tool window was shown, so
+     * selecting a second device left the first device's animation scales and switches on screen,
+     * ready to be changed on a device they were never read from.
+     */
     private fun refreshDeviceState() {
         httpProxyRow.refresh()
         wifiRow.refresh()
         mobileDataRow.refresh()
+        developerOptions.refresh()
     }
 
     /**
@@ -759,8 +766,6 @@ class SpockAdbViewer(
                         header.refreshApp()
                         refreshDeviceState()
                         resizeStorage()
-
-                        developerOptions.refresh()
                     }
                 },
             )

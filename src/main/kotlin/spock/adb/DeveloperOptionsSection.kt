@@ -1,24 +1,21 @@
 package spock.adb
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
-import spock.adb.command.AnimatorDurationScaleCommand
 import spock.adb.command.DontKeepActivitiesState
 import spock.adb.command.ShowLayoutBoundsState
 import spock.adb.command.ShowTapsState
-import spock.adb.command.TransitionAnimatorScaleCommand
-import spock.adb.command.WindowAnimatorScaleCommand
 import spock.adb.device.ConnectedDevice
-import java.awt.BorderLayout
 import java.awt.Dimension
-import java.awt.FlowLayout
+import java.awt.Font
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
 import java.awt.event.ActionEvent
-import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
-import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
@@ -38,23 +35,38 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
     private val dontKeepActivities = JCheckBox("Don't keep activities")
     private val showTaps = JCheckBox("Show taps")
     private val showLayoutBounds = JCheckBox("Show layout bounds")
-    private val windowScale = JComboBox(ANIMATION_SCALES)
-    private val transitionScale = JComboBox(ANIMATION_SCALES)
-    private val durationScale = JComboBox(ANIMATION_SCALES)
+
+    private val windowScale = scaleCombo()
+    private val transitionScale = scaleCombo()
+    private val durationScale = scaleCombo()
+
+    private val windowLabel = JBLabel("Window animation")
+    private val transitionLabel = JBLabel("Transition animation")
+    private val durationLabel = JBLabel("Animator duration")
+
+    private val resetScales = JButton("Reset animation scales").apply {
+        toolTipText = "Put all three animation scales back to 1×"
+        isEnabled = false
+    }
 
     private var controller: AdbController? = null
     private var selectedDevice: () -> ConnectedDevice? = { null }
 
     init {
-        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        layout = GridBagLayout()
         border = JBUI.Borders.empty(gap, 0)
-        add(leftAligned(openOnDeviceButton))
-        add(leftAligned(dontKeepActivities))
-        add(leftAligned(showTaps))
-        add(leftAligned(showLayoutBounds))
-        add(scaleRow("Window animation", windowScale))
-        add(scaleRow("Transition animation", transitionScale))
-        add(scaleRow("Animator duration", durationScale))
+
+        var row = 0
+        add(openOnDeviceButton, wide(row++))
+        // A little more air before a new group than between the controls inside one.
+        add(dontKeepActivities, wide(row++, topGap = true))
+        add(showTaps, wide(row++))
+        add(showLayoutBounds, wide(row++))
+
+        addScaleRow(windowLabel, windowScale, row++, topGap = true)
+        addScaleRow(transitionLabel, transitionScale, row++)
+        addScaleRow(durationLabel, durationScale, row++)
+        add(resetScales, wide(row, topGap = true))
     }
 
     /**
@@ -65,6 +77,14 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
         this.selectedDevice = device
         openOnDeviceButton.addActionListener {
             withDevice { target -> controller.openDeveloperOptions(target) }
+        }
+        resetScales.addActionListener {
+            withDevice { device ->
+                controller.setWindowAnimatorScale(DEFAULT_SCALE, device)
+                controller.setTransitionAnimatorScale(DEFAULT_SCALE, device)
+                controller.setAnimatorDurationScale(DEFAULT_SCALE, device)
+                refresh()
+            }
         }
         addListeners()
     }
@@ -92,10 +112,12 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
                 dontKeepActivities.isSelected = dontKeep == DontKeepActivitiesState.ENABLED
                 showTaps.isSelected = taps == ShowTapsState.ENABLED
                 showLayoutBounds.isSelected = bounds == ShowLayoutBoundsState.ENABLED
-                windowScale.selectedItem = WindowAnimatorScaleCommand.getWindowAnimatorScaleIndex(window)
-                transitionScale.selectedItem =
-                    TransitionAnimatorScaleCommand.getTransitionAnimatorScaleIndex(transition)
-                durationScale.selectedItem = AnimatorDurationScaleCommand.getAnimatorDurationScaleIndex(duration)
+                // A device answers "1" where the list holds "1.0", and "null" where the setting
+                // has never been written; both used to select nothing, or worse, select Off.
+                windowScale.selectedItem = animationScaleEntry(window, SCALES)
+                transitionScale.selectedItem = animationScaleEntry(transition, SCALES)
+                durationScale.selectedItem = animationScaleEntry(duration, SCALES)
+                markNonDefaults()
                 addListeners()
             }
         }
@@ -150,24 +172,90 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
         selectedDevice()?.device?.let(block)
     }
 
-    /** Label left, control right, so a setting and its value are read as one line. */
-    private fun scaleRow(label: String, combo: JComboBox<String>): JPanel =
-        JPanel(BorderLayout(JBUI.scale(gap), 0)).apply {
-            alignmentX = LEFT_ALIGNMENT
-            maximumSize = Dimension(Int.MAX_VALUE, combo.preferredSize.height + JBUI.scale(gap))
-            border = JBUI.Borders.emptyTop(2)
-            add(JBLabel(label), BorderLayout.WEST)
-            add(combo, BorderLayout.EAST)
-        }
+    /**
+     * The three scales, and whether any of them is not what a device leaves the factory with.
+     *
+     * The label carries it rather than the value: the dropdown already shows the value, and what
+     * a developer wants at a glance is whether this device is still set up the way they left it.
+     */
+    private fun markNonDefaults() {
+        var changed = false
+        listOf(windowLabel to windowScale, transitionLabel to transitionScale, durationLabel to durationScale)
+            .forEach { (label, combo) ->
+                val isDefault = combo.selectedItem == DEFAULT_SCALE
+                if (!isDefault) changed = true
+                label.font = label.font.deriveFont(if (isDefault) Font.PLAIN else Font.BOLD)
+                label.toolTipText = if (isDefault) null else "Not the usual 1×"
+            }
+        resetScales.isEnabled = changed
+    }
 
-    private fun leftAligned(component: JComponent): JPanel =
-        JPanel(FlowLayout(FlowLayout.LEFT, 0, JBUI.scale(2))).apply {
-            alignmentX = LEFT_ALIGNMENT
-            maximumSize = Dimension(Int.MAX_VALUE, component.preferredSize.height + JBUI.scale(gap))
-            add(component)
-        }
+    private fun scaleCombo(): JComboBox<String> = JComboBox(SCALES.toTypedArray()).apply {
+        // "1×" and "Off" rather than "1.0" and "0.0": the list holds what the device is sent.
+        renderer = SimpleListCellRenderer.create { label, value, _ -> label.text = scaleText(value) }
+        // One width for all three, so the three rows read as one form.
+        val width = JBUI.scale(SCALE_WIDTH)
+        preferredSize = Dimension(width, preferredSize.height)
+        maximumSize = Dimension(width, preferredSize.height)
+    }
+
+    /** Label then control, side by side, rather than pushed to opposite edges of the tool window. */
+    private fun addScaleRow(label: JBLabel, combo: JComboBox<String>, row: Int, topGap: Boolean = false) {
+        add(label, labelAt(row, topGap))
+        add(combo, controlAt(row, topGap))
+    }
+
+    private fun labelAt(row: Int, topGap: Boolean) = GridBagConstraints().apply {
+        gridx = 0
+        gridy = row
+        anchor = GridBagConstraints.LINE_START
+        insets = JBUI.insets(if (topGap) gap else 2, 0, 2, gap)
+    }
+
+    private fun controlAt(row: Int, topGap: Boolean) = GridBagConstraints().apply {
+        gridx = 1
+        gridy = row
+        // The filler column takes the slack, so the control stays beside its label.
+        weightx = 1.0
+        anchor = GridBagConstraints.LINE_START
+        insets = JBUI.insets(if (topGap) gap else 2, 0)
+    }
+
+    private fun wide(row: Int, topGap: Boolean = false) = GridBagConstraints().apply {
+        gridx = 0
+        gridy = row
+        gridwidth = 2
+        weightx = 1.0
+        anchor = GridBagConstraints.LINE_START
+        insets = JBUI.insets(if (topGap) gap else 2, 0)
+    }
 
     private companion object {
-        val ANIMATION_SCALES = arrayOf("0.0", "0.5", "1.0", "1.5", "2.0", "5.0", "10.0")
+        const val SCALE_WIDTH = 96
     }
+}
+
+/** What the device is sent for each entry of the animation-scale dropdowns. */
+internal val SCALES = listOf("0.0", "0.5", "1.0", "1.5", "2.0", "5.0", "10.0")
+
+/** A device that has never had these written leaves them at this. */
+internal const val DEFAULT_SCALE = "1.0"
+
+/** `0.0` is off, and the rest are multipliers — which is how the system settings screen says it. */
+internal fun scaleText(value: String?): String = when {
+    value == null -> ""
+    value == "0.0" -> "Off"
+    else -> value.trimEnd('0').trimEnd('.') + "\u00d7"
+}
+
+/**
+ * The dropdown entry a device's answer names, or null when it named none.
+ *
+ * `settings get` answers with whatever is stored — "1", "1.0", or the literal "null" where the
+ * setting has never been written — so the raw string rarely equals the entry it means. Matching
+ * on the number is what makes the dropdown show what the device is actually set to.
+ */
+internal fun animationScaleEntry(raw: String?, choices: List<String>): String? {
+    val value = raw?.trim()?.toFloatOrNull() ?: return null
+    return choices.firstOrNull { it.toFloat() == value }
 }

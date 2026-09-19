@@ -8,10 +8,6 @@ import java.util.concurrent.TimeUnit
 
 class AnimatorDurationScaleCommand : Command<String, String> {
 
-    companion object {
-        fun getAnimatorDurationScaleIndex(scale: String?): String = scale ?: "0.0"
-    }
-
     override fun execute(p: String, project: Project, device: IDevice): String {
         val shellOutputReceiver = ShellOutputReceiver()
         device.executeShellCommand(
