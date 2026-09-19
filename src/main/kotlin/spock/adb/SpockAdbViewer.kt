@@ -11,6 +11,7 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import spock.adb.command.*
 import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
@@ -22,7 +23,6 @@ import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.VerticallyScrollablePanel
 import java.awt.BorderLayout
 import java.awt.GridLayout
-import java.awt.event.ActionEvent
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.ItemEvent
@@ -90,15 +90,7 @@ class SpockAdbViewer(
     private val grantAllPermissionsButton = JButton("Grant all")
     private val revokeAllPermissionsButton = JButton("Revoke all…")
 
-    private val openDeveloperOptionsButton = JButton("Open developer options").apply {
-        toolTipText = "Open the system Developer Options screen on the device"
-    }
-    private val enableDisableDontKeepActivities = JCheckBox("Don't keep activities")
-    private val enableDisableShowTaps = JCheckBox("Show taps")
-    private val enableDisableShowLayoutBounds = JCheckBox("Show layout bounds")
-    private val windowAnimatorScaleComboBox = JComboBox(ANIMATION_SCALES)
-    private val transitionAnimatorScaleComboBox = JComboBox(ANIMATION_SCALES)
-    private val animatorDurationScaleComboBox = JComboBox(ANIMATION_SCALES)
+    private val developerOptions = DeveloperOptionsSection(GAP)
 
     private val wifiRow = NetworkToggleRow(Network.WIFI, "Wi-Fi")
     private val mobileDataRow = NetworkToggleRow(Network.MOBILE, "Mobile data")
@@ -116,13 +108,104 @@ class SpockAdbViewer(
     /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
     private val adbWifi = JButton()
 
+    /** Every action that can be pinned, and the button that runs it. */
+    private val pinnable: Map<QuickAction, JButton> = mapOf(
+        QuickAction.CURRENT_ACTIVITY to currentActivityButton,
+        QuickAction.CURRENT_FRAGMENT to currentFragmentButton,
+        QuickAction.APP_BACK_STACK to currentAppBackStackButton,
+        QuickAction.ALL_ACTIVITIES to activitiesBackStackButton,
+        QuickAction.RESTART_APP to restartAppButton,
+        QuickAction.ATTACH_DEBUGGER to restartAppWithDebuggerButton,
+        QuickAction.FORCE_STOP to forceKillAppButton,
+        QuickAction.PROCESS_DEATH to testProcessDeathButton,
+        QuickAction.CLEAR_DATA to clearAppDataButton,
+        QuickAction.CLEAR_CACHE to clearAppCacheButton,
+        QuickAction.CLEAR_DATA_AND_RESTART to clearAppDataAndRestartButton,
+        QuickAction.UNINSTALL to uninstallAppButton,
+        QuickAction.MANAGE_PERMISSIONS to permissionButton,
+        QuickAction.GRANT_ALL_PERMISSIONS to grantAllPermissionsButton,
+        QuickAction.REVOKE_ALL_PERMISSIONS to revokeAllPermissionsButton,
+    )
+
+    /** Pinning moves a button here out of its section, so both are laid out together. */
+    private val quickActions = QuickActionsBar { applyVisibility() }
+
+    /**
+     * The sections that are nothing but action buttons, as data.
+     *
+     * They used to be four hardcoded `grid(...)` calls. Their contents now depend on what is
+     * pinned and on what a search matches, so they are filled rather than built — which also
+     * means an action switched off in settings leaves no hole in the grid where it was.
+     */
+    private val groups = listOf(
+        ActionGroup(
+            "Navigate",
+            "navigate",
+            listOf(
+                QuickAction.CURRENT_ACTIVITY,
+                QuickAction.CURRENT_FRAGMENT,
+                QuickAction.APP_BACK_STACK,
+                QuickAction.ALL_ACTIVITIES,
+            ),
+        ),
+        ActionGroup(
+            "App lifecycle",
+            "lifecycle",
+            listOf(
+                QuickAction.RESTART_APP,
+                QuickAction.ATTACH_DEBUGGER,
+                QuickAction.FORCE_STOP,
+                QuickAction.PROCESS_DEATH,
+            ),
+        ),
+        ActionGroup(
+            "Destructive",
+            "destructive",
+            listOf(
+                QuickAction.CLEAR_DATA,
+                QuickAction.CLEAR_CACHE,
+                QuickAction.CLEAR_DATA_AND_RESTART,
+                QuickAction.UNINSTALL,
+            ),
+        ),
+        ActionGroup(
+            "Permissions",
+            "permissions",
+            listOf(
+                QuickAction.MANAGE_PERMISSIONS,
+                QuickAction.GRANT_ALL_PERMISSIONS,
+                QuickAction.REVOKE_ALL_PERMISSIONS,
+            ),
+        ),
+    )
+
+    /** What the settings dialog has switched on; a search narrows this further, and never it. */
+    private val enabledActions = mutableMapOf<SpockAction, Boolean>()
+
+    private var searchQuery = ""
+
+    /** Shown when a search matches nothing, so the tab does not just go blank. */
+    private val noMatches = JBLabel().apply {
+        // The text carries what was typed, and a label whose text starts with a tag is markup.
+        putClientProperty("html.disable", true)
+        alignmentX = LEFT_ALIGNMENT
+        border = JBUI.Borders.empty(GAP)
+        foreground = UIUtil.getContextHelpForeground()
+        isVisible = false
+    }
+
+    /** A section of nothing but action buttons: its heading, and the grid they are filled into. */
+    private inner class ActionGroup(val title: String, val key: String, val actions: List<QuickAction>) {
+        val content: JPanel = JPanel(GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP))).apply {
+            border = JBUI.Borders.empty(GAP, 0)
+        }
+        lateinit var section: CollapsibleSection
+    }
+
     private var devices: List<ConnectedDevice> = emptyList()
 
     // Sections, so a group whose actions are all switched off hides its heading too.
-    private lateinit var navigateSection: CollapsibleSection
-    private lateinit var lifecycleSection: CollapsibleSection
-    private lateinit var dangerSection: CollapsibleSection
-    private lateinit var permissionSection: CollapsibleSection
+    private lateinit var quickSection: CollapsibleSection
     private lateinit var developerSection: CollapsibleSection
     private lateinit var networkSection: CollapsibleSection
     private lateinit var sendSection: CollapsibleSection
@@ -130,6 +213,8 @@ class SpockAdbViewer(
 
     /** Hidden as a whole, so switched-off toggles do not leave an empty padded band. */
     private lateinit var networkToggles: JPanel
+    private lateinit var inputRow: JPanel
+    private lateinit var deepLinkRow: JPanel
     private var selectedDevice: ConnectedDevice? = null
         set(value) {
             field = value
@@ -151,54 +236,6 @@ class SpockAdbViewer(
     private val selectedIDevice: IDevice? get() = selectedDevice?.device
 
     private lateinit var adbController: AdbController
-
-    private val dontKeepActivitiesActionListener: (ActionEvent) -> Unit = {
-        selectedIDevice?.let { device ->
-            adbController.enableDisableDontKeepActivities(device)
-        }
-    }
-
-    private val showTapsActionListener: (ActionEvent) -> Unit = {
-        selectedIDevice?.let { device ->
-            adbController.enableDisableShowTaps(device)
-        }
-    }
-
-    private val showLayoutBoundsActionListener: (ActionEvent) -> Unit = {
-        selectedIDevice?.let { device ->
-            adbController.enableDisableShowLayoutBounds(device)
-            device.refreshUi()
-        }
-    }
-
-    private val windowAnimatorScaleActionListener: (ActionEvent) -> Unit = {
-        selectedIDevice?.let { device ->
-            adbController.setWindowAnimatorScale(
-                windowAnimatorScaleComboBox.selectedItem as String,
-                device
-
-            )
-        }
-    }
-
-    private val transitionAnimatorScaleActionListener: (ActionEvent) -> Unit = {
-        selectedIDevice?.let { device ->
-            adbController.setTransitionAnimatorScale(
-                transitionAnimatorScaleComboBox.selectedItem as String,
-                device
-
-            )
-        }
-    }
-
-    private val animatorDurationScaleActionListener: (ActionEvent) -> Unit = {
-        selectedIDevice?.let { device ->
-            adbController.setAnimatorDurationScale(
-                animatorDurationScaleComboBox.selectedItem as String,
-                device
-            )
-        }
-    }
 
     /** The scrolling column of sections, kept so App storage can be given the height left over. */
     private lateinit var sectionColumn: JPanel
@@ -258,42 +295,20 @@ class SpockAdbViewer(
      * between navigation and lifecycle buttons where they can be hit by accident.
      */
     private fun buildLayout(): JComponent {
-        navigateSection = section(
-            "Navigate",
-            "navigate",
-            grid(currentActivityButton, currentFragmentButton, currentAppBackStackButton, activitiesBackStackButton),
-        )
-        lifecycleSection = section(
-            "App lifecycle",
-            "lifecycle",
-            grid(restartAppButton, restartAppWithDebuggerButton, forceKillAppButton, testProcessDeathButton),
-        )
-        dangerSection = section(
-            "Destructive",
-            "destructive",
-            grid(clearAppDataButton, clearAppCacheButton, clearAppDataAndRestartButton, uninstallAppButton),
-        )
-        permissionSection = section(
-            "Permissions",
-            "permissions",
-            grid(permissionButton, grantAllPermissionsButton, revokeAllPermissionsButton),
-        )
-        developerSection = section("Developer options", "developer", developerOptionsContent())
+        pinnable.forEach { (action, button) ->
+            prepare(button)
+            quickActions.install(action, button)
+        }
+        // First, because that is what pinning one is for.
+        quickSection = section("Quick actions", "quick", quickActions)
+        groups.forEach { group -> group.section = section(group.title, group.key, group.content) }
+        developerSection = section("Developer options", "developer", developerOptions)
         networkSection = section("Network", "network", networkContent())
         sendSection = section("Send to device", "send", sendContent())
         // Last, because it is by far the tallest: the buttons above stay in view without scrolling past a table.
         storageSection = section("App storage", "storage", appStorage)
 
-        val sections = listOf(
-            navigateSection,
-            lifecycleSection,
-            dangerSection,
-            permissionSection,
-            developerSection,
-            networkSection,
-            sendSection,
-            storageSection,
-        )
+        val sections = allSections()
         // Collapsing anything above App storage gives it that height instead.
         sections.forEach { section -> section.onToggled = { resizeStorage() } }
 
@@ -301,6 +316,7 @@ class SpockAdbViewer(
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(GAP)
             sections.forEach { add(it) }
+            add(noMatches)
             // Absorbs the slack so the sections stay at the top instead of stretching.
             add(Box.createVerticalGlue())
         }
@@ -334,48 +350,27 @@ class SpockAdbViewer(
         header.setAgentTarget(target.takeIf { mismatched })
     }
 
-    /** Two buttons per row; an odd count leaves the last one on its own row. */
-    private fun grid(vararg buttons: JButton): JPanel = JPanel(
-        GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP)),
-    ).apply {
-        border = JBUI.Borders.empty(GAP, 0)
-        buttons.forEach { button ->
-            // Without this a button refuses to shrink below its label width, so two of them
-            // side by side force the whole panel wider than the tool window.
-            button.minimumSize = java.awt.Dimension(0, button.preferredSize.height)
-            if (button.toolTipText == null) button.toolTipText = button.text.removeSuffix("…")
-            add(button)
-        }
-        if (buttons.size % COLUMNS != 0) add(JPanel())
+    private fun prepare(button: JButton) {
+        // Without this a button refuses to shrink below its label width, so two of them
+        // side by side force the whole panel wider than the tool window.
+        button.minimumSize = java.awt.Dimension(0, button.preferredSize.height)
+        if (button.toolTipText == null) button.toolTipText = button.text.removeSuffix("…")
     }
 
-    private fun developerOptionsContent(): JPanel = JPanel().apply {
-        layout = BoxLayout(this, BoxLayout.Y_AXIS)
-        border = JBUI.Borders.empty(GAP, 0)
-        add(leftAligned(openDeveloperOptionsButton))
-        add(leftAligned(enableDisableDontKeepActivities))
-        add(leftAligned(enableDisableShowTaps))
-        add(leftAligned(enableDisableShowLayoutBounds))
-        add(scaleRow("Window animation", windowAnimatorScaleComboBox))
-        add(scaleRow("Transition animation", transitionAnimatorScaleComboBox))
-        add(scaleRow("Animator duration", animatorDurationScaleComboBox))
-    }
-
-    private fun scaleRow(label: String, combo: JComboBox<String>): JPanel =
-        JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
-            alignmentX = LEFT_ALIGNMENT
-            maximumSize = java.awt.Dimension(Int.MAX_VALUE, combo.preferredSize.height + JBUI.scale(GAP))
-            border = JBUI.Borders.emptyTop(2)
-            add(JBLabel(label), BorderLayout.WEST)
-            add(combo, BorderLayout.EAST)
-        }
+    private fun allSections(): List<CollapsibleSection> =
+        listOf(quickSection) + groups.map { it.section } +
+            listOf(developerSection, networkSection, sendSection, storageSection)
 
     /** Field plus its action button, so the text and what it does stay adjacent. */
     private fun sendContent(): JPanel = JPanel().apply {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         border = JBUI.Borders.empty(GAP, 0)
-        add(fieldRow("Text", inputOnDeviceTextField, inputOnDeviceButton))
-        add(fieldRow("Deep link", openDeepLinkTextField, openDeepLinkButton))
+        // The whole row is hidden, label included: switching the action off used to leave a
+        // lone "Text" label behind the field it belonged to.
+        inputRow = fieldRow("Text", inputOnDeviceTextField, inputOnDeviceButton)
+        deepLinkRow = fieldRow("Deep link", openDeepLinkTextField, openDeepLinkButton)
+        add(inputRow)
+        add(deepLinkRow)
     }
 
     /**
@@ -403,13 +398,6 @@ class SpockAdbViewer(
             add(JBLabel(label), BorderLayout.WEST)
             add(field, BorderLayout.CENTER)
             add(button, BorderLayout.EAST)
-        }
-
-    private fun leftAligned(component: JComponent): JPanel =
-        JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, JBUI.scale(2))).apply {
-            alignmentX = LEFT_ALIGNMENT
-            maximumSize = java.awt.Dimension(Int.MAX_VALUE, component.preferredSize.height + JBUI.scale(GAP))
-            add(component)
         }
 
     private fun section(title: String, key: String, content: JPanel): CollapsibleSection =
@@ -568,11 +556,6 @@ class SpockAdbViewer(
             }
         }
         inputOnDeviceTextField.addActionListener { inputOnDeviceButton.doClick() }
-        openDeveloperOptionsButton.addActionListener {
-            selectedIDevice?.let { device ->
-                adbController.openDeveloperOptions(device)
-            }
-        }
         openDeepLinkButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.openDeepLink(openDeepLinkTextField.text, device)
@@ -580,6 +563,8 @@ class SpockAdbViewer(
         }
         openDeepLinkTextField.addActionListener { openDeepLinkButton.doClick() }
 
+        header.onSearch = { query -> search(query) }
+        developerOptions.attach(adbController) { selectedDevice }
         httpProxyRow.attach(adbController) { selectedDevice }
         wifiRow.attach(adbController) { selectedDevice }
         mobileDataRow.attach(adbController) { selectedDevice }
@@ -592,95 +577,99 @@ class SpockAdbViewer(
         mobileDataRow.refresh()
     }
 
-    private fun updateUi(it: AppSetting) {
-        it.list.forEach {
-            // Settings persist action names as text. An action that is renamed or removed
-            // leaves a stale entry behind, and SpockAction.valueOf then threw
-            // IllegalArgumentException from the constructor — which prevented the tool
-            // window from opening at all. Unknown entries are now ignored.
-            val action = SpockAction.entries.firstOrNull { action ->
-                action.name == it.name.replace(" ", "_")
-            } ?: return@forEach
-
-            when (action) {
-                SpockAction.CURRENT_ACTIVITY -> currentActivityButton.isVisible = it.isSelected
-                SpockAction.CURRENT_FRAGMENT -> currentFragmentButton.isVisible = it.isSelected
-                SpockAction.CURRENT_APP_STACK -> currentAppBackStackButton.isVisible = it.isSelected
-                SpockAction.BACK_STACK -> activitiesBackStackButton.isVisible = it.isSelected
-                SpockAction.CLEAR_APP_DATA -> clearAppDataButton.isVisible = it.isSelected
-                SpockAction.CLEAR_APP_DATA_RESTART -> clearAppDataAndRestartButton.isVisible = it.isSelected
-                SpockAction.CLEAR_APP_CACHE -> clearAppCacheButton.isVisible = it.isSelected
-                SpockAction.RESTART -> restartAppButton.isVisible = it.isSelected
-                // Attaching a debugger needs the Android Studio execution tooling, which is
-                // absent in some IDEs that bundle the Android plugin. Hide the action there
-                // rather than offering a button that can only report an error.
-                SpockAction.RESTART_DEBUG ->
-                    restartAppWithDebuggerButton.isVisible = it.isSelected && DebuggerSupport.isAvailable
-                SpockAction.TEST_PROCESS_DEATH -> testProcessDeathButton.isVisible = it.isSelected
-                SpockAction.FORCE_KILL -> forceKillAppButton.isVisible = it.isSelected
-                SpockAction.UNINSTALL -> uninstallAppButton.isVisible = it.isSelected
-                SpockAction.TOGGLE_NETWORK -> {
-                    val shown = it.isSelected && !networkToggles.isVisible
-                    networkToggles.isVisible = it.isSelected
-                    // A refresh skips a hidden row, so rows switched back on have never been read.
-                    if (shown) refreshDeviceState()
-                }
-                SpockAction.PERMISSIONS -> permissionSection.setSectionVisible(it.isSelected)
-                SpockAction.DEVELOPER_OPTIONS -> developerSection.setSectionVisible(it.isSelected)
-                SpockAction.INPUT -> {
-                    inputOnDeviceButton.isVisible = it.isSelected
-                    inputOnDeviceTextField.isVisible = it.isSelected
-                }
-                SpockAction.DEEP_LINK -> {
-                    openDeepLinkButton.isVisible = it.isSelected
-                    openDeepLinkTextField.isVisible = it.isSelected
-                }
-                SpockAction.HTTP_PROXY -> httpProxyRow.setActionVisible(it.isSelected)
-                SpockAction.APP_STORAGE -> storageSection.setSectionVisible(it.isSelected)
-            }
+    /**
+     * Records what the settings dialog has switched on, then lays the tab out from it.
+     *
+     * Settings persist action names as text. An action that is renamed or removed leaves a
+     * stale entry behind, and `SpockAction.valueOf` then threw IllegalArgumentException from
+     * the constructor — which prevented the tool window from opening at all. Unknown entries
+     * are ignored instead.
+     */
+    private fun updateUi(setting: AppSetting) {
+        enabledActions.clear()
+        setting.list.forEach { item ->
+            val action = SpockAction.entries.firstOrNull { it.name == item.name.replace(" ", "_") }
+            if (action != null) enabledActions[action] = item.isSelected
         }
-        refreshSectionVisibility()
+        // Attaching a debugger needs the Android Studio execution tooling, which is absent in
+        // some IDEs that bundle the Android plugin. Hide the action there rather than offering
+        // a button that can only report an error.
+        if (!DebuggerSupport.isAvailable) enabledActions[SpockAction.RESTART_DEBUG] = false
+
+        // Only here, not in applyVisibility: this reads the device when the row is switched
+        // back on, and a search must not cost a round trip per keystroke.
+        val networkAppeared = isOn(SpockAction.TOGGLE_NETWORK) && !networkToggles.isVisible
+        httpProxyRow.setActionVisible(isOn(SpockAction.HTTP_PROXY))
+
+        applyVisibility()
+        if (networkAppeared) refreshDeviceState()
+    }
+
+    /** Whether the settings dialog has this action switched on. Unknown actions are shown. */
+    private fun isOn(action: SpockAction): Boolean = enabledActions[action] ?: true
+
+    private fun shown(action: QuickAction): Boolean {
+        val button = pinnable[action] ?: return false
+        return isOn(action.gate) && matchesActionSearch(searchQuery, button.text, button.toolTipText)
+    }
+
+    private fun shown(action: SpockAction, terms: String): Boolean =
+        isOn(action) && matchesActionSearch(searchQuery, terms)
+
+    private fun search(query: String) {
+        if (query == searchQuery) return
+        searchQuery = query
+        applyVisibility()
     }
 
     /**
-     * Hides a section heading when every action inside it has been switched off, so the
-     * settings dialog cannot leave an empty titled separator behind.
+     * Lays the tab out from the two things that decide what is on it: the settings, and the
+     * search. Everything that hides a control goes through here, so the two cannot disagree —
+     * a search that hid an action must not switch it off when the search is cleared.
      */
-    private fun refreshSectionVisibility() {
-        navigateSection.setSectionVisible(
-            listOf(
-                currentActivityButton,
-                currentFragmentButton,
-                currentAppBackStackButton,
-                activitiesBackStackButton,
-            ).any { it.isVisible },
-        )
-        lifecycleSection.setSectionVisible(
-            listOf(
-                restartAppButton,
-                restartAppWithDebuggerButton,
-                forceKillAppButton,
-                testProcessDeathButton,
-            ).any { it.isVisible },
-        )
-        dangerSection.setSectionVisible(
-            listOf(
-                clearAppDataButton,
-                clearAppCacheButton,
-                clearAppDataAndRestartButton,
-                uninstallAppButton,
-            ).any { it.isVisible },
-        )
-        sendSection.setSectionVisible(
-            inputOnDeviceButton.isVisible || openDeepLinkButton.isVisible,
-        )
-        // The proxy row and the toggles are switched on separately, so the heading has to
-        // follow whether anything inside it is left rather than a single action.
-        networkSection.setSectionVisible(
-            networkToggles.isVisible || httpProxyRow.isVisible,
-        )
+    private fun applyVisibility() {
+        pinnable.forEach { (action, button) -> button.isVisible = shown(action) }
+
+        // Pinned first: a group must not lay out a button the row above has taken.
+        val pinnedButtons = quickActions.pinned.filter { shown(it) }.map { pinnable.getValue(it) }
+        quickActions.fill(pinnedButtons)
+        groups.forEach { fill(it) }
+
+        networkToggles.isVisible = shown(SpockAction.TOGGLE_NETWORK, NETWORK_TERMS)
+        httpProxyRow.isVisible = shown(SpockAction.HTTP_PROXY, PROXY_TERMS)
+        inputRow.isVisible = shown(SpockAction.INPUT, INPUT_TERMS)
+        deepLinkRow.isVisible = shown(SpockAction.DEEP_LINK, DEEP_LINK_TERMS)
+
+        val searching = searchQuery.isNotBlank()
+        // While searching, an empty Quick actions row is noise; its hint is not what was asked for.
+        quickSection.setSectionVisible(pinnedButtons.isNotEmpty() || (!searching && quickActions.hasContent))
+        developerSection.setSectionVisible(shown(SpockAction.DEVELOPER_OPTIONS, DEVELOPER_TERMS))
+        networkSection.setSectionVisible(networkToggles.isVisible || httpProxyRow.isVisible)
+        sendSection.setSectionVisible(inputRow.isVisible || deepLinkRow.isVisible)
+        storageSection.setSectionVisible(shown(SpockAction.APP_STORAGE, STORAGE_TERMS))
+
+        // A match inside a collapsed section is a match the developer cannot see.
+        val sections = allSections()
+        sections.forEach { it.setForcedExpanded(searching && it.isVisible) }
+        // An empty tab is indistinguishable from a broken one; say which search emptied it.
+        noMatches.isVisible = searching && sections.none { it.isVisible }
+        if (noMatches.isVisible) noMatches.text = "No action matches \u201c$searchQuery\u201d."
+
         revalidate()
         repaint()
+        resizeStorage()
+    }
+
+    /** Fills one group's grid with the actions it still holds: shown, and not pinned above. */
+    private fun fill(group: ActionGroup) {
+        val buttons = group.actions
+            .filter { it !in quickActions.pinned && pinnable.getValue(it).isVisible }
+            .map { pinnable.getValue(it) }
+        group.content.removeAll()
+        buttons.forEach { group.content.add(it) }
+        // An odd count leaves the last button on its own row rather than stretched across two.
+        if (buttons.size % COLUMNS != 0) group.content.add(JPanel())
+        group.section.setSectionVisible(buttons.isNotEmpty())
     }
 
     /**
@@ -747,49 +736,6 @@ class SpockAdbViewer(
         }
     }
 
-    private fun removeDeveloperOptionsListeners() {
-        listOf(enableDisableDontKeepActivities, enableDisableShowTaps, enableDisableShowLayoutBounds)
-            .forEach { box -> box.actionListeners.forEach { box.removeActionListener(it) } }
-        listOf(windowAnimatorScaleComboBox, transitionAnimatorScaleComboBox, animatorDurationScaleComboBox)
-            .forEach { combo -> combo.actionListeners.forEach { combo.removeActionListener(it) } }
-    }
-
-    private fun setDeveloperOptionsValues() {
-        // Read ADB values on the current (background) thread
-        val dontKeepActivities = selectedIDevice?.areDontKeepActivitiesEnabled()
-        val showTaps = selectedIDevice?.areShowTapsEnabled()
-        val showLayoutBounds = selectedIDevice?.areShowLayoutBoundsEnabled()
-        val windowScale = selectedIDevice?.getWindowAnimatorScale()
-        val transitionScale = selectedIDevice?.getTransitionAnimationScale()
-        val durationScale = selectedIDevice?.getAnimatorDurationScale()
-
-        // Apply to UI components and re-add listeners on the EDT
-        ApplicationManager.getApplication().invokeLater {
-            removeDeveloperOptionsListeners()
-            enableDisableDontKeepActivities.isSelected = dontKeepActivities == DontKeepActivitiesState.ENABLED
-            enableDisableShowTaps.isSelected = showTaps == ShowTapsState.ENABLED
-            enableDisableShowLayoutBounds.isSelected = showLayoutBounds == ShowLayoutBoundsState.ENABLED
-            windowAnimatorScaleComboBox.selectedItem = WindowAnimatorScaleCommand.getWindowAnimatorScaleIndex(windowScale)
-            transitionAnimatorScaleComboBox.selectedItem = TransitionAnimatorScaleCommand.getTransitionAnimatorScaleIndex(transitionScale)
-            animatorDurationScaleComboBox.selectedItem = AnimatorDurationScaleCommand.getAnimatorDurationScaleIndex(durationScale)
-            setDeveloperOptionsListeners()
-        }
-    }
-
-    private fun setDeveloperOptionsListeners() {
-        enableDisableDontKeepActivities.addActionListener(dontKeepActivitiesActionListener)
-
-        enableDisableShowTaps.addActionListener(showTapsActionListener)
-
-        enableDisableShowLayoutBounds.addActionListener(showLayoutBoundsActionListener)
-
-        windowAnimatorScaleComboBox.addActionListener(windowAnimatorScaleActionListener)
-
-        transitionAnimatorScaleComboBox.addActionListener(transitionAnimatorScaleActionListener)
-
-        animatorDurationScaleComboBox.addActionListener(animatorDurationScaleActionListener)
-    }
-
     private fun setToolWindowListener() {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
 
@@ -814,10 +760,7 @@ class SpockAdbViewer(
                         refreshDeviceState()
                         resizeStorage()
 
-                        removeDeveloperOptionsListeners()
-                        ApplicationManager.getApplication().executeOnPooledThread {
-                            setDeveloperOptionsValues()
-                        }
+                        developerOptions.refresh()
                     }
                 },
             )
@@ -827,7 +770,15 @@ class SpockAdbViewer(
         const val TOOL_WINDOW_ID = "Spock ADB"
         const val GAP = 4
         const val COLUMNS = 2
-        val ANIMATION_SCALES = arrayOf("0.0", "0.5", "1.0", "1.5", "2.0", "5.0", "10.0")
         const val NO_DEVICES_LABEL = "No devices connected"
+
+        // What a search matches a whole section on, since these hold no action buttons to match.
+        const val DEVELOPER_TERMS = "developer options don't keep activities show taps layout bounds " +
+            "window transition animator animation duration scale"
+        const val NETWORK_TERMS = "network wifi wi-fi mobile data connection"
+        const val PROXY_TERMS = "network http proxy host port charles proxyman mitmproxy"
+        const val INPUT_TERMS = "send to device text input type keyboard"
+        const val DEEP_LINK_TERMS = "send to device deep link url intent open"
+        const val STORAGE_TERMS = "app storage shared preferences sharedpreferences datastore file editor"
     }
 }

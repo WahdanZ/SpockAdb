@@ -65,6 +65,21 @@ class AppSettingServiceTest {
     }
 
     @Test
+    fun `pins are remembered in the order they were put in`() {
+        val service = service.apply { loadState(AppSetting(list = emptyList())) }
+
+        assertEquals(emptyList<QuickAction>(), service.pinnedActions())
+        service.savePinnedActions(listOf(QuickAction.FORCE_STOP, QuickAction.RESTART_APP))
+
+        assertEquals(
+            listOf(QuickAction.FORCE_STOP, QuickAction.RESTART_APP),
+            service.pinnedActions(),
+            "the order is the point, so it cannot be stored as a set",
+        )
+        assertEquals(listOf("FORCE_STOP", "RESTART_APP"), service.state.pinned, "it has to survive a restart")
+    }
+
+    @Test
     fun `the proxy is remembered so it need not be retyped`() {
         val service = service.apply { loadState(AppSetting(list = emptyList())) }
 

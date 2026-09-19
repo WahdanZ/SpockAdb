@@ -36,8 +36,11 @@ class CollapsibleSection(
 
     private var expanded: Boolean = properties.getBoolean(propertyKey(), expandedByDefault)
 
-    /** Whether the content is showing. */
-    val isExpanded: Boolean get() = expanded
+    /** Open because a search has matches inside, rather than because the developer opened it. */
+    private var forced: Boolean = false
+
+    /** Whether the content is showing, for whichever reason. */
+    val isExpanded: Boolean get() = expanded || forced
 
     /**
      * Called after the developer expands or collapses this section.
@@ -61,7 +64,20 @@ class CollapsibleSection(
         applyState()
     }
 
+    /**
+     * Opens the section while something inside it matches a search, without overwriting the
+     * state the developer chose: a search that permanently expanded what it looked through
+     * would leave the tab rearranged once the search was cleared.
+     */
+    fun setForcedExpanded(forced: Boolean) {
+        if (this.forced == forced) return
+        this.forced = forced
+        applyState()
+    }
+
     private fun toggle() {
+        // A section collapsed by hand stays collapsed, search or no search.
+        forced = false
         expanded = !expanded
         properties.setValue(propertyKey(), expanded, true)
         applyState()
@@ -69,8 +85,9 @@ class CollapsibleSection(
     }
 
     private fun applyState() {
-        content.isVisible = expanded
-        val marker = if (expanded) EXPANDED_MARKER else COLLAPSED_MARKER
+        val open = expanded || forced
+        content.isVisible = open
+        val marker = if (open) EXPANDED_MARKER else COLLAPSED_MARKER
         separator.label.text = "$marker  $plainTitle"
         revalidate()
         repaint()

@@ -93,6 +93,22 @@
   changes`, or names the row that cannot be written yet rather than waiting for Apply to
   refuse. **Undo Apply** is now **Revert last apply**: it wrote the file back to what the
   device held before the last apply, and read as "discard what I typed"
+- **Quick actions: pin the ones you use, in the order you want them.** The tab is fifteen
+  buttons of near-identical visual weight under six headings, so the two or three somebody runs
+  twenty times a day sit wherever the grouping happened to put them — often two sections down,
+  behind a heading that has to be kept expanded. Right-click any action to pin it to a **Quick
+  actions** row at the top; pinned buttons can be dragged over one another, or moved with
+  **Move left** / **Move right** in the same menu. Pinning moves the button rather than copying
+  it: the same action twice on one screen is worse than either place alone. The order is
+  remembered between sessions
+- **A search over the actions.** The header has a `Search actions…` field that narrows the tab
+  to the actions whose name or tooltip matches every word typed, in any order — and opens the
+  sections holding a match, since a match inside a collapsed section is one you cannot see.
+  Clearing it puts the tab back exactly as it was, expansion included: the search never
+  switches an action off, it only hides it for as long as it is being searched. Sections with
+  no action buttons — Developer options, Network, Send to device, App storage — match on what
+  they hold, so "proxy" finds the proxy field and "animation" finds the scales. A search that
+  matches nothing says so rather than leaving the tab blank
 - **Actions are labelled with what they do.** **Debugger** is **Attach debugger**, **Process
   Death** is **Simulate process death**, **Manage…** is **Manage permissions…**, **Open on
   Device** is **Open developer options**, **Clear & Restart…** is **Clear data and restart…**,
@@ -102,6 +118,11 @@
 
 ### Fixed
 
+- **An action switched off left a hole where it had been, and a label with nothing under it.**
+  The action grids were laid out from source order and merely hid what was switched off, so a
+  two-column section with one action off showed a gap rather than closing up — and switching
+  off **Send text** or **Deep link** hid the field and its button but left the label beside
+  them. The grids are now filled from what is actually shown, and the whole row goes with it
 - **A write refused because the file had changed on the device threw away your edits.** The
   editor re-reads the file after every write, including a refused one — so a write that was
   correctly refused, because the app or an agent had replaced the file since it was read,

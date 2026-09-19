@@ -2,7 +2,9 @@ package spock.adb
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -13,6 +15,7 @@ import java.awt.GridBagLayout
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JPanel
+import javax.swing.event.DocumentEvent
 
 /**
  * What every action on the Devices tab is about: the device it runs on, and the app it acts on.
@@ -55,6 +58,21 @@ internal class DeviceHeader(private val project: Project) : JPanel(GridBagLayout
      */
     private val agentTargetLabel = JBLabel().apply { isVisible = false }
 
+    /**
+     * Narrows the tab to the actions whose name answers what is typed.
+     *
+     * Fifteen buttons of near-identical weight under six headings is a lot to read through for
+     * the one you want, and the heading it is under may be collapsed — so the search opens the
+     * sections that hold a match rather than searching only what happens to be on screen.
+     */
+    private val actionSearch = SearchTextField(false).apply {
+        textEditor.emptyText.text = "Search actions…"
+        toolTipText = "Show only the matching actions, opening the sections that hold them"
+    }
+
+    /** Called on the EDT with what is typed in the search field. */
+    var onSearch: (String) -> Unit = {}
+
     init {
         border = JBUI.Borders.empty(GAP, GAP, GAP, GAP)
         // A long device or package name must not widen the tool window; both elide instead.
@@ -70,7 +88,13 @@ internal class DeviceHeader(private val project: Project) : JPanel(GridBagLayout
         add(appLabel, fieldConstraints(row = 1))
         add(appSource, trailingConstraints(row = 1))
 
-        add(agentTargetLabel, wideConstraints(row = 2))
+        add(actionSearch, wideConstraints(row = 2))
+        add(agentTargetLabel, wideConstraints(row = 3))
+        actionSearch.addDocumentListener(
+            object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) = onSearch(actionSearch.text)
+            },
+        )
         refreshApp()
     }
 

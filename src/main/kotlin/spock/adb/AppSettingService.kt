@@ -45,6 +45,13 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
             .map { ListItem(it.name.replace("_", " "), true) }
     }
 
+    /** The actions pinned to Quick actions, in the order they are shown. */
+    fun pinnedActions(): List<QuickAction> = QuickAction.read(localData.pinned)
+
+    fun savePinnedActions(pinned: List<QuickAction>) {
+        localData = localData.copy(pinned = pinned.map { it.name })
+    }
+
     /** Remembers the proxy the user last set, so it survives a restart. */
     fun saveHttpProxy(value: String) {
         localData = localData.copy(httpProxy = value)
@@ -64,11 +71,14 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
  * @param httpProxy the last proxy the user set, as `host:port`, so it does not have to be
  *   retyped every session. Application-scoped rather than per-project because the proxy runs
  *   on this machine, not in the project.
+ * @param pinned the [QuickAction] names pinned to the Quick actions row, in the order shown.
+ *   Order is the whole point, so this is a list rather than the set it would otherwise be.
  */
 data class AppSetting(
     val selectedDevice: String? = "",
     val list: List<ListItem>,
     val httpProxy: String = "",
+    val pinned: List<String> = emptyList(),
 )
 enum class SpockAction {
     CURRENT_ACTIVITY,
