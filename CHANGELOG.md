@@ -130,6 +130,15 @@
   it appears beside Copy Config and takes itself back down, and the line about clients now
   reads "No client connected yet. Copy the configuration to connect one.", with the protocol
   reason moved into its tooltip
+- **The Commands tab says what it is about to run on, and what happened when it did.** The
+  target device was a line at the bottom of the panel, far from Run; it now sits under the
+  command it applies to. The field shows an example of what goes after `adb shell`. The state
+  of a run is reported beside the output — **● Running…**, **✓ Completed in 0.4 s**, **✗ Exit 1
+  after 0.2 s**, **⊘ Stopped after 30.0 s** — where before, a command that failed, one that was
+  cancelled and one that worked all ended in "Done.". The exit status is asked for in the same
+  shell, because ddmlib's gives none. History entries carry the time they were run, favourites
+  have a dropdown of their own rather than a starred handful at the top of fifty recent
+  commands, and **Find** sits with the output it searches instead of with the input
 - **Actions are labelled with what they do.** **Debugger** is **Attach debugger**, **Process
   Death** is **Simulate process death**, **Manage…** is **Manage permissions…**, **Open on
   Device** is **Open developer options**, **Clear & Restart…** is **Clear data and restart…**,
@@ -154,6 +163,12 @@
   nothing, and anything unreadable fell back to `0.0`, which the dropdown showed as **Off**: a
   device with animations running, displayed as a device with them switched off. The answer is
   now matched as a number, and one that names no scale selects nothing rather than guessing
+- **Panels that would not fit a docked tool window.** The Commands tab put three buttons in a
+  fixed row beside the command field, so at 300px the field was squeezed to nothing; they wrap
+  onto their own line now. The MCP activity table gave its columns fixed widths, which left the
+  tool name — the column the table exists for — nothing at all in a narrow window; every column
+  now gives a little, down to a floor that keeps it readable. Both are covered by a test that
+  lays them out at the width a tool window is routinely docked at
 - **An action switched off left a hole where it had been, and a label with nothing under it.**
   The action grids were laid out from source order and merely hid what was switched off, so a
   two-column section with one action off showed a gap rather than closing up — and switching

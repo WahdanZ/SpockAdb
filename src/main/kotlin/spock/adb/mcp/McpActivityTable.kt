@@ -43,7 +43,9 @@ internal class McpActivityTable : JPanel(BorderLayout()) {
         table.setStriped(true)
         table.rowHeight += JBUI.scale(ROW_PADDING)
         table.tableHeader.reorderingAllowed = false
-        table.autoResizeMode = JTable.AUTO_RESIZE_LAST_COLUMN
+        // Every column gives a little in a narrow tool window, rather than the last one giving
+        // everything until it disappears: at 300px the tool name is what has to survive.
+        table.autoResizeMode = JTable.AUTO_RESIZE_ALL_COLUMNS
         table.emptyText.text = "No MCP requests yet."
         table.setDefaultRenderer(Any::class.java, CallRenderer())
         table.selectionModel.addListSelectionListener { event ->
@@ -64,14 +66,30 @@ internal class McpActivityTable : JPanel(BorderLayout()) {
 
     fun clear() = show(emptyList())
 
+    /**
+     * Column sizes, as a range rather than a number.
+     *
+     * The minimum is what keeps every column readable in a tool window docked at 300px; the
+     * maximum is what stops Duration taking a fifth of a wide one. Tool has neither beyond a
+     * floor: it holds the name, so it should take whatever the others leave.
+     */
     private fun widths() {
-        listOf(TIME to TIME_WIDTH, ACCESS to ACCESS_WIDTH, RESULT to RESULT_WIDTH, DURATION to DURATION_WIDTH)
-            .forEach { (column, width) ->
-                table.columnModel.getColumn(column).apply {
-                    preferredWidth = JBUI.scale(width)
-                    maxWidth = JBUI.scale(width * MAX_WIDTH_FACTOR)
-                }
+        listOf(
+            TIME to TIME_WIDTH,
+            ACCESS to ACCESS_WIDTH,
+            RESULT to RESULT_WIDTH,
+            DURATION to DURATION_WIDTH,
+        ).forEach { (column, width) ->
+            table.columnModel.getColumn(column).apply {
+                minWidth = JBUI.scale(width * MIN_WIDTH_PERCENT / PERCENT)
+                preferredWidth = JBUI.scale(width)
+                maxWidth = JBUI.scale(width * MAX_WIDTH_FACTOR)
             }
+        }
+        table.columnModel.getColumn(TOOL).apply {
+            minWidth = JBUI.scale(TOOL_MIN_WIDTH)
+            preferredWidth = JBUI.scale(TOOL_WIDTH)
+        }
     }
 
     /** Colours the row by what went wrong, or by how much the tool was allowed to do. */
@@ -150,7 +168,11 @@ internal class McpActivityTable : JPanel(BorderLayout()) {
         const val ACCESS_WIDTH = 86
         const val RESULT_WIDTH = 66
         const val DURATION_WIDTH = 74
+        const val TOOL_WIDTH = 200
+        const val TOOL_MIN_WIDTH = 60
         const val MAX_WIDTH_FACTOR = 2
+        const val MIN_WIDTH_PERCENT = 70
+        const val PERCENT = 100
         const val ROW_PADDING = 4
 
         val TIME_FORMAT = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
