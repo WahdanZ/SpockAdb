@@ -1,5 +1,7 @@
 package spock.adb
 
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -7,6 +9,7 @@ import com.intellij.util.ui.UIUtil
 import spock.adb.command.Network
 import spock.adb.command.NetworkState
 import spock.adb.device.ConnectedDevice
+import spock.adb.notification.CommonNotifier
 import java.awt.BorderLayout
 import java.awt.Dimension
 import javax.swing.JButton
@@ -20,10 +23,19 @@ import javax.swing.JPanel
  * what the device was doing nor what pressing them would do — and since they toggle, pressing
  * one to find out is how you turn off the connection you were using. The state is read from the
  * device and the button is labelled with the change it makes.
+ *
+ * **The button's availability depends on one thing: whether a device is selected.** It first
+ * took its enabled state from the read that fills the label in, which meant every path where
+ * that read did not land — no controller yet, the row not yet attached, a read retired by a
+ * newer one that then returned early — left a button that looked ordinary and did nothing when
+ * pressed. What the device is set to and whether the button works are separate questions, so
+ * they are answered separately.
  */
 class NetworkToggleRow(
     private val network: Network,
     title: String,
+    /** Reports a click that could not run, so a press is never silently swallowed. */
+    private val project: Project? = null,
 ) : JPanel(BorderLayout(JBUI.scale(GAP), 0)) {
 
     private val state = JBLabel(UNKNOWN_TEXT)
@@ -31,6 +43,9 @@ class NetworkToggleRow(
 
     private var controller: AdbController? = null
     private var selectedDevice: () -> ConnectedDevice? = { null }
+
+    /** True while a toggle is on its way to the device, which is the only time the button waits. */
+    private var toggling = false
 
     /** Started and answered on the EDT: a read begun for one device must not label another. */
     private val reads = LatestRequest()
@@ -55,20 +70,34 @@ class NetworkToggleRow(
     fun attach(controller: AdbController, device: () -> ConnectedDevice?) {
         this.controller = controller
         this.selectedDevice = device
-        button.addActionListener {
-            val target = device() ?: return@addActionListener
-            button.isEnabled = false
-            // Read back rather than flip the label: `svc` exits 0 whether or not it took.
-            controller.toggleNetwork(target.device, network) { refresh() }
+        button.addActionListener { toggle() }
+        // The row can be attached after the device list has already been published, in which
+        // case nothing else will ask it to read the device.
+        refresh()
+    }
+
+    private fun toggle() {
+        val controller = controller
+        val target = selectedDevice()
+        if (controller == null || target == null) {
+            // Saying nothing is what a dead button does; this at least names the reason.
+            report("No device is selected, so ${network.label} cannot be switched.")
+            return
+        }
+        toggling = true
+        updateButton()
+        // Read back rather than flip the label: `svc` exits 0 whether or not it took.
+        controller.toggleNetwork(target.device, network) {
+            toggling = false
+            refresh()
         }
     }
 
     /**
      * Reads the device's setting into the row. Reads nothing before [attach] or while hidden.
      *
-     * Every path ends in [showState], which is also what re-enables the button: a refresh that
-     * gave up early would otherwise leave it disabled for good, since the click that started
-     * the toggle disables it and only the read that follows puts it back.
+     * Only the label waits for the answer. The button does not: a read that never lands must
+     * not be able to disable it.
      */
     fun refresh() {
         val controller = controller
@@ -76,9 +105,9 @@ class NetworkToggleRow(
         // in flight rather than letting its answer land on a row about another device.
         val request = reads.begin()
         val target = selectedDevice()
+        updateButton()
         if (controller == null || target == null || !isVisible) return showState(null)
 
-        button.isEnabled = false
         state.text = READING_TEXT
         controller.networkState(target.device, network) { read ->
             if (!reads.isLatest(request)) return@networkState
@@ -87,7 +116,6 @@ class NetworkToggleRow(
     }
 
     private fun showState(read: NetworkState?) {
-        val hasDevice = selectedDevice() != null
         state.text = when (read) {
             NetworkState.ENABLED -> ON_TEXT
             NetworkState.DISABLED -> OFF_TEXT
@@ -108,7 +136,17 @@ class NetworkToggleRow(
             // The button still works when the read failed: it toggles whatever the device holds.
             null -> "Switch this connection on or off; the device could not be asked what it is set to"
         }
-        button.isEnabled = hasDevice
+        updateButton()
+    }
+
+    /** Pressable whenever there is a device to press it against, and not while one is in flight. */
+    private fun updateButton() {
+        button.isEnabled = selectedDevice() != null && !toggling
+    }
+
+    private fun report(message: String) {
+        val project = project ?: return
+        CommonNotifier.showNotifier(project = project, content = message, type = NotificationType.WARNING)
     }
 
     private companion object {

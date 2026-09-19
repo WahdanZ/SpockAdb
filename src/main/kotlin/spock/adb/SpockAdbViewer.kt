@@ -92,8 +92,8 @@ class SpockAdbViewer(
 
     private val developerOptions = DeveloperOptionsSection(GAP)
 
-    private val wifiRow = NetworkToggleRow(Network.WIFI, "Wi-Fi")
-    private val mobileDataRow = NetworkToggleRow(Network.MOBILE, "Mobile data")
+    private val wifiRow = NetworkToggleRow(Network.WIFI, "Wi-Fi", project)
+    private val mobileDataRow = NetworkToggleRow(Network.MOBILE, "Mobile data", project)
 
     private val inputOnDeviceTextField = JBTextField()
     private val inputOnDeviceButton = JButton("Send")

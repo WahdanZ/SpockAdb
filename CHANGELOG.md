@@ -148,6 +148,15 @@
 
 ### Fixed
 
+- **The Wi-Fi and mobile data buttons could be dead without looking it.** The row took the
+  button's enabled state from the read that fills its label in, so every path where that read
+  did not land — the row attached after the device list had already been published, a read
+  retired by a newer one that then returned early, a device that never answered — left a button
+  that looked ordinary and did nothing when pressed. Nothing was logged, because nothing ran.
+  Whether a device is selected is now the only thing that decides the button; the read fills in
+  the label and no longer touches it. The row also reads the device as soon as it is attached
+  rather than waiting to be asked, and a press with no device selected says so instead of
+  returning in silence
 - **Wi-Fi and mobile data announced changes the device had refused.** `svc wifi disable` exits
   0 whether or not it did anything, and from Android 10 a good many builds do not let the adb
   shell switch Wi-Fi at all — so the plugin ran the command, the device ignored it, and the
