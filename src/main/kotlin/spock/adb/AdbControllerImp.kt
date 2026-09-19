@@ -486,11 +486,18 @@ class AdbControllerImp(
     override fun toggleNetwork(
         device: IDevice,
         network: Network,
-
-        ) {
-        execute {
+        onDone: () -> Unit,
+    ) {
+        execute(onDone) {
             val result = ToggleNetworkCommand().execute(network, project, device)
             showSuccess(result)
+        }
+    }
+
+    override fun networkState(device: IDevice, network: Network, block: (state: Result<NetworkState>) -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val state = runCatching { device.getNetworkState(network) }
+            onEdt { block(state) }
         }
     }
 

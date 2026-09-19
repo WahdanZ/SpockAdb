@@ -4,6 +4,7 @@ import com.android.ddmlib.IDevice
 import spock.adb.command.GetApplicationPermission
 import spock.adb.command.HttpProxy
 import spock.adb.command.Network
+import spock.adb.command.NetworkState
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.ListItem
 
@@ -48,7 +49,17 @@ interface AdbController {
     fun setWindowAnimatorScale(scale: String, device: IDevice)
     fun setTransitionAnimatorScale(scale: String, device: IDevice)
     fun setAnimatorDurationScale(scale: String, device: IDevice)
-    fun toggleNetwork(device: IDevice, network: Network)
+
+    /**
+     * Toggles [network], then calls [onDone] on the EDT.
+     *
+     * The callback is what lets the row that shows the state read the device back rather than
+     * assume the toggle took — `svc wifi` exits 0 whether or not the device honoured it.
+     */
+    fun toggleNetwork(device: IDevice, network: Network, onDone: () -> Unit = {})
+
+    /** Whether [network] is on, off, or could not be asked. Answered on the EDT. */
+    fun networkState(device: IDevice, network: Network, block: (state: Result<NetworkState>) -> Unit)
     fun inputOnDevice(input: String, device: IDevice)
     fun openDeveloperOptions(device: IDevice)
     fun openDeepLink(input: String, device: IDevice)

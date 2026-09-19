@@ -69,6 +69,27 @@ class DeviceInfoTest {
     }
 
     @Test
+    fun `the dropdown line carries the name and the version, and nothing else`() {
+        assertEquals("Google Pixel 7 \u00b7 Android 14", info().shortLabel())
+        assertTrue(info(isEmulator = true).shortLabel().startsWith("Emulator: "))
+        assertEquals("Google Pixel 7", info(androidVersion = "", apiLevel = null).shortLabel())
+        // The API level is a detail, not part of the name.
+        assertEquals("Google Pixel 7 \u00b7 API 34", info(androidVersion = "").shortLabel())
+    }
+
+    @Test
+    fun `a device that cannot take commands says so on the same line`() {
+        assertFalse(info().shortLabel().contains("online"))
+        assertTrue(info(state = DeviceState.OFFLINE).shortLabel().endsWith("offline"))
+    }
+
+    @Test
+    fun `the detail the dropdown leaves out is available beside it`() {
+        assertEquals("39021FDJH00123 \u00b7 API 34 \u00b7 arm64-v8a", info().details())
+        assertEquals("39021FDJH00123", info(apiLevel = null, abi = "").details())
+    }
+
+    @Test
     fun `describe pairs the name with the serial so prompts are unambiguous`() {
         assertEquals("Google Pixel 7 (39021FDJH00123)", info().describe())
     }

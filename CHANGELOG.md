@@ -16,7 +16,7 @@
   writes its in-memory preferences back on its next `apply()` and silently undoes the edit. It
   refuses if the file changed since it was read — checked before the stop, so a stale edit costs
   nothing, and again after it — then writes, and reads the file back rather than trusting the
-  write. **Undo Last Apply** restores what the file held before, and **Export** and
+  write. **Revert last apply** restores what the file held before, and **Export** and
   **Import** save a known state and put it back. Nothing the editor does not understand is lost:
   unknown XML elements and unknown protobuf fields survive an edit, and the DataStore format is
   parsed by hand, so the plugin gains no protobuf dependency. EncryptedSharedPreferences are shown
@@ -63,8 +63,52 @@
   the same command, so a failure is reported as one instead of being announced as a clear. It
   asks no confirmation, since nothing it deletes is something the app cannot rebuild
 
+### Changed
+
+- **The device and the app an action is about are now pinned above the Devices tab.** The
+  device dropdown was the first row of a scrolling column, so by the time you had scrolled to
+  Network or App storage it was off screen — and the app was never on screen at all: every app
+  action resolves the application ID of the open project's app module, which lived only in the
+  project's build files. With two projects open there was nothing to say which app **Clear
+  data** was about to empty. Both now sit in a fixed header: the device, and under it the
+  package with "from this project" beside it, or "not resolved" when Gradle sync has not
+  produced one yet. The dropdown itself carries the device name and Android version, with the
+  serial, API level and architecture moved to its tooltip, where they no longer push the name
+  out of a docked tool window
+- **The Network section says what the device is set to before asking you to change it.**
+  "Wi-Fi" and "Mobile Data" were two buttons that toggled: they said neither what the device
+  was doing nor what pressing them would do, so the way to find out was to press one — which
+  is how you switch off the connection you were using. Each is now a row reading `Wi-Fi  On
+  [Turn off]`, read from the device when a device is selected, when the tab is shown, and
+  after every toggle, because `svc` exits 0 whether or not the device honoured it. The proxy
+  field gained a `192.168.1.10:8888` placeholder, its **Clear** button is now **Remove
+  proxy** — it changes the device, not the field — and the line beneath it reads **Active
+  proxy** rather than **Device**, since the field above it holds what Set *would* apply
+- **App storage grew a file path, two searches, and a count of what Apply would write.** The
+  editor is no longer a fixed 420px box: it takes whatever height the sections above it leave,
+  so collapsing them or undocking the tool window gives the file list and the table the room.
+  The open file's full path is shown above the table — an app routinely keeps the same name
+  under both `shared_prefs` and `datastore` — with a **Search files** field over the list and a
+  **Search keys** field over the table. Above **Apply changes** a line now says `3 unsaved
+  changes`, or names the row that cannot be written yet rather than waiting for Apply to
+  refuse. **Undo Apply** is now **Revert last apply**: it wrote the file back to what the
+  device held before the last apply, and read as "discard what I typed"
+- **Actions are labelled with what they do.** **Debugger** is **Attach debugger**, **Process
+  Death** is **Simulate process death**, **Manage…** is **Manage permissions…**, **Open on
+  Device** is **Open developer options**, **Clear & Restart…** is **Clear data and restart…**,
+  and the Commands tab's **Favourite** is **Add to favourites**, becoming **Remove from
+  favourites** once a command is saved. **Current activity** and **Current fragment** say in a
+  tooltip that they open the class in the editor
+
 ### Fixed
 
+- **A write refused because the file had changed on the device threw away your edits.** The
+  editor re-reads the file after every write, including a refused one — so a write that was
+  correctly refused, because the app or an agent had replaced the file since it was read,
+  replaced the rows on screen with the device's, and the unapplied edits behind the refusal
+  were gone. Nothing was written in that case, so there is nothing to show: the rows stay,
+  Apply is disabled, and the editor says `File changed on device — reload before applying`
+  until the file is read again
 - **An action added in a new release never reached anyone who already had settings.** The
   visible-actions list is built from `SpockAction` once, on first run, and loading stored
   settings then replaced it wholesale — so an action introduced later was absent from every

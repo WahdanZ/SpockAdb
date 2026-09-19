@@ -104,14 +104,17 @@ data class HttpProxy(val host: String, val port: Int) {
         }
 
         /**
-         * The device's actual state, as the tool window shows it next to the field.
+         * The device's actual state, as the tool window shows it under the field.
          *
-         * A failed read is "unknown" rather than "direct": guessing no proxy for a device that
-         * could not be asked is exactly the wrong answer this feature exists to avoid.
+         * "Active proxy" rather than "Device", because the line sits beside a field holding a
+         * proxy that may not be the one in force: the field is what Set would apply, this is what
+         * the device answers now. A failed read is "unknown" rather than "None": guessing no
+         * proxy for a device that could not be asked is exactly the wrong answer this feature
+         * exists to avoid.
          */
         fun describeDevice(read: Result<HttpProxy?>): String = read.fold(
-            onSuccess = { proxy -> proxy?.let { "Device: via $it" } ?: "Device: direct" },
-            onFailure = { "Device: unknown" },
+            onSuccess = { proxy -> "Active proxy: ${proxy ?: "None"}" },
+            onFailure = { "Active proxy: unknown" },
         )
 
         private fun String.isBracketed(): Boolean = startsWith('[') && endsWith(']')

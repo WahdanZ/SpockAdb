@@ -43,8 +43,11 @@ class ChangelogShapeTest {
         val lines = unreleased()
         val offenders = lines.indices.filter { i ->
             // A blank line is fine around a heading; between two list items it ends the list.
+            // The item before it is found by walking back over the whole entry rather than one
+            // line: every entry here wraps, so the line above a blank one is almost always a
+            // continuation, and looking only at that missed the case this test exists for.
             lines[i].isBlank() &&
-                lines.take(i).lastOrNull { it.isNotBlank() }?.startsWith("- ") == true &&
+                lines.take(i).takeLastWhile { it.isNotBlank() }.any { it.startsWith("- ") } &&
                 lines.drop(i + 1).firstOrNull { it.isNotBlank() }?.startsWith("- ") == true
         }
 

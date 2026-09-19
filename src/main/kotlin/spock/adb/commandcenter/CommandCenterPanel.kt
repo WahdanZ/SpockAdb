@@ -52,7 +52,7 @@ class CommandCenterPanel(
     }
     private val runButton = JButton("Run")
     private val cancelButton = JButton("Cancel").apply { isEnabled = false }
-    private val favouriteButton = JButton("☆ Favourite")
+    private val favouriteButton = JButton("☆ Add to favourites")
     private val statusLabel = JBLabel(" ")
     private val dangerLabel = JBLabel(" ")
     private val searchField = JBTextField(SEARCH_COLUMNS)
@@ -245,7 +245,7 @@ class CommandCenterPanel(
         val command = commandField.text.trim()
         if (command.isEmpty()) return
         val added = history.toggleFavourite(command)
-        favouriteButton.text = if (added) "★ Favourite" else "☆ Favourite"
+        favouriteButton.text = if (added) "★ Remove from favourites" else "☆ Add to favourites"
         refreshHistory()
         statusLabel.text = if (added) "Added to favourites." else "Removed from favourites."
     }

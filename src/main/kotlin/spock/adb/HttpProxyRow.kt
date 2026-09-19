@@ -30,7 +30,9 @@ class HttpProxyRow(
 
     private val field = JBTextField()
     private val setButton = JButton("Set")
-    private val clearButton = JButton("Clear")
+
+    // "Clear" said nothing about what it cleared — the field, or the device.
+    private val clearButton = JButton("Remove proxy")
 
     /**
      * The device's real state, kept apart from [field], which is the proxy the user last set.
@@ -59,8 +61,11 @@ class HttpProxyRow(
         // localhost on the device is the device itself, which is the mistake this tooltip is for.
         field.toolTipText = "host:port of a proxy on this computer, by its LAN IP, for example " +
             "192.168.1.10:8888. An emulator reaches this computer at 10.0.2.2."
-        setButton.toolTipText = "Route the device's traffic through this proxy"
-        clearButton.toolTipText = "Restore direct connections"
+        // The format is the thing people get wrong, so the empty field shows it rather than
+        // leaving it in a tooltip nobody hovers before typing.
+        field.emptyText.text = "192.168.1.10:8888"
+        setButton.toolTipText = "Route the device's traffic through the proxy in this field"
+        clearButton.toolTipText = "Remove the proxy from the device, so it connects directly"
 
         add(JBLabel("HTTP proxy"), BorderLayout.WEST)
         add(field, BorderLayout.CENTER)
