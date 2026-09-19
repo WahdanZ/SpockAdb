@@ -2,7 +2,6 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import spock.adb.ShellOutputReceiver
 import spock.adb.ShellQuote
 import spock.adb.getDefaultActivityForApplication
 import spock.adb.isAppInstall
@@ -13,7 +12,6 @@ import spock.adb.storage.StorageKind
 import java.nio.file.Files
 import java.util.Base64
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 /**
  * The shell side of the app storage editor, kept free of [IDevice] so the exact commands that
@@ -49,6 +47,15 @@ internal object AppStorageShell {
             "do case \"\$f\" in *'\n'*) continue;; esac; [ -f \"\$f\" ] && echo \"\$f\"; done; echo rc=0",
     )
 
+    /**
+     * One directory's entries, each tagged `d` or `f`, so nothing has to parse `ls`.
+     *
+     * File names contain spaces on real devices — `shared_prefs/ spaced name .xml` is in the
+     * test app — and `ls -la` puts the name last among columns whose count varies by toybox
+     * version. A marker and the path is unambiguous: the path is the rest of the line. A name
+     * holding a newline is skipped, as the preferences listing already skips it, because
+     * nothing downstream could tell where such a line ended.
+     */
     /**
      * The file as base64, so XML and protobuf take the same byte-exact path through ddmlib's
      * text-only shell channel.
@@ -166,7 +173,7 @@ internal object AppStorageShell {
     }
 }
 
-private const val STORAGE_TIMEOUT_SECONDS = 20L
+internal const val STORAGE_TIMEOUT_SECONDS = 20L
 
 /** The result of a write, carrying what the file held before so the write can be undone. */
 class AppStorageWrite(
@@ -208,22 +215,33 @@ class AppStorageUnverifiedWriteException(
 /** SharedPreferences and DataStore files of [packageName], sorted by path. */
 internal fun IDevice.listAppStorage(packageName: String): List<StorageFile> {
     ShellQuote.requireValidComponent(packageName, "Package name")
-    return when (val outcome = RunAs.classify(shell(AppStorageShell.listCommand(packageName)))) {
+    return when (val outcome = RunAs.classify(runAsShell(AppStorageShell.listCommand(packageName)))) {
         is RunAsOutcome.Succeeded -> outcome.lines.mapNotNull(AppStoragePaths::classify).sortedBy { it.path }
         else -> error(AppStorageShell.failureMessage(packageName, "list the storage", outcome))
     }
 }
 
 /** @throws IllegalStateException carrying what the device said, including when the file does not exist. */
-internal fun IDevice.readAppStorageFile(packageName: String, file: StorageFile): ByteArray {
+internal fun IDevice.readAppStorageFile(packageName: String, file: StorageFile): ByteArray =
+    readAppStorageBytes(packageName, file.path)
+
+/**
+ * Any file inside the app's data directory, by path.
+ *
+ * Reading is not writing: the tree browses a database or a cached blob, and a write still takes
+ * a [StorageFile], which only [AppStoragePaths.classify] produces. The size cap is the same one
+ * the preferences read has, so a large database is refused rather than pulled into memory.
+ */
+internal fun IDevice.readAppStorageBytes(packageName: String, path: String): ByteArray {
     ShellQuote.requireValidComponent(packageName, "Package name")
-    val outcome = RunAs.classify(shell(AppStorageShell.readCommand(packageName, file.path)))
+    AppStoragePaths.requireBrowsable(path)
+    val outcome = RunAs.classify(runAsShell(AppStorageShell.readCommand(packageName, path)))
     val lines = (outcome as? RunAsOutcome.Succeeded)?.lines
-        ?: error(AppStorageShell.failureMessage(packageName, "read ${file.path}", outcome))
+        ?: error(AppStorageShell.failureMessage(packageName, "read $path", outcome))
     return try {
         Base64.getDecoder().decode(lines.joinToString(""))
     } catch (e: IllegalArgumentException) {
-        throw IllegalStateException("${file.path} did not come back as base64: ${lines.take(2).joinToString(" ")}", e)
+        throw IllegalStateException("$path did not come back as base64: ${lines.take(2).joinToString(" ")}", e)
     }
 }
 
@@ -273,7 +291,7 @@ internal fun IDevice.writeAppStorageFile(
     if (expected != null) checkUnchanged(file, previous, expected)
 
     val leftOver = staged(content) { remote ->
-        val outcome = RunAs.classify(shell(AppStorageShell.writeCommand(packageName, remote, file, content.size)))
+        val outcome = RunAs.classify(runAsShell(AppStorageShell.writeCommand(packageName, remote, file, content.size)))
         check(outcome is RunAsOutcome.Succeeded) {
             AppStorageShell.failureMessage(packageName, "write ${file.path}", outcome)
         }
@@ -286,7 +304,7 @@ internal fun IDevice.writeAppStorageFile(
 
 /** @throws IllegalStateException when the app is still running, before anything has been staged. */
 private fun IDevice.stopApp(packageName: String) {
-    val outcome = RunAs.classify(shell(AppStorageShell.stopCommand(packageName)))
+    val outcome = RunAs.classify(runAsShell(AppStorageShell.stopCommand(packageName)))
     AppStorageShell.stopFailure(packageName, outcome)?.let { error(it) }
 }
 
@@ -333,7 +351,7 @@ private fun IDevice.staged(content: ByteArray, use: (String) -> Unit): String? {
     val failure = runCatching {
         Files.write(local, content)
         pushFile(local.toString(), remote)
-        val restricted = RunAs.classify(shell(AppStorageShell.restrictStagedCommand(remote)))
+        val restricted = RunAs.classify(runAsShell(AppStorageShell.restrictStagedCommand(remote)))
         check(restricted is RunAsOutcome.Succeeded) {
             "The copy staged at $remote could not be made unreadable to other apps, so nothing was " +
                 "written. Remove it with: adb shell rm -f $remote"
@@ -352,25 +370,6 @@ private fun IDevice.staged(content: ByteArray, use: (String) -> Unit): String? {
     } else {
         IllegalStateException("${failure.message} ${AppStorageShell.stagedLeftOverMessage(leftOver)}", failure)
     }
-}
-
-/** The staged path when the device would not remove it; null when it is gone. */
-private fun IDevice.cleanUpStaged(remote: String): String? {
-    val outcome = runCatching { RunAs.classify(shell(AppStorageShell.removeStagedCommand(remote))) }.getOrNull()
-    return if (outcome is RunAsOutcome.Succeeded) null else remote
-}
-
-private fun IDevice.relaunch(packageName: String): Boolean {
-    val activity = getDefaultActivityForApplication(packageName).trim()
-    if (activity.isEmpty()) return false
-    startActivity(activity)
-    return true
-}
-
-private fun IDevice.shell(command: String): String {
-    val receiver = ShellOutputReceiver()
-    executeShellCommand(command, receiver, STORAGE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-    return receiver.toString()
 }
 
 /**
@@ -402,4 +401,17 @@ class AppStorageWriteRequest(
 class WriteAppStorageFileCommand : Command<AppStorageWriteRequest, AppStorageWrite> {
     override fun execute(p: AppStorageWriteRequest, project: Project, device: IDevice): AppStorageWrite =
         device.writeAppStorageFile(p.packageName, p.file, p.content, p.expected, p.restart)
+}
+
+/** The staged path when the device would not remove it; null when it is gone. */
+private fun IDevice.cleanUpStaged(remote: String): String? {
+    val outcome = runCatching { RunAs.classify(runAsShell(AppStorageShell.removeStagedCommand(remote))) }.getOrNull()
+    return if (outcome is RunAsOutcome.Succeeded) null else remote
+}
+
+private fun IDevice.relaunch(packageName: String): Boolean {
+    val activity = getDefaultActivityForApplication(packageName).trim()
+    if (activity.isEmpty()) return false
+    startActivity(activity)
+    return true
 }

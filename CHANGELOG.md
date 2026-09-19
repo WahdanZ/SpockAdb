@@ -65,6 +65,17 @@
 
 ### Changed
 
+- **App storage browses the whole of an app's data, not just its preference files.** The panel
+  listed `shared_prefs` and `files/datastore` and nothing else, which answered "what can I edit"
+  and no other question — a developer looking for the database their app had just written, or
+  wanting to confirm a cache was empty, could not see that any of it existed. It is a tree now:
+  `databases`, `files`, `cache`, and whatever else the app has written, read one directory at a
+  time as they are opened, because an app's cache can hold thousands of files and reading them
+  to draw a row nobody expanded costs a round trip for nothing. **Listing is not editing.** A
+  preference file opens in the table and can be written as before; everything else is shown as
+  read-only text, and the boundary that decides which is which is the same one it always was —
+  a write takes a file the editor has classified, which is why `android_set_app_preference`
+  reaches exactly the files it always did
 - **The Device tab is cards, and it says what the app actually is.** Seven titled separators
   read as one long list, so the grouping had to be read before it could be seen; each group is
   now a card with a heading and an icon, still collapsible and still remembering what you
