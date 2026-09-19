@@ -8,8 +8,26 @@ import spock.adb.command.NetworkState
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.ListItem
 
+/**
+ * What an action did, for the line the tool window keeps on screen.
+ *
+ * @param elapsedMs how long it took, or null when the action reported outside a timed run.
+ */
+data class ActionResult(val message: String, val ok: Boolean, val elapsedMs: Long?)
+
 interface AdbController {
     fun refresh()
+
+    /**
+     * The app every app action acts on.
+     *
+     * Set from the tool window's header. Null falls back to the open project's app module,
+     * which is what every action resolved for itself before there was anywhere to choose one.
+     */
+    var selectedApp: String?
+
+    /** Called on the EDT after every action, with what it did. */
+    fun onResult(listener: (ActionResult) -> Unit)
 
     /** Reads the device list once, with metadata resolved. [block] is invoked on the EDT. */
     fun connectedDevices(block: (devices: List<ConnectedDevice>) -> Unit)

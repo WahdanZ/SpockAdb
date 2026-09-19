@@ -65,6 +65,21 @@
 
 ### Changed
 
+- **One tool window instead of seven tabs that each found their own way to a device.** The
+  plugin registered six IDE content tabs; the Devices tab owned the device dropdown and pushed
+  its choice at the others, so Logcat, Commands and the UI Inspector showed no sign of what they
+  were attached to — and the app was nowhere at all, because every action resolved the open
+  project's app module for itself. There is now a single content: a header naming the device and
+  the app, a row of tabs beneath it, and a status line under those. What is chosen in the header
+  is what every tab and every action uses, so **the app is a real choice** rather than whatever
+  the project happened to resolve to — App storage takes its app from there too, instead of
+  carrying a second picker that could disagree with the first. The status line keeps the last
+  result on screen with how long it took (`✓ App restarted · 420 ms`), where a balloon said it
+  once and went away. The tab row shows as many tabs as fit and puts the rest behind **More**,
+  so a tool window docked at 300px still has its content rather than four rows of tabs. The tab
+  you are on is drawn as such — the accent colour and an underline — because a toggle button in
+  the IDE's own look is all but indistinguishable selected from not, which left the open tab to
+  be inferred from whatever was below it
 - **The device and the app an action is about are now pinned above the Devices tab.** The
   device dropdown was the first row of a scrolling column, so by the time you had scrolled to
   Network or App storage it was off screen — and the app was never on screen at all: every app
@@ -164,6 +179,16 @@
   still carries the fragments, and which fixes a second thing the old command got wrong: `top`
   is whatever is in the foreground, so with another app in front it reported that app's
   fragments, or nothing, without ever saying it had looked somewhere else
+- **The MCP tab hid its details, and put them back every time you opened them.** The panel
+  chooses between a splitter and a stacked layout from its own height, against a threshold
+  chosen when it was a tool window tab with the whole window to itself. Under the shared header
+  and tab row, with the status line below, it has some ninety pixels less — so an ordinary tool
+  window fell under the threshold, the details collapsed to a title bar, and expanding them
+  re-ran the same check and collapsed them again. The threshold is now stated as what a split
+  actually needs, a list worth scrolling plus a pane worth reading, so it does not have to be
+  re-tuned the next time something is added above the panel. Stacked, the details pane also
+  took its preferred height — for a pretty-printed response, most of the panel — and squeezed
+  out the list it was explaining; it is capped now
 - **The Wi-Fi and mobile data buttons could be dead without looking it.** The row took the
   button's enabled state from the read that fills its label in, so every path where that read
   did not land — the row attached after the device list had already been published, a read
