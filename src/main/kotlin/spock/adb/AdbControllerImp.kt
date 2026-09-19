@@ -405,8 +405,24 @@ class AdbControllerImp(
                     { permission -> RevokePermissionCommand().execute(applicationID, permission, project, device) }
             }
 
-            permissions.forEach(operation)
-            showSuccess("All permissions ${permissionOperation.operationResult}")
+            // One permission the platform will not change must not stop the other thirty-one:
+            // the failures are collected and named, rather than aborting the batch or — as
+            // before, when the output was discarded — being announced as a success.
+            val refused = permissions.mapNotNull { permission ->
+                runCatching { operation(permission) }.exceptionOrNull()?.message
+            }
+            val changed = permissions.size - refused.size
+            check(refused.size < permissions.size) {
+                "No permission could be ${permissionOperation.operationResult}. ${refused.first()}"
+            }
+            showSuccess(
+                if (refused.isEmpty()) {
+                    "All $changed permissions ${permissionOperation.operationResult}"
+                } else {
+                    "$changed of ${permissions.size} permissions ${permissionOperation.operationResult}; " +
+                        "the device refused ${refused.size}: ${refused.joinToString("; ")}"
+                },
+            )
         }
     }
 

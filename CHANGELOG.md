@@ -215,6 +215,13 @@
   `runtime permissions:` section, which is the device itself saying which of the app's
   permissions are runtime ones, current for whatever Android it is running. **Manage
   permissions** now lists all of them and **Grant all** grants all of them
+- **Every failed permission change was announced as a success.** `pm grant` and `pm revoke`
+  print nothing when they work and an exception when they do not, and set no exit status either
+  way — and the plugin discarded their output, so a permission the app had never requested, or
+  one granted at install and unchangeable, was reported as granted. They are read now. **Grant
+  all** no longer stops at the first refusal either: it names how many changed and what the
+  device refused, so one permission the platform will not touch does not silently cost you the
+  other thirty-one
 - **The package name reached `pidof` unquoted.** `dumpsys` was given a quoted argument and
   `pidof` was not, and the validator deliberately allows `$` because component names contain
   it — so a package with a `$` in its name was expanded by the shell first, and the card
