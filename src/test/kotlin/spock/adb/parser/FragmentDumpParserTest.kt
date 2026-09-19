@@ -10,6 +10,44 @@ import org.junit.jupiter.api.Test
  */
 class FragmentDumpParserTest {
 
+    /**
+     * Trimmed from `dumpsys activity <package>` on an API 34 emulator, in the order the device
+     * emits it: the activity's own ReportFragment first, then the child FragmentManager holding
+     * what is on screen, then the NavHostFragment that hosts it.
+     *
+     * `dumpsys activity top` reports no fragment state at all on Android 13 and later, which is
+     * what made Current fragment answer "no fragments" for every app that had them.
+     */
+    private val packageScopedNavHostDump = """
+          TASK com.example.app id=222 userId=0
+            ACTIVITY com.example.app/.MainActivity 14c276b pid=3189
+              Local Activity 86f23ad State:
+                Added Fragments:
+                  #0: ReportFragment{8ff16e2 #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+                FragmentManager misc state:
+                  mHost=android.app.Activity${'$'}HostCallbacks@261ca73
+              Child FragmentManager{f8b2c1a in NavHostFragment{446e074}}:
+                Added Fragments:
+                  #0: NotificationsFragment{bfbf202} (6f7931fe id=0x7f080152 tag=4a789f5f)
+                Back Stack:
+                  #0: BackStackEntry{28232aa 4a789f5f}
+              FragmentManager{2c9a1de in MainActivity{14c276b}}:
+                Added Fragments:
+                  #0: NavHostFragment{446e074} (a59d3bb2 id=0x7f080152)
+                Back Stack Index: 0
+    """.trimIndent()
+
+    @Test
+    fun `reads the fragment on screen from a package-scoped dump`() {
+        val fragments = FragmentDumpParser.parse(packageScopedNavHostDump)
+
+        assertEquals(
+            listOf("NotificationsFragment"),
+            fragments.map { it.fragment },
+            "the host's own ReportFragment and NavHostFragment are not what is on screen",
+        )
+    }
+
     @Test
     fun `keeps a fragment that reports itself visible with a parent`() {
         val dump = """

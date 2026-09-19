@@ -158,6 +158,12 @@
 
 ### Fixed
 
+- **Current fragment answered "no fragments" for every app that had them.** It read
+  `dumpsys activity top`, which on Android 13 and later reports no fragment state at all — the
+  activity is there, its FragmentManager is not. It now dumps the selected app by name, which
+  still carries the fragments, and which fixes a second thing the old command got wrong: `top`
+  is whatever is in the foreground, so with another app in front it reported that app's
+  fragments, or nothing, without ever saying it had looked somewhere else
 - **The Wi-Fi and mobile data buttons could be dead without looking it.** The row took the
   button's enabled state from the read that fills its label in, so every path where that read
   did not land — the row attached after the device list had already been published, a read
