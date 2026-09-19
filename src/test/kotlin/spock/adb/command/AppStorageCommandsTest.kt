@@ -140,6 +140,21 @@ class AppStorageCommandsTest {
     }
 
     @Test
+    fun `the file is given the mode Android writes it with, before it is moved into place`() {
+        // `cat >` inside run-as creates the file under the shell's umask, which is 0: a device
+        // showed the written file as rw-rw-rw- where SharedPreferences writes rw-rw----.
+        val prefsWrite = AppStorageShell.writeCommand(FakeStorageDevice.PKG, "/data/local/tmp/x", prefs, 3)
+        val datastoreWrite = AppStorageShell.writeCommand(FakeStorageDevice.PKG, "/data/local/tmp/x", datastore, 3)
+
+        listOf("660" to prefsWrite, "600" to datastoreWrite).forEach { (mode, command) ->
+            val script = command.substringAfter("sh -c ")
+            val chmod = script.indexOf("chmod $mode ")
+            val move = script.indexOf("mv ")
+            assertTrue(chmod in 0 until move, "the mode must be set before the move: $script")
+        }
+    }
+
+    @Test
     fun `the write only replaces the file once its size matches`() {
         val command = AppStorageShell.writeCommand(FakeStorageDevice.PKG, "/data/local/tmp/x", datastore, 42)
         val script = command.substringAfter("sh -c ")

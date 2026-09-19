@@ -75,6 +75,10 @@ internal object AppStorageShell {
      *
      * For SharedPreferences the `.bak` beside the file goes too. On load, SharedPreferences treats
      * a leftover backup as the real file and restores it over ours, silently undoing the edit.
+     *
+     * The mode is set before the move, so the file never appears with any other. `cat >` creates
+     * it under the shell's umask, which on a device is nothing at all: without this the file is
+     * left world-readable and world-writable until the app happens to rewrite it itself.
      */
     fun writeCommand(packageName: String, staged: String, file: StorageFile, size: Int): String {
         val target = ShellQuote.quote(file.path)
@@ -82,9 +86,18 @@ internal object AppStorageShell {
         val script = buildString {
             append("cat > $incoming && [ \$(wc -c < $incoming) -eq $size ]")
             if (file.kind == StorageKind.SHARED_PREFERENCES) append(" && rm -f ${ShellQuote.quote(file.path + ".bak")}")
+            append(" && chmod ${modeOf(file.kind)} $incoming")
             append(" && mv $incoming $target; status=\$?; rm -f $incoming; echo rc=\$status")
         }
         return "cat ${ShellQuote.quote(staged)} | ${RunAs.command(packageName, script)}"
+    }
+
+    /** What Android itself creates the file as, so an edited file is indistinguishable from a written one. */
+    private fun modeOf(kind: StorageKind): String = when (kind) {
+        // SharedPreferencesImpl sets rw-rw---- on the file it writes.
+        StorageKind.SHARED_PREFERENCES -> "660"
+        // DataStore writes through a plain file stream, which leaves rw-------.
+        else -> "600"
     }
 
     /**
