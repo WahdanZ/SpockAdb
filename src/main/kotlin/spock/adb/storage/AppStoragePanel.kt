@@ -12,17 +12,17 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.ui.CollectionListModel
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.TableSpeedSearch
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import spock.adb.DestructiveActionConfirmation
 import spock.adb.LatestRequest
+import spock.adb.command.AppStorageChangedException
 import spock.adb.command.AppStorageFileRequest
 import spock.adb.command.AppStorageShell
 import spock.adb.command.AppStorageUnverifiedWriteException
@@ -45,9 +45,11 @@ import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTable
-import javax.swing.ListSelectionModel
+import javax.swing.RowFilter
+import javax.swing.event.DocumentEvent
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
+import javax.swing.table.TableRowSorter
 
 /**
  * View and edit a debuggable app's SharedPreferences and Preferences DataStore, from the IDE.
@@ -69,20 +71,35 @@ class AppStoragePanel(
     private val packagePicker = AppPackagePicker(project, isAlive = { !disposed })
     private val restartAfterWrite = JCheckBox("Restart app after writing")
 
-    private val files = CollectionListModel<StorageFile>()
-    private val fileList = JBList(files)
+    private val fileList = StorageFileList()
 
     private val model = PrefsTableModel()
     private val table = JBTable(model)
+
+    /** Filters the table by key. Sorting is off: the file's own order is the app's order. */
+    private val sorter = TableRowSorter(model).apply {
+        for (column in 0 until model.columnCount) setSortable(column, false)
+    }
+    private val keyFilter = StoragePanelUi.searchField(
+        "Search keys…",
+        "Show only the entries whose key contains this text",
+    )
+
     private val notice = StoragePanelUi.noticeLabel()
     private val statusLabel = StoragePanelUi.statusLabel()
+    private val changesLabel = StoragePanelUi.changesLabel()
+    private val fileNameLabel = StoragePanelUi.fileNameLabel()
+    private val filePathLabel = StoragePanelUi.filePathLabel()
 
     private val addButton = StoragePanelUi.iconButton(AllIcons.General.Add, "Add an entry")
     private val deleteButton = StoragePanelUi.iconButton(AllIcons.General.Remove, "Delete the selected entries")
     private val reloadButton =
         StoragePanelUi.iconButton(AllIcons.Actions.Refresh, "Read the file again from the device")
-    private val applyButton = JButton("Apply")
-    private val undoButton = JButton("Undo Apply")
+    private val applyButton = JButton("Apply changes")
+
+    // "Undo Apply" read as "discard what I typed". It does the opposite: it writes the file
+    // back to what the device held before the last apply from this panel.
+    private val undoButton = JButton("Revert last apply")
     private val exportButton = JButton("Export…")
     private val importButton = JButton("Import…")
 
@@ -91,12 +108,13 @@ class AppStoragePanel(
 
     /** The package the file list was read from; the field may have been edited since. */
     private var listedPackage: String? = null
+
     private var lastWrite: UndoPoint? = null
     private var busy = false
     private var disposed = false
 
-    /** True while the file list's selection is being changed by code rather than by the developer. */
-    private var ignoreSelection = false
+    /** True once a write was refused because the file had changed on the device since it was read. */
+    private var stale = false
 
     /** Started and answered on the EDT, so a slow read cannot overwrite the result of a newer one. */
     private val reads = LatestRequest()
@@ -111,14 +129,9 @@ class AppStoragePanel(
     )
 
     init {
-        // The Devices tab is a scrolling column that sizes each section by its preferred height,
-        // so this asks for enough room for the file list and the table, and never for any width.
-        preferredSize = Dimension(0, JBUI.scale(EMBEDDED_HEIGHT))
-        maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(EMBEDDED_HEIGHT))
-        fileList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        fileList.cellRenderer = StoragePanelUi.fileRenderer()
-        fileList.emptyText.text = "No files listed"
+        setAvailableHeight(0)
         StoragePanelUi.prepare(table)
+        table.rowSorter = sorter
         table.putClientProperty("terminateEditOnFocusLost", true)
         // Typing in the table jumps to a key, which is how a file with a hundred entries is used.
         TableSpeedSearch.installOn(table)
@@ -134,6 +147,23 @@ class AppStoragePanel(
         updateControls()
     }
 
+    /**
+     * Takes the height the tab has left for this panel, and reports whether it changed.
+     *
+     * The Devices tab is a scrolling column that sizes each section by its preferred height, so a
+     * component in it cannot stretch on its own: it is told. Below [MIN_HEIGHT] the tab scrolls
+     * instead, which is the honest answer when every other section is open in a short window.
+     */
+    fun setAvailableHeight(available: Int): Boolean {
+        val height = available.coerceAtLeast(JBUI.scale(MIN_HEIGHT))
+        if (height == preferredSize?.height) return false
+        // Never a width: the column is laid out at the viewport's, and asking for one is what
+        // grows a horizontal scrollbar in a docked tool window.
+        preferredSize = Dimension(0, height)
+        maximumSize = Dimension(Int.MAX_VALUE, height)
+        return true
+    }
+
     fun setDevice(connected: ConnectedDevice?) {
         val sameDevice = connected != null && connected.serialNumber == device?.serialNumber
         device = connected
@@ -141,7 +171,7 @@ class AppStoragePanel(
             // Retires reads in flight: their answers are about a device that is no longer selected.
             reads.begin()
             listedPackage = null
-            withoutSelectionEvents { files.removeAll() }
+            fileList.clear()
             showSession(null)
             status(if (connected == null) NO_DEVICE else "Enter or choose the package of a debuggable app.")
         }
@@ -176,32 +206,47 @@ class AppStoragePanel(
         // The row actions sit over the table they act on; the file actions sit under it, where
         // Apply is the one that reaches the device and reads as the end of the column.
         val rowActions = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(2), 0)).apply {
-            border = JBUI.Borders.empty(2, GAP)
             add(addButton)
             add(deleteButton)
             add(reloadButton)
-            add(notice)
         }
         val fileActions = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
             listOf(applyButton, undoButton, exportButton, importButton).forEach { add(it) }
         }
 
-        val editor = JPanel(BorderLayout()).apply {
-            add(rowActions, BorderLayout.NORTH)
-            add(JBScrollPane(table), BorderLayout.CENTER)
+        // Which file is open, and where it is on the device: the name alone is ambiguous once an
+        // app keeps a `settings` file under both shared_prefs and datastore.
+        val fileHeader = JPanel(BorderLayout()).apply {
+            add(fileNameLabel, BorderLayout.NORTH)
+            add(filePathLabel, BorderLayout.SOUTH)
+        }
+        val editorHeader = JPanel(BorderLayout()).apply {
+            add(fileHeader, BorderLayout.NORTH)
             add(
                 JPanel(BorderLayout()).apply {
-                    add(fileActions, BorderLayout.NORTH)
+                    add(keyFilter, BorderLayout.CENTER)
+                    add(rowActions, BorderLayout.EAST)
+                },
+                BorderLayout.CENTER,
+            )
+            add(notice, BorderLayout.SOUTH)
+        }
+
+        val editor = JPanel(BorderLayout()).apply {
+            add(editorHeader, BorderLayout.NORTH)
+            add(JBScrollPane(table), BorderLayout.CENTER)
+            // Stays put while the table scrolls: what Apply would write, and what last happened.
+            add(
+                JPanel(BorderLayout()).apply {
+                    add(changesLabel, BorderLayout.NORTH)
+                    add(fileActions, BorderLayout.CENTER)
                     add(statusLabel, BorderLayout.SOUTH)
                 },
                 BorderLayout.SOUTH,
             )
         }
-        val listPane = JBScrollPane(fileList).apply {
-            minimumSize = Dimension(JBUI.scale(StoragePanelUi.FILE_LIST_WIDTH), 0)
-        }
         return OnePixelSplitter(false, SPLIT_PROPORTION).apply {
-            firstComponent = listPane
+            firstComponent = fileList
             secondComponent = editor
         }
     }
@@ -209,11 +254,16 @@ class AppStoragePanel(
     private fun wire() {
         packagePicker.onChosen = { packageName -> listFiles(packageName) }
         packagePicker.onFailure = { status(it) }
-        fileList.addListSelectionListener { event ->
-            if (!event.valueIsAdjusting && !ignoreSelection) fileSelected()
-        }
+        fileList.onSelected = { fileSelected() }
         table.selectionModel.addListSelectionListener { updateControls() }
         model.onEdited = { updateControls() }
+        keyFilter.addDocumentListener(
+            object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) {
+                    sorter.rowFilter = keyRowFilter(keyFilter.text.trim())
+                }
+            },
+        )
         addButton.addActionListener { addRow() }
         deleteButton.addActionListener { deleteRows() }
         reloadButton.addActionListener { reload() }
@@ -240,7 +290,7 @@ class AppStoragePanel(
             if (!reads.isLatest(request)) return@background
             showSession(null)
             listedPackage = result.map { packageName }.getOrNull()
-            withoutSelectionEvents { files.replaceAll(result.getOrDefault(emptyList())) }
+            fileList.show(result.getOrDefault(emptyList()))
             result
                 .onSuccess {
                     status(
@@ -257,10 +307,10 @@ class AppStoragePanel(
 
     private fun fileSelected() {
         val target = device ?: return status(NO_DEVICE)
-        val file = fileList.selectedValue ?: return
+        val file = fileList.selected ?: return
         if (file == session?.file) return
         if (!confirmDiscard()) {
-            withoutSelectionEvents { fileList.setSelectedValue(session?.file, true) }
+            fileList.revertTo(session?.file)
             return
         }
         listedPackage?.let { open(target, file, it) }
@@ -300,12 +350,19 @@ class AppStoragePanel(
 
     private fun showSession(next: PrefsEditSession?) {
         if (table.isEditing) table.cellEditor.cancelCellEditing()
+        // Whatever moved on under the last session is not this one's problem: the marker belongs
+        // to the rows it was raised over, and those are being replaced.
+        stale = false
         session = next
         model.session = next
         table.columnModel.getColumn(TYPE_COLUMN).cellEditor =
             DefaultCellEditor(ComboBox(DefaultComboBoxModel(next?.types.orEmpty().toTypedArray())))
         notice.text = next?.readOnlyReason.orEmpty()
         notice.isVisible = next?.readOnlyReason != null
+        // Device-supplied text, in labels with HTML rendering switched off.
+        fileNameLabel.text = next?.file?.name ?: NO_FILE
+        filePathLabel.text = next?.file?.let { "${it.path}  —  ${it.kind.label}" } ?: " "
+        filePathLabel.toolTipText = next?.file?.path
         updateControls()
     }
 
@@ -314,18 +371,23 @@ class AppStoragePanel(
     private fun addRow() {
         stopEditing()
         val current = session ?: return
+        // A new row has to be visible to be typed into, and its generated key matches no search.
+        if (keyFilter.text.isNotEmpty()) keyFilter.text = ""
         current.addRow()
         model.fireTableDataChanged()
-        val last = current.rows.lastIndex
-        table.selectionModel.setSelectionInterval(last, last)
-        table.editCellAt(last, KEY_COLUMN)
+        val row = table.convertRowIndexToView(current.rows.lastIndex)
+        if (row >= 0) {
+            table.selectionModel.setSelectionInterval(row, row)
+            table.scrollRectToVisible(table.getCellRect(row, KEY_COLUMN, true))
+            table.editCellAt(row, KEY_COLUMN)
+        }
         updateControls()
     }
 
     private fun deleteRows() {
         stopEditing()
         val current = session ?: return
-        table.selectedRows.sortedDescending()
+        table.selectedModelRows().sortedDescending()
             .filter { current.rows.getOrNull(it)?.editable == true }
             .forEach { current.rows.removeAt(it) }
         model.fireTableDataChanged()
@@ -414,8 +476,21 @@ class AppStoragePanel(
             val message = write?.let { "$done ${afterWrite(it, restart, packageName)}${warningOf(it)}" }
                 ?: result.exceptionOrNull()?.message
                 ?: "Could not write ${file.path}."
-            // Shows what the device now holds, not what was sent — unless the tab has moved on meanwhile.
-            if (isStillShowing(target, packageName)) open(target, file, packageName, message) else status(message)
+
+            // The file changed on the device since it was read, so nothing was written and the
+            // rows on screen are still the developer's unapplied work. Re-reading would throw it
+            // away to show a file they did not ask for; the panel says so and waits instead.
+            val changed = result.exceptionOrNull() is AppStorageChangedException
+            stale = changed
+            when {
+                changed -> {
+                    status(message)
+                    updateControls()
+                }
+                // Shows what the device now holds, not what was sent — unless the tab has moved on.
+                isStillShowing(target, packageName) -> open(target, file, packageName, message)
+                else -> status(message)
+            }
         }
     }
 
@@ -521,15 +596,17 @@ class AppStoragePanel(
     private fun updateControls() {
         val current = session
         val editable = current != null && current.readOnlyReason == null && !busy
+        showChanges(changesLabel, current, stale)
         val rows = current?.rows.orEmpty()
-        val selected = table.selectedRows.toList().mapNotNull { index -> rows.getOrNull(index) }
+        val selected = table.selectedModelRows().mapNotNull { index -> rows.getOrNull(index) }
         // While a write runs, nothing may change what its callback reopens or what it wrote over.
         packagePicker.isEnabled = !busy && device != null
         fileList.isEnabled = !busy
         model.editable = !busy
         addButton.isEnabled = editable
         deleteButton.isEnabled = editable && selected.any { it.editable }
-        applyButton.isEnabled = editable && current?.isDirty == true
+        // Nothing may be applied over a file that has moved on since it was read: reload first.
+        applyButton.isEnabled = editable && current?.isDirty == true && !stale
         reloadButton.isEnabled = current != null && !busy
         undoButton.isEnabled = !busy && lastWrite != null && lastWrite?.serial == device?.serialNumber
         exportButton.isEnabled = current != null && !busy
@@ -538,15 +615,6 @@ class AppStoragePanel(
 
     private fun status(text: String) {
         statusLabel.text = text
-    }
-
-    private inline fun withoutSelectionEvents(block: () -> Unit) {
-        ignoreSelection = true
-        try {
-            block()
-        } finally {
-            ignoreSelection = false
-        }
     }
 
     private fun <T> background(work: () -> T, done: (Result<T>) -> Unit) {
@@ -572,7 +640,9 @@ class AppStoragePanel(
             column: Int,
         ): Component {
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-            val entry = session?.rows?.getOrNull(row)
+            // `row` is the row on screen; with a search in the key field that is not the row the
+            // session holds at that index.
+            val entry = session?.rows?.getOrNull(table.convertRowIndexToModel(row))
             val problem = entry?.let { session?.problemWith(it) }
             // A value wider than its column is common — a token, a JSON blob — so the whole of it
             // is one hover away rather than only readable by widening the tab.
@@ -591,7 +661,9 @@ class AppStoragePanel(
 
     private companion object {
         const val GAP = 4
-        const val EMBEDDED_HEIGHT = 420
+
+        /** Below this the tab scrolls rather than squeezing the file list and the table. */
+        const val MIN_HEIGHT = 320
         const val SPLIT_PROPORTION = 0.3f
         const val KEY_COLUMN = 0
         const val TYPE_COLUMN = 1
@@ -601,10 +673,22 @@ class AppStoragePanel(
         const val HTML_DISABLE = StoragePanelUi.HTML_DISABLE
 
         const val NO_DEVICE = "No device selected. Choose one at the top of this tab."
+        const val NO_FILE = "No file open"
 
         val SINGLE_FILE = FileChooserDescriptor(true, false, false, false, false, false)
     }
 }
+
+/** Shows the entries whose key contains [query]; null when nothing was typed. */
+private fun keyRowFilter(query: String): RowFilter<PrefsTableModel, Int>? =
+    if (query.isEmpty()) {
+        null
+    } else {
+        object : RowFilter<PrefsTableModel, Int>() {
+            override fun include(entry: Entry<out PrefsTableModel, out Int>): Boolean =
+                entry.getStringValue(KEY_COLUMN_INDEX).contains(query, ignoreCase = true)
+        }
+    }
 
 private fun contentsOf(file: VirtualFile): ByteArray {
     require(file.length <= AppStorageShell.MAX_FILE_BYTES) {
@@ -612,6 +696,54 @@ private fun contentsOf(file: VirtualFile): ByteArray {
     }
     return file.contentsToByteArray()
 }
+
+/**
+ * How much Apply would write, or why it would refuse.
+ *
+ * Empty when there is nothing to say. A row that cannot be written yet — an empty type, a value
+ * that is not a number — is named here rather than only when Apply is pressed and refuses, and a
+ * file that moved on under the editor is said in the one place the change count would otherwise
+ * claim everything is fine.
+ */
+internal fun storageChangeSummary(session: PrefsEditSession?, stale: Boolean): String = when {
+    stale -> STALE
+    session == null || session.readOnlyReason != null -> ""
+    else -> runCatching { session.changes().size }.fold(
+        onSuccess = { count ->
+            when (count) {
+                0 -> ""
+                1 -> "1 unsaved change"
+                else -> "$count unsaved changes"
+            }
+        },
+        onFailure = { it.message ?: "A row cannot be applied as it stands." },
+    )
+}
+
+/** Puts [storageChangeSummary] on the line above the button that would write it. */
+private fun showChanges(label: JBLabel, session: PrefsEditSession?, stale: Boolean) {
+    val text = storageChangeSummary(session, stale)
+    label.text = if (text.isEmpty()) " " else "$BULLET $text"
+    label.toolTipText = if (stale) STALE_HINT else null
+    label.isVisible = text.isNotEmpty()
+}
+
+private const val BULLET = "\u25cf"
+internal const val STALE = "File changed on device — reload before applying"
+private const val STALE_HINT = "Another write — the app itself, an agent, or another tool — replaced this " +
+    "file after it was read here. Your edits are still on screen; reading the file again is what " +
+    "they have to be made against."
+
+/**
+ * The selected rows as indices into the session, not into what the table shows.
+ *
+ * With a search in the key field the two differ, and deleting by the row on screen would delete
+ * whatever the session holds at that position instead.
+ */
+private fun JBTable.selectedModelRows(): List<Int> = selectedRows.map { convertRowIndexToModel(it) }
+
+/** The table's key column, for the row filter, which sees the model rather than the panel. */
+private const val KEY_COLUMN_INDEX = 0
 
 /** A staged copy the device would not remove, appended to the status line when there is one. */
 private fun warningOf(write: AppStorageWrite): String = write.warning?.let { " $it" }.orEmpty()

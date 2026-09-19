@@ -179,6 +179,15 @@ class AppStorageWrite(
 )
 
 /**
+ * The file on the device is no longer the one the edit was made against, so nothing was written.
+ *
+ * Its own type rather than a plain [IllegalStateException] so the editor can say so where the
+ * developer is editing — the message alone is one line of status among many, and the answer to
+ * it is a specific one: read the file again before applying.
+ */
+class AppStorageChangedException(message: String) : IllegalStateException(message)
+
+/**
  * The file was replaced, but reading it back failed or showed other bytes than were sent.
  *
  * Distinct from a failed write because the old content is gone either way: [previous] is what the
@@ -282,10 +291,11 @@ private fun IDevice.stopApp(packageName: String) {
 }
 
 private fun checkUnchanged(file: StorageFile, current: ByteArray, expected: ByteArray) {
-    check(current.contentEquals(expected)) {
+    if (current.contentEquals(expected)) return
+    throw AppStorageChangedException(
         "${file.path} changed on the device after it was read, so nothing was written. Reload it and " +
-            "make the change again."
-    }
+            "make the change again.",
+    )
 }
 
 /** @throws AppStorageUnverifiedWriteException carrying [previous], as the file has already been replaced. */

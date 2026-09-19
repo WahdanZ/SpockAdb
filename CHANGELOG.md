@@ -16,7 +16,7 @@
   writes its in-memory preferences back on its next `apply()` and silently undoes the edit. It
   refuses if the file changed since it was read — checked before the stop, so a stale edit costs
   nothing, and again after it — then writes, and reads the file back rather than trusting the
-  write. **Undo Last Apply** restores what the file held before, and **Export** and
+  write. **Revert last apply** restores what the file held before, and **Export** and
   **Import** save a known state and put it back. Nothing the editor does not understand is lost:
   unknown XML elements and unknown protobuf fields survive an edit, and the DataStore format is
   parsed by hand, so the plugin gains no protobuf dependency. EncryptedSharedPreferences are shown
@@ -63,8 +63,149 @@
   the same command, so a failure is reported as one instead of being announced as a clear. It
   asks no confirmation, since nothing it deletes is something the app cannot rebuild
 
+### Changed
+
+- **The device and the app an action is about are now pinned above the Devices tab.** The
+  device dropdown was the first row of a scrolling column, so by the time you had scrolled to
+  Network or App storage it was off screen — and the app was never on screen at all: every app
+  action resolves the application ID of the open project's app module, which lived only in the
+  project's build files. With two projects open there was nothing to say which app **Clear
+  data** was about to empty. Both now sit in a fixed header: the device, and under it the
+  package with "from this project" beside it, or "not resolved" when Gradle sync has not
+  produced one yet. The dropdown itself carries the device name and Android version, with the
+  serial, API level and architecture moved to its tooltip, where they no longer push the name
+  out of a docked tool window
+- **The Network section says what the device is set to before asking you to change it.**
+  "Wi-Fi" and "Mobile Data" were two buttons that toggled: they said neither what the device
+  was doing nor what pressing them would do, so the way to find out was to press one — which
+  is how you switch off the connection you were using. Each is now a row reading `Wi-Fi  On
+  [Turn off]`, read from the device when a device is selected, when the tab is shown, and
+  after every toggle, because `svc` exits 0 whether or not the device honoured it. The proxy
+  field gained a `192.168.1.10:8888` placeholder, its **Clear** button is now **Remove
+  proxy** — it changes the device, not the field — and the line beneath it reads **Active
+  proxy** rather than **Device**, since the field above it holds what Set *would* apply
+- **App storage grew a file path, two searches, and a count of what Apply would write.** The
+  editor is no longer a fixed 420px box: it takes whatever height the sections above it leave,
+  so collapsing them or undocking the tool window gives the file list and the table the room.
+  The open file's full path is shown above the table — an app routinely keeps the same name
+  under both `shared_prefs` and `datastore` — with a **Search files** field over the list and a
+  **Search keys** field over the table. Above **Apply changes** a line now says `3 unsaved
+  changes`, or names the row that cannot be written yet rather than waiting for Apply to
+  refuse. **Undo Apply** is now **Revert last apply**: it wrote the file back to what the
+  device held before the last apply, and read as "discard what I typed"
+- **Quick actions: pin the ones you use, in the order you want them.** The tab is fifteen
+  buttons of near-identical visual weight under six headings, so the two or three somebody runs
+  twenty times a day sit wherever the grouping happened to put them — often two sections down,
+  behind a heading that has to be kept expanded. Right-click any action to pin it to a **Quick
+  actions** row at the top; pinned buttons can be dragged over one another, or moved with
+  **Move left** / **Move right** in the same menu. Pinning moves the button rather than copying
+  it: the same action twice on one screen is worse than either place alone. The order is
+  remembered between sessions
+- **A search over the actions.** The header has a `Search actions…` field that narrows the tab
+  to the actions whose name or tooltip matches every word typed, in any order — and opens the
+  sections holding a match, since a match inside a collapsed section is one you cannot see.
+  Clearing it puts the tab back exactly as it was, expansion included: the search never
+  switches an action off, it only hides it for as long as it is being searched. Sections with
+  no action buttons — Developer options, Network, Send to device, App storage — match on what
+  they hold, so "proxy" finds the proxy field and "animation" finds the scales. A search that
+  matches nothing says so rather than leaving the tab blank
+- **Developer options reads as a form rather than two columns at opposite edges.** The
+  animation labels sat at the far left and their dropdowns at the far right, so matching a
+  setting to its value meant tracking across the width of the tool window. Label and dropdown
+  now sit side by side, the three dropdowns share a width, and there is more air between groups
+  than between the controls inside one. The values read **Off**, **0.5×**, **1×** — what the
+  system settings screen calls them — rather than `0.0`, `0.5`, `1.0`, and a scale that is not
+  **1×** is shown in bold, with a **Reset animation scales** button that is enabled only when
+  there is something to reset
+- **MCP activity is a table with headings, and the server's status stays put.** A row carried
+  a tick and a cross side by side — one for how much the tool was allowed to do, the other for
+  whether the call worked — with no headings to say which was which. They are two questions, so
+  they are now two of five columns: **Time · Tool · Access · Result · Duration**, with the
+  unlabelled `Any` dropdown above them now labelled **Result**. Selecting a call puts the error
+  first, before the request that caused it, and long messages wrap instead of running off the
+  edge; request and response are laid out over several lines rather than arriving as one. The
+  generic **Copy** is **Copy details**, and copy request and copy response are disabled when no
+  call is selected. On the Tools tab each of the fifty-odd identifiers now carries its one-line
+  description. "Configuration copied" no longer overwrites the transports and the tool count:
+  it appears beside Copy Config and takes itself back down, and the line about clients now
+  reads "No client connected yet. Copy the configuration to connect one.", with the protocol
+  reason moved into its tooltip
+- **The HTTP proxy field remembers every proxy you have set, not just the last one.** One
+  remembered value covered the developer who always points at the same Charles; it did nothing
+  for the one switching between a local proxy and a device lab, who retyped the other one every
+  time. The field is now a dropdown of the proxies set on this machine, most recent first —
+  setting one again moves it up rather than listing it twice, and the list holds eight, so it
+  stays a working set rather than a log of everything ever typed. Picking one fills the field
+  and nothing else: it reaches the device when **Set** is pressed, never on a click in the
+  dropdown. Right-click the field to forget the list, which changes nothing on the device. The
+  single proxy remembered by an earlier version becomes the first entry rather than being lost
+  to the upgrade
+- **The Commands tab says what it is about to run on, and what happened when it did.** The
+  target device was a line at the bottom of the panel, far from Run; it now sits under the
+  command it applies to. The field shows an example of what goes after `adb shell`. The state
+  of a run is reported beside the output — **● Running…**, **✓ Completed in 0.4 s**, **✗ Exit 1
+  after 0.2 s**, **⊘ Stopped after 30.0 s** — where before, a command that failed, one that was
+  cancelled and one that worked all ended in "Done.". The exit status is asked for in the same
+  shell, because ddmlib's gives none. History entries carry the time they were run, favourites
+  have a dropdown of their own rather than a starred handful at the top of fifty recent
+  commands, and **Find** sits with the output it searches instead of with the input
+- **Actions are labelled with what they do.** **Debugger** is **Attach debugger**, **Process
+  Death** is **Simulate process death**, **Manage…** is **Manage permissions…**, **Open on
+  Device** is **Open developer options**, **Clear & Restart…** is **Clear data and restart…**,
+  and the Commands tab's **Favourite** is **Add to favourites**, becoming **Remove from
+  favourites** once a command is saved. **Current activity** and **Current fragment** say in a
+  tooltip that they open the class in the editor
+
 ### Fixed
 
+- **Current fragment answered "no fragments" for every app that had them.** It read
+  `dumpsys activity top`, which on Android 13 and later reports no fragment state at all — the
+  activity is there, its FragmentManager is not. It now dumps the selected app by name, which
+  still carries the fragments, and which fixes a second thing the old command got wrong: `top`
+  is whatever is in the foreground, so with another app in front it reported that app's
+  fragments, or nothing, without ever saying it had looked somewhere else
+- **The Wi-Fi and mobile data buttons could be dead without looking it.** The row took the
+  button's enabled state from the read that fills its label in, so every path where that read
+  did not land — the row attached after the device list had already been published, a read
+  retired by a newer one that then returned early, a device that never answered — left a button
+  that looked ordinary and did nothing when pressed. Nothing was logged, because nothing ran.
+  Whether a device is selected is now the only thing that decides the button; the read fills in
+  the label and no longer touches it. The row also reads the device as soon as it is attached
+  rather than waiting to be asked, and a press with no device selected says so instead of
+  returning in silence
+- **Wi-Fi and mobile data announced changes the device had refused.** `svc wifi disable` exits
+  0 whether or not it did anything, and from Android 10 a good many builds do not let the adb
+  shell switch Wi-Fi at all — so the plugin ran the command, the device ignored it, and the
+  tool window reported "Disabled Wifi network" over a connection that was still up. The state
+  is now read back after every toggle and a device that did not move says so, quoting whatever
+  the shell said and, for Wi-Fi, why a modern device refuses. Wi-Fi also goes through
+  `cmd -w wifi set-wifi-enabled`, the route that still works, on Android 11 and later
+- **The animation scales showed the wrong device, and sometimes the wrong value.** Developer
+  options were read only when the tool window was shown, so selecting a second device left the
+  first one's switches and scales on screen — ready to be changed on a device they were never
+  read from. They are now re-read whenever the selected device changes. The value was matched
+  against the dropdown as text, so a device answering `1` where the list holds `1.0` selected
+  nothing, and anything unreadable fell back to `0.0`, which the dropdown showed as **Off**: a
+  device with animations running, displayed as a device with them switched off. The answer is
+  now matched as a number, and one that names no scale selects nothing rather than guessing
+- **Panels that would not fit a docked tool window.** The Commands tab put three buttons in a
+  fixed row beside the command field, so at 300px the field was squeezed to nothing; they wrap
+  onto their own line now. The MCP activity table gave its columns fixed widths, which left the
+  tool name — the column the table exists for — nothing at all in a narrow window; every column
+  now gives a little, down to a floor that keeps it readable. Both are covered by a test that
+  lays them out at the width a tool window is routinely docked at
+- **An action switched off left a hole where it had been, and a label with nothing under it.**
+  The action grids were laid out from source order and merely hid what was switched off, so a
+  two-column section with one action off showed a gap rather than closing up — and switching
+  off **Send text** or **Deep link** hid the field and its button but left the label beside
+  them. The grids are now filled from what is actually shown, and the whole row goes with it
+- **A write refused because the file had changed on the device threw away your edits.** The
+  editor re-reads the file after every write, including a refused one — so a write that was
+  correctly refused, because the app or an agent had replaced the file since it was read,
+  replaced the rows on screen with the device's, and the unapplied edits behind the refusal
+  were gone. Nothing was written in that case, so there is nothing to show: the rows stay,
+  Apply is disabled, and the editor says `File changed on device — reload before applying`
+  until the file is read again
 - **An action added in a new release never reached anyone who already had settings.** The
   visible-actions list is built from `SpockAction` once, on first run, and loading stored
   settings then replaced it wholesale — so an action introduced later was absent from every

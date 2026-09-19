@@ -46,6 +46,29 @@ data class DeviceInfo(
         if (state != DeviceState.ONLINE) append(" - ").append(state.label)
     }
 
+    /**
+     * The line the device dropdown shows: the name and the Android version, and nothing else.
+     *
+     * [label] puts the serial-adjacent detail — architecture — on the same line, which in a
+     * docked tool window is the part that pushes the name out of view. The detail is not lost:
+     * [details] puts it in the dropdown's tooltip, where it is one hover away.
+     */
+    fun shortLabel(): String = buildString {
+        if (isEmulator) append(EMULATOR_PREFIX)
+        append(displayName)
+
+        val version = androidVersionLabel(withApiLevel = false)
+        if (version.isNotEmpty()) append(SEPARATOR).append(version)
+        if (state != DeviceState.ONLINE) append(SEPARATOR).append(state.label)
+    }
+
+    /** What [shortLabel] leaves out, for the tooltip beside it. */
+    fun details(): String = listOfNotNull(
+        serialNumber,
+        apiLevel?.let { "API $it" },
+        abi.takeIf { it.isNotEmpty() },
+    ).joinToString(SEPARATOR)
+
     fun androidVersionLabel(): String = when {
         androidVersion.isNotBlank() && apiLevel != null -> "Android $androidVersion (API $apiLevel)"
         androidVersion.isNotBlank() -> "Android $androidVersion"
@@ -53,11 +76,18 @@ data class DeviceInfo(
         else -> ""
     }
 
+    /** With [withApiLevel] off, the marketing version alone — the API level is a detail. */
+    private fun androidVersionLabel(withApiLevel: Boolean): String =
+        if (withApiLevel || androidVersion.isBlank()) androidVersionLabel() else "Android $androidVersion"
+
     /** Unambiguous identification for confirmation prompts and notifications. */
     fun describe(): String =
         if (displayName == serialNumber) serialNumber else "$displayName ($serialNumber)"
 
     companion object {
+        private const val EMULATOR_PREFIX = "Emulator: "
+        private const val SEPARATOR = " \u00b7 "
+
         /** Used when a device disconnects before its properties could be read. */
         fun unknown(serialNumber: String) = DeviceInfo(
             serialNumber = serialNumber,

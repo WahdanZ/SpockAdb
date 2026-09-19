@@ -2,6 +2,8 @@ package spock.adb.storage
 
 import com.intellij.icons.AllIcons
 import com.intellij.ui.ColoredListCellRenderer
+import com.intellij.ui.JBColor
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.table.JBTable
@@ -89,6 +91,40 @@ internal object StoragePanelUi {
         isVisible = false
     }
 
+    /**
+     * The line that says how much Apply would write, in the colour used for something pending.
+     *
+     * Apply being enabled says there is something to apply but not how much; a developer who has
+     * edited three files' worth of rows and switched away wants the count without counting.
+     */
+    fun changesLabel(): JBLabel = JBLabel(" ").apply {
+        putClientProperty(HTML_DISABLE, true)
+        border = JBUI.Borders.empty(2, GAP)
+        foreground = PENDING
+        isVisible = false
+    }
+
+    /** The open file's name, and under it the path it came from. */
+    fun fileNameLabel(): JBLabel = JBLabel(" ").apply {
+        putClientProperty(HTML_DISABLE, true)
+        font = font.deriveFont(java.awt.Font.BOLD)
+        border = JBUI.Borders.empty(2, GAP, 0, GAP)
+    }
+
+    fun filePathLabel(): JBLabel = JBLabel(" ").apply {
+        putClientProperty(HTML_DISABLE, true)
+        setComponentStyle(UIUtil.ComponentStyle.SMALL)
+        setFontColor(UIUtil.FontColor.BRIGHTER)
+        border = JBUI.Borders.empty(0, GAP, 2, GAP)
+    }
+
+    /** A field that filters a list or a table, labelled by what it searches. */
+    fun searchField(placeholder: String, tooltip: String): SearchTextField = SearchTextField(false).apply {
+        textEditor.emptyText.text = placeholder
+        toolTipText = tooltip
+        border = JBUI.Borders.empty(2, GAP)
+    }
+
     /** The line that says what just happened, in the quieter colour used for hints. */
     fun statusLabel(): JBLabel = JBLabel(" ").apply {
         putClientProperty(HTML_DISABLE, true)
@@ -98,6 +134,12 @@ internal object StoragePanelUi {
 
     const val GAP = 4
     const val ICON_BUTTON_SIDE = 26
+
+    private const val PENDING_LIGHT = 0x8A6100
+    private const val PENDING_DARK = 0xE0A030
+
+    /** Warning-ish, for a change that has not reached the device yet. */
+    val PENDING = JBColor(PENDING_LIGHT, PENDING_DARK)
 
     /** Swing's client property that stops a component rendering text that starts with `<html>`. */
     const val HTML_DISABLE = "html.disable"

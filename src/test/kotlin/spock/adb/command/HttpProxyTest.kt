@@ -121,13 +121,13 @@ class HttpProxyTest {
 
     @Test
     fun `describes the device state without guessing`() {
-        assertEquals("Device: direct", HttpProxy.describeDevice(Result.success(null)))
+        assertEquals("Active proxy: None", HttpProxy.describeDevice(Result.success(null)))
         assertEquals(
-            "Device: via 10.0.0.2:8888",
+            "Active proxy: 10.0.0.2:8888",
             HttpProxy.describeDevice(Result.success(HttpProxy("10.0.0.2", 8888))),
         )
         assertEquals(
-            "Device: unknown",
+            "Active proxy: unknown",
             HttpProxy.describeDevice(Result.failure(IllegalStateException("device went away"))),
             "a failed read must not be shown as a direct connection",
         )

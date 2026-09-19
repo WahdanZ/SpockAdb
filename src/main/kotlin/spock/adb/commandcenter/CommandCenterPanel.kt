@@ -13,17 +13,23 @@ import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import spock.adb.device.ConnectedDevice
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComboBox
 import javax.swing.JComponent
@@ -42,8 +48,21 @@ class CommandCenterPanel(
     private val history = CommandHistory()
     private val runner = CommandRunner()
 
-    private val commandField = JBTextField()
+    private val commandField = JBTextField().apply {
+        // The label to the left says `adb shell`; this says what goes after it.
+        emptyText.text = "pm list packages -3"
+    }
     private val historyCombo = JComboBox<String>()
+    private val favouritesCombo = JComboBox<String>()
+
+    /** The device the command will run on, beside the field rather than under the output. */
+    private val targetLabel = JBLabel(" ").apply {
+        setComponentStyle(UIUtil.ComponentStyle.SMALL)
+        setFontColor(UIUtil.FontColor.BRIGHTER)
+    }
+
+    /** Running, completed, failed or cancelled — beside the output it is about. */
+    private val runStateLabel = JBLabel(" ")
     private val output = JBTextArea().apply {
         isEditable = false
         lineWrap = false
@@ -52,13 +71,19 @@ class CommandCenterPanel(
     }
     private val runButton = JButton("Run")
     private val cancelButton = JButton("Cancel").apply { isEnabled = false }
-    private val favouriteButton = JButton("☆ Favourite")
+    private val favouriteButton = JButton("☆ Add to favourites")
     private val statusLabel = JBLabel(" ")
     private val dangerLabel = JBLabel(" ")
     private val searchField = JBTextField(SEARCH_COLUMNS)
 
     private var device: ConnectedDevice? = null
     private val outputBuffer = StringBuilder()
+
+    /** When the running command started, for the duration reported when it ends. */
+    private var startedAt = 0L
+
+    /** The exit status the command reported, or null when it never got to say. */
+    private var exitCode: Int? = null
 
     init {
         setToolbar(buildToolbar())
@@ -75,33 +100,55 @@ class CommandCenterPanel(
     // ---------------------------------------------------------------- layout
 
     private fun buildContent(): JComponent {
+        // Run stays beside the field; the rest wrap onto their own line, so a tool window
+        // docked at 300px shrinks the field rather than clipping the buttons off the edge.
+        commandField.minimumSize = java.awt.Dimension(0, commandField.preferredSize.height)
         val input = JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
             border = JBUI.Borders.empty(GAP, GAP, 0, GAP)
             add(JBLabel("adb shell"), BorderLayout.WEST)
             add(commandField, BorderLayout.CENTER)
-            add(
-                JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
-                    add(runButton)
-                    add(cancelButton)
-                    add(favouriteButton)
-                },
-                BorderLayout.EAST,
-            )
+            add(runButton, BorderLayout.EAST)
         }
 
-        val selectors = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
-            border = JBUI.Borders.empty(0, GAP, 2, GAP)
+        val actions = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+            border = JBUI.Borders.empty(2, GAP, 0, GAP)
+            add(cancelButton)
+            add(favouriteButton)
             add(JBLabel("History:"))
             add(historyCombo)
-            add(JBLabel("Find:"))
-            add(searchField)
+            add(JBLabel("Favourites:"))
+            add(favouritesCombo)
+        }
+
+        // The target sits with the command, not at the bottom of the panel: what a command is
+        // about to run against is part of reading the command.
+        val target = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(2, GAP, 0, GAP)
+            add(targetLabel, BorderLayout.WEST)
+        }
+
+        // Find searches the output, so it sits with the output rather than with the input.
+        val outputBar = JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
+            border = JBUI.Borders.empty(2, GAP)
+            add(
+                JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
+                    add(JBLabel("Find in output:"))
+                    add(searchField)
+                },
+                BorderLayout.WEST,
+            )
+            add(runStateLabel, BorderLayout.EAST)
         }
 
         return JPanel(BorderLayout()).apply {
             add(
-                JPanel(BorderLayout()).apply {
-                    add(input, BorderLayout.NORTH)
-                    add(selectors, BorderLayout.SOUTH)
+                JPanel().apply {
+                    layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
+                    listOf(input, actions, target, outputBar).forEach {
+                        it.alignmentX = LEFT_ALIGNMENT
+                        it.maximumSize = java.awt.Dimension(Int.MAX_VALUE, it.preferredSize.height)
+                        add(it)
+                    }
                 },
                 BorderLayout.NORTH,
             )
@@ -167,9 +214,10 @@ class CommandCenterPanel(
         )
         favouriteButton.addActionListener { toggleFavourite() }
         historyCombo.addActionListener {
-            (historyCombo.selectedItem as? String)
-                ?.removePrefix(FAVOURITE_PREFIX)
-                ?.let { commandField.text = it }
+            recall(historyCombo.selectedItem as? String)
+        }
+        favouritesCombo.addActionListener {
+            recall(favouritesCombo.selectedItem as? String)
         }
         searchField.registerKeyboardAction(
             { findNext() },
@@ -199,19 +247,70 @@ class CommandCenterPanel(
 
         runner.run(
             device = target.device,
-            command = command,
+            // The device is asked for the exit status in the same shell, because ddmlib's
+            // shell gives none: without this a command that failed and one that printed
+            // nothing look exactly alike. The marker line is consumed, not shown.
+            command = "$command; echo $EXIT_MARKER$?",
             timeoutSeconds = CommandRunner.DEFAULT_TIMEOUT_SECONDS,
             onLine = { line ->
-                ApplicationManager.getApplication().invokeLater({ appendLine(line) }) { project.isDisposed }
+                ApplicationManager.getApplication().invokeLater({ onOutput(line) }) { project.isDisposed }
             },
             onFinished = { failure ->
                 ApplicationManager.getApplication().invokeLater({
                     setRunning(false)
-                    statusLabel.text = failure?.let { "Failed: ${it.message}" } ?: "Done."
-                    if (failure != null) appendLine("[error] ${failure.message}")
+                    finish(failure)
                 }) { project.isDisposed }
             },
         )
+    }
+
+    /** Swallows the exit-status line the command was asked to print, and shows the rest. */
+    private fun onOutput(line: String) {
+        val code = line.trim().takeIf { it.startsWith(EXIT_MARKER) }?.removePrefix(EXIT_MARKER)?.toIntOrNull()
+        if (code != null) exitCode = code else appendLine(line)
+    }
+
+    /**
+     * What happened, beside the output: which of the four states it ended in, how long it took,
+     * and what the device made of it.
+     *
+     * "Done." covered a command that failed, one that was cancelled and one that worked.
+     */
+    private fun finish(failure: Throwable?) {
+        val elapsed = "%.1f s".format((System.currentTimeMillis() - startedAt) / MILLIS_PER_SECOND)
+        val code = exitCode
+        when {
+            failure != null -> {
+                showState("✗ Failed after $elapsed", ERROR)
+                statusLabel.text = "Failed: ${failure.message}"
+                appendLine("[error] ${failure.message}")
+            }
+            // No status came back: the shell never reached the echo, which is what cancelling
+            // it does — and what a timeout does too.
+            code == null -> {
+                showState("⊘ Stopped after $elapsed", JBColor.GRAY)
+                statusLabel.text = "The command was cancelled or timed out before it finished."
+            }
+            code == 0 -> {
+                showState("✓ Completed in $elapsed", SUCCESS)
+                statusLabel.text = "Done."
+            }
+            else -> {
+                showState("✗ Exit $code after $elapsed", ERROR)
+                statusLabel.text = "The command exited with status $code."
+            }
+        }
+    }
+
+    private fun showState(text: String, colour: JBColor) {
+        runStateLabel.text = text
+        runStateLabel.foreground = colour
+    }
+
+    /** Puts a remembered command back in the field without running it. */
+    private fun recall(chosen: String?) {
+        val command = chosen?.substringAfter(ENTRY_SEPARATOR, chosen)?.trim() ?: return
+        if (command.isNotEmpty()) commandField.text = command
     }
 
     /**
@@ -245,24 +344,41 @@ class CommandCenterPanel(
         val command = commandField.text.trim()
         if (command.isEmpty()) return
         val added = history.toggleFavourite(command)
-        favouriteButton.text = if (added) "★ Favourite" else "☆ Favourite"
+        favouriteButton.text = if (added) "★ Remove from favourites" else "☆ Add to favourites"
         refreshHistory()
         statusLabel.text = if (added) "Added to favourites." else "Removed from favourites."
     }
 
+    /**
+     * The two lists, each in its own dropdown.
+     *
+     * Favourites used to be a starred handful at the top of the same list as fifty recent
+     * commands — saved in one click and then hunted for.
+     */
     private fun refreshHistory() {
-        val items = buildList {
-            history.favourites().forEach { add("$FAVOURITE_PREFIX$it") }
-            history.recent().forEach { add(it) }
-        }
-        historyCombo.model = javax.swing.DefaultComboBoxModel(items.toTypedArray())
+        // The time is what tells two runs of the same command apart, and where in the session
+        // it happened; the command itself follows it.
+        val recent = history.recent().map { "${TIME_FORMAT.format(Date(it.at))}$ENTRY_SEPARATOR${it.command}" }
+        historyCombo.model = DefaultComboBoxModel(recent.toTypedArray())
         historyCombo.selectedIndex = -1
+
+        val favourites = history.favourites()
+        favouritesCombo.model = DefaultComboBoxModel(favourites.toTypedArray())
+        favouritesCombo.selectedIndex = -1
+        favouritesCombo.isEnabled = favourites.isNotEmpty()
+        favouritesCombo.toolTipText =
+            if (favourites.isEmpty()) "Nothing saved yet — press Add to favourites" else "Saved commands"
     }
 
     private fun setRunning(running: Boolean) {
         runButton.isEnabled = !running
         cancelButton.isEnabled = running
-        statusLabel.text = if (running) "Running…" else statusLabel.text
+        if (running) {
+            startedAt = System.currentTimeMillis()
+            exitCode = null
+            showState("● Running…", JBColor.GRAY)
+            statusLabel.text = "Running…"
+        }
     }
 
     private var showingHint = true
@@ -334,7 +450,10 @@ class CommandCenterPanel(
     }
 
     private fun updateStatus() {
-        statusLabel.text = device?.let { "Target: ${it.info.describe()}" } ?: "No device selected."
+        val target = device
+        targetLabel.text = target?.let { "Runs on ${it.info.describe()}" } ?: "No device selected"
+        statusLabel.text = if (target == null) "No device selected." else statusLabel.text
+        runButton.isEnabled = target != null && !runner.isRunning
     }
 
     override fun dispose() = runner.cancel()
@@ -342,7 +461,18 @@ class CommandCenterPanel(
     private companion object {
         const val MAX_OUTPUT_CHARS = 2_000_000
         const val SEARCH_COLUMNS = 16
-        const val FAVOURITE_PREFIX = "★  "
+
+        /** Separates a history entry's time from the command it belongs to. */
+        const val ENTRY_SEPARATOR = "   "
+
+        /** What the command is asked to print its exit status as, on a line of its own. */
+        const val EXIT_MARKER = "__spock_exit="
+
+        const val MILLIS_PER_SECOND = 1000.0
+
+        val TIME_FORMAT = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
+        val SUCCESS = JBColor(0x1F6F4A, 0x57BA8C)
+        val ERROR = JBColor(0xB3261E, 0xF2857C)
 
         val EMPTY_OUTPUT_HINT = """
             Type an adb shell command above and press Run.
