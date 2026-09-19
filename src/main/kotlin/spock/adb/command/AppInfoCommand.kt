@@ -64,7 +64,11 @@ class AppInfoCommand : Command<String, AppInfo> {
 
     override fun execute(p: String, project: Project, device: IDevice): AppInfo {
         ShellQuote.requireValidComponent(p, "Package name")
-        return AppInfo.parse(p, device.shell("dumpsys package ${ShellQuote.quote(p)}"), device.shell("pidof $p"))
+        // Both arguments quoted. `requireValidComponent` deliberately allows `$`, for component
+        // names, so an unquoted package containing one is expanded by the shell before `pidof`
+        // ever sees it — and answers for whatever process that expansion happened to name.
+        val quoted = ShellQuote.quote(p)
+        return AppInfo.parse(p, device.shell("dumpsys package $quoted"), device.shell("pidof $quoted"))
     }
 
     private fun IDevice.shell(command: String): String {

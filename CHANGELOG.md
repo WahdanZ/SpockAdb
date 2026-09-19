@@ -204,6 +204,21 @@
   re-tuned the next time something is added above the panel. Stacked, the details pane also
   took its preferred height — for a pretty-printed response, most of the panel — and squeezed
   out the list it was explaining; it is capped now
+- **Half of an app's runtime permissions were invisible, and Grant all granted half of them.**
+  The permission reader filtered what the device reported against a list of names written into
+  the plugin — the dangerous permissions as they stood in Android 6 — so every runtime
+  permission added since was silently dropped: `POST_NOTIFICATIONS`, the whole `READ_MEDIA_*`
+  family, the Android 12 Bluetooth permissions, `ACCESS_BACKGROUND_LOCATION`,
+  `ACTIVITY_RECOGNITION`. On an API 34 emulator that is fifteen of the thirty-two permissions
+  Chrome holds. The match was a substring one as well, so a custom `com.example.permission.CAMERA`
+  counted as the Android permission of that name. The filtering is gone: `dumpsys package` has a
+  `runtime permissions:` section, which is the device itself saying which of the app's
+  permissions are runtime ones, current for whatever Android it is running. **Manage
+  permissions** now lists all of them and **Grant all** grants all of them
+- **The package name reached `pidof` unquoted.** `dumpsys` was given a quoted argument and
+  `pidof` was not, and the validator deliberately allows `$` because component names contain
+  it — so a package with a `$` in its name was expanded by the shell first, and the card
+  reported whatever process that expansion happened to name
 - **The Wi-Fi and mobile data buttons could be dead without looking it.** The row took the
   button's enabled state from the read that fills its label in, so every path where that read
   did not land — the row attached after the device list had already been published, a read

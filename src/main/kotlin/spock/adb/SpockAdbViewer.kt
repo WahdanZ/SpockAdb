@@ -95,6 +95,9 @@ class SpockAdbViewer(
      * The tab offered Grant all and Revoke all with no way to see what the app had, so the
      * answer to "did that take?" was to open the dialog and read a list.
      */
+    /** Started and answered on the EDT, so a slow count cannot label a later app. */
+    private val permissionReads = LatestRequest()
+
     private val permissionSummary = JBLabel(" ").apply {
         setFontColor(UIUtil.FontColor.BRIGHTER)
         border = JBUI.Borders.empty(2, 0)
@@ -264,12 +267,16 @@ class SpockAdbViewer(
 
     private fun refreshPermissionSummary() {
         val device = selectedDevice
+        // Taken before the early return, so a refresh that reads nothing still retires one in
+        // flight rather than letting its answer land on a line about another app.
+        val request = permissionReads.begin()
         if (device == null || !isOn(SpockAction.PERMISSIONS)) {
             permissionSummary.text = " "
             return
         }
         permissionSummary.text = "Reading permissions…"
         adbController.permissionSummary(device.device) { result ->
+            if (!permissionReads.isLatest(request)) return@permissionSummary
             permissionSummary.text = result.getOrNull()?.describe() ?: " "
         }
     }
@@ -500,14 +507,15 @@ class SpockAdbViewer(
             selectedIDevice?.let { device ->
                 adbController.getApplicationPermissions(device) { list ->
                     val dialog = CheckBoxDialog(list) { selectedItem ->
-                        if (selectedItem.isSelected)
-                            adbController.grantPermission(device, selectedItem)
-                        else
-                            adbController.revokePermission(device, selectedItem)
+                        // Every change is read back: the count on the card is about to be wrong.
+                        if (selectedItem.isSelected) {
+                            adbController.grantPermission(device, selectedItem) { refreshPermissionSummary() }
+                        } else {
+                            adbController.revokePermission(device, selectedItem) { refreshPermissionSummary() }
+                        }
                     }
                     dialog.pack()
                     dialog.isVisible = true
-
                 }
             }
         }
@@ -516,8 +524,7 @@ class SpockAdbViewer(
                 adbController.grantOrRevokeAllPermissions(
                     device,
                     GetApplicationPermission.PermissionOperation.GRANT,
-
-                    )
+                ) { refreshPermissionSummary() }
             }
         }
         revokeAllPermissionsButton.addActionListener {
@@ -526,7 +533,7 @@ class SpockAdbViewer(
                     adbController.grantOrRevokeAllPermissions(
                         device,
                         GetApplicationPermission.PermissionOperation.REVOKE,
-                    )
+                    ) { refreshPermissionSummary() }
                 }
             }
         }

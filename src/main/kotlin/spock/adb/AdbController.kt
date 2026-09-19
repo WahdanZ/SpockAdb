@@ -59,9 +59,21 @@ interface AdbController {
     fun clearAppCache(device: IDevice)
     fun uninstallApp(device: IDevice)
     fun getApplicationPermissions(device: IDevice, block: (devices: List<ListItem>) -> Unit)
-    fun grantOrRevokeAllPermissions(device: IDevice, permissionOperation: GetApplicationPermission.PermissionOperation)
-    fun revokePermission(device: IDevice, listItem: ListItem)
-    fun grantPermission(device: IDevice, listItem: ListItem)
+
+    /**
+     * Grants or revokes every runtime permission, then calls [onDone] on the EDT.
+     *
+     * The callback is what lets a panel showing how many permissions the app holds read that
+     * number again: without it the count on screen was the one from before the change.
+     */
+    fun grantOrRevokeAllPermissions(
+        device: IDevice,
+        permissionOperation: GetApplicationPermission.PermissionOperation,
+        onDone: () -> Unit = {},
+    )
+
+    fun revokePermission(device: IDevice, listItem: ListItem, onDone: () -> Unit = {})
+    fun grantPermission(device: IDevice, listItem: ListItem, onDone: () -> Unit = {})
     fun connectDeviceOverIp(ip: String)
     fun enableDisableDontKeepActivities(device: IDevice)
     fun enableDisableShowTaps(device: IDevice)

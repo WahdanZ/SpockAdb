@@ -388,8 +388,9 @@ class AdbControllerImp(
     override fun grantOrRevokeAllPermissions(
         device: IDevice,
         permissionOperation: GetApplicationPermission.PermissionOperation,
+        onDone: () -> Unit,
     ) {
-        execute {
+        execute(onDone) {
             val applicationID = getApplicationID(device)
             val permissions = GetApplicationPermission().execute(applicationID, project, device)
             if (permissions.isEmpty()) {
@@ -412,9 +413,9 @@ class AdbControllerImp(
     override fun revokePermission(
         device: IDevice,
         listItem: ListItem,
-
-        ) {
-        execute {
+        onDone: () -> Unit,
+    ) {
+        execute(onDone) {
             val applicationID = getApplicationID(device)
             RevokePermissionCommand().execute(applicationID, listItem, project, device)
             showSuccess("permission $listItem revoked")
@@ -424,9 +425,9 @@ class AdbControllerImp(
     override fun grantPermission(
         device: IDevice,
         listItem: ListItem,
-
-        ) {
-        execute {
+        onDone: () -> Unit,
+    ) {
+        execute(onDone) {
             val applicationID = getApplicationID(device)
             GrantPermissionCommand().execute(applicationID, listItem, project, device)
             showSuccess("permission $listItem granted")
