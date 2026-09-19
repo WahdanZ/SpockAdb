@@ -514,6 +514,35 @@ class AdbControllerImp(
         }
     }
 
+    override fun wifiStatus(device: IDevice, block: (status: Result<WifiStatus>) -> Unit) =
+        read(block) { WifiStatusCommand().execute(Any(), project, device) }
+
+    override fun appInfo(device: IDevice, block: (info: Result<AppInfo>) -> Unit) =
+        read(block) { AppInfoCommand().execute(getApplicationID(device), project, device) }
+
+    override fun permissionSummary(device: IDevice, block: (summary: Result<PermissionSummary>) -> Unit) =
+        read(block) {
+            val permissions = GetApplicationPermission().execute(getApplicationID(device), project, device)
+            PermissionSummary(
+                granted = permissions.count { it.isSelected },
+                denied = permissions.count { !it.isSelected },
+            )
+        }
+
+    /**
+     * Reads something from the device on a pooled thread and answers on the EDT.
+     *
+     * A read rather than an action: nothing is reported to the user and nothing is logged,
+     * because the caller is filling in a label and a device that cannot answer should leave it
+     * empty rather than raise a balloon.
+     */
+    private fun <T> read(block: (Result<T>) -> Unit, work: () -> T) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val result = runCatching(work)
+            onEdt { block(result) }
+        }
+    }
+
     override fun networkState(device: IDevice, network: Network, block: (state: Result<NetworkState>) -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
             val state = runCatching { device.getNetworkState(network) }

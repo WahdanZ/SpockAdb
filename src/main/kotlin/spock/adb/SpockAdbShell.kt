@@ -195,6 +195,7 @@ class SpockAdbShell(
     private fun selectApp(packageName: String) {
         controller.selectedApp = packageName
         storage.setApp(packageName)
+        devices.setApp()
     }
 
     private fun persistedSerial(): String? =

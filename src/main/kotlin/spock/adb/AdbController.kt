@@ -1,10 +1,12 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
+import spock.adb.command.AppInfo
 import spock.adb.command.GetApplicationPermission
 import spock.adb.command.HttpProxy
 import spock.adb.command.Network
 import spock.adb.command.NetworkState
+import spock.adb.command.WifiStatus
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.ListItem
 
@@ -76,6 +78,15 @@ interface AdbController {
      */
     fun toggleNetwork(device: IDevice, network: Network, onDone: () -> Unit = {})
 
+    /** Whether Wi-Fi is on and which network it is on. Answered on the EDT. */
+    fun wifiStatus(device: IDevice, block: (status: Result<WifiStatus>) -> Unit)
+
+    /** The selected app's version, UID and whether it is running. Answered on the EDT. */
+    fun appInfo(device: IDevice, block: (info: Result<AppInfo>) -> Unit)
+
+    /** How many of the app's runtime permissions are granted. Answered on the EDT. */
+    fun permissionSummary(device: IDevice, block: (summary: Result<PermissionSummary>) -> Unit)
+
     /** Whether [network] is on, off, or could not be asked. Answered on the EDT. */
     fun networkState(device: IDevice, network: Network, block: (state: Result<NetworkState>) -> Unit)
     fun inputOnDevice(input: String, device: IDevice)
@@ -93,4 +104,16 @@ interface AdbController {
      * or with a failure when the device could not be read.
      */
     fun currentHttpProxy(device: IDevice, block: (read: Result<HttpProxy?>) -> Unit)
+}
+
+/**
+ * How many of an app's runtime permissions it actually holds.
+ *
+ * The tab offered Grant all and Revoke all with no way to see what the app had, so the answer
+ * to "did that take?" was to open the dialog and read a list.
+ */
+data class PermissionSummary(val granted: Int, val denied: Int) {
+    val total: Int get() = granted + denied
+
+    fun describe(): String = if (total == 0) "No runtime permissions" else "$granted granted / $denied denied"
 }

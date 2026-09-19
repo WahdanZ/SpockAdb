@@ -55,7 +55,9 @@ class NetworkToggleRow(
         maximumSize = Dimension(Int.MAX_VALUE, button.preferredSize.height + JBUI.scale(GAP))
         border = JBUI.Borders.emptyTop(2)
         // Both rows line up: without a fixed width the state sits wherever the title ends.
+        // Wide enough for "Connected (SomeNetwork)" before it elides.
         state.preferredSize = Dimension(JBUI.scale(STATE_WIDTH), state.preferredSize.height)
+        state.minimumSize = Dimension(0, state.preferredSize.height)
         button.preferredSize = Dimension(JBUI.scale(BUTTON_WIDTH), button.preferredSize.height)
 
         add(JBLabel(title), BorderLayout.WEST)
@@ -109,30 +111,46 @@ class NetworkToggleRow(
         if (controller == null || target == null || !isVisible) return showState(null)
 
         state.text = READING_TEXT
-        controller.networkState(target.device, network) { read ->
-            if (!reads.isLatest(request)) return@networkState
-            showState(read.getOrNull())
+        // Wi-Fi is asked what network it is on, not just whether the radio is up: an enabled
+        // radio with no connection read exactly like one on the office network.
+        if (network == Network.WIFI) {
+            controller.wifiStatus(target.device) { read ->
+                if (!reads.isLatest(request)) return@wifiStatus
+                val status = read.getOrNull()
+                render(status?.enabled, status?.describe())
+            }
+        } else {
+            controller.networkState(target.device, network) { read ->
+                if (!reads.isLatest(request)) return@networkState
+                showState(read.getOrNull())
+            }
         }
     }
 
-    private fun showState(read: NetworkState?) {
-        state.text = when (read) {
-            NetworkState.ENABLED -> ON_TEXT
-            NetworkState.DISABLED -> OFF_TEXT
+    private fun showState(read: NetworkState?) = render(
+        enabled = read?.let { it == NetworkState.ENABLED },
+        text = null,
+    )
+
+    /**
+     * @param enabled null when the device could not be asked, which is not the same as off.
+     * @param text what to show instead of a plain On or Off — the network Wi-Fi is joined to.
+     */
+    private fun render(enabled: Boolean?, text: String?) {
+        state.text = text ?: when (enabled) {
+            true -> ON_TEXT
+            false -> OFF_TEXT
             null -> UNKNOWN_TEXT
         }
-        state.foreground = when (read) {
-            NetworkState.ENABLED -> ON_COLOUR
-            else -> UIUtil.getContextHelpForeground()
-        }
-        button.text = when (read) {
-            NetworkState.ENABLED -> "Turn off"
-            NetworkState.DISABLED -> "Turn on"
+        state.foreground = if (enabled == true) ON_COLOUR else UIUtil.getContextHelpForeground()
+        button.text = when (enabled) {
+            true -> "Turn off"
+            false -> "Turn on"
             null -> TOGGLE_TEXT
         }
-        button.toolTipText = when (read) {
-            NetworkState.ENABLED -> "Switch this connection off on the device"
-            NetworkState.DISABLED -> "Switch this connection on on the device"
+        button.toolTipText = when (enabled) {
+            true -> "Switch this connection off on the device"
+            false -> "Switch this connection on on the device"
             // The button still works when the read failed: it toggles whatever the device holds.
             null -> "Switch this connection on or off; the device could not be asked what it is set to"
         }
@@ -151,7 +169,7 @@ class NetworkToggleRow(
 
     private companion object {
         const val GAP = 4
-        const val STATE_WIDTH = 60
+        const val STATE_WIDTH = 150
         const val BUTTON_WIDTH = 90
 
         const val ON_TEXT = "On"

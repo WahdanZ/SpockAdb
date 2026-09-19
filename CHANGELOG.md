@@ -65,6 +65,21 @@
 
 ### Changed
 
+- **The Device tab is cards, and it says what the app actually is.** Seven titled separators
+  read as one long list, so the grouping had to be read before it could be seen; each group is
+  now a card with a heading and an icon, still collapsible and still remembering what you
+  collapsed. They lay out in as many columns as the width allows — one in a tool window docked
+  at 300px, two or three in a wide one, where a single column left the right-hand half empty.
+  A new **App information** card answers which app the header is naming: package, version and
+  build, UID, and whether it is running — a debug build and a release one look identical by name
+  alone, and "not running" is what explains why Force stop appeared to do nothing. **Permissions**
+  now says `8 granted / 2 denied` above its buttons, where the only way to see what the app held
+  was to open the dialog and read a list. **Wi-Fi** names the network it is joined to rather than
+  only saying the radio is on — an enabled radio with no connection read exactly like the office
+  network. Destructive is **Danger zone**, and the three actions that destroy something are
+  outlined in red rather than looking like the four beside them. Quick actions starts with
+  Restart app, Attach debugger and Current activity pinned, so the row is useful before anybody
+  has pinned anything; pin or unpin once and your list is the list
 - **One tool window instead of seven tabs that each found their own way to a device.** The
   plugin registered six IDE content tabs; the Devices tab owned the device dropdown and pushed
   its choice at the others, so Logcat, Commands and the UI Inspector showed no sign of what they

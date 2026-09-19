@@ -44,7 +44,7 @@ internal class QuickActionsBar(
     /** Where a drag started, as an index into [pinned]; -1 when nothing is being dragged. */
     private var draggingFrom = -1
 
-    var pinned: List<QuickAction> = settings.pinnedActions()
+    var pinned: List<QuickAction> = settings.pinnedActions().ifEmpty { defaultPins() }
         private set
 
     /**
@@ -55,6 +55,9 @@ internal class QuickActionsBar(
      */
     private val needsHint: Boolean
         get() = pinned.isEmpty() && !properties.getBoolean(HAS_PINNED_KEY, false)
+
+    /** True once the developer has chosen for themselves, after which the defaults are gone. */
+    private val chosen: Boolean get() = properties.getBoolean(HAS_PINNED_KEY, false)
 
     /** Whether there is anything to show: an empty row with no hint left is not a section. */
     val hasContent: Boolean get() = pinned.isNotEmpty() || needsHint
@@ -136,6 +139,20 @@ internal class QuickActionsBar(
         isEnabled = enabled
         addActionListener { onClick() }
     }
+
+    /**
+     * What is pinned before anybody has pinned anything.
+     *
+     * An empty Quick actions row explaining itself is a worse first impression than the three
+     * actions almost everyone reaches for; these are the ones the rest of the tab is arranged
+     * around. Once the developer pins or unpins anything, their list is the list.
+     */
+    private fun defaultPins(): List<QuickAction> =
+        if (chosen) {
+            emptyList()
+        } else {
+            listOf(QuickAction.RESTART_APP, QuickAction.ATTACH_DEBUGGER, QuickAction.CURRENT_ACTIVITY)
+        }
 
     private fun save(next: List<QuickAction>) {
         pinned = next

@@ -1,6 +1,7 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.ui.DocumentAdapter
@@ -14,10 +15,12 @@ import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.CheckBoxDialog
 import spock.adb.ui.CollapsibleSection
+import spock.adb.ui.ColumnsLayout
 import spock.adb.ui.VerticallyScrollablePanel
 import java.awt.BorderLayout
 import java.awt.GridLayout
 import javax.swing.*
+import javax.swing.Icon
 import javax.swing.event.DocumentEvent
 
 class SpockAdbViewer(
@@ -84,6 +87,19 @@ class SpockAdbViewer(
     /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
     private val adbWifi = JButton()
 
+    private val appInfoCard = AppInfoCard()
+
+    /**
+     * How many runtime permissions the app holds.
+     *
+     * The tab offered Grant all and Revoke all with no way to see what the app had, so the
+     * answer to "did that take?" was to open the dialog and read a list.
+     */
+    private val permissionSummary = JBLabel(" ").apply {
+        setFontColor(UIUtil.FontColor.BRIGHTER)
+        border = JBUI.Borders.empty(2, 0)
+    }
+
     /** Every action that can be pinned, and the button that runs it. */
     private val pinnable: Map<QuickAction, JButton> = mapOf(
         QuickAction.CURRENT_ACTIVITY to currentActivityButton,
@@ -135,7 +151,7 @@ class SpockAdbViewer(
             ),
         ),
         ActionGroup(
-            "Destructive",
+            "Danger zone",
             "destructive",
             listOf(
                 QuickAction.CLEAR_DATA,
@@ -143,6 +159,7 @@ class SpockAdbViewer(
                 QuickAction.CLEAR_DATA_AND_RESTART,
                 QuickAction.UNINSTALL,
             ),
+            AllIcons.General.Warning,
         ),
         ActionGroup(
             "Permissions",
@@ -152,6 +169,8 @@ class SpockAdbViewer(
                 QuickAction.GRANT_ALL_PERMISSIONS,
                 QuickAction.REVOKE_ALL_PERMISSIONS,
             ),
+            AllIcons.Actions.Lightning,
+            permissionSummary,
         ),
     )
 
@@ -171,15 +190,36 @@ class SpockAdbViewer(
     }
 
     /** A section of nothing but action buttons: its heading, and the grid they are filled into. */
-    private inner class ActionGroup(val title: String, val key: String, val actions: List<QuickAction>) {
-        val content: JPanel = JPanel(GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP))).apply {
+    private inner class ActionGroup(
+        val title: String,
+        val key: String,
+        val actions: List<QuickAction>,
+        val icon: Icon? = null,
+        /** Shown above the buttons, for a group that can say something about the app. */
+        val summary: JBLabel? = null,
+    ) {
+        private val grid: JPanel = JPanel(GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP))).apply {
             border = JBUI.Borders.empty(GAP, 0)
         }
+
+        val content: JPanel = JPanel(BorderLayout()).apply {
+            summary?.let { add(it, BorderLayout.NORTH) }
+            add(grid, BorderLayout.CENTER)
+        }
+
         lateinit var section: CollapsibleSection
+
+        fun fillGrid(buttons: List<JButton>) {
+            grid.removeAll()
+            buttons.forEach { grid.add(it) }
+            // An odd count leaves the last button on its own row rather than stretched across two.
+            if (buttons.size % COLUMNS != 0) grid.add(JPanel())
+        }
     }
 
     // Sections, so a group whose actions are all switched off hides its heading too.
     private lateinit var quickSection: CollapsibleSection
+    private lateinit var appInfoSection: CollapsibleSection
     private lateinit var developerSection: CollapsibleSection
     private lateinit var networkSection: CollapsibleSection
     private lateinit var sendSection: CollapsibleSection
@@ -194,6 +234,7 @@ class SpockAdbViewer(
     fun setDevice(connected: ConnectedDevice?) {
         selectedDevice = connected
         refreshDeviceState()
+        refreshAppState()
     }
 
     /**
@@ -204,6 +245,33 @@ class SpockAdbViewer(
      */
     fun onShown() {
         refreshDeviceState()
+        refreshAppState()
+    }
+
+    /** The app chosen in the tool window's header changed, so what this tab says about it has. */
+    fun setApp() {
+        refreshAppState()
+    }
+
+    /**
+     * Re-reads what the tab says about the app: its version and UID, and how many permissions
+     * it holds. Both are the app's state, not the plugin's.
+     */
+    private fun refreshAppState() {
+        appInfoCard.refresh()
+        refreshPermissionSummary()
+    }
+
+    private fun refreshPermissionSummary() {
+        val device = selectedDevice
+        if (device == null || !isOn(SpockAction.PERMISSIONS)) {
+            permissionSummary.text = " "
+            return
+        }
+        permissionSummary.text = "Reading permissions…"
+        adbController.permissionSummary(device.device) { result ->
+            permissionSummary.text = result.getOrNull()?.describe() ?: " "
+        }
     }
 
     /** Opens the dialog that chooses which actions this tab shows. Driven from the header's gear. */
@@ -283,21 +351,22 @@ class SpockAdbViewer(
             prepare(button)
             quickActions.install(action, button)
         }
+        markDestructive(clearAppDataButton, clearAppDataAndRestartButton, uninstallAppButton)
         // First, because that is what pinning one is for.
-        quickSection = section("Quick actions", "quick", quickActions)
-        groups.forEach { group -> group.section = section(group.title, group.key, group.content) }
-        developerSection = section("Developer options", "developer", developerOptions)
-        networkSection = section("Network", "network", networkContent())
-        sendSection = section("Send to device", "send", sendContent())
+        quickSection = section("Quick actions", "quick", quickActions, AllIcons.Actions.Lightning)
+        appInfoSection = section("App information", "appinfo", appInfoCard, AllIcons.Actions.Show)
+        groups.forEach { group -> group.section = section(group.title, group.key, group.content, group.icon) }
+        developerSection = section("Developer options", "developer", developerOptions, AllIcons.General.Settings)
+        networkSection = section("Device connectivity", "network", networkContent(), AllIcons.General.Web)
+        sendSection = section("Send to device", "send", sendContent(), AllIcons.Actions.Upload)
 
         val sections = allSections()
-        sectionColumn = VerticallyScrollablePanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        // One column when docked narrow, more when there is room: seven cards of buttons run a
+        // long way down a wide window with the right-hand half of it empty.
+        sectionColumn = VerticallyScrollablePanel(ColumnsLayout()).apply {
             border = JBUI.Borders.empty(GAP)
             sections.forEach { add(it) }
             add(noMatches)
-            // Absorbs the slack so the sections stay at the top instead of stretching.
-            add(Box.createVerticalGlue())
         }
         return sectionColumn
     }
@@ -310,8 +379,8 @@ class SpockAdbViewer(
     }
 
     private fun allSections(): List<CollapsibleSection> =
-        listOf(quickSection) + groups.map { it.section } +
-            listOf(developerSection, networkSection, sendSection)
+        listOf(quickSection, appInfoSection) + groups.map { it.section } +
+            listOf(networkSection, developerSection, sendSection)
 
     /** Field plus its action button, so the text and what it does stay adjacent. */
     private fun sendContent(): JPanel = JPanel().apply {
@@ -352,8 +421,8 @@ class SpockAdbViewer(
             add(button, BorderLayout.EAST)
         }
 
-    private fun section(title: String, key: String, content: JPanel): CollapsibleSection =
-        CollapsibleSection(title, content, key).apply {
+    private fun section(title: String, key: String, content: JPanel, icon: Icon? = null): CollapsibleSection =
+        CollapsibleSection(title, content, key, icon = icon).apply {
             alignmentX = LEFT_ALIGNMENT
         }
 
@@ -475,6 +544,7 @@ class SpockAdbViewer(
         openDeepLinkTextField.addActionListener { openDeepLinkButton.doClick() }
 
         developerOptions.attach(adbController) { selectedDevice }
+        appInfoCard.attach(adbController) { selectedDevice }
         httpProxyRow.attach(adbController) { selectedDevice }
         wifiRow.attach(adbController) { selectedDevice }
         mobileDataRow.attach(adbController) { selectedDevice }
@@ -492,6 +562,17 @@ class SpockAdbViewer(
         wifiRow.refresh()
         mobileDataRow.refresh()
         developerOptions.refresh()
+    }
+
+    /** Red on the two actions that destroy something, so they are not read as the four beside them. */
+    private fun markDestructive(vararg buttons: JButton) {
+        buttons.forEach { button ->
+            button.foreground = DESTRUCTIVE
+            button.border = JBUI.Borders.compound(
+                com.intellij.ui.RoundedLineBorder(DESTRUCTIVE, JBUI.scale(BUTTON_ARC), 1),
+                JBUI.Borders.empty(2, GAP),
+            )
+        }
     }
 
     /**
@@ -560,6 +641,7 @@ class SpockAdbViewer(
         val searching = searchQuery.isNotBlank()
         // While searching, an empty Quick actions row is noise; its hint is not what was asked for.
         quickSection.setSectionVisible(pinnedButtons.isNotEmpty() || (!searching && quickActions.hasContent))
+        appInfoSection.setSectionVisible(shown(SpockAction.APP_INFO, APP_INFO_TERMS))
         developerSection.setSectionVisible(shown(SpockAction.DEVELOPER_OPTIONS, DEVELOPER_TERMS))
         networkSection.setSectionVisible(networkToggles.isVisible || httpProxyRow.isVisible)
         sendSection.setSectionVisible(inputRow.isVisible || deepLinkRow.isVisible)
@@ -580,10 +662,7 @@ class SpockAdbViewer(
         val buttons = group.actions
             .filter { it !in quickActions.pinned && pinnable.getValue(it).isVisible }
             .map { pinnable.getValue(it) }
-        group.content.removeAll()
-        buttons.forEach { group.content.add(it) }
-        // An odd count leaves the last button on its own row rather than stretched across two.
-        if (buttons.size % COLUMNS != 0) group.content.add(JPanel())
+        group.fillGrid(buttons)
         group.section.setSectionVisible(buttons.isNotEmpty())
     }
 
@@ -591,9 +670,12 @@ class SpockAdbViewer(
         const val TOOL_WINDOW_ID = "Spock ADB"
         const val GAP = 4
         const val COLUMNS = 2
+        const val BUTTON_ARC = 6
+        val DESTRUCTIVE = com.intellij.ui.JBColor(0xB3261E, 0xF2857C)
         const val NO_DEVICES_LABEL = "No devices connected"
 
         // What a search matches a whole section on, since these hold no action buttons to match.
+        const val APP_INFO_TERMS = "app information package name version process uid identity build"
         const val DEVELOPER_TERMS = "developer options don't keep activities show taps layout bounds " +
             "window transition animator animation duration scale"
         const val NETWORK_TERMS = "network wifi wi-fi mobile data connection"
