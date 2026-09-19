@@ -51,11 +51,18 @@ interface PrefsFormat {
 /**
  * Keys written by Jetpack Security's EncryptedSharedPreferences. Every other key and value in
  * such a file is ciphertext, and editing it would only produce something the app cannot decrypt.
+ *
+ * The two keyset entries are matched by name rather than by their shared prefix: a preference
+ * key is any string the app likes, and one that merely begins that way would otherwise make a
+ * perfectly ordinary file read-only.
  */
 fun List<PrefItem>.isEncryptedPreferences(): Boolean =
-    any { it.key.startsWith(ENCRYPTED_PREFS_KEY_PREFIX) }
+    any { it.key in ENCRYPTED_PREFS_KEYSET_KEYS }
 
-private const val ENCRYPTED_PREFS_KEY_PREFIX = "__androidx_security_crypto_encrypted_prefs_"
+private val ENCRYPTED_PREFS_KEYSET_KEYS = setOf(
+    "__androidx_security_crypto_encrypted_prefs_key_keyset__",
+    "__androidx_security_crypto_encrypted_prefs_value_keyset__",
+)
 
 /**
  * Applies [changes] to a format's own entries, in order, keeping everything else in place.

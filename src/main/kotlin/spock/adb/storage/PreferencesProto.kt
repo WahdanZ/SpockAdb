@@ -236,6 +236,9 @@ private const val VARINT_PAYLOAD_MASK = 0x7fL
 private const val VARINT_CONTINUATION = 0x80L
 private const val BYTE_MASK = 0xffL
 
+/** The shift the tenth byte of a varint lands on: only its lowest bit is still inside 64 bits. */
+private const val LAST_VARINT_SHIFT = 63
+
 /**
  * Reads protobuf wire format from a window of [bytes], refusing anything malformed.
  *
@@ -266,7 +269,11 @@ internal class WireReader(private val bytes: ByteArray, start: Int, private val 
         var shift = 0
         while (shift < Long.SIZE_BITS) {
             val byte = next().toLong() and BYTE_MASK
-            result = result or ((byte and VARINT_PAYLOAD_MASK) shl shift)
+            val payload = byte and VARINT_PAYLOAD_MASK
+            // Only one bit of the tenth byte fits in 64. Accepting more would silently discard
+            // it, reading a malformed value as a valid one rather than refusing the file.
+            if (shift == LAST_VARINT_SHIFT && payload > 1L) fail("a varint does not fit in 64 bits")
+            result = result or (payload shl shift)
             if (byte and VARINT_CONTINUATION == 0L) return result
             shift += VARINT_PAYLOAD_BITS
         }

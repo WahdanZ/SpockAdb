@@ -400,10 +400,18 @@ class AppStoragePanel(
             // A write that landed but did not read back still replaced the file, so it can be undone.
             val unverified = result.exceptionOrNull() as? AppStorageUnverifiedWriteException
             val previous = write?.previous ?: unverified?.previous
+            // What the device holds now: the bytes sent, or — when the write could not be
+            // verified — the bytes that came back. Undo writes [previous] over exactly this, so
+            // without it there is nothing to check the file against and undo is not offered.
+            val onDevice = if (write != null) content else unverified?.written
             if (previous != null) {
-                lastWrite = if (undoable) UndoPoint(target.serialNumber, packageName, file, previous, content) else null
+                lastWrite = if (undoable && onDevice != null) {
+                    UndoPoint(target.serialNumber, packageName, file, previous, onDevice)
+                } else {
+                    null
+                }
             }
-            val message = write?.let { "$done ${afterWrite(it, restart, packageName)}" }
+            val message = write?.let { "$done ${afterWrite(it, restart, packageName)}${warningOf(it)}" }
                 ?: result.exceptionOrNull()?.message
                 ?: "Could not write ${file.path}."
             // Shows what the device now holds, not what was sent — unless the tab has moved on meanwhile.
@@ -455,7 +463,14 @@ class AppStoragePanel(
         packageName: String,
         current: PrefsEditSession,
     ) {
+        // Reading the file is a background step, and the discard prompt has already been
+        // answered: edits made while it runs would be thrown away by the reopen that follows,
+        // without ever being offered. The table is closed for the duration instead.
+        busy = true
+        updateControls()
         background({ contentsOf(chosen) }) { result ->
+            busy = false
+            updateControls()
             val bytes = result.getOrElse { return@background status(it.message ?: "Could not read ${chosen.name}.") }
             if (!isStillShowing(target, packageName) || session !== current) {
                 return@background status(
@@ -597,6 +612,9 @@ private fun contentsOf(file: VirtualFile): ByteArray {
     }
     return file.contentsToByteArray()
 }
+
+/** A staged copy the device would not remove, appended to the status line when there is one. */
+private fun warningOf(write: AppStorageWrite): String = write.warning?.let { " $it" }.orEmpty()
 
 /** What happened to the app after a write, for the status line. */
 private fun afterWrite(write: AppStorageWrite, restart: Boolean, packageName: String): String = when {

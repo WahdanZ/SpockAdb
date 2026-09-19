@@ -120,7 +120,7 @@ class AppStorageCommandsTest {
         device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = OLD, restart = false)
 
         val remote = device.pushed.single()
-        assertEquals("chmod 600 '$remote'", AppStorageShell.restrictStagedCommand(remote))
+        assertEquals("chmod 600 '$remote'; echo rc=$?", AppStorageShell.restrictStagedCommand(remote))
         val push = device.commands.indexOf("push $remote")
         val chmod = device.commands.indexOf(AppStorageShell.restrictStagedCommand(remote))
         val write = device.commands.indexOfFirst { it.startsWith("cat '$remote' |") }
@@ -196,6 +196,8 @@ class AppStorageCommandsTest {
 
         assertTrue(thrown.message!!.contains("differ"), thrown.message)
         assertArrayEquals(OLD, thrown.previous)
+        // What the device actually holds, so an undo can be written over exactly that.
+        assertArrayEquals(device.files[prefs.path], thrown.written)
     }
 
     @Test
@@ -247,6 +249,79 @@ class AppStorageCommandsTest {
         val command = AppStorageShell.readCommand(FakeStorageDevice.PKG, file.path)
 
         assertTrue(command.contains("f='\\''shared_prefs/it'\\''\\'\\'''\\''s.xml'\\''"), command)
+    }
+
+    @Test
+    fun `a force-stop the device refused stops the write before anything is staged`() {
+        val device = FakeStorageDevice().apply {
+            files[prefs.path] = OLD
+            refuseStop = true
+        }
+
+        val thrown = assertThrows<IllegalStateException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = OLD, restart = false)
+        }
+
+        assertTrue(thrown.message!!.contains("could not be stopped"), thrown.message)
+        assertArrayEquals(OLD, device.files[prefs.path])
+        assertTrue(device.pushed.isEmpty(), "nothing may be staged once the app may still be running")
+    }
+
+    @Test
+    fun `a staged copy that could not be made private is never written from`() {
+        val device = FakeStorageDevice().apply {
+            files[prefs.path] = OLD
+            refuseChmod = true
+        }
+
+        val thrown = assertThrows<IllegalStateException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = OLD, restart = false)
+        }
+
+        assertTrue(thrown.message!!.contains("unreadable to other apps"), thrown.message)
+        assertArrayEquals(OLD, device.files[prefs.path])
+        assertTrue(
+            device.commands.none { it.startsWith("cat '/data/local/tmp/") },
+            "the write must not run after a failed chmod: ${device.commands}",
+        )
+        assertTrue(device.staged.isEmpty(), "the staged copy must still be removed")
+    }
+
+    @Test
+    fun `a staged copy the device would not remove is reported with the write`() {
+        val device = FakeStorageDevice().apply {
+            files[prefs.path] = OLD
+            refuseStagedRemoval = true
+        }
+
+        val result = device.device.writeAppStorageFile(
+            FakeStorageDevice.PKG,
+            prefs,
+            NEW,
+            expected = OLD,
+            restart = false,
+        )
+
+        assertArrayEquals(NEW, device.files[prefs.path])
+        val warning = result.warning
+        assertTrue(warning != null && warning.contains(device.pushed.single()), "warning was $warning")
+        assertTrue(warning!!.contains("adb shell rm -f"), warning)
+    }
+
+    @Test
+    fun `a failure that also leaves the staged copy behind says both`() {
+        val device = FakeStorageDevice().apply {
+            files[prefs.path] = OLD
+            refuseWrites = true
+            refuseStagedRemoval = true
+        }
+
+        val thrown = assertThrows<IllegalStateException> {
+            device.device.writeAppStorageFile(FakeStorageDevice.PKG, prefs, NEW, expected = null, restart = false)
+        }
+
+        assertTrue(thrown.message!!.contains("No space left on device"), thrown.message)
+        assertTrue(thrown.message!!.contains("could not be removed"), thrown.message)
     }
 
     private companion object {

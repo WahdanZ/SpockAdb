@@ -52,6 +52,21 @@ class RunAsTest {
     }
 
     @Test
+    fun `payload lines keep the spaces they came with, and only lose adb's carriage return`() {
+        // AppStoragePaths allows a space in a file name, and listAppStorage reads these lines
+        // as paths: a trimmed one names a file that does not exist.
+        assertEquals(
+            RunAsOutcome.Succeeded(listOf("shared_prefs/ spaced .xml", "shared_prefs/plain.xml")),
+            RunAs.classify("shared_prefs/ spaced .xml\r\nshared_prefs/plain.xml\r\nrc=0\r\n"),
+        )
+    }
+
+    @Test
+    fun `the status line is recognised even when the device pads it`() {
+        assertEquals(RunAsOutcome.Succeeded(listOf("payload")), RunAs.classify("payload\n  rc=0  \n"))
+    }
+
+    @Test
     fun `a status line that is not last is not ours`() {
         assertEquals(
             RunAsOutcome.Unreachable("rc=0\nrun-as: unknown package"),

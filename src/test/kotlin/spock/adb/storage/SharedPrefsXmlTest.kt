@@ -208,6 +208,60 @@ class SharedPrefsXmlTest {
         assertFalse(SharedPrefsXml.read(android.toByteArray()).isEncryptedPreferences())
     }
 
+    @Test
+    fun `a key that merely starts like a keyset entry is an ordinary preference`() {
+        // A preference key is any string the app likes; only the two keyset entries themselves
+        // mean the file is ciphertext.
+        val file = """
+            <map>
+                <string name="__androidx_security_crypto_encrypted_prefs_theme">dark</string>
+            </map>
+        """.trimIndent()
+
+        assertFalse(SharedPrefsXml.read(file.toByteArray()).isEncryptedPreferences())
+    }
+
+    @Test
+    fun `a recognised element carrying anything of its own is kept as markup`() {
+        val file = """
+            <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+            <map>
+                <int name="kept" value="1" custom="keep" />
+                <set name="tags">
+                    <string flavour="spicy">a</string>
+                </set>
+                <string name="editable">before</string>
+            </map>
+
+        """.trimIndent()
+        val items = SharedPrefsXml.read(file.toByteArray())
+
+        assertEquals(
+            listOf<PrefItem>(
+                PrefItem.Opaque("kept", "<int>"),
+                PrefItem.Opaque("tags", "<set>"),
+                PrefItem.Typed("editable", PrefValue.StringValue("before")),
+            ),
+            items,
+        )
+
+        // Editing another entry rewrites the file, and what the editor does not model has to
+        // come back exactly as it was.
+        val written = String(
+            SharedPrefsXml.write(
+                file.toByteArray(),
+                listOf(PrefChange.Put("editable", PrefValue.StringValue("after"))),
+            ),
+        )
+        // Kept as markup — the parser hands back attributes in its own order, but nothing the
+        // element carried is dropped, which is what rebuilding it from a key and value would do.
+        assertTrue(written.contains("""custom="keep""""), written)
+        assertTrue(written.contains("""name="kept""""), written)
+        assertTrue(written.contains("""value="1""""), written)
+        assertTrue(written.contains("""<string flavour="spicy">a</string>"""), written)
+        assertTrue(written.contains("""<string name="editable">after</string>"""), written)
+    }
+
     private companion object {
         val REMOVE_A = PrefChange.Remove("a")
     }

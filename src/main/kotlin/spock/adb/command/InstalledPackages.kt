@@ -16,13 +16,23 @@ internal object InstalledPackages {
 
     const val LIST_COMMAND = "pm list packages -3"
 
-    /** `package:com.example` lines, as sorted package names. Anything that is not a package name is dropped. */
+    /**
+     * `package:com.example` lines, as sorted package names.
+     *
+     * A line without the prefix is not a package: `pm` writes its errors and warnings to the
+     * same stream, and one that happened to look like a component name would otherwise be
+     * offered as an installed app.
+     */
     fun parse(output: String): List<String> = output.lineSequence()
-        .map { it.trim().removePrefix("package:").trim() }
+        .map { it.trim() }
+        .filter { it.startsWith(PACKAGE_PREFIX) }
+        .map { it.removePrefix(PACKAGE_PREFIX).trim() }
         .filter { it.isNotEmpty() && runCatching { ShellQuote.requireValidComponent(it, "Package") }.isSuccess }
         .distinct()
         .sorted()
         .toList()
+
+    private const val PACKAGE_PREFIX = "package:"
 
     /**
      * The open project's app first, when it is installed, so the app being worked on is the

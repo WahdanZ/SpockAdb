@@ -154,7 +154,10 @@ abstract class AppPreferenceEditTool : AdbTool {
             edit.restart -> "${edit.packageName} was stopped; it has no launchable activity to start again."
             else -> "${edit.packageName} was stopped and reads the new state when it next starts."
         }
-        return ToolResult.text("${done(edit.change, edit.where)} $after")
+        // A staged copy the device would not remove is the agent's to report: it holds a copy
+        // of the app's data, in a directory every app on the device can see.
+        val warning = write.warning?.let { " $it" }.orEmpty()
+        return ToolResult.text("${done(edit.change, edit.where)} $after$warning")
     }
 }
 
@@ -166,7 +169,8 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
             "build and the developer's confirmation. Read the file with android_read_app_storage first."
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
-        string("key", "Preference key.", required = true)
+        // An empty key is a key both formats can hold, so it is a value here, not an omission.
+        string("key", "Preference key. May be empty.", required = true, mayBeEmpty = true)
         enumeration(
             "type",
             "Value type. SharedPreferences cannot hold double or bytes.",
@@ -189,7 +193,7 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
         val type = requireNotNull(PrefType.fromName(typeName)) {
             "'$typeName' is not a preference type. Use one of: ${PrefType.entries.joinToString { it.argument }}."
         }
-        return PrefChange.Put(arguments.requiredString("key"), PrefValue.parse(type, valueText(arguments)))
+        return PrefChange.Put(arguments.requiredText("key"), PrefValue.parse(type, valueText(arguments)))
     }
 
     /** An empty string is a real value, and a string set may arrive as the array itself. */
@@ -219,13 +223,13 @@ class DeleteAppPreferenceTool : AppPreferenceEditTool() {
             "confirmation."
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
-        string("key", "Preference key to remove.", required = true)
+        string("key", "Preference key to remove. May be empty.", required = true, mayBeEmpty = true)
         restartArgument()
         string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
         deviceSerial()
     }
 
-    override fun changeFrom(arguments: JsonObject): PrefChange = PrefChange.Remove(arguments.requiredString("key"))
+    override fun changeFrom(arguments: JsonObject): PrefChange = PrefChange.Remove(arguments.requiredText("key"))
 
     override fun summary(change: PrefChange, before: PrefItem?, where: String): String =
         "Delete '${plain(change.key)}'${before?.let { " (currently ${shown(it)})" }.orEmpty()} from $where."

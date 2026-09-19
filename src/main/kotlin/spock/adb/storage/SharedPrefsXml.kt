@@ -88,24 +88,30 @@ internal object SharedPrefsXml : PrefsFormat {
             ?: XmlPrefEntry.Foreign(key, element.tagName, SharedPrefsXmlWriter.markup(element))
     }
 
-    /** Null when the element is not one of the shapes SharedPreferences writes. */
-    private fun valueOf(element: Element): PrefValue? {
-        val attribute = element.getAttribute("value")
-        return when (element.tagName) {
-            "boolean" -> booleanOf(attribute)
-            "int" -> attribute.toIntOrNull()?.let { PrefValue.IntValue(it) }
-            "long" -> attribute.toLongOrNull()?.let { PrefValue.LongValue(it) }
-            "float" -> runCatching { PrefValue.parse(PrefType.FLOAT, attribute) }.getOrNull()
-            "string" -> textOf(element)?.let { PrefValue.StringValue(it) }
-            "set" -> stringSetOf(element)
-            else -> null
-        }
+    /**
+     * Null when the element is not one of the shapes SharedPreferences writes.
+     *
+     * A recognised tag carrying an attribute or a child of its own is not one of them. The
+     * writer rebuilds every [XmlPrefEntry.Known] from its key and value alone, so an element
+     * such as `<int name="x" value="1" custom="keep" />` would lose what it carries the first
+     * time any entry in the file was edited. Kept as markup, it survives untouched.
+     */
+    private fun valueOf(element: Element): PrefValue? = when (val tag = element.tagName) {
+        "boolean", "int", "long", "float" -> element.attributeValue()?.let { scalarOf(tag, it) }
+        "string" -> element.takeIf { it.hasOnly("name") }?.let { textOf(it) }?.let { PrefValue.StringValue(it) }
+        "set" -> element.takeIf { it.hasOnly("name") }?.let { stringSetOf(it) }
+        else -> null
     }
 
-    private fun booleanOf(attribute: String): PrefValue? = when (attribute) {
-        "true" -> PrefValue.BooleanValue(true)
-        "false" -> PrefValue.BooleanValue(false)
-        else -> null
+    /** The `value` of an element written exactly as `<tag name="…" value="…" />`, and nothing else. */
+    private fun Element.attributeValue(): String? =
+        takeIf { it.hasOnly("name", "value") && it.childNodes.length == 0 }?.getAttribute("value")
+
+    private fun scalarOf(tag: String, value: String): PrefValue? = when {
+        tag == "boolean" -> value.toBooleanStrictOrNull()?.let { PrefValue.BooleanValue(it) }
+        tag == "int" -> value.toIntOrNull()?.let { PrefValue.IntValue(it) }
+        tag == "long" -> value.toLongOrNull()?.let { PrefValue.LongValue(it) }
+        else -> runCatching { PrefValue.parse(PrefType.FLOAT, value) }.getOrNull()
     }
 
     /** The text of an element that holds nothing but text. */
@@ -113,7 +119,8 @@ internal object SharedPrefsXml : PrefsFormat {
 
     private fun stringSetOf(element: Element): PrefValue? {
         val items = element.elements()
-        if (items.any { it.tagName != "string" }) return null
+        // `<string>` inside a set carries nothing of its own; one that does is kept as markup.
+        if (items.any { it.tagName != "string" || !it.hasOnly() }) return null
         val strings = items.map { textOf(it) ?: return null }
         return PrefValue.StringSetValue(strings)
     }
@@ -147,6 +154,10 @@ internal object SharedPrefsXml : PrefsFormat {
         override fun fatalError(exception: SAXParseException) = throw exception
     }
 }
+
+/** True when the element carries these attributes and no others. */
+private fun Element.hasOnly(vararg allowed: String): Boolean =
+    (0 until attributes.length).all { attributes.item(it).nodeName in allowed }
 
 internal sealed interface XmlPrefEntry {
     val key: String

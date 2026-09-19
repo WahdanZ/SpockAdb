@@ -170,6 +170,9 @@ class PreferencesProtoTest {
             "0a 07 0a 01 61" to "length past the end",
             "0a 05 0a 09 61 61 61" to "inner length past the end",
             "78 ff ff ff ff ff ff ff ff ff ff 01" to "varint longer than ten bytes",
+            // The tenth byte carries one usable bit: a 2 there is 64 bits of value plus a bit
+            // that would be dropped on the floor, which is a malformed file, not a large number.
+            "78 ff ff ff ff ff ff ff ff ff 02" to "tenth varint byte beyond 64 bits",
             "7b" to "a group",
             "08 01" to "map field with the wrong wire type",
             "0a 05 0a 03 c3 28 61" to "invalid UTF-8 key",

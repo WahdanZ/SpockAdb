@@ -66,6 +66,22 @@ class RequiredArgumentsTest {
     }
 
     @Test
+    fun `an empty string is a value where the schema says it may be`() {
+        // A preference key may be empty in both storage formats, so the dispatcher must not
+        // refuse the call before the tool ever sees it. It fails later, on the device it has
+        // none of, which is a different message from "missing required argument".
+        val result = call(
+            "android_delete_app_preference",
+            """{"file":"shared_prefs/settings.xml","key":""}""",
+        )
+
+        assertFalse(
+            result.getAsJsonArray("content").toString().contains("missing required"),
+            "an empty key should reach the tool: $result",
+        )
+    }
+
+    @Test
     fun `zero is a value, not an omission`() {
         // The check must not confuse "absent" with "falsy": tapping (0, 0) is a real request.
         val result = call("android_tap", """{"x":0,"y":0}""")

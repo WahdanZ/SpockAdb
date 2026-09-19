@@ -4,7 +4,6 @@ import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
 import spock.adb.ShellQuote
-import spock.adb.forceKillApp
 import spock.adb.getDefaultActivityForApplication
 import spock.adb.isAppInstall
 import spock.adb.startActivity
@@ -88,10 +87,52 @@ internal object AppStorageShell {
         return "cat ${ShellQuote.quote(staged)} | ${RunAs.command(packageName, script)}"
     }
 
-    /** The staged copy holds app state, and `adb push` may leave it readable by every app on the device. */
-    fun restrictStagedCommand(staged: String): String = "chmod 600 ${ShellQuote.quote(staged)}"
+    /**
+     * The staged copy holds app state, and `adb push` may leave it readable by every app on the
+     * device. The status is echoed because a `chmod` that failed must stop the write, not be
+     * written around: the alternative is app data left world-readable in a shared directory.
+     */
+    fun restrictStagedCommand(staged: String): String = "chmod 600 ${ShellQuote.quote(staged)}; echo rc=\$?"
 
-    fun removeStagedCommand(staged: String): String = "rm -f ${ShellQuote.quote(staged)}"
+    fun removeStagedCommand(staged: String): String = "rm -f ${ShellQuote.quote(staged)}; echo rc=\$?"
+
+    /** Said when the staged copy is still on the device, so the developer can remove it. */
+    fun stagedLeftOverMessage(staged: String): String =
+        "The copy staged at $staged could not be removed from the device. It holds the bytes that " +
+            "were written; remove it with: adb shell rm -f $staged"
+
+    /**
+     * Stopping the app, with a status of its own.
+     *
+     * Not through `run-as`: force-stopping is the shell user's to do, and it is the step the
+     * whole write sequence rests on — an app still running writes its preferences back from
+     * memory over the edit.
+     */
+    fun stopCommand(packageName: String): String = "am force-stop ${ShellQuote.quote(packageName)}; echo rc=\$?"
+
+    /**
+     * Why the app was not stopped, or null when it was.
+     *
+     * `am` reports a permission or service error on its output and can still exit 0, so what it
+     * said is read as well as the status.
+     */
+    fun stopFailure(packageName: String, outcome: RunAsOutcome): String? {
+        val said = when (outcome) {
+            is RunAsOutcome.Succeeded -> outcome.lines.filter(::isComplaint).joinToString("; ")
+            is RunAsOutcome.NotDebuggable -> outcome.said
+            is RunAsOutcome.Unreachable -> outcome.said
+            is RunAsOutcome.Failed -> outcome.said.ifEmpty {
+                "the device exited with ${outcome.status ?: "no status at all"}"
+            }
+        }
+        if (said.isEmpty()) return null
+        return "'$packageName' could not be stopped, so nothing was written: $said"
+    }
+
+    private fun isComplaint(line: String): Boolean =
+        COMPLAINTS.any { line.contains(it, ignoreCase = true) }
+
+    private val COMPLAINTS = listOf("error", "exception", "denied", "not permitted")
 
     /** A sentence for what went wrong, naming the package and what was being done to it. */
     fun failureMessage(packageName: String, doing: String, outcome: RunAsOutcome): String = when (outcome) {
@@ -120,6 +161,8 @@ class AppStorageWrite(
     val previous: ByteArray,
     /** False when a restart was not asked for, or the app has no launchable activity. */
     val restarted: Boolean,
+    /** What the developer should know besides the write itself — a staged copy left behind. */
+    val warning: String? = null,
 )
 
 /**
@@ -131,6 +174,12 @@ class AppStorageWrite(
 class AppStorageUnverifiedWriteException(
     message: String,
     val previous: ByteArray,
+    /**
+     * What the file came back as, or null when it could not be read at all. Undoing a write
+     * means writing [previous] over what is there now, so without this there is nothing to
+     * check the file against and undo cannot be offered honestly.
+     */
+    val written: ByteArray? = null,
     cause: Throwable? = null,
 ) : IllegalStateException(message, cause)
 
@@ -197,11 +246,11 @@ internal fun IDevice.writeAppStorageFile(
     check(isAppInstall(packageName)) { "Package '$packageName' is not installed on this device." }
 
     if (expected != null) checkUnchanged(file, readAppStorageFile(packageName, file), expected)
-    forceKillApp(packageName, STORAGE_TIMEOUT_SECONDS)
+    stopApp(packageName)
     val previous = readAppStorageFile(packageName, file)
     if (expected != null) checkUnchanged(file, previous, expected)
 
-    staged(content) { remote ->
+    val leftOver = staged(content) { remote ->
         val outcome = RunAs.classify(shell(AppStorageShell.writeCommand(packageName, remote, file, content.size)))
         check(outcome is RunAsOutcome.Succeeded) {
             AppStorageShell.failureMessage(packageName, "write ${file.path}", outcome)
@@ -210,7 +259,13 @@ internal fun IDevice.writeAppStorageFile(
 
     verifyWritten(packageName, file, content, previous)
     val restarted = restart && runCatching { relaunch(packageName) }.getOrDefault(false)
-    return AppStorageWrite(file, previous, restarted)
+    return AppStorageWrite(file, previous, restarted, leftOver?.let(AppStorageShell::stagedLeftOverMessage))
+}
+
+/** @throws IllegalStateException when the app is still running, before anything has been staged. */
+private fun IDevice.stopApp(packageName: String) {
+    val outcome = RunAs.classify(shell(AppStorageShell.stopCommand(packageName)))
+    AppStorageShell.stopFailure(packageName, outcome)?.let { error(it) }
 }
 
 private fun checkUnchanged(file: StorageFile, current: ByteArray, expected: ByteArray) {
@@ -227,7 +282,8 @@ private fun IDevice.verifyWritten(packageName: String, file: StorageFile, conten
             "${file.path} was replaced, but reading it back failed, so the write could not be verified: " +
                 "${it.message}",
             previous,
-            it,
+            written = null,
+            cause = it,
         )
     }
     if (!written.contentEquals(content)) {
@@ -235,24 +291,50 @@ private fun IDevice.verifyWritten(packageName: String, file: StorageFile, conten
             "${file.path} was replaced, but the device now holds ${written.size} bytes that differ from the " +
                 "${content.size} sent, so the write could not be verified. Read it again to see what it holds.",
             previous,
+            written = written,
         )
     }
 }
 
-/** Pushes [content] to a fresh path under [AppStorageShell.TEMP_DIR], and removes it again whatever [use] does. */
-private fun IDevice.staged(content: ByteArray, use: (String) -> Unit) {
+/**
+ * Pushes [content] to a fresh path under [AppStorageShell.TEMP_DIR], and removes it again
+ * whatever [use] does.
+ *
+ * @return the staged path when the device would not remove it, so the caller can say so; null
+ *   when it is gone, which is the ordinary answer.
+ */
+private fun IDevice.staged(content: ByteArray, use: (String) -> Unit): String? {
     val remote = "${AppStorageShell.TEMP_DIR}/spock-storage-${UUID.randomUUID()}"
     // createTempFile makes the file readable by its owner only, which matters: it holds app state.
     val local = Files.createTempFile("spock-storage", ".bin")
-    try {
+    val failure = runCatching {
         Files.write(local, content)
         pushFile(local.toString(), remote)
-        shell(AppStorageShell.restrictStagedCommand(remote))
+        val restricted = RunAs.classify(shell(AppStorageShell.restrictStagedCommand(remote)))
+        check(restricted is RunAsOutcome.Succeeded) {
+            "The copy staged at $remote could not be made unreadable to other apps, so nothing was " +
+                "written. Remove it with: adb shell rm -f $remote"
+        }
         use(remote)
-    } finally {
-        runCatching { shell(AppStorageShell.removeStagedCommand(remote)) }
-        Files.deleteIfExists(local)
+    }.exceptionOrNull()
+    val leftOver = cleanUpStaged(remote)
+    Files.deleteIfExists(local)
+
+    if (failure == null) return leftOver
+    // A copy of the app's data left in a shared directory is worth saying even while reporting
+    // what went wrong, so it is added to the failure rather than kept for a caller that is
+    // never reached.
+    throw if (leftOver == null) {
+        failure
+    } else {
+        IllegalStateException("${failure.message} ${AppStorageShell.stagedLeftOverMessage(leftOver)}", failure)
     }
+}
+
+/** The staged path when the device would not remove it; null when it is gone. */
+private fun IDevice.cleanUpStaged(remote: String): String? {
+    val outcome = runCatching { RunAs.classify(shell(AppStorageShell.removeStagedCommand(remote))) }.getOrNull()
+    return if (outcome is RunAsOutcome.Succeeded) null else remote
 }
 
 private fun IDevice.relaunch(packageName: String): Boolean {

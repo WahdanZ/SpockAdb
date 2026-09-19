@@ -26,10 +26,14 @@ internal object RunAs {
      *
      * Only the final non-empty line can be the status: the app's own output may well contain
      * something that looks like one, and a status line followed by more output is not ours.
+     *
+     * Payload lines are kept exactly as the device sent them, apart from the carriage return
+     * adb's shell channel adds: a file name may begin or end with a space, and trimming one
+     * would hand the caller a path that does not exist. Only the status candidate is trimmed.
      */
     fun classify(output: String): RunAsOutcome {
-        val lines = output.trim().lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        val status = lines.lastOrNull()?.let { EXIT_STATUS.matchEntire(it) }?.groupValues?.get(1)?.toInt()
+        val lines = output.lineSequence().map { it.trimEnd('\r') }.filter { it.isNotBlank() }.toList()
+        val status = lines.lastOrNull()?.trim()?.let { EXIT_STATUS.matchEntire(it) }?.groupValues?.get(1)?.toInt()
         // Whatever the device printed before the status line: the script's own diagnostics,
         // or the refusal from run-as when the status line never arrived.
         val before = if (status != null) lines.dropLast(1) else lines
@@ -52,7 +56,7 @@ internal object RunAs {
 
 internal sealed interface RunAsOutcome {
 
-    /** The script ran and reported status 0. [lines] is its output before the status line, trimmed. */
+    /** The script ran and reported status 0. [lines] is its output before the status line, verbatim. */
     data class Succeeded(val lines: List<String>) : RunAsOutcome
 
     /** `run-as` refused because the installed build is not debuggable. */

@@ -89,6 +89,28 @@ class AppStorageToolsTest {
     }
 
     @Test
+    fun `an empty key is a key, and can be set and deleted`() {
+        val context = context(approve = true)
+
+        val set = SetAppPreferenceTool().execute(
+            args("file" to PREFS, "key" to "", "type" to "string", "value" to "under the empty key"),
+            context,
+        )
+
+        assertFalse(set.isError, set.text())
+        assertEquals(
+            PrefValue.StringValue("under the empty key"),
+            SharedPrefsXml.read(storage.files.getValue(PREFS)).filterIsInstance<PrefItem.Typed>()
+                .single { it.key == "" }.value,
+        )
+
+        val deleted = DeleteAppPreferenceTool().execute(args("file" to PREFS, "key" to ""), context)
+
+        assertFalse(deleted.isError, deleted.text())
+        assertTrue(SharedPrefsXml.read(storage.files.getValue(PREFS)).none { it.key == "" })
+    }
+
+    @Test
     fun `a declined change stops nothing and writes nothing`() {
         val before = storage.files.getValue(PREFS)
 

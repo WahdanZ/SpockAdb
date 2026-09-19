@@ -44,6 +44,15 @@ class FakeStorageDevice(
     /** Makes every command the fake does not model — resolving and starting the launcher activity — fail. */
     var unresponsiveLaunch = false
 
+    /** Makes `am force-stop` complain, as it does when the activity manager refuses. */
+    var refuseStop = false
+
+    /** Makes the chmod of the staged copy fail, leaving it readable by every app. */
+    var refuseChmod = false
+
+    /** Makes the staged copy impossible to remove, as a busy or read-only /data/local/tmp would. */
+    var refuseStagedRemoval = false
+
     val device: IDevice = mockk(relaxed = true)
 
     init {
@@ -66,14 +75,22 @@ class FakeStorageDevice(
 
     private fun reply(command: String): String = when {
         command.startsWith("pm list packages") -> if (installed) "package:$PKG" else ""
-        command.startsWith("am force-stop") -> ""
+        command.startsWith("am force-stop") ->
+            if (refuseStop) "Error: Unknown package: $PKG\nrc=255" else "rc=0"
         command.startsWith("run-as") || command.startsWith("cat ") && !debuggable ->
             if (debuggable) runAs(command) else "run-as: package not debuggable: $PKG"
         command.startsWith("cat ") -> write(command)
-        command.startsWith("chmod 600 '/data/local/tmp/") -> ""
-        command.startsWith("rm -f '/data/local/tmp/") -> "".also { staged.keys.removeIf { command.contains(it) } }
+        command.startsWith("chmod 600 '/data/local/tmp/") || command.startsWith("rm -f '/data/local/tmp/") ->
+            stagedCopy(command)
         unresponsiveLaunch -> throw IOException("device went away: $command")
         else -> ""
+    }
+
+    /** The two commands that maintain the staged copy, each with a status of its own. */
+    private fun stagedCopy(command: String): String = when {
+        command.startsWith("chmod") -> if (refuseChmod) "chmod: Operation not permitted\nrc=1" else "rc=0"
+        refuseStagedRemoval -> "rm: Read-only file system\nrc=1"
+        else -> "rc=0".also { staged.keys.removeIf { path -> command.contains(path) } }
     }
 
     private fun runAs(command: String): String {
