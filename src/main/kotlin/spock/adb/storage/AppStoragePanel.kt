@@ -1,5 +1,6 @@
 package spock.adb.storage
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileChooser.FileChooser
@@ -14,7 +15,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.CollectionListModel
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
-import com.intellij.ui.SimpleListCellRenderer
+import com.intellij.ui.TableSpeedSearch
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
@@ -73,14 +74,15 @@ class AppStoragePanel(
 
     private val model = PrefsTableModel()
     private val table = JBTable(model)
-    private val notice = plainLabel()
-    private val statusLabel = plainLabel()
+    private val notice = StoragePanelUi.noticeLabel()
+    private val statusLabel = StoragePanelUi.statusLabel()
 
-    private val addButton = JButton("Add")
-    private val deleteButton = JButton("Delete")
-    private val reloadButton = JButton("Reload")
+    private val addButton = StoragePanelUi.iconButton(AllIcons.General.Add, "Add an entry")
+    private val deleteButton = StoragePanelUi.iconButton(AllIcons.General.Remove, "Delete the selected entries")
+    private val reloadButton =
+        StoragePanelUi.iconButton(AllIcons.Actions.Refresh, "Read the file again from the device")
     private val applyButton = JButton("Apply")
-    private val undoButton = JButton("Undo Last Apply")
+    private val undoButton = JButton("Undo Apply")
     private val exportButton = JButton("Export…")
     private val importButton = JButton("Import…")
 
@@ -114,13 +116,12 @@ class AppStoragePanel(
         preferredSize = Dimension(0, JBUI.scale(EMBEDDED_HEIGHT))
         maximumSize = Dimension(Int.MAX_VALUE, JBUI.scale(EMBEDDED_HEIGHT))
         fileList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        fileList.cellRenderer = SimpleListCellRenderer.create { label, file, _ ->
-            label.putClientProperty(HTML_DISABLE, true)
-            label.text = file.path
-            label.toolTipText = file.kind.label
-        }
-        table.setShowGrid(false)
+        fileList.cellRenderer = StoragePanelUi.fileRenderer()
+        fileList.emptyText.text = "No files listed"
+        StoragePanelUi.prepare(table)
         table.putClientProperty("terminateEditOnFocusLost", true)
+        // Typing in the table jumps to a key, which is how a file with a hundred entries is used.
+        TableSpeedSearch.installOn(table)
         ValueRenderer().let { renderer ->
             table.setDefaultRenderer(Any::class.java, renderer)
             table.setDefaultRenderer(String::class.java, renderer)
@@ -172,23 +173,35 @@ class AppStoragePanel(
         exportButton.toolTipText = "Save the file as last read from the device"
         importButton.toolTipText = "Replace the file on the device with one saved earlier"
 
-        val buttons = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2)))
-        listOf(addButton, deleteButton, reloadButton, applyButton, undoButton, exportButton, importButton)
-            .forEach { buttons.add(it) }
+        // The row actions sit over the table they act on; the file actions sit under it, where
+        // Apply is the one that reaches the device and reads as the end of the column.
+        val rowActions = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(2), 0)).apply {
+            border = JBUI.Borders.empty(2, GAP)
+            add(addButton)
+            add(deleteButton)
+            add(reloadButton)
+            add(notice)
+        }
+        val fileActions = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+            listOf(applyButton, undoButton, exportButton, importButton).forEach { add(it) }
+        }
 
         val editor = JPanel(BorderLayout()).apply {
-            add(notice.apply { border = JBUI.Borders.empty(2, GAP) }, BorderLayout.NORTH)
+            add(rowActions, BorderLayout.NORTH)
             add(JBScrollPane(table), BorderLayout.CENTER)
             add(
                 JPanel(BorderLayout()).apply {
-                    add(buttons, BorderLayout.NORTH)
-                    add(statusLabel.apply { border = JBUI.Borders.empty(2, GAP) }, BorderLayout.SOUTH)
+                    add(fileActions, BorderLayout.NORTH)
+                    add(statusLabel, BorderLayout.SOUTH)
                 },
                 BorderLayout.SOUTH,
             )
         }
+        val listPane = JBScrollPane(fileList).apply {
+            minimumSize = Dimension(JBUI.scale(StoragePanelUi.FILE_LIST_WIDTH), 0)
+        }
         return OnePixelSplitter(false, SPLIT_PROPORTION).apply {
-            firstComponent = JBScrollPane(fileList)
+            firstComponent = listPane
             secondComponent = editor
         }
     }
@@ -291,7 +304,8 @@ class AppStoragePanel(
         model.session = next
         table.columnModel.getColumn(TYPE_COLUMN).cellEditor =
             DefaultCellEditor(ComboBox(DefaultComboBoxModel(next?.types.orEmpty().toTypedArray())))
-        notice.text = next?.readOnlyReason ?: " "
+        notice.text = next?.readOnlyReason.orEmpty()
+        notice.isVisible = next?.readOnlyReason != null
         updateControls()
     }
 
@@ -545,7 +559,10 @@ class AppStoragePanel(
             super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
             val entry = session?.rows?.getOrNull(row)
             val problem = entry?.let { session?.problemWith(it) }
-            toolTipText = problem ?: if (entry?.editable == false) "This entry cannot be edited." else null
+            // A value wider than its column is common — a token, a JSON blob — so the whole of it
+            // is one hover away rather than only readable by widening the tab.
+            toolTipText = problem
+                ?: if (entry?.editable == false) "This entry cannot be edited." else value?.toString()
             if (!isSelected) {
                 foreground = when {
                     problem != null && column == VALUE_COLUMN -> JBColor.RED
@@ -566,13 +583,11 @@ class AppStoragePanel(
         const val VALUE_COLUMN = 2
 
         /** Swing's client property that stops a component rendering text that starts with `<html>`. */
-        const val HTML_DISABLE = "html.disable"
+        const val HTML_DISABLE = StoragePanelUi.HTML_DISABLE
 
         const val NO_DEVICE = "No device selected. Choose one at the top of this tab."
 
         val SINGLE_FILE = FileChooserDescriptor(true, false, false, false, false, false)
-
-        fun plainLabel() = JBLabel(" ").apply { putClientProperty(HTML_DISABLE, true) }
     }
 }
 
