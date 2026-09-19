@@ -52,6 +52,18 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
     private var controller: AdbController? = null
     private var selectedDevice: () -> ConnectedDevice? = { null }
 
+    /**
+     * Started and answered on the EDT, so a read begun for one device cannot set the controls
+     * for another.
+     *
+     * Six blocking reads per refresh, and selecting a second device starts six more without
+     * stopping the first six: whichever set of answers came back last won. Switching from a
+     * device with animations off to one with them on could leave the second device's controls
+     * showing the first device's values — and the listeners are live by then, so the next click
+     * writes what is on screen back to the wrong device.
+     */
+    private val reads = LatestRequest()
+
     init {
         layout = GridBagLayout()
         border = JBUI.Borders.empty(gap, 0)
@@ -98,6 +110,7 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
      */
     fun refresh() {
         removeListeners()
+        val request = reads.begin()
         val target = selectedDevice()?.device
         ApplicationManager.getApplication().executeOnPooledThread {
             val dontKeep = target?.areDontKeepActivitiesEnabled()
@@ -108,6 +121,10 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
             val duration = target?.getAnimatorDurationScale()
 
             ApplicationManager.getApplication().invokeLater {
+                // A refresh this one has replaced must not touch the controls: the listeners
+                // are re-added by whichever read is still current, so returning here leaves
+                // them off for exactly as long as an answer is still outstanding.
+                if (!reads.isLatest(request)) return@invokeLater
                 removeListeners()
                 dontKeepActivities.isSelected = dontKeep == DontKeepActivitiesState.ENABLED
                 showTaps.isSelected = taps == ShowTapsState.ENABLED

@@ -150,6 +150,9 @@ class McpServerPanel(
         wire()
         refreshStatus()
         refreshActivity()
+        // Nothing is selected on a panel that has just opened, so the two buttons that copy a
+        // call have nothing to copy — and the details pane holds only its placeholder.
+        updateCopyButtons()
     }
 
     // ------------------------------------------------------------------ header
