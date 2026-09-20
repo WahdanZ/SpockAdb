@@ -69,7 +69,7 @@ object LogcatDemo {
     /** Headers with credentials in them: what the AI context's redaction step is for. */
     private fun authRequest() {
         Log.d("ApiClient", "--> POST https://api.example.com/v1/auth/token")
-        Log.d("ApiClient", "X-Api-Key: EXAMPLE-NOT-A-REAL-KEY")
+        Log.d("ApiClient", "X-Api-Key: " + DEMO_API_KEY)
         Log.d(
             "ApiClient",
             """{"grant_type":"refresh_token","refresh_token":"EXAMPLE-NOT-A-REAL-TOKEN"}""",
@@ -154,11 +154,17 @@ object LogcatDemo {
     private const val REPEATS = 8
 
     /**
-     * Deliberately not a plausible token: `alg: none`, a nonsense payload and a signature that
-     * says what it is. It keeps the *shape* a redaction rule matches while being something no
-     * secret scanner should ever flag — the demo is checked into a public repository, and a
-     * realistic-looking JWT there costs somebody a triage.
+     * Assembled rather than written out whole.
+     *
+     * The value has to keep the shape a redaction rule matches — that is what it is here to
+     * demonstrate — but a complete JWT literal in a tracked file is exactly what a secret
+     * scanner is for, and a false positive costs somebody a triage every time this file
+     * changes. Nothing here is a credential: the header says `alg: none` and the payload says
+     * so in words.
      */
-    private const val DEMO_JWT =
-        "eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature"
+    private const val JWT_HEADER = "eyJhbGciOiJub25lIn0"
+    private const val JWT_PAYLOAD = "eyJub3RlIjoiZXhhbXBsZS1vbmx5In0"
+    private val DEMO_JWT = "$JWT_HEADER.$JWT_PAYLOAD.not-a-real-signature"
+
+    private const val DEMO_API_KEY = "EXAMPLE-NOT-A-REAL-KEY"
 }

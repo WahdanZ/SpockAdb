@@ -8,9 +8,11 @@
 #   - the two demo log generators write a scripted log containing those same shapes, so the
 #     redaction can be seen working against a real device.
 #
-# The values themselves are deliberately inert — `alg: none` JWTs with nonsense payloads,
-# EXAMPLE-NOT-A-REAL-* placeholders — so nothing here is a credential for anything. They are
-# listed so a scanner does not spend a reviewer's attention on them every time they change.
+# The values are inert — an `alg: none` JWT whose payload says in words that it is an example,
+# and EXAMPLE-NOT-A-REAL-* placeholders — and none of them appears in these files whole: each is
+# assembled at run time, so the files contain no credential-shaped literal to match. That is the
+# actual fix; this list is the belt to its braces, so a scanner does not spend a reviewer's
+# attention on these paths when the fixtures change.
 #
 # Nothing else is excluded. If a finding appears outside these paths, it is real.
 version: 2

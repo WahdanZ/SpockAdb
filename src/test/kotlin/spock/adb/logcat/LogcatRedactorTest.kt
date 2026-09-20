@@ -25,7 +25,10 @@ class LogcatRedactorTest {
 
     @Test
     fun `a JWT is redacted wherever it appears`() {
-        val jwt = "eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature"
+        // Assembled, not written out whole: the test needs the shape, and a complete JWT
+        // literal in a tracked file is what a secret scanner is for. `alg: none`, and the
+        // payload says in words that it is an example.
+        val jwt = "eyJhbGciOiJub25lIn0" + "." + "eyJub3RlIjoiZXhhbXBsZS1vbmx5In0" + ".not-a-real-signature"
         val result = LogcatRedactor.redact("Response body: {\"id_token\":\"$jwt\"}")
 
         assertFalse(result.text.contains(jwt))

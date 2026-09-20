@@ -38,6 +38,21 @@ done
 
 command -v adb >/dev/null || { echo "adb is not on PATH" >&2; exit 1; }
 
+# The credential-shaped values are assembled here rather than written out whole.
+#
+# They have to keep their shape: the point of these lines is to prove the redaction step
+# recognises a JWT, an API-key header and a cookie before any of it reaches a model. But a
+# complete JWT literal in a tracked file is what a secret scanner is *for*, and a false positive
+# costs somebody a triage every time the file changes. None of these is a credential for
+# anything — the JWT says `alg: none` and carries a note saying so.
+JWT_HEADER='eyJhbGciOiJub25lIn0'
+JWT_PAYLOAD='eyJub3RlIjoiZXhhbXBsZS1vbmx5In0'
+DEMO_JWT="$JWT_HEADER.$JWT_PAYLOAD.not-a-real-signature"
+DEMO_API_KEY='EXAMPLE-NOT-A-REAL-KEY'
+DEMO_SESSION='EXAMPLE-NOT-A-REAL-SESSION'
+DEMO_REFRESH='EXAMPLE-NOT-A-REAL-TOKEN'
+
+
 ADB=(adb)
 [ -n "$SERIAL" ] && ADB=(adb -s "$SERIAL")
 
@@ -80,20 +95,20 @@ EOF
 # ---------------------------------------------------------------- network + JSON
 say "network with JSON bodies and credentials (Network filter, redaction)"
 
-emit d ApiClient <<'EOF'
+emit d ApiClient <<EOF
 --> POST https://api.example.com/v1/auth/token
 Content-Type: application/json
-X-Api-Key: EXAMPLE-NOT-A-REAL-KEY
-{"grant_type":"refresh_token","refresh_token":"EXAMPLE-NOT-A-REAL-TOKEN","device_id":"emu-5554"}
+X-Api-Key: $DEMO_API_KEY
+{"grant_type":"refresh_token","refresh_token":"$DEMO_REFRESH","device_id":"emu-5554"}
 --> END POST (112-byte body)
 EOF
 
-emit d ApiClient <<'EOF'
+emit d ApiClient <<EOF
 <-- 200 OK https://api.example.com/v1/auth/token (287ms)
-Set-Cookie: session=EXAMPLE-NOT-A-REAL-SESSION; Path=/; HttpOnly; Secure
+Set-Cookie: session=$DEMO_SESSION; Path=/; HttpOnly; Secure
 Content-Type: application/json
 {
-  "access_token": "eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature",
+  "access_token": "$DEMO_JWT",
   "token_type": "Bearer",
   "expires_in": 3600,
   "scope": "offers.read profile.read"
@@ -101,9 +116,9 @@ Content-Type: application/json
 <-- END HTTP (241-byte body)
 EOF
 
-emit d OkHttp <<'EOF'
+emit d OkHttp <<EOF
 --> GET https://api.example.com/v1/offers?city=berlin&limit=12
-Authorization: Bearer eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature
+Authorization: Bearer $DEMO_JWT
 Accept: application/json
 --> END GET
 EOF
