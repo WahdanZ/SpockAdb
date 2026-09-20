@@ -8,6 +8,7 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JButton
 import javax.swing.JMenuItem
 import javax.swing.JPopupMenu
@@ -205,35 +206,39 @@ class McpConnectControls(
             "to be listening on. Keep the file out of a shared commit either way."
 
         if (!service.prefersStdio) {
-            val confirmed = Messages.showYesNoDialog(
-                project,
-                "Write the HTTP configuration to:\n$file\n\n" +
-                    "Any other servers already in that file are kept, and the entry contains no " +
-                    "token — it reads ${McpClientConfig.TOKEN_ENV_VAR} from the client's " +
-                    "environment, which you can set from Copy Config.\n\n$shared",
-                "Install MCP Configuration",
-                "Install",
-                "Cancel",
-                null,
-            ) == Messages.YES
+            val confirmed = onEdtBlocking {
+                Messages.showYesNoDialog(
+                    project,
+                    "Write the HTTP configuration to:\n$file\n\n" +
+                        "Any other servers already in that file are kept, and the entry contains no " +
+                        "token — it reads ${McpClientConfig.TOKEN_ENV_VAR} from the client's " +
+                        "environment, which you can set from Copy Config.\n\n$shared",
+                    "Install MCP Configuration",
+                    "Install",
+                    "Cancel",
+                    null,
+                ) == Messages.YES
+            }
             return if (confirmed) service.httpServerEntry() else null
         }
 
-        val choice = Messages.showYesNoCancelDialog(
-            project,
-            "Write to:\n$file\n\n" +
-                "Any other servers already in that file are kept, and neither entry contains a " +
-                "token.\n\n" +
-                "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
-                "HTTP — for a client that only opens a URL. It reads " +
-                "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
-                "too: Copy Config has the environment line.\n\n$shared",
-            "Install MCP Configuration",
-            "stdio",
-            "HTTP",
-            "Cancel",
-            null,
-        )
+        val choice = onEdtBlocking {
+            Messages.showYesNoCancelDialog(
+                project,
+                "Write to:\n$file\n\n" +
+                    "Any other servers already in that file are kept, and neither entry contains a " +
+                    "token.\n\n" +
+                    "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
+                    "HTTP — for a client that only opens a URL. It reads " +
+                    "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
+                    "too: Copy Config has the environment line.\n\n$shared",
+                "Install MCP Configuration",
+                "stdio",
+                "HTTP",
+                "Cancel",
+                null,
+            )
+        }
         return when (choice) {
             Messages.YES -> service.stdioServerEntry()
             Messages.NO -> service.httpServerEntry()
@@ -378,4 +383,14 @@ class McpConnectControls(
 
     private fun onEdt(block: () -> Unit) =
         ApplicationManager.getApplication().invokeLater({ block() }) { project.isDisposed }
+
+    private fun <T> onEdtBlocking(action: () -> T): T {
+        if (ApplicationManager.getApplication().isDispatchThread) return action()
+
+        val result = AtomicReference<Result<T>>()
+        ApplicationManager.getApplication().invokeAndWait {
+            result.set(runCatching(action))
+        }
+        return result.get().getOrThrow()
+    }
 }

@@ -66,10 +66,12 @@ object McpTokenStore {
         if (inherited.isNotBlank()) return adopt(inherited, onAdopted)
 
         // A keychain that will not store leaves the token in memory for this session rather
-        // than falling back to the settings file: a server that works until the next restart is
-        // a better answer than one that quietly writes a credential back into a plain file.
+        // than falling back to the settings file. If it cannot be persisted, fail here rather
+        // than handing out an in-memory-only credential that every restart would invalidate.
         val fresh = generate()
-        store(fresh)
+        if (!store(fresh)) {
+            throw IllegalStateException("Could not store the MCP session token in PasswordSafe")
+        }
         cached.set(fresh)
         return fresh
     }
