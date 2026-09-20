@@ -104,7 +104,9 @@ object McpTokenStore {
     @Synchronized
     fun rotate(): String {
         val fresh = generate()
-        PasswordSafe.instance.set(ATTRIBUTES, Credentials(KEY, fresh))
+        if (!store(fresh)) {
+            throw IllegalStateException("Could not store the rotated MCP session token in PasswordSafe")
+        }
         cached.set(fresh)
         return fresh
     }

@@ -311,18 +311,20 @@ class McpConnectControls(
             service.isRunning -> ", and the server restarts to pick the new token up."
             else -> "."
         }
-        val confirmed = Messages.showYesNoDialog(
+        val confirmed = onEdtBlocking {
+            Messages.showYesNoDialog(
             project,
             "Generate a new session token?\n\n" +
                 "Every client holding the current one stops working until it is " +
                 "reconfigured$restartNote\n\n" +
-            "Clients using the stdio configuration re-read the token file on their next " +
+                "Clients using the stdio configuration re-read the token file on their next " +
                 "connection and need no config edits.",
             "Rotate MCP Token",
             "Rotate",
             "Cancel",
             Messages.getWarningIcon(),
-        ) == Messages.YES
+            ) == Messages.YES
+        }
         if (!confirmed) return
 
         // Rotation stops and starts the server, which blocks on sockets.
