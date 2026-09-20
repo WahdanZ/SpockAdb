@@ -1,5 +1,10 @@
 # The in-IDE AI assistant
 
+> **Not enabled in this build.** The Assistant tab, its IDE action and its settings section are
+> hidden, and the Logcat tab offers no `Ask AI` control — there is no way to reach any of this
+> from the UI. The code and its tests are intact behind `AssistantFeature`; this document
+> describes what happens when it is switched back on. Nothing below can occur until then.
+
 `Spock ADB → Assistant` asks a model about the device in front of you and lets it use the
 plugin's own tools to find the answer, instead of describing what is usually true of Android.
 
@@ -30,6 +35,22 @@ Three things follow, and the plugin is built around them:
 
 If you are working on something that must not leave the building, the honest answer is not to
 enable the assistant.
+
+## Logs from the Logcat tab
+
+`Logcat → Ask AI → Ask Spock Assistant` prepares a context from what is on screen and **places it
+in the input**. It is not sent. The Assistant tab comes forward with the prompt ready, appended
+below anything you were already writing, and it leaves your machine only when you press Send —
+because this is the one path where the payload is device logs you did not type, and a panel that
+auto-sent them would be deciding on your behalf that this particular screenful is fit to share.
+
+What it prepares is the selected lines, or the filtered view when nothing is selected — never the
+raw buffer — capped at 300 lines and 64 KB, centred on the most recent crash or ANR when there is
+one. Values that look like credentials are replaced with `<redacted>` first, and the context says
+how many were replaced. That redaction is a courtesy, not a guarantee: it recognises the common
+shapes — `Authorization` and `Cookie` headers, bearer tokens, JWTs, `api_key`-style assignments —
+and it cannot recognise a secret your app logged as an ordinary sentence. **Read the prompt before
+you press Send.**
 
 ## Setting it up
 

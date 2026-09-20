@@ -43,7 +43,7 @@ import javax.swing.Timer
  */
 class AssistantPanel(
     private val project: Project,
-) : SimpleToolWindowPanel(true, true), Disposable {
+) : SimpleToolWindowPanel(true, true), Disposable, AssistantPrefill {
 
     private val settings = AssistantService.getInstance()
     private val transcript = AssistantTranscript()
@@ -389,6 +389,27 @@ class AssistantPanel(
         transcriptArea.text = ""
         incoming.clear()
         refreshState()
+    }
+
+    /**
+     * Puts a question prepared elsewhere — the Logcat tab's **Ask Spock Assistant** — into the
+     * input, and stops there.
+     *
+     * Not sent, and not cleared over what is already typed. The prompt carries device logs, and
+     * a panel that auto-sent them would be deciding on the developer's behalf that this
+     * particular screenful is fit to leave the machine. Appending rather than replacing means a
+     * half-written question survives the handoff.
+     */
+    override fun prefill(prompt: String) {
+        val existing = inputArea.text.orEmpty()
+        inputArea.text = if (existing.isBlank()) prompt else "$existing\n\n$prompt"
+        inputArea.caretPosition = inputArea.document.length
+        inputArea.requestFocusInWindow()
+        statusLabel.text = when {
+            configurationLoaded && configurationProblem == null -> "Ready to send — review it first."
+            else -> "Prepared. $SETUP_HINT"
+        }
+        statusLabel.foreground = JBColor.GRAY
     }
 
     private fun copyTranscript() {

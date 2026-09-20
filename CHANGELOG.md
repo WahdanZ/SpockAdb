@@ -62,9 +62,112 @@
   Success is not inferred from a silent `rm` either — the `rm` reports its own exit status in
   the same command, so a failure is reported as one instead of being announced as a clear. It
   asks no confirmation, since nothing it deletes is something the app cannot rebuild
+- **Details on demand for the selected Logcat line.** Selecting a line opens a pane beneath the
+  list with its time, level, tag, PID/TID and owning app, the raw text as the device sent it,
+  and — the part that used to mean leaving the IDE for a terminal — the whole exception report
+  the line belongs to, reassembled from the records around it, with **Copy raw line** and **Copy
+  stack trace** beside it
 
 ### Changed
 
+- **The in-IDE AI Assistant is not offered in this release.** The Assistant tab, its
+  *Open AI Assistant* IDE action and its settings section are hidden, and the Logcat tab has no
+  `Ask AI` control — there is no way to reach any of it from the UI, and the panel is not even
+  constructed, so nothing reads an API key out of the keychain for a feature nobody can open.
+  Nothing is deleted: the agent loop, the tool gate and its confirmations, the audit trail, the
+  Logcat context builder and its redaction step are all intact and still under test, behind a
+  single `AssistantFeature` switch. Stored settings are untouched, so turning it back on finds
+  the configuration as it was
+- **Logcat: scope and filter are two questions, not one list of presets.** `Current app`,
+  `Errors only`, `Crashes`, `ANRs` and `Network` were one dropdown, so they could not be
+  combined and each one silently answered a question it had not been asked: choosing `Crashes`
+  widened the view from the app to every process on the device, and choosing `Current app` reset
+  the level and emptied the search box. They are now two independent controls — a **scope** of
+  `App`, `Related` or `All`, and a **filter** of `All logs`, `Errors`, `Crashes`, `ANRs` or
+  `Network` — so `App + Crashes`, `Related + Errors` and `All + ANRs` are all expressible, and a
+  filter can never move the scope out from under you. `Related` is the new one: the app's own
+  processes plus the system components that act on it — `AndroidRuntime`, `ActivityManager`,
+  `ActivityTaskManager`, `WindowManager`, `ConnectivityService`, `PackageManager` and the crash
+  reporters — plus any system line that names the package, such as an `ANR in` report. It is
+  deliberately a short list: a `Related` that admits the general run of system chatter is
+  indistinguishable from `All`, and sends you back to `App` having lost the one line that
+  explains what happened to your process. Scope and filter are separate fields in the model
+  rather than a UI arrangement, so what each one does is fixed by its own tests
+- **Logcat shows logs, not controls.** The toolbar carried eleven controls at equal visual
+  weight across two rows, which in a docked tool window left the log itself a minority of the
+  panel. It is now one reflowing row of what is used continuously — live/pause, scope, level,
+  filter, search, `Ask AI` — with clear, export, copy, regex, auto-scroll, details and stop
+  moved behind **⋯**. Start, Stop and Pause were three buttons for what a developer thinks of as
+  one switch, so they are one: the first control starts the stream and thereafter pauses and
+  resumes the view, with the stream left running so nothing is missed, and Stop — which lets go
+  of the device — is in the overflow where it belongs
+- **Logcat rows are readable at a glance.** Every row was drawn in one colour chosen by
+  severity, so a screen with a few errors on it read as a wall of red, and each row began with a
+  timestamp, a PID and a TID in the same weight as the message — the same three numbers on every
+  line, crowding out the only part anyone reads. Rows now follow the reading order: a dimmed
+  time, a small colour chip for the level, the tag in a secondary colour, and the message at full
+  contrast. Colour is spent only where it carries information — the chip on every line, and the
+  message itself for a crash, an ANR or an error. PID and TID are not in the row at all; they
+  are in the details pane, one click away
+- **Clicking one line of a multi-line log shows the whole thing.** An HTTP interceptor printing
+  a JSON body, an exception and its frames, a tombstone — each is one log statement that reaches
+  logcat as one record per line, and selecting any of them showed that line alone, which is
+  exactly the moment the panel stopped being useful: clicking `"count": 12,` should give you the
+  body it belongs to. The details pane now shows the whole block, named and counted in its
+  heading, with a copy action for it. A block is either a stack trace, recognised by its shape,
+  or a burst — consecutive records from the same process, thread and tag, each within 400ms of
+  the one before — so a chatty tag does not collapse into one enormous group and two bursts a
+  second apart stay two blocks
+- **The log can be an editor, so text selects across lines — and is, by default.** It was a
+  `JBList` with a cell renderer, which is the obvious choice and the wrong one for this: a list
+  cell is all-or-nothing, so you could select *rows* but never drag across part of a message or
+  from the end of one line into the next — the thing everyone does in a terminal. There is no
+  way to add that to a list; text selection is what an editor is. The default view is now a real
+  IntelliJ editor in viewer mode, which brings character-level selection, the platform's own
+  copy, find-in-view and a scrolling model that does not fight you. **Row View**
+  in the ⋯ menu switches back to the row list, which draws each record as a discrete thing and
+  can paint what text cannot — its level marker is a coloured chip rather than a letter. The
+  choice is remembered between sessions, and both views sit behind one interface, so the panel
+  above them does not know which it is talking to. Streaming is unchanged in shape — batched on a timer, one document edit
+  per batch rather than one per line — and auto-scroll no longer moves the caret, so a selection
+  survives lines arriving underneath it. The line-to-record mapping is exact and a message
+  carrying a newline can no longer split a record, which would have shifted every entry after it
+  out of step with the screen
+- **Selecting several lines keeps the details pane, and describes the selection.** Multi-row
+  selection was supported and looked as though it was not: the pane appeared only for exactly
+  one row, so highlighting a run of lines made it disappear — in the one case where the
+  developer has said most clearly what they are interested in. A selection now shows its own
+  shape — how many lines, which tags, which processes, the time span, the levels present — and
+  copies raw, because a chosen set of lines is usually on its way into a bug report
+- **Records with no message are no longer shown.** A device emits them — every `adb shell log`
+  invocation ends with one — and they arrive as blank rows that cost a line of screen and say
+  nothing. The raw record stays in the buffer
+- **The panel says when a scope could not be applied.** With the app not running there are no
+  PIDs to filter by, so `App` quietly shows every process — the most misleading state the panel
+  has, because it looks exactly like a working one. The status bar now says `App scope not
+  applied — the app is not running`, from the same rule the AI context header uses, so the two
+  cannot drift apart
+- **A line that continues the statement above repeats none of its labelling.** One
+  `Log.d` carrying a JSON body reaches logcat as one record per line, each with its own
+  timestamp, so a twelve-line body arrived as twelve copies of `17:01:18.639  ApiClient` down
+  the columns the eye lands on first — the body itself read last. Time, level and tag all belong
+  to the statement rather than to each of its lines, so both views now blank all three for a
+  continuation, holding the space so nothing moves. What counts as a continuation
+  is the same rule the details pane uses to decide what a block is, so the two cannot disagree
+- **A tag is printed when it changes, not on every line.** A burst of lines from one tag — an
+  HTTP interceptor logging a request, a body and a response — repeated that tag down the whole
+  column, twenty rows of `ApiClient` saying nothing in the position the eye lands on first. The
+  tag now appears only when it differs from the line above; the space it would have taken is
+  kept, so the message column does not move and the run still reads as one block. Read from the
+  model rather than from what is on screen, so scrolling never changes which rows show a tag
+- **Copying a log line is now the keyboard shortcut and the right button.** Copy lived only in
+  the overflow menu, three clicks from the most common thing anyone does to a log line. The
+  platform's own copy shortcut works on the list, and right-clicking offers **Copy Lines** (the
+  raw records), **Copy Messages** (without the `10-04 12:34:56.789 3189 3189 E AndroidRuntime:`
+  prefix, so a stack trace pasted into an issue is still a stack trace an IDE will link) and,
+  on an exception, **Copy Stack Trace** for the whole report. Right-clicking outside the
+  selection acts on the row under the cursor, as every list in the IDE does; inside it, the
+  selection is kept, so a multi-line copy is not lost to a stray click
 - **One refresh button in the header instead of two.** The device picker and the app picker each
   carried their own, drawn with the same icon and sitting side by side, so the only way to tell
   which list was about to be re-read was to hover and read a tooltip. They were never two ideas:

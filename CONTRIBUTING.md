@@ -24,6 +24,23 @@
    ./gradlew runIde
    ```
 
+### Trying the Logcat tab without a bug to reproduce
+
+`scripts/demo-logcat.sh` writes a scripted, realistic log to a connected device — JSON request
+and response bodies, headers carrying credentials, a run of identical lines, a crash with a full
+stack trace, and an ANR report — so the scope/filter combinations, the details pane and the AI
+context all have something to act on:
+
+```bash
+scripts/demo-logcat.sh --package com.example.app
+```
+
+Its lines come from the `log` command, so they carry the shell's PID and appear under the
+`Related` and `All` scopes rather than `App`. For a faithful `App`-scope demo, copy
+`scripts/demo/LogcatDemo.kt` into a sample app and call `LogcatDemo.play()` from `onCreate` —
+same scenario, emitted from the app's own process. Neither file is part of the plugin, and
+`LogcatDemo.kt` is debug-only: several of its lines exist to look like credentials.
+
 ---
 
 ## Making Changes

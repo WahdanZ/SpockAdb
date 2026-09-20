@@ -11,6 +11,7 @@ import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
+import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantKeyStore
 import spock.adb.assistant.AssistantProvider
 import spock.adb.assistant.AssistantService
@@ -88,7 +89,10 @@ class SpockAdbConfigurable : Configurable {
         }
 
         content.add(mcpSection(), constraints)
-        content.add(assistantSection(), constraints)
+        // The AI Assistant section is not added while the tab is hidden: a settings page for a
+        // feature with no way in is worse than no settings page — it reads as something broken.
+        // See AssistantFeature.TAB_VISIBLE. Stored settings are left untouched.
+        if (AssistantFeature.TAB_VISIBLE) content.add(assistantSection(), constraints)
         content.add(toolAccessSection(), constraints)
         content.add(shortcutSection(), constraints)
         content.add(
@@ -498,7 +502,6 @@ class SpockAdbConfigurable : Configurable {
             "spock.adb.actions.OpenLogcatAction",
             "spock.adb.actions.OpenCommandCenterAction",
             "spock.adb.actions.OpenMcpPanelAction",
-            "spock.adb.actions.OpenAssistantAction",
             "spock.adb.mcp.ToggleMcpServerAction",
         )
     }
