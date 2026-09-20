@@ -103,14 +103,15 @@ object McpConfigInstaller {
     }
 
     private fun writeAtomically(file: Path, text: String) {
-        val directory = file.parent
-        val temp = Files.createTempFile(directory, "${file.fileName}.", ".tmp")
+        val target = file.toAbsolutePath()
+        val directory = target.parent ?: Path.of(".").toAbsolutePath().normalize()
+        val temp = Files.createTempFile(directory, "${target.fileName}.", ".tmp")
         try {
             Files.writeString(temp, text)
             try {
-                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
             }
         } finally {
             Files.deleteIfExists(temp)

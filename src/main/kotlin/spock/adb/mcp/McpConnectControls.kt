@@ -178,10 +178,12 @@ class McpConnectControls(
                     LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it.file)
                 }
             }
+            val shouldOfferIgnore = outcome.isSuccess &&
+                runCatching { !McpConfigInstaller.isIgnored(basePath) }.getOrDefault(false)
             onEdt {
                 reportInstall(outcome)
                 // Both entries are machine-local, so the offer is not stdio's alone.
-                if (outcome.isSuccess) offerToIgnore(basePath)
+                if (shouldOfferIgnore) offerToIgnore(basePath)
             }
         }
     }
@@ -247,7 +249,6 @@ class McpConnectControls(
      */
     private fun offerToIgnore(basePath: Path) {
         if (project.isDisposed) return
-        if (runCatching { McpConfigInstaller.isIgnored(basePath) }.getOrDefault(true)) return
 
         val wanted = Messages.showYesNoDialog(
             project,
