@@ -224,7 +224,7 @@ The **Search actions…** field filters actions and settings by name or tooltip 
 ## App storage
 
 <p align="center">
-  <img src="/images/app-storage.png" alt="Spock ADB app storage browser and preference editor" width="100%">
+  <img src="images/app-storage.png" alt="Spock ADB app storage browser and preference editor" width="100%">
 </p>
 
 Browse the selected app's data directly from the IDE.
