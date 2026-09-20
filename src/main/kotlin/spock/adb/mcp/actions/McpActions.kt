@@ -18,6 +18,7 @@ import spock.adb.mcp.stdioClientConfiguration
 import spock.adb.notification.CommonNotifier
 import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Reports the outcome of work that finished on a pooled thread.
@@ -33,6 +34,16 @@ private fun notifyLater(
 ) = ApplicationManager.getApplication().invokeLater(
     { CommonNotifier.showNotifier(project = project, content = content, type = type) },
 ) { project.isDisposed }
+
+private fun <T> onEdtBlocking(action: () -> T): T {
+    if (ApplicationManager.getApplication().isDispatchThread) return action()
+
+    val result = AtomicReference<Result<T>>()
+    ApplicationManager.getApplication().invokeAndWait {
+        result.set(runCatching(action))
+    }
+    return result.get().getOrThrow()
+}
 
 /**
  * Starts or stops the MCP server.
@@ -209,24 +220,26 @@ class InstallMcpConfigurationAction : AnAction() {
     ): Boolean? {
         if (!service.prefersStdio) return false
 
-        val choice = Messages.showYesNoCancelDialog(
-            project,
-            "Write to:\n${basePath.resolve(McpConfigInstaller.FILE_NAME)}\n\n" +
-                "Any other servers already in that file are kept, and neither entry contains a " +
-                "token.\n\n" +
-                "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
-                "HTTP — for a client that only opens a URL. It reads " +
-                "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
-                "too; the MCP panel's Copy Config has the environment line.\n\n" +
-                "Both only work on this machine — stdio names this JDK, plugin jar and IDE " +
-                "config by absolute path, and the HTTP URL names the port this IDE happens to " +
-                "be listening on. Keep the file out of a shared commit either way.",
-            "Install MCP Configuration",
-            "stdio",
-            "HTTP",
-            "Cancel",
-            null,
-        )
+        val choice = onEdtBlocking {
+            Messages.showYesNoCancelDialog(
+                project,
+                "Write to:\n${basePath.resolve(McpConfigInstaller.FILE_NAME)}\n\n" +
+                    "Any other servers already in that file are kept, and neither entry contains a " +
+                    "token.\n\n" +
+                    "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
+                    "HTTP — for a client that only opens a URL. It reads " +
+                    "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
+                    "too; the MCP panel's Copy Config has the environment line.\n\n" +
+                    "Both only work on this machine — stdio names this JDK, plugin jar and IDE " +
+                    "config by absolute path, and the HTTP URL names the port this IDE happens to " +
+                    "be listening on. Keep the file out of a shared commit either way.",
+                "Install MCP Configuration",
+                "stdio",
+                "HTTP",
+                "Cancel",
+                null,
+            )
+        }
         return when (choice) {
             Messages.YES -> true
             Messages.NO -> false
@@ -334,18 +347,20 @@ class RotateMcpTokenAction : AnAction() {
             service.isRunning -> ", and the server restarts to pick the new token up."
             else -> "."
         }
-        val confirmed = Messages.showYesNoDialog(
-            project,
-            "Generate a new session token?\n\n" +
-                "Every client holding the current one stops working until it is " +
-                "reconfigured$restartNote\n\n" +
-                "Clients using the stdio configuration re-read the token file and need no " +
-                "change.",
-            "Rotate MCP Token",
-            "Rotate",
-            "Cancel",
-            Messages.getWarningIcon(),
-        ) == Messages.YES
+        val confirmed = onEdtBlocking {
+            Messages.showYesNoDialog(
+                project,
+                "Generate a new session token?\n\n" +
+                    "Every client holding the current one stops working until it is " +
+                    "reconfigured$restartNote\n\n" +
+                    "Clients using the stdio configuration re-read the token file and need no " +
+                    "change.",
+                "Rotate MCP Token",
+                "Rotate",
+                "Cancel",
+                Messages.getWarningIcon(),
+            ) == Messages.YES
+        }
         if (!confirmed) return
 
         // Rotation stops and starts the server, which blocks on sockets.

@@ -358,7 +358,8 @@ class McpConnectControls(
         val wantsLine = Messages.showYesNoDialog(
             project,
             "New token generated. stdio clients need no change.\n\n" +
-            "Copy the line that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client on this machine?",
+            "Copy the line that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client " +
+            "on this machine?",
             "Rotate MCP Token",
             "Copy Environment Line",
             "Done",
