@@ -274,7 +274,8 @@ class InstallMcpConfigurationAction : AnAction() {
             outcome.created ->
                 "Created ${outcome.file}. Restart your MCP client to pick it up."
             outcome.replaced ->
-                "Updated the ${McpClientConfig.SERVER_NAME} entry in ${outcome.file}. Restart your MCP client to pick it up."
+                "Updated the ${McpClientConfig.SERVER_NAME} entry in ${outcome.file}. " +
+                    "Restart your MCP client to pick it up."
             else ->
                 "Added ${McpClientConfig.SERVER_NAME} to ${outcome.file}. Restart your MCP client to pick it up."
         }

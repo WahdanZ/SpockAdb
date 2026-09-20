@@ -166,7 +166,7 @@ class McpClientConfigTest {
         assertEquals("'plain-token'", shellSingleQuoted("plain-token"))
         assertEquals("'ab'\"'\"'cd'", shellSingleQuoted("ab'cd"))
         assertEquals("'a b\tc\nd'", shellSingleQuoted("a b\tc\nd"))
-        assertEquals("'$HOME'", shellSingleQuoted("$HOME"))
+        assertEquals("'\$HOME'", shellSingleQuoted("\$HOME"))
     }
 
     @Test
@@ -175,6 +175,6 @@ class McpClientConfigTest {
         assertEquals("'plain-token'", powershellSingleQuoted("plain-token"))
         assertEquals("'ab''cd'", powershellSingleQuoted("ab'cd"))
         assertEquals("'a b\tc\nd'", powershellSingleQuoted("a b\tc\nd"))
-        assertEquals("'$HOME'", powershellSingleQuoted("$HOME"))
+        assertEquals("'\$HOME'", powershellSingleQuoted("\$HOME"))
     }
 }

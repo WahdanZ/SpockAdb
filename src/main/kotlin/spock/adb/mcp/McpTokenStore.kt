@@ -69,9 +69,7 @@ object McpTokenStore {
         // than falling back to the settings file. If it cannot be persisted, fail here rather
         // than handing out an in-memory-only credential that every restart would invalidate.
         val fresh = generate()
-        if (!store(fresh)) {
-            throw IllegalStateException("Could not store the MCP session token in PasswordSafe")
-        }
+        check(store(fresh)) { "Could not store the MCP session token in PasswordSafe" }
         cached.set(fresh)
         return fresh
     }
@@ -104,9 +102,7 @@ object McpTokenStore {
     @Synchronized
     fun rotate(): String {
         val fresh = generate()
-        if (!store(fresh)) {
-            throw IllegalStateException("Could not store the rotated MCP session token in PasswordSafe")
-        }
+        check(store(fresh)) { "Could not store the rotated MCP session token in PasswordSafe" }
         cached.set(fresh)
         return fresh
     }
