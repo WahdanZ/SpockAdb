@@ -246,6 +246,7 @@ class McpConnectControls(
      * that appears every time is one that gets clicked through.
      */
     private fun offerToIgnore(basePath: Path) {
+        if (project.isDisposed) return
         if (runCatching { McpConfigInstaller.isIgnored(basePath) }.getOrDefault(true)) return
 
         val wanted = Messages.showYesNoDialog(
