@@ -311,6 +311,19 @@
   unreachable. Actions missing from stored settings are now merged in on load, switched on,
   as a fresh install would have had them. Choices already made are untouched, and entries
   for actions that no longer exist are still left alone
+- **The All activities popup showed the parser's own bookkeeping instead of the stack.** Rows
+  read `0-com.example.myapplication`, `0-com.example.myapplication.MainActivity` and — where
+  `dumpsys` had given up a line the plugin could not read — the bare string `0-`, with package
+  and activity at the same weight and indentation done in tab characters. The popup is now an
+  **Activity Stack**: a package heading per task, its activities beneath it shortened to the
+  part that is not the package, the task holding the resumed activity badged `CURRENT`, and the
+  full package or class name in a tooltip for a narrow tool window that truncates a row. An
+  activity `dumpsys` does not name is dropped in the parser rather than rendered, and the task
+  it belonged to says `No resumed activity` instead of showing an empty row. Two older faults
+  went with it: an activity appearing in two tasks always opened the first task's class,
+  because the class was looked up by the row's position in a list of strings; and package and
+  class names were cut short at their first digit or underscore — `com.android.launcher3` was
+  read as `com.android.launcher` — so those activities could never be opened at all
 
 ## [4.0.3] - 2026-09-12
 
