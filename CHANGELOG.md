@@ -214,6 +214,15 @@
   buttons are enabled; the same blocking read in the send path is gone with it. A key changed
   while the panel is open is still picked up — the read is repeated when the panel is shown and
   when the Settings dialog closes, and a send is checked again on the pooled thread that runs it
+- **The Settings dialog read the key on the UI thread as it opened.** `Settings > Tools > Spock
+  ADB` says whether a key is stored for the selected provider, and answering that read the
+  keychain from `reset()`, so the dialog stayed shut while it waited — and did it again on every
+  provider switch. The read moved to a pooled thread, and a reply that arrives after the dialog
+  has closed, or after the provider has changed again, is dropped rather than painted. Storing
+  and removing a key still happen where they did: those are the commit points, and the assistant
+  panel re-reads its configuration the moment the dialog closes, so a write still in flight would
+  have it report the wrong thing. Neither needs a keychain read any more — the label now follows
+  from what was just written
 - **Current fragment answered "no fragments" for every app that had them.** It read
   `dumpsys activity top`, which on Android 13 and later reports no fragment state at all — the
   activity is there, its FragmentManager is not. It now dumps the selected app by name, which
