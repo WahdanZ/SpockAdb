@@ -1,7 +1,5 @@
 package spock.adb.mcp
 
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -11,11 +9,10 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.util.xmlb.annotations.OptionTag
 import spock.adb.mcp.stdio.McpBridgeServer
 import spock.adb.mcp.stdio.SpockAdbStdioLauncher
 import java.nio.file.Path
-import java.security.SecureRandom
-import java.util.Base64
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -71,7 +68,15 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     val isRunning: Boolean get() = server?.port != null
     val port: Int? get() = server?.port
-    val token: String get() = settings.token
+
+    /**
+     * The session token, generated on first use.
+     *
+     * Blocking on the first call of an IDE session, which is a keychain read. Every caller
+     * either runs on a pooled thread already or asks only while the server is running, by which
+     * point [start] has warmed [McpTokenStore]'s cache.
+     */
+    val token: String get() = McpTokenStore.current()
 
     /** Where the stdio bridge is listening, or null when it could not be started. */
     val stdioEndpoint: McpBridgeServer.Endpoint? get() = bridge?.endpoint
@@ -83,12 +88,17 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     override fun loadState(state: McpSettings) {
         settings = state
-        if (settings.token.isBlank()) settings.token = generateToken()
         disabledToolNames.set(state.disabledTools.toSet())
-        // Off the calling thread: this runs during IDE startup and the file can hold thousands
-        // of records. Nothing waits on it — the activity view shows what has arrived so far,
-        // and a call recorded while it is in flight is kept rather than overwritten.
-        ApplicationManager.getApplication().executeOnPooledThread(::ensureHistoryLoaded)
+        // Off the calling thread: this runs during IDE startup, the history file can hold
+        // thousands of records, and the migration reads the OS keychain. Nothing waits on
+        // either — the activity view shows what has arrived so far, and a call recorded while
+        // it is in flight is kept rather than overwritten.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // The plain-text copy is cleared only once the keychain is holding it; a keychain
+            // that is unavailable costs nothing but a retry on the next startup.
+            if (McpTokenStore.adopt(settings.legacyToken)) settings.legacyToken = ""
+            ensureHistoryLoaded()
+        }
     }
 
     @Synchronized
@@ -99,7 +109,9 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         // Restart's job.
         server?.port?.let { return@runCatching it }
 
-        if (settings.token.isBlank()) settings.token = generateToken()
+        // Minted here rather than lazily on the first request: this runs on a pooled thread,
+        // and the keychain read belongs off the path a client is waiting on.
+        val sessionToken = McpTokenStore.current()
 
         val mcpProtocol = McpProtocol(
             contextProvider = { toolContext },
@@ -108,10 +120,10 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         )
         protocol = mcpProtocol
         ensureHistoryLoaded()
-        val httpServer = McpHttpServer(mcpProtocol, settings.token)
+        val httpServer = McpHttpServer(mcpProtocol, sessionToken)
         val boundPort = httpServer.start(settings.port)
         server = httpServer
-        startStdioBridge(mcpProtocol)
+        startStdioBridge(mcpProtocol, sessionToken)
         settings.enabled = true
         // Remember the port the OS handed out so the generated client config keeps working
         // across restarts.
@@ -171,10 +183,10 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
      * A failure here does not fail [start]: stdio is one of two ways in, and losing it should
      * not take the working one down with it.
      */
-    private fun startStdioBridge(mcpProtocol: McpProtocol) {
+    private fun startStdioBridge(mcpProtocol: McpProtocol, sessionToken: String) {
         val stdioBridge = McpBridgeServer(
             handle = mcpProtocol::handle,
-            token = settings.token,
+            token = sessionToken,
             diagnostics = { message, error -> if (error == null) log.info(message) else log.warn(message, error) },
         )
         runCatching { stdioBridge.start(endpointDirectory()) }
@@ -188,15 +200,24 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     /** Per-IDE, so two IDEs running the server at once do not fight over one socket. */
     private fun endpointDirectory(): Path = Path.of(PathManager.getConfigPath(), "spock-adb")
 
-    /** Invalidates the current token, which disconnects every client using it. */
+    /**
+     * Invalidates the current token, which disconnects every client using it.
+     *
+     * Blocking: it writes to the keychain and, when the server is up, restarts it. Throws if
+     * the keychain refuses, having changed nothing — the old token keeps working, which is a
+     * better failure than a rotation that half happened.
+     */
     @Synchronized
     fun regenerateToken(): String {
-        settings.token = generateToken()
+        val fresh = McpTokenStore.rotate()
+        // A legacy attribute that migration could not clear must not outlive the token it holds.
+        settings.legacyToken = ""
+
         if (isRunning) {
             stop()
             start()
         }
-        return settings.token
+        return fresh
     }
 
     /**
@@ -325,27 +346,19 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     }
 
     /**
-     * Configuration snippet for an MCP client.
+     * The HTTP server entry for a client config.
      *
-     * Contains the session token, which is a credential: it is generated locally, never
-     * leaves the machine unless the developer copies it, and can be rotated.
+     * [includeToken] defaults to false, and that default is the point: the generated text then
+     * references `${McpClientConfig.TOKEN_ENV_VAR}` and holds no credential, so pasting it
+     * somewhere it should not have gone costs nothing. The literal form still exists for
+     * clients that cannot expand environment variables, but a caller has to ask for it — and
+     * every caller that does asks the developer first.
      */
-    fun clientConfiguration(): String {
-        val activePort = port ?: settings.port
-        return """
-            {
-              "mcpServers": {
-                "spock-adb": {
-                  "type": "http",
-                  "url": "http://127.0.0.1:$activePort${McpHttpServer.ENDPOINT}",
-                  "headers": {
-                    "Authorization": "Bearer ${settings.token}"
-                  }
-                }
-              }
-            }
-        """.trimIndent()
-    }
+    fun httpServerEntry(includeToken: Boolean = false): JsonObject =
+        McpClientConfig.httpServer(
+            port = port ?: settings.port,
+            token = if (includeToken) McpTokenStore.current() else null,
+        )
 
     /**
      * Configuration snippet for a client that speaks stdio.
@@ -359,27 +372,23 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
      * a Windows path in a hand-rolled JSON string would produce `C:\Users`, which is invalid
      * JSON and would be silently mangled where it is not.
      */
-    fun stdioClientConfiguration(): String {
+    fun stdioServerEntry(): JsonObject {
         val descriptor = stdioEndpoint?.descriptorFile?.toString()
             ?: endpointDirectory().resolve(McpBridgeServer.DESCRIPTOR_NAME).toString()
 
-        val server = JsonObject().apply {
-            addProperty("command", javaExecutable())
-            add(
-                "args",
-                JsonArray().apply {
-                    add("-cp")
-                    add(launcherClasspath())
-                    add(SpockAdbStdioLauncher::class.java.name)
-                    add(descriptor)
-                },
-            )
-        }
-        val config = JsonObject().apply {
-            add("mcpServers", JsonObject().apply { add("spock-adb", server) })
-        }
-        return GsonBuilder().setPrettyPrinting().create().toJson(config)
+        return McpClientConfig.stdioServer(
+            javaExecutable = javaExecutable(),
+            classpath = launcherClasspath(),
+            launcherClass = SpockAdbStdioLauncher::class.java.name,
+            descriptor = descriptor,
+        )
     }
+
+    /**
+     * Whether the tokenless transport is available, which decides what gets installed and what
+     * the panel offers first.
+     */
+    val prefersStdio: Boolean get() = stdioEndpoint != null
 
     /**
      * The IDE's own JVM.
@@ -403,15 +412,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         historyWriter.shutdown()
     }
 
-    private fun generateToken(): String {
-        val bytes = ByteArray(TOKEN_BYTES)
-        SecureRandom().nextBytes(bytes)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-    }
-
     companion object {
-        private const val TOKEN_BYTES = 32
-
         /** Beside the stdio endpoint descriptor, under the IDE config directory. */
         const val HISTORY_FILE = "mcp-history.ndjson"
 
@@ -426,8 +427,17 @@ data class McpSettings(
     var enabled: Boolean = false,
     /** 0 asks the OS for a free port; the chosen one is stored back. */
     var port: Int = 0,
-    /** Bearer token clients must present. Generated on first use. */
-    var token: String = "",
+    /**
+     * Where the token used to live, kept only so it can be taken out of the file.
+     *
+     * The token is a credential for the developer's device and filesystem, and this file syncs
+     * with IDE settings and is readable by anything running as the developer. It now lives in
+     * [McpTokenStore]; a value still here is one written by an earlier version, and
+     * [McpServerService.loadState] moves it and blanks this on the next save. `@OptionTag` keeps
+     * the serialised name the old files use, so renaming the property did not orphan them.
+     */
+    @OptionTag("token")
+    var legacyToken: String = "",
     /** How many tool calls to keep. Bounded so the log cannot grow without limit. */
     var historySize: Int = McpRequestHistory.DEFAULT_CAPACITY,
     /**
