@@ -372,7 +372,7 @@ Spock ADB supports:
 
 Both transports use the same protocol implementation, tool registry, device services, safety rules, and activity log.
 
-The stdio client configuration does not embed the authentication token; it connects through the local endpoint managed by the plugin.
+The stdio client configuration does not embed the authentication token; it connects through the local endpoint managed by the plugin. The HTTP configuration reads its token from `SPOCK_ADB_MCP_TOKEN` in the client's environment by default, so neither generated configuration is itself a credential. **Install into this project** writes the configuration straight into the project's `.mcp.json`, merging with any servers already there, and offers to git-ignore it — neither entry can leave this machine, since stdio names local absolute paths and the HTTP URL names the port this IDE is listening on. **Rotate Token** invalidates a token that has leaked. The token itself is stored in the IDE's `PasswordSafe`, not in a settings file; a token written by an earlier version is migrated into it on the first startup after updating.
 
 ### Tooling
 
@@ -441,7 +441,9 @@ Examples include:
 - Open MCP Server Panel
 - Open Developer Options on Device
 - Start / stop / restart MCP server
-- Copy MCP client configuration
+- Copy MCP client configuration (stdio or HTTP)
+- Install MCP client configuration into this project
+- Rotate MCP token
 
 **No default keyboard shortcuts are claimed.** Assign the combinations that fit your keymap.
 

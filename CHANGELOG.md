@@ -4,6 +4,28 @@
 
 ### Added
 
+- **Connect an MCP client without handing out a credential, and revoke one that got out.** The
+  panel had a single **Copy Config** button, and it copied the one configuration that *is* a
+  secret — the HTTP form with the session token written into it — with a warning that arrived
+  only once it was already on the clipboard. Pasted into a chat, that token is a live credential
+  for the device and the filesystem, and there was no way to retire it short of quitting the IDE
+  and hand-editing `spock-adb-mcp.xml`: `regenerateToken()` existed and had no caller anywhere.
+  **Copy Config** is now a menu, tokenless forms first — the stdio configuration, and an HTTP one
+  whose header reads `${SPOCK_ADB_MCP_TOKEN}` from the client's environment — with the literal
+  form kept for clients that cannot expand environment variables and confirmed *before* anything
+  is copied. **Install into this project** writes the configuration into the project's
+  `.mcp.json` instead of routing it through the clipboard, merging into whatever servers are
+  already in that file and refusing rather than overwriting a file that is not valid JSON; a
+  configuration pasted into a chat never connected a client in the first place, since a client
+  only reads its own config file. **Rotate Token** invalidates the current token, restarts the
+  server, and offers the matching `export` line once — stdio clients re-read the token file and
+  need no change. All four are also actions: `Spock: Install MCP Client Configuration Into This
+  Project` and `Spock: Rotate MCP Token` join the two copy actions. Installing asks which
+  transport to write — the axis is what the client can do, spawn a process or open a URL —
+  because neither entry can leave this machine: stdio names this machine's JDK, plugin jar and
+  IDE config by absolute path, and the HTTP URL names the port the OS handed this IDE on first
+  start. `.mcp.json` in a project root is a file teams share, so after either install it offers
+  to add it to the project's `.gitignore`, and only when that file does not already say so
 - **View and edit an app's SharedPreferences and DataStore, without clearing data or adding a
   debug menu.** Reproducing a bug that depends on stored state meant clearing data and walking
   back through the app, and inspecting that state meant pulling a file through `run-as` and, for
@@ -65,6 +87,18 @@
 
 ### Changed
 
+- **The MCP session token now lives in `PasswordSafe` rather than in a settings file.** It was
+  stored as a plain attribute in `spock-adb-mcp.xml` — a credential for the connected device
+  *and* for the filesystem, sitting in a file that IDE settings sync copies between machines,
+  that backup tools pick up, and that anything running as the developer can read without asking
+  the OS for anything. The LLM API key beside it had always been kept in the keychain; the more
+  dangerous of the two secrets was the one in the clear. A token written by an earlier version
+  is moved into the keychain on the first startup after updating and the attribute is cleared,
+  so clients already configured against it keep working; the settings property is retained under
+  its old serialised name purely so those files can be cleaned up. The token is read once per
+  IDE session and cached, because both transports check it on every connection and a keychain
+  read per connection would be a prompt on some platforms. The `600` descriptor file the stdio
+  launcher reads is unchanged — a separate process has no other way to authenticate
 - **One refresh button in the header instead of two.** The device picker and the app picker each
   carried their own, drawn with the same icon and sitting side by side, so the only way to tell
   which list was about to be re-read was to hover and read a tooltip. They were never two ideas:

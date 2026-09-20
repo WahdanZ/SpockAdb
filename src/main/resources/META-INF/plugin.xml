@@ -155,14 +155,22 @@
             <action id="spock.adb.mcp.RestartMcpServerAction"
                     class="spock.adb.mcp.actions.RestartMcpServerAction"
                     text="Restart MCP Server"/>
-            <action id="spock.adb.mcp.CopyMcpConfigurationAction"
-                    class="spock.adb.mcp.actions.CopyMcpConfigurationAction"
-                    text="Copy MCP Client Configuration (HTTP)"
-                    description="Copy a ready-to-paste MCP client configuration for this IDE"/>
+            <action id="spock.adb.mcp.InstallMcpConfigurationAction"
+                    class="spock.adb.mcp.actions.InstallMcpConfigurationAction"
+                    text="Install MCP Client Configuration Into This Project"
+                    description="Write .mcp.json in the project root, keeping any other servers in it"/>
             <action id="spock.adb.mcp.CopyMcpStdioConfigurationAction"
                     class="spock.adb.mcp.actions.CopyMcpStdioConfigurationAction"
                     text="Copy MCP Client Configuration (stdio)"
                     description="Copy a stdio MCP client configuration, which carries no token"/>
+            <action id="spock.adb.mcp.CopyMcpConfigurationAction"
+                    class="spock.adb.mcp.actions.CopyMcpConfigurationAction"
+                    text="Copy MCP Client Configuration (HTTP)"
+                    description="Copy an HTTP MCP client configuration, with or without the token in it"/>
+            <action id="spock.adb.mcp.RotateMcpTokenAction"
+                    class="spock.adb.mcp.actions.RotateMcpTokenAction"
+                    text="Rotate MCP Token"
+                    description="Invalidate the current MCP session token and issue a new one"/>
         </group>
     </actions>
 </idea-plugin>
