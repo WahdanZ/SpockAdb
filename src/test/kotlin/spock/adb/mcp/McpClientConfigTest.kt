@@ -159,4 +159,22 @@ class McpClientConfigTest {
             McpClientConfig.contains(McpClientConfig.merge(null, McpClientConfig.httpServer(1))),
         )
     }
+
+    @Test
+    fun `shell export values are single quoted`() {
+        assertEquals("''", shellSingleQuoted(""))
+        assertEquals("'plain-token'", shellSingleQuoted("plain-token"))
+        assertEquals("'ab'\"'\"'cd'", shellSingleQuoted("ab'cd"))
+        assertEquals("'a b\tc\nd'", shellSingleQuoted("a b\tc\nd"))
+        assertEquals("'\$HOME'", shellSingleQuoted("\$HOME"))
+    }
+
+    @Test
+    fun `powershell export values are single quoted`() {
+        assertEquals("''", powershellSingleQuoted(""))
+        assertEquals("'plain-token'", powershellSingleQuoted("plain-token"))
+        assertEquals("'ab''cd'", powershellSingleQuoted("ab'cd"))
+        assertEquals("'a b\tc\nd'", powershellSingleQuoted("a b\tc\nd"))
+        assertEquals("'\$HOME'", powershellSingleQuoted("\$HOME"))
+    }
 }

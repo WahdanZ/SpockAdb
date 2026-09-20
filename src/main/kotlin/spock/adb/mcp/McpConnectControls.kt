@@ -8,6 +8,7 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JButton
 import javax.swing.JMenuItem
 import javax.swing.JPopupMenu
@@ -30,6 +31,8 @@ class McpConnectControls(
     private val say: (String) -> Unit,
     private val onServerChanged: () -> Unit,
 ) {
+    private var busy = false
+    private var running = false
 
     val copyButton = JButton("Copy Config").apply { addActionListener { showConfigMenu() } }
 
@@ -44,15 +47,20 @@ class McpConnectControls(
 
     /** Copying needs a port to point at; rotating does not. */
     fun refresh(running: Boolean) {
-        copyButton.isEnabled = running
-        // The token exists whether or not anything is listening, and one leaked by a server
-        // that has since been stopped still needs revoking.
-        rotateButton.isEnabled = true
+        this.running = running
+        updateEnabledState()
     }
 
     /** Both go quiet while the server is starting, stopping or being rotated out from under. */
     fun setBusy(busy: Boolean) {
-        copyButton.isEnabled = !busy
+        this.busy = busy
+        updateEnabledState()
+    }
+
+    private fun updateEnabledState() {
+        copyButton.isEnabled = running && !busy
+        // The token exists whether or not anything is listening, and one leaked by a server
+        // that has since been stopped still needs revoking.
         rotateButton.isEnabled = !busy
     }
 
@@ -73,7 +81,7 @@ class McpConnectControls(
         }
         menu.add(item("Copy HTTP config  —  reads \$${McpClientConfig.TOKEN_ENV_VAR}") { copyHttpConfig() })
         menu.add(item("Copy HTTP config with token…") { copyHttpConfigWithToken() })
-        menu.add(item("Copy the ${McpClientConfig.TOKEN_ENV_VAR} export line…") { copyExportLine() })
+        menu.add(item("Copy the ${McpClientConfig.TOKEN_ENV_VAR} environment line…") { copyExportLine() })
         menu.addSeparator()
         menu.add(item("Install into this project (${McpConfigInstaller.FILE_NAME})…") { installIntoProject() })
         menu.show(copyButton, 0, copyButton.height)
@@ -83,12 +91,12 @@ class McpConnectControls(
         JMenuItem(text).apply { addActionListener { action() } }
 
     private fun copyStdioConfig() {
-        copy(service.stdioClientConfiguration())
+        copy(McpClientConfig.document(service.stdioServerEntry()))
         say("Copied — no token in it; the client reads one from a file only you can read.")
     }
 
     private fun copyHttpConfig() {
-        copy(service.clientConfiguration())
+        copy(McpClientConfig.document(service.httpServerEntry()))
         say("Copied — no token in it. Set ${McpClientConfig.TOKEN_ENV_VAR} in the client's environment.")
     }
 
@@ -115,12 +123,12 @@ class McpConnectControls(
         ) == Messages.YES
         if (!confirmed) return
 
-        copy(service.clientConfiguration(includeToken = true))
+        copy(McpClientConfig.document(service.httpServerEntry(includeToken = true)))
         say("Copied — this one is a live credential. Do not paste it into a chat.")
     }
 
     /**
-     * The shell line that sets the variable the HTTP config reads.
+     * The local-shell line that sets the variable the HTTP config reads.
      *
      * Without this the env-var config is a dead end: it names a variable, and nothing in the
      * plugin would say what to set it to — the only other source was [offerExportLine], which
@@ -137,14 +145,14 @@ class McpConnectControls(
                 "environment — never in a chat, an issue or a committed file.\n\n" +
                 "If it does leak, use Rotate Token.",
             "Copy Token",
-            "Copy Export Line",
+            "Copy Environment Line",
             "Cancel",
             Messages.getWarningIcon(),
         ) == Messages.YES
         if (!confirmed) return
 
         copy(service.tokenExportLine())
-        say("Copied — that line carries a live token. It belongs in a shell, not a chat.")
+        say("Copied — that text carries a live token. It belongs in a shell, not a chat.")
     }
 
     // ------------------------------------------------------------------ installing
@@ -163,11 +171,7 @@ class McpConnectControls(
 
         val entry = chooseEntry(basePath.resolve(McpConfigInstaller.FILE_NAME)) ?: return
 
-        // A small file, but still filesystem work — and `isIgnored` reads another one. The EDT
-        // waits on disk no more happily than it waits on a socket.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val alreadyIgnored = runCatching { McpConfigInstaller.isIgnored(basePath) }
-                .getOrDefault(true)
             val outcome = runCatching {
                 McpConfigInstaller.install(basePath, entry).also {
                     // Without this the file exists on disk but not in the IDE, so the developer
@@ -175,10 +179,12 @@ class McpConnectControls(
                     LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it.file)
                 }
             }
+            val shouldOfferIgnore = outcome.isSuccess &&
+                runCatching { !McpConfigInstaller.isIgnored(basePath) }.getOrDefault(false)
             onEdt {
                 reportInstall(outcome)
                 // Both entries are machine-local, so the offer is not stdio's alone.
-                if (outcome.isSuccess && !alreadyIgnored) offerToIgnore(basePath)
+                if (shouldOfferIgnore) offerToIgnore(basePath)
             }
         }
     }
@@ -200,35 +206,39 @@ class McpConnectControls(
             "to be listening on. Keep the file out of a shared commit either way."
 
         if (!service.prefersStdio) {
-            val confirmed = Messages.showYesNoDialog(
-                project,
-                "Write the HTTP configuration to:\n$file\n\n" +
-                    "Any other servers already in that file are kept, and the entry contains no " +
-                    "token — it reads ${McpClientConfig.TOKEN_ENV_VAR} from the client's " +
-                    "environment, which you can set from Copy Config.\n\n$shared",
-                "Install MCP Configuration",
-                "Install",
-                "Cancel",
-                null,
-            ) == Messages.YES
+            val confirmed = onEdtBlocking {
+                Messages.showYesNoDialog(
+                    project,
+                    "Write the HTTP configuration to:\n$file\n\n" +
+                        "Any other servers already in that file are kept, and the entry contains no " +
+                        "token — it reads ${McpClientConfig.TOKEN_ENV_VAR} from the client's " +
+                        "environment, which you can set from Copy Config.\n\n$shared",
+                    "Install MCP Configuration",
+                    "Install",
+                    "Cancel",
+                    null,
+                ) == Messages.YES
+            }
             return if (confirmed) service.httpServerEntry() else null
         }
 
-        val choice = Messages.showYesNoCancelDialog(
-            project,
-            "Write to:\n$file\n\n" +
-                "Any other servers already in that file are kept, and neither entry contains a " +
-                "token.\n\n" +
-                "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
-                "HTTP — for a client that only opens a URL. It reads " +
-                "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
-                "too: Copy Config has the export line.\n\n$shared",
-            "Install MCP Configuration",
-            "stdio",
-            "HTTP",
-            "Cancel",
-            null,
-        )
+        val choice = onEdtBlocking {
+            Messages.showYesNoCancelDialog(
+                project,
+                "Write to:\n$file\n\n" +
+                    "Any other servers already in that file are kept, and neither entry contains a " +
+                    "token.\n\n" +
+                    "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
+                    "HTTP — for a client that only opens a URL. It reads " +
+                    "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
+                    "too: Copy Config has the environment line.\n\n$shared",
+                "Install MCP Configuration",
+                "stdio",
+                "HTTP",
+                "Cancel",
+                null,
+            )
+        }
         return when (choice) {
             Messages.YES -> service.stdioServerEntry()
             Messages.NO -> service.httpServerEntry()
@@ -239,10 +249,12 @@ class McpConnectControls(
     /**
      * Offers to keep a machine-specific config out of the team's commits.
      *
-     * Only after a stdio install, and only when `.gitignore` does not already say so — an offer
-     * that appears every time is one that gets clicked through.
+     * Both installed entries are machine-local, and this is only reached when `.gitignore` does
+     * not already say so — an offer that appears every time is one that gets clicked through.
      */
     private fun offerToIgnore(basePath: Path) {
+        if (project.isDisposed) return
+
         val wanted = Messages.showYesNoDialog(
             project,
             "That configuration only works on this machine — the paths and the port are this " +
@@ -278,7 +290,7 @@ class McpConnectControls(
                     it.replaced -> "Updated the ${McpClientConfig.SERVER_NAME} entry in"
                     else -> "Added ${McpClientConfig.SERVER_NAME} to"
                 }
-                say("$verb ${it.file.fileName} — restart your MCP client to pick it up.")
+                say("$verb ${it.file} — restart your MCP client to pick it up.")
             }
             .onFailure {
                 Messages.showErrorDialog(
@@ -299,17 +311,20 @@ class McpConnectControls(
             service.isRunning -> ", and the server restarts to pick the new token up."
             else -> "."
         }
-        val confirmed = Messages.showYesNoDialog(
+        val confirmed = onEdtBlocking {
+            Messages.showYesNoDialog(
             project,
             "Generate a new session token?\n\n" +
                 "Every client holding the current one stops working until it is " +
                 "reconfigured$restartNote\n\n" +
-                "Clients using the stdio configuration re-read the token file and need no change.",
+                "Clients using the stdio configuration re-read the token file on their next " +
+                "connection and need no config edits.",
             "Rotate MCP Token",
             "Rotate",
             "Cancel",
             Messages.getWarningIcon(),
-        ) == Messages.YES
+            ) == Messages.YES
+        }
         if (!confirmed) return
 
         // Rotation stops and starts the server, which blocks on sockets.
@@ -350,17 +365,18 @@ class McpConnectControls(
     private fun offerExportLine() {
         val wantsLine = Messages.showYesNoDialog(
             project,
-            "New token generated. stdio clients need no change.\n\n" +
-                "Copy the shell line that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client?",
+            "New token generated. Existing stdio configurations need no edits.\n\n" +
+            "Copy the environment command text that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client " +
+            "on this machine?",
             "Rotate MCP Token",
-            "Copy Export Line",
+            "Copy Environment Line",
             "Done",
             null,
         ) == Messages.YES
         if (!wantsLine) return
 
         copy(service.tokenExportLine())
-        say("Copied — that line carries the new token. It belongs in a shell, not a chat.")
+        say("Copied — that text carries the new token. It belongs in a shell, not a chat.")
     }
 
     // ------------------------------------------------------------------ plumbing
@@ -370,4 +386,14 @@ class McpConnectControls(
 
     private fun onEdt(block: () -> Unit) =
         ApplicationManager.getApplication().invokeLater({ block() }) { project.isDisposed }
+
+    private fun <T> onEdtBlocking(action: () -> T): T {
+        if (ApplicationManager.getApplication().isDispatchThread) return action()
+
+        val result = AtomicReference<Result<T>>()
+        ApplicationManager.getApplication().invokeAndWait {
+            result.set(runCatching(action))
+        }
+        return result.get().getOrThrow()
+    }
 }

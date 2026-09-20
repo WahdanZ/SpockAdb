@@ -25,7 +25,7 @@ It shows what is actually true rather than a mock-up of it:
   token written into it (confirmed first), and **Install into this project**, which writes
   `.mcp.json` in the project root.
 - **Rotate Token** — invalidates the current session token and issues a new one. stdio clients
-  re-read the token file and need no change; an HTTP client needs its environment updated, and
+  re-read the token file and need no config edits; an HTTP client needs its environment updated, and
   the new `export` line can be copied once, right after rotating.
 - **Tools tab** — the full catalogue of what an agent can do to your device, grouped by
   safety level with destructive first, searchable, and filterable to destructive only.
@@ -128,11 +128,21 @@ comes from `SPOCK_ADB_MCP_TOKEN` in the client's environment. Claude Code expand
 `.mcp.json`; clients that do not are served by `Copy HTTP config with token…`, which writes the
 token in literally and asks first.
 
-Get the value from **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` export line** (or from
+Get the value from **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` environment line** (or from
 **Rotate Token**, which offers the same line once a new token exists):
 
 ```sh
 export SPOCK_ADB_MCP_TOKEN=<the token>
+```
+
+On Windows, the plugin copies both forms:
+
+```powershell
+$env:SPOCK_ADB_MCP_TOKEN='<the token>'
+```
+
+```bat
+set "SPOCK_ADB_MCP_TOKEN=<the token>"
 ```
 
 Either way that token is a credential for your device: anything holding it can drive the device
@@ -145,7 +155,9 @@ rotate it.
 new token, restarts the server if it is running, and disconnects every client still presenting
 the old one. stdio clients re-read the token file on their next connection and need no change.
 
-Rotation invalidates a leaked credential; it does not close the port. An IDE you no longer want
+Rotation invalidates a leaked credential; it does not close the port. Existing stdio
+configurations are still the right ones — the launcher re-reads the descriptor file on the next
+connection — but an HTTP client needs the new environment value. An IDE you no longer want
 reachable at all is best handled by stopping the server as well.
 
 ## Architecture

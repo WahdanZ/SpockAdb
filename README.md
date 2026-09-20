@@ -290,13 +290,30 @@ Spock ADB deliberately uses `run-as` rather than relying on device-specific `pm 
 
 ![Logcat tab](images/logcat.png)
 
-Logcat is scoped to the selected app by default.
+Logcat is scoped to the selected app by default, and the toolbar carries only what you use
+continuously: live/pause, scope, level, filter, and search. Clear, export, copy, regex,
+auto-scroll, details, and stop are behind **⋯**.
 
-- Presets for **Current app**, **Errors only**, **Crashes**, **ANRs**, and **Network**
-- Process-ID filtering instead of package-name text matching
-- Level, tag, text, and regex filters
-- Crash and ANR highlighting
-- Pause, clear, copy, export, and auto-scroll
+**Scope** and **filter** are separate, so they combine:
+
+| Scope | Shows |
+|---|---|
+| `App` | Only the selected app's processes, matched by PID rather than by package-name text |
+| `Related` | The app, plus the system components that act on it — `AndroidRuntime`, `ActivityManager`, `ActivityTaskManager`, `WindowManager`, `ConnectivityService`, `PackageManager`, the crash reporters — and any system line that names the package |
+| `All` | Every line the device logs |
+
+The filter — `All logs`, `Errors`, `Crashes`, `ANRs`, `Network` — narrows *within* the scope and
+never changes it, so `App + Crashes`, `Related + Errors`, and `All + ANRs` all mean what they say.
+
+- The log is a real editor, so text can be selected across lines and copied like a terminal —
+  **Row View** in the ⋯ menu switches to a row list instead, remembered between sessions
+- Rows read as a hierarchy: dim timestamp, coloured level, secondary tag, message at full contrast
+- A tag is printed only when it changes, and a line continuing the statement above — the next
+  line of a JSON body or a stack trace — repeats none of the timestamp, level or tag
+- Selecting a line opens details: PID/TID, owning app, the raw record, and the whole block it
+  belongs to — a stack trace or a multi-line body — with copy actions for each
+- Crash and ANR highlighting, level, tag, text, and regex filters
+- Pause freezes the view without stopping the stream, so nothing is missed
 
 An invalid regex is treated as invalid instead of silently falling back to an unfiltered log.
 

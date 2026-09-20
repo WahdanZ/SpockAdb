@@ -74,8 +74,16 @@ class LogcatStream(
         running.set(false)
     }
 
-    /** Clears the device's log buffers so the next lines are genuinely new. */
-    fun clearDeviceBuffer() {
+    /**
+     * Clears the device's log buffers so the next lines are genuinely new.
+     *
+     * **Blocking, for up to [CLEAR_TIMEOUT_SECONDS].** Never call it on the EDT: an unplugged
+     * or wedged device would freeze the whole IDE for the full timeout.
+     *
+     * @return the failure, or null on success — so the caller can say so rather than the log
+     *   being the only place a silent failure is recorded.
+     */
+    fun clearDeviceBuffer(): Throwable? =
         runCatching {
             device.executeShellCommand(
                 "logcat -c",
@@ -83,6 +91,5 @@ class LogcatStream(
                 CLEAR_TIMEOUT_SECONDS,
                 TimeUnit.SECONDS,
             )
-        }.onFailure { log.warn("Could not clear the logcat buffer", it) }
-    }
+        }.onFailure { log.warn("Could not clear the logcat buffer", it) }.exceptionOrNull()
 }

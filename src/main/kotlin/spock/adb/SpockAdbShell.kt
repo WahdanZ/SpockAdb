@@ -8,7 +8,9 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.util.ui.JBUI
+import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantPanel
+import spock.adb.assistant.AssistantPrefill
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.device.ConnectedDevice
 import spock.adb.logcat.LogcatPanel
@@ -59,7 +61,14 @@ class SpockAdbShell(
     private val commands = CommandCenterPanel(project)
     private val uiInspector = UiInspectorPanel(project)
     private val mcp = McpServerPanel(project)
-    private val assistant = AssistantPanel(project)
+
+    /**
+     * Built only when the tab is shown.
+     *
+     * Constructing it regardless would start its configuration read — a keychain lookup on a
+     * pooled thread — for a panel nobody can reach.
+     */
+    private val assistant = if (AssistantFeature.TAB_VISIBLE) AssistantPanel(project) else null
 
     private var connected: List<ConnectedDevice> = emptyList()
     private var selectedDevice: ConnectedDevice? = null
@@ -77,9 +86,19 @@ class SpockAdbShell(
     }
 
     init {
-        listOf(storage, logcat, commands, uiInspector, mcp, assistant)
+        listOfNotNull(storage, logcat, commands, uiInspector, mcp, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
+
+        // Logcat hands prepared context to the Assistant rather than reaching into it: the tab
+        // is brought forward and the prompt placed, and the developer presses Send. See
+        // [spock.adb.assistant.AssistantPrefill]. Wired only when the tab exists.
+        assistant?.let { panel ->
+            logcat.assistant = AssistantPrefill { prompt ->
+                tabs.select(ASSISTANT_TAB)
+                panel.prefill(prompt)
+            }
+        }
 
         tabs.addTab("Device", devices)
         tabs.addTab("Storage", storage)
@@ -87,7 +106,7 @@ class SpockAdbShell(
         tabs.addTab("Commands", commands)
         tabs.addTab("UI Inspector", uiInspector)
         tabs.addTab("MCP Server", mcp)
-        tabs.addTab("Assistant", assistant)
+        assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
 
         // The header and the tabs are both about the whole window, so they sit together above
         // the content rather than the tabs being part of it.
@@ -254,5 +273,6 @@ class SpockAdbShell(
     private companion object {
         const val TOOL_WINDOW_ID = "Spock ADB"
         const val NO_DEVICES = "No devices connected"
+        const val ASSISTANT_TAB = "Assistant"
     }
 }

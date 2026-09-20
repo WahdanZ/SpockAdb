@@ -25,7 +25,7 @@ class LogcatBufferTest {
         buffer.add(entry("keep", LogLevel.ERROR))
         buffer.add(entry("drop", LogLevel.DEBUG))
 
-        val filtered = buffer.filtered(LogcatFilter(minLevel = LogLevel.ERROR))
+        val filtered = buffer.filtered(LogcatFilter(scope = LogcatScope.ALL, minLevel = LogLevel.ERROR))
 
         assertEquals(listOf("keep"), filtered.map { it.message })
     }

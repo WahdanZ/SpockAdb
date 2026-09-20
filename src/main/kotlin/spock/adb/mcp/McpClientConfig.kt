@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
+import com.intellij.openapi.util.SystemInfo
 
 /**
  * Builds the JSON an MCP client needs to reach this IDE, and merges it into a client's own
@@ -162,18 +163,32 @@ fun McpServerService.stdioClientConfiguration(): String =
  * The entry to install into a client's config file, preferring the one with no credential.
  *
  * stdio when the bridge bound, which is the normal case; HTTP otherwise, and then in its
- * env-var form. Either way a `.mcp.json` written from here is safe to share as far as secrets
- * go — it names a descriptor file or an environment variable, never a token.
+ * env-var form. Either way a `.mcp.json` written from here avoids embedding a token, but it is
+ * still machine-local: stdio names this machine's JDK, plugin jar and IDE config, and HTTP names
+ * the local port this IDE instance happens to be listening on.
  */
 fun McpServerService.preferredServerEntry(): JsonObject =
     if (prefersStdio) stdioServerEntry() else httpServerEntry(includeToken = false)
 
 /**
- * The shell line that gives the HTTP configuration its token.
+ * The local-shell line that gives the HTTP configuration its token.
  *
  * The env-var form is only usable if the developer can get the value into their client's
  * environment, and the honest moment to hand the secret over is when they have just rotated
  * it — not on every copy of the config.
  */
 fun McpServerService.tokenExportLine(): String =
-    "export ${McpClientConfig.TOKEN_ENV_VAR}=$token"
+    if (SystemInfo.isWindows) {
+        "PowerShell:\n" +
+            "\$env:${McpClientConfig.TOKEN_ENV_VAR} = ${powershellSingleQuoted(token)}\n\n" +
+            "cmd.exe:\n" +
+            "set \"${McpClientConfig.TOKEN_ENV_VAR}=$token\""
+    } else {
+        "export ${McpClientConfig.TOKEN_ENV_VAR}=${shellSingleQuoted(token)}"
+    }
+
+internal fun shellSingleQuoted(value: String): String =
+    "'" + value.replace("'", "'\"'\"'") + "'"
+
+internal fun powershellSingleQuoted(value: String): String =
+    "'" + value.replace("'", "''") + "'"

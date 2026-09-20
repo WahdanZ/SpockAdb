@@ -1,0 +1,24 @@
+# GitGuardian configuration.
+#
+# Three files must contain credential-SHAPED strings, because their whole purpose is to prove
+# that credentials get redacted before any log text is handed to a model:
+#
+#   - LogcatRedactorTest asserts that an Authorization header, a cookie, a JWT and
+#     api_key/password/session assignments are replaced with <redacted>.
+#   - the two demo log generators write a scripted log containing those same shapes, so the
+#     redaction can be seen working against a real device.
+#
+# The values are inert — an `alg: none` JWT whose payload says in words that it is an example,
+# and EXAMPLE-NOT-A-REAL-* placeholders — and none of them appears in these files whole: each is
+# assembled at run time, so the files contain no credential-shaped literal to match. That is the
+# actual fix; this list is the belt to its braces, so a scanner does not spend a reviewer's
+# attention on these paths when the fixtures change.
+#
+# Nothing else is excluded. If a finding appears outside these paths, it is real.
+version: 2
+
+secret:
+  ignored-paths:
+    - scripts/demo-logcat.sh
+    - scripts/demo/LogcatDemo.kt
+    - src/test/kotlin/spock/adb/logcat/LogcatRedactorTest.kt
