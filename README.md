@@ -9,7 +9,7 @@ Full control of your Android device directly from Android Studio or IntelliJ IDE
 
 Spock ADB brings the Android workflows you normally reach for through `adb` into one shared tool window: inspect the selected app and device, jump to the current Activity or Fragment, manage lifecycle and permissions, browse and edit app storage, control connectivity, stream Logcat, run shell commands, inspect Views and Jetpack Compose UI, and send text or deep links to the device.
 
-It also includes an **Android MCP server** for Claude Code, Claude Desktop, Cursor, and other MCP clients. Agents get a curated set of strongly typed Android tools instead of unrestricted shell access, while destructive operations remain approval-gated and visible in the IDE.
+It also includes an **Android MCP server** for Claude Code, Claude Desktop, Cursor, and other MCP clients. Agents get 50 strongly typed Android tools instead of unrestricted shell access, while destructive operations remain approval-gated and visible in the IDE.
 
 Works in **Android Studio** and **IntelliJ IDEA**.
 <!-- Plugin description end -->
