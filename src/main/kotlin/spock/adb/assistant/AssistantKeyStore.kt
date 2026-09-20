@@ -17,6 +17,11 @@ import com.intellij.ide.passwordSafe.PasswordSafe
  */
 object AssistantKeyStore {
 
+    /**
+     * **Never call this on the EDT.** `PasswordSafe` reads the OS keychain, which blocks and
+     * trips `SlowOperations`; UI code wants a snapshot taken on a pooled thread instead — see
+     * `AssistantPanel.reloadConfiguration`.
+     */
     fun apiKey(provider: AssistantProvider): String =
         PasswordSafe.instance.getPassword(attributesFor(provider)).orEmpty()
 
@@ -31,6 +36,7 @@ object AssistantKeyStore {
         }
     }
 
+    /** Blocking, for the same reason as [apiKey], and subject to the same rule about the EDT. */
     fun hasKey(provider: AssistantProvider): Boolean = apiKey(provider).isNotBlank()
 
     private fun attributesFor(provider: AssistantProvider) =

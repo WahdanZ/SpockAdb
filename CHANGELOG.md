@@ -65,6 +65,12 @@
 
 ### Changed
 
+- **One refresh button in the header instead of two.** The device picker and the app picker each
+  carried their own, drawn with the same icon and sitting side by side, so the only way to tell
+  which list was about to be re-read was to hover and read a tooltip. They were never two ideas:
+  refreshing devices already reloads the apps, because the reply runs through `setDevice`, which
+  loads the app picker. The app picker's button is gone and the one that remains sits against the
+  device combo and says it re-reads both
 - **App storage browses the whole of an app's data, not just its preference files.** The panel
   listed `shared_prefs` and `files/datastore` and nothing else, which answered "what can I edit"
   and no other question — a developer looking for the database their app had just written, or
@@ -199,6 +205,15 @@
 
 ### Fixed
 
+- **The assistant read the API key on the UI thread, stalling the tool window as it opened.**
+  Building the panel asked whether the assistant was configured, and answering that reads the key
+  out of `PasswordSafe` — the OS keychain, which blocks. It ran twice on the EDT before the tool
+  window had finished appearing, and the IDE reported it as `Slow operations are prohibited on
+  EDT` with this plugin named as the cause. The panel now reads the configuration on a pooled
+  thread and repaints from the answer, keeping a snapshot for the repaints that only change which
+  buttons are enabled; the same blocking read in the send path is gone with it. A key changed
+  while the panel is open is still picked up — the read is repeated when the panel is shown and
+  when the Settings dialog closes, and a send is checked again on the pooled thread that runs it
 - **Current fragment answered "no fragments" for every app that had them.** It read
   `dumpsys activity top`, which on Android 13 and later reports no fragment state at all — the
   activity is there, its FragmentManager is not. It now dumps the selected app by name, which
