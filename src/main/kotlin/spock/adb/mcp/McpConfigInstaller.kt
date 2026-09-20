@@ -1,8 +1,10 @@
 package spock.adb.mcp
 
 import com.google.gson.JsonObject
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 /**
  * Writes the client configuration into a project's own `.mcp.json`.
@@ -44,7 +46,7 @@ object McpConfigInstaller {
 
         // A trailing newline: this file is very often committed, and a diff of one line with no
         // newline at the end is noise in every review that touches it afterwards.
-        Files.writeString(file, merged + "\n")
+        writeAtomically(file, merged + "\n")
 
         return Outcome(
             file = file,
@@ -96,8 +98,23 @@ object McpConfigInstaller {
         if (mentionsConfig(existing)) return gitignore
         val separator = if (existing.isEmpty() || existing.endsWith("\n")) "" else "\n"
 
-        Files.writeString(gitignore, existing + separator + IGNORE_BLOCK)
+        writeAtomically(gitignore, existing + separator + IGNORE_BLOCK)
         return gitignore
+    }
+
+    private fun writeAtomically(file: Path, text: String) {
+        val directory = file.parent
+        val temp = Files.createTempFile(directory, "${file.fileName}.", ".tmp")
+        try {
+            Files.writeString(temp, text)
+            try {
+                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temp)
+        }
     }
 
     private const val IGNORE_BLOCK =

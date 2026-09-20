@@ -139,4 +139,11 @@ class McpConfigInstallerTest {
 
         assertTrue(Files.readString(outcome.file).endsWith("\n"))
     }
+
+    @Test
+    fun `ignore config ends the file with a newline`() {
+        val gitignore = McpConfigInstaller.ignoreConfig(projectDir)
+
+        assertTrue(Files.readString(gitignore).endsWith("\n"))
+    }
 }

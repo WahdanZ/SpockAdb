@@ -30,6 +30,8 @@ class McpConnectControls(
     private val say: (String) -> Unit,
     private val onServerChanged: () -> Unit,
 ) {
+    private var busy = false
+    private var running = false
 
     val copyButton = JButton("Copy Config").apply { addActionListener { showConfigMenu() } }
 
@@ -44,15 +46,20 @@ class McpConnectControls(
 
     /** Copying needs a port to point at; rotating does not. */
     fun refresh(running: Boolean) {
-        copyButton.isEnabled = running
-        // The token exists whether or not anything is listening, and one leaked by a server
-        // that has since been stopped still needs revoking.
-        rotateButton.isEnabled = true
+        this.running = running
+        updateEnabledState()
     }
 
     /** Both go quiet while the server is starting, stopping or being rotated out from under. */
     fun setBusy(busy: Boolean) {
-        copyButton.isEnabled = !busy
+        this.busy = busy
+        updateEnabledState()
+    }
+
+    private fun updateEnabledState() {
+        copyButton.isEnabled = running && !busy
+        // The token exists whether or not anything is listening, and one leaked by a server
+        // that has since been stopped still needs revoking.
         rotateButton.isEnabled = !busy
     }
 
