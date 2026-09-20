@@ -59,7 +59,16 @@ class ReadmeToolCountTest {
     }
 
     private companion object {
-        val COUNT = Regex("""(\d+) strongly typed tools""")
+        /**
+         * The qualifier is optional so the README may say "strongly typed Android tools".
+         *
+         * Widened rather than dropped: the point of this guard is that a number on the public
+         * plugin page cannot drift from the registry, and that holds however the sentence
+         * around it is worded. It still has to find a number, and that number still has to be
+         * the registry's — a pattern that matched nothing would pass every assertion below
+         * while checking none of them.
+         */
+        val COUNT = Regex("""(\d+) strongly typed(?: Android)? tools""")
         const val DESCRIPTION_START = "<!-- Plugin description -->"
         const val DESCRIPTION_END = "<!-- Plugin description end -->"
     }
