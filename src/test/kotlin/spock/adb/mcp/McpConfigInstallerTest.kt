@@ -123,9 +123,27 @@ class McpConfigInstallerTest {
     }
 
     @Test
+    fun `does not append the ignore block when the file already mentions mcp config`() {
+        val gitignore = projectDir.resolve(".gitignore")
+        val existing = "build/\n.mcp.json\n"
+        Files.writeString(gitignore, existing)
+
+        McpConfigInstaller.ignoreConfig(projectDir)
+
+        assertEquals(existing, Files.readString(gitignore))
+    }
+
+    @Test
     fun `ends the file with a newline`() {
         val outcome = McpConfigInstaller.install(projectDir, entry)
 
         assertTrue(Files.readString(outcome.file).endsWith("\n"))
+    }
+
+    @Test
+    fun `ignore config ends the file with a newline`() {
+        val gitignore = McpConfigInstaller.ignoreConfig(projectDir)
+
+        assertTrue(Files.readString(gitignore).endsWith("\n"))
     }
 }

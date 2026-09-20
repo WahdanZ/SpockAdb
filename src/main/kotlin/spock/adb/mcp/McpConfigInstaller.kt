@@ -1,8 +1,10 @@
 package spock.adb.mcp
 
 import com.google.gson.JsonObject
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 /**
  * Writes the client configuration into a project's own `.mcp.json`.
@@ -36,6 +38,7 @@ object McpConfigInstaller {
      * would take their other servers with it. An empty file is written to — it has nothing to
      * lose; see [McpClientConfig.merge].
      */
+    @Synchronized
     fun install(projectPath: Path, server: JsonObject): Outcome {
         val file = projectPath.resolve(FILE_NAME)
         val existing = if (Files.exists(file)) Files.readString(file) else null
@@ -43,7 +46,7 @@ object McpConfigInstaller {
 
         // A trailing newline: this file is very often committed, and a diff of one line with no
         // newline at the end is noise in every review that touches it afterwards.
-        Files.writeString(file, merged + "\n")
+        writeAtomically(file, merged + "\n")
 
         return Outcome(
             file = file,
@@ -88,13 +91,31 @@ object McpConfigInstaller {
      * an unexplained entry in a shared `.gitignore` is the kind of thing someone deletes a year
      * later because nobody remembers what put it there.
      */
+    @Synchronized
     fun ignoreConfig(projectPath: Path): Path {
         val gitignore = projectPath.resolve(GIT_IGNORE)
         val existing = if (Files.exists(gitignore)) Files.readString(gitignore) else ""
+        if (mentionsConfig(existing)) return gitignore
         val separator = if (existing.isEmpty() || existing.endsWith("\n")) "" else "\n"
 
-        Files.writeString(gitignore, existing + separator + IGNORE_BLOCK)
+        writeAtomically(gitignore, existing + separator + IGNORE_BLOCK)
         return gitignore
+    }
+
+    private fun writeAtomically(file: Path, text: String) {
+        val target = file.toAbsolutePath()
+        val directory = target.parent ?: Path.of(".").toAbsolutePath().normalize()
+        val temp = Files.createTempFile(directory, "${target.fileName}.", ".tmp")
+        try {
+            Files.writeString(temp, text)
+            try {
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temp)
+        }
     }
 
     private const val IGNORE_BLOCK =
