@@ -128,11 +128,17 @@ comes from `SPOCK_ADB_MCP_TOKEN` in the client's environment. Claude Code expand
 `.mcp.json`; clients that do not are served by `Copy HTTP config with token…`, which writes the
 token in literally and asks first.
 
-Get the value from **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` export line** (or from
+Get the value from **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` environment line** (or from
 **Rotate Token**, which offers the same line once a new token exists):
 
 ```sh
 export SPOCK_ADB_MCP_TOKEN=<the token>
+```
+
+On Windows, use the line the plugin copies there instead:
+
+```powershell
+$env:SPOCK_ADB_MCP_TOKEN='<the token>'
 ```
 
 Either way that token is a credential for your device: anything holding it can drive the device

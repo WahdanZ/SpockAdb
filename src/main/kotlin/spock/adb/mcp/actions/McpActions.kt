@@ -217,7 +217,7 @@ class InstallMcpConfigurationAction : AnAction() {
                 "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
                 "HTTP — for a client that only opens a URL. It reads " +
                 "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
-                "too; the MCP panel's Copy Config has the export line.\n\n" +
+                "too; the MCP panel's Copy Config has the environment line.\n\n" +
                 "Both only work on this machine — stdio names this JDK, plugin jar and IDE " +
                 "config by absolute path, and the HTTP URL names the port this IDE happens to " +
                 "be listening on. Keep the file out of a shared commit either way.",
@@ -356,7 +356,7 @@ class RotateMcpTokenAction : AnAction() {
                         project = project,
                         content = "MCP token rotated. stdio clients need no change; an HTTP " +
                             "client needs ${McpClientConfig.TOKEN_ENV_VAR} updated — the MCP " +
-                            "panel's Rotate Token button can copy the new export line.",
+                                "panel's Rotate Token button can copy the new environment line.",
                     )
                 }
                 .onFailure {

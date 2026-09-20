@@ -101,15 +101,20 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     override fun loadState(state: McpSettings) {
         settings = state
         disabledToolNames.set(state.disabledTools.toSet())
-        // Off the calling thread: this runs during IDE startup, the history file can hold
-        // thousands of records, and the migration reads the OS keychain. Nothing waits on
-        // either — the activity view shows what has arrived so far, and a call recorded while
-        // it is in flight is kept rather than overwritten.
-        ApplicationManager.getApplication().executeOnPooledThread {
-            // Resolving the token is what performs the migration, and it is the same call
-            // [start] makes — so whichever happens first does it, and neither can end up with a
-            // token the other disagrees with.
+        if (state.legacyToken.isNotBlank()) {
+            // A migrated token must clear the plain-text copy before loadState returns, or a
+            // settings save that races this startup work can write it straight back to disk.
             sessionToken()
+        }
+        // Off the calling thread: this runs during IDE startup, the history file can hold
+        // thousands of records, and the token warm-up still reads the OS keychain when there is
+        // no legacy plaintext token to migrate synchronously. Nothing waits on either — the
+        // activity view shows what has arrived so far, and a call recorded while it is in flight
+        // is kept rather than overwritten.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            if (state.legacyToken.isBlank()) {
+                sessionToken()
+            }
             ensureHistoryLoaded()
         }
     }

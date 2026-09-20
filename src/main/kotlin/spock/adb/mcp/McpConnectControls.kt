@@ -80,7 +80,7 @@ class McpConnectControls(
         }
         menu.add(item("Copy HTTP config  —  reads \$${McpClientConfig.TOKEN_ENV_VAR}") { copyHttpConfig() })
         menu.add(item("Copy HTTP config with token…") { copyHttpConfigWithToken() })
-        menu.add(item("Copy the ${McpClientConfig.TOKEN_ENV_VAR} export line…") { copyExportLine() })
+        menu.add(item("Copy the ${McpClientConfig.TOKEN_ENV_VAR} environment line…") { copyExportLine() })
         menu.addSeparator()
         menu.add(item("Install into this project (${McpConfigInstaller.FILE_NAME})…") { installIntoProject() })
         menu.show(copyButton, 0, copyButton.height)
@@ -127,7 +127,7 @@ class McpConnectControls(
     }
 
     /**
-     * The shell line that sets the variable the HTTP config reads.
+     * The local-shell line that sets the variable the HTTP config reads.
      *
      * Without this the env-var config is a dead end: it names a variable, and nothing in the
      * plugin would say what to set it to — the only other source was [offerExportLine], which
@@ -144,7 +144,7 @@ class McpConnectControls(
                 "environment — never in a chat, an issue or a committed file.\n\n" +
                 "If it does leak, use Rotate Token.",
             "Copy Token",
-            "Copy Export Line",
+            "Copy Environment Line",
             "Cancel",
             Messages.getWarningIcon(),
         ) == Messages.YES
@@ -227,7 +227,7 @@ class McpConnectControls(
                 "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
                 "HTTP — for a client that only opens a URL. It reads " +
                 "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
-                "too: Copy Config has the export line.\n\n$shared",
+                "too: Copy Config has the environment line.\n\n$shared",
             "Install MCP Configuration",
             "stdio",
             "HTTP",
@@ -358,9 +358,9 @@ class McpConnectControls(
         val wantsLine = Messages.showYesNoDialog(
             project,
             "New token generated. stdio clients need no change.\n\n" +
-                "Copy the shell line that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client?",
+            "Copy the line that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client on this machine?",
             "Rotate MCP Token",
-            "Copy Export Line",
+            "Copy Environment Line",
             "Done",
             null,
         ) == Messages.YES
