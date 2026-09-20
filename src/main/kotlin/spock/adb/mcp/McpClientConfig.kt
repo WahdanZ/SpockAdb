@@ -176,4 +176,7 @@ fun McpServerService.preferredServerEntry(): JsonObject =
  * it — not on every copy of the config.
  */
 fun McpServerService.tokenExportLine(): String =
-    "export ${McpClientConfig.TOKEN_ENV_VAR}=$token"
+    "export ${McpClientConfig.TOKEN_ENV_VAR}=${shellSingleQuoted(token)}"
+
+internal fun shellSingleQuoted(value: String): String =
+    "'" + value.replace("'", "'\"'\"'") + "'"

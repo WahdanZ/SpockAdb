@@ -53,7 +53,9 @@ object McpTokenStore {
 
         val stored = runCatching { PasswordSafe.instance.getPassword(ATTRIBUTES).orEmpty() }
             .onFailure { log.warn("Could not read the MCP session token from PasswordSafe", it) }
-            .getOrDefault("")
+            .getOrElse {
+                throw IllegalStateException("Could not read the MCP session token from PasswordSafe", it)
+            }
         if (stored.isNotBlank()) return stored.also { cached.set(it) }
 
         val inherited = runCatching(legacy).getOrDefault("")

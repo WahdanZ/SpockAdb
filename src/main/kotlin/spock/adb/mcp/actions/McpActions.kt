@@ -257,7 +257,14 @@ class InstallMcpConfigurationAction : AnAction() {
     }
 
     private fun wrote(outcome: McpConfigInstaller.Outcome): String =
-        "MCP configuration written to ${outcome.file}. Restart your MCP client to pick it up."
+        when {
+            outcome.created ->
+                "Created ${outcome.file}. Restart your MCP client to pick it up."
+            outcome.replaced ->
+                "Updated the ${McpClientConfig.SERVER_NAME} entry in ${outcome.file}. Restart your MCP client to pick it up."
+            else ->
+                "Added ${McpClientConfig.SERVER_NAME} to ${outcome.file}. Restart your MCP client to pick it up."
+        }
 
     /**
      * The same offer the panel makes, so the two routes to Install do not differ.

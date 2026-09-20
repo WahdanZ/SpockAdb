@@ -159,4 +159,10 @@ class McpClientConfigTest {
             McpClientConfig.contains(McpClientConfig.merge(null, McpClientConfig.httpServer(1))),
         )
     }
+
+    @Test
+    fun `shell export values are single quoted`() {
+        assertEquals("'plain-token'", shellSingleQuoted("plain-token"))
+        assertEquals("'ab'\"'\"'cd'", shellSingleQuoted("ab'cd"))
+    }
 }
