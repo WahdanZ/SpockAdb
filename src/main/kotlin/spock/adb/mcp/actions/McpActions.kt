@@ -1,5 +1,6 @@
 package spock.adb.mcp.actions
 
+import com.google.gson.JsonObject
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -13,7 +14,6 @@ import spock.adb.mcp.McpClientConfig
 import spock.adb.mcp.McpConfigInstaller
 import spock.adb.mcp.McpServerService
 import spock.adb.mcp.clientConfiguration
-import spock.adb.mcp.preferredServerEntry
 import spock.adb.mcp.stdioClientConfiguration
 import spock.adb.notification.CommonNotifier
 import java.awt.datatransfer.StringSelection
@@ -188,34 +188,60 @@ class InstallMcpConfigurationAction : AnAction() {
             return
         }
 
-        val transport = if (service.prefersStdio) "stdio" else "HTTP"
-        val confirmed = Messages.showYesNoDialog(
+        val machineSpecific = chooseMachineSpecific(project, service, basePath) ?: return
+        val entry = if (machineSpecific) service.stdioServerEntry() else service.httpServerEntry()
+        write(project, basePath, entry)
+    }
+
+    /**
+     * Whether to write the stdio entry, the HTTP one, or nothing (null, when cancelled).
+     *
+     * The axis is what the client can do — spawn a process, or open a URL. An earlier version
+     * framed it as shareable-versus-not, with HTTP as the entry a team could commit; that was
+     * wrong, because the URL names the port the OS handed this machine on first start, no
+     * setting anywhere fixes it, and the token it references lives in this machine's keychain.
+     * Neither entry leaves this machine.
+     */
+    private fun chooseMachineSpecific(
+        project: Project,
+        service: McpServerService,
+        basePath: Path,
+    ): Boolean? {
+        if (!service.prefersStdio) return false
+
+        val choice = Messages.showYesNoCancelDialog(
             project,
-            "Write the $transport configuration to:\n" +
-                "${basePath.resolve(McpConfigInstaller.FILE_NAME)}\n\n" +
-                "Any other servers already in that file are kept, and the entry contains no " +
-                "token.",
+            "Write to:\n${basePath.resolve(McpConfigInstaller.FILE_NAME)}\n\n" +
+                "Any other servers already in that file are kept, and neither entry contains a " +
+                "token.\n\n" +
+                "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
+                "HTTP — for a client that only opens a URL. It reads " +
+                "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
+                "too; the MCP panel's Copy Config has the export line.\n\n" +
+                "Both only work on this machine — stdio names this JDK, plugin jar and IDE " +
+                "config by absolute path, and the HTTP URL names the port this IDE happens to " +
+                "be listening on. Keep the file out of a shared commit either way.",
             "Install MCP Configuration",
-            "Install",
+            "stdio",
+            "HTTP",
             "Cancel",
             null,
-        ) == Messages.YES
-        if (!confirmed) return
+        )
+        return when (choice) {
+            Messages.YES -> true
+            Messages.NO -> false
+            else -> null
+        }
+    }
 
-        val entry = service.preferredServerEntry()
+    private fun write(project: Project, basePath: Path, entry: JsonObject) {
         ApplicationManager.getApplication().executeOnPooledThread {
             runCatching {
                 McpConfigInstaller.install(basePath, entry).also {
                     LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it.file)
                 }
             }
-                .onSuccess {
-                    notifyLater(
-                        project = project,
-                        content = "MCP configuration written to ${it.file}. Restart your MCP " +
-                            "client to pick it up.",
-                    )
-                }
+                .onSuccess { notifyLater(project = project, content = wrote(it, basePath)) }
                 .onFailure {
                     notifyLater(
                         project = project,
@@ -224,6 +250,17 @@ class InstallMcpConfigurationAction : AnAction() {
                         type = NotificationType.ERROR,
                     )
                 }
+        }
+    }
+
+    /** The warning is only worth printing when git is not already keeping the file back. */
+    private fun wrote(outcome: McpConfigInstaller.Outcome, basePath: Path): String {
+        val restart = "MCP configuration written to ${outcome.file}. Restart your MCP client to " +
+            "pick it up."
+        return when {
+            McpConfigInstaller.isIgnored(basePath) -> restart
+            else ->
+                "$restart Keep this file out of a shared commit — it only works on this machine."
         }
     }
 }

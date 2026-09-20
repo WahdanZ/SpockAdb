@@ -63,9 +63,21 @@ That writes the project's `.mcp.json`, merging into whatever servers are already
 never writes a token into it. If you would rather paste it yourself, use `Copy Config` and pick
 a form.
 
-The stdio entry names this machine's JDK, plugin jar and endpoint descriptor by absolute path,
-so it is safe to share but not useful to a teammate — worth keeping out of a shared commit for
-that reason rather than for a security one.
+**Neither entry can leave this machine.** `.mcp.json` in a project root is a file teams share —
+that is what project scope is for — but nothing the plugin generates survives that:
+
+| Entry | Contains | Why it is machine-local |
+|---|---|---|
+| **stdio** | this machine's JDK, plugin jar and IDE config, by absolute path | Those paths do not exist on anyone else's machine |
+| **HTTP** | `http://127.0.0.1:<port>/mcp` and `${SPOCK_ADB_MCP_TOKEN}` | The port is whatever the OS handed this IDE on first start, and the token is in this machine's keychain |
+
+So the choice the install asks about is what your **client** can do — spawn a process (stdio) or
+open a URL (HTTP) — not who can use the file. After the install it offers to add `.mcp.json` to
+the project's `.gitignore`, whichever entry you picked, and only when `.gitignore` does not
+already say so. A teammate installs their own from their own IDE.
+
+If you pick HTTP, set the token too: **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` export
+line**. Without it the config names a variable that is never set and every request is rejected.
 
 > **Pasting a configuration into a chat connects nothing.** A client only ever reads its own
 > config file. If the snippet you paste is the HTTP one with the token in it, all that happens
@@ -116,8 +128,8 @@ comes from `SPOCK_ADB_MCP_TOKEN` in the client's environment. Claude Code expand
 `.mcp.json`; clients that do not are served by `Copy HTTP config with token…`, which writes the
 token in literally and asks first.
 
-Get the value from **Rotate Token**, which offers the matching `export` line once the new token
-exists:
+Get the value from **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` export line** (or from
+**Rotate Token**, which offers the same line once a new token exists):
 
 ```sh
 export SPOCK_ADB_MCP_TOKEN=<the token>

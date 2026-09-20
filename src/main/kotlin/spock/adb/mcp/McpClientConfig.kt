@@ -95,28 +95,39 @@ object McpClientConfig {
      * [SERVER_NAME] key is written, so installing twice updates one entry — which is what makes
      * re-installing after a port change or a rotation safe.
      *
-     * A file that is not JSON is an error rather than something to overwrite: the alternative
-     * is destroying a config the developer hand-wrote and mistyped.
+     * A file that is not JSON — or whose `mcpServers` is not an object — is an error rather
+     * than something to overwrite: the alternative is destroying a config the developer
+     * hand-wrote and mistyped.
      */
     fun merge(existing: String?, server: JsonObject): String {
-        val root = when {
-            existing.isNullOrBlank() -> JsonObject()
-            else -> runCatching { JsonParser.parseString(existing) }
-                .getOrElse { throw JsonSyntaxException("not valid JSON", it) }
-                .let { parsed ->
-                    parsed as? JsonObject
-                        ?: throw JsonSyntaxException("the top level is not a JSON object")
-                }
-        }
-
-        // `as?` rather than getAsJsonObject: a file where "mcpServers" is a string or a list is
-        // malformed for our purposes, and the typed getter would throw a ClassCastException with
-        // nothing in it to explain the file it came from.
-        val servers = root.get("mcpServers") as? JsonObject
-            ?: JsonObject().also { root.add("mcpServers", it) }
-        servers.add(SERVER_NAME, server)
+        val root = parseRoot(existing)
+        serversIn(root).add(SERVER_NAME, server)
         return gson.toJson(root)
     }
+
+    private fun parseRoot(existing: String?): JsonObject {
+        if (existing.isNullOrBlank()) return JsonObject()
+
+        val parsed = runCatching { JsonParser.parseString(existing) }
+            .getOrElse { throw JsonSyntaxException("not valid JSON", it) }
+        return parsed as? JsonObject
+            ?: throw JsonSyntaxException("the top level is not a JSON object")
+    }
+
+    /**
+     * The `mcpServers` object to write into.
+     *
+     * Absent is the ordinary case for a project that has never configured a server. Present but
+     * not an object is a file someone mistyped, and replacing it with a fresh one would quietly
+     * discard whatever they had written there — so it is refused, by name, rather than through a
+     * ClassCastException with nothing in it to explain the file it came from.
+     */
+    private fun serversIn(root: JsonObject): JsonObject =
+        when (val servers = root.get("mcpServers")) {
+            null -> JsonObject().also { root.add("mcpServers", it) }
+            is JsonObject -> servers
+            else -> throw JsonSyntaxException("\"mcpServers\" is not a JSON object")
+        }
 
     /** Whether [existing] already configures this server, so an install can say what it did. */
     fun contains(existing: String?): Boolean {

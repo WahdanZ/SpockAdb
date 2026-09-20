@@ -20,7 +20,12 @@
   only reads its own config file. **Rotate Token** invalidates the current token, restarts the
   server, and offers the matching `export` line once — stdio clients re-read the token file and
   need no change. All four are also actions: `Spock: Install MCP Client Configuration Into This
-  Project` and `Spock: Rotate MCP Token` join the two copy actions
+  Project` and `Spock: Rotate MCP Token` join the two copy actions. Installing asks which
+  transport to write — the axis is what the client can do, spawn a process or open a URL —
+  because neither entry can leave this machine: stdio names this machine's JDK, plugin jar and
+  IDE config by absolute path, and the HTTP URL names the port the OS handed this IDE on first
+  start. `.mcp.json` in a project root is a file teams share, so after either install it offers
+  to add it to the project's `.gitignore`, and only when that file does not already say so
 - **View and edit an app's SharedPreferences and DataStore, without clearing data or adding a
   debug menu.** Reproducing a bug that depends on stored state meant clearing data and walking
   back through the app, and inspecting that state meant pulling a file through `run-as` and, for

@@ -17,6 +17,8 @@ object McpConfigInstaller {
     /** What Claude Code and several other clients read from a project directory. */
     const val FILE_NAME = ".mcp.json"
 
+    private const val GIT_IGNORE = ".gitignore"
+
     /** What an install did, so the caller can say it without re-reading the file. */
     data class Outcome(
         val file: Path,
@@ -48,4 +50,55 @@ object McpConfigInstaller {
             replaced = McpClientConfig.contains(existing),
         )
     }
+
+    // ------------------------------------------------------------------ sharing
+
+    /**
+     * Whether the project already keeps [FILE_NAME] out of commits.
+     *
+     * This file is meant to be shared with a team, which is exactly the problem: stdio names
+     * *this* machine's JDK, plugin jar and IDE config by absolute path, and the HTTP URL names
+     * the port this IDE happens to be listening on, so a teammate who checks either one out gets
+     * a server that cannot start. Knowing whether git already ignores it is the difference
+     * between a warning worth showing and one that is noise.
+     */
+    fun isIgnored(projectPath: Path): Boolean {
+        val gitignore = projectPath.resolve(GIT_IGNORE)
+        if (!Files.exists(gitignore)) return false
+        return runCatching { mentionsConfig(Files.readString(gitignore)) }.getOrDefault(false)
+    }
+
+    /**
+     * The matching half of [isIgnored], separated so it can be tested without a filesystem.
+     *
+     * Deliberately literal: it answers "did someone already write this entry", not "would git
+     * ignore this path", which only git can answer. A false negative costs an offer the
+     * developer declines; pretending to reimplement gitignore semantics would cost more.
+     */
+    fun mentionsConfig(gitignore: String): Boolean =
+        gitignore.lineSequence()
+            .map { it.trim() }
+            .any { it == FILE_NAME || it == "/$FILE_NAME" }
+
+    /**
+     * Adds [FILE_NAME] to the project's `.gitignore`, with a line saying why it is there.
+     *
+     * Appends rather than rewrites, and creates the file when there is none. The comment matters:
+     * an unexplained entry in a shared `.gitignore` is the kind of thing someone deletes a year
+     * later because nobody remembers what put it there.
+     */
+    fun ignoreConfig(projectPath: Path): Path {
+        val gitignore = projectPath.resolve(GIT_IGNORE)
+        val existing = if (Files.exists(gitignore)) Files.readString(gitignore) else ""
+        val separator = if (existing.isEmpty() || existing.endsWith("\n")) "" else "\n"
+
+        Files.writeString(gitignore, existing + separator + IGNORE_BLOCK)
+        return gitignore
+    }
+
+    private const val IGNORE_BLOCK =
+        "\n# Written by Spock ADB. The entry in it only works on this machine: stdio names this\n" +
+            "# JDK, plugin jar and IDE config by absolute path, and the HTTP URL names the port\n" +
+            "# this IDE happens to be listening on.\n" +
+            "$FILE_NAME\n"
 }

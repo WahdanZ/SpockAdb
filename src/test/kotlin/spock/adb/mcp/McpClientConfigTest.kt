@@ -123,14 +123,19 @@ class McpClientConfigTest {
         }
     }
 
+    /** Valid JSON, but not a config: replacing it would discard whatever was written there. */
     @Test
-    fun `merge survives mcpServers being the wrong shape`() {
-        val merged = McpClientConfig.merge("""{ "mcpServers": "oops" }""", McpClientConfig.httpServer(1))
+    fun `merge refuses when mcpServers is not an object`() {
+        assertThrows<JsonSyntaxException> {
+            McpClientConfig.merge("""{ "mcpServers": "oops" }""", McpClientConfig.httpServer(1))
+        }
+    }
 
-        assertTrue(
-            JsonParser.parseString(merged).asJsonObject
-                .getAsJsonObject("mcpServers").has(McpClientConfig.SERVER_NAME),
-        )
+    @Test
+    fun `merge refuses when the top level is not an object`() {
+        assertThrows<JsonSyntaxException> {
+            McpClientConfig.merge("""["not", "a", "config"]""", McpClientConfig.httpServer(1))
+        }
     }
 
     @Test

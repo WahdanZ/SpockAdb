@@ -1,5 +1,6 @@
 package spock.adb.mcp
 
+import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
@@ -72,6 +73,7 @@ class McpConnectControls(
         }
         menu.add(item("Copy HTTP config  —  reads \$${McpClientConfig.TOKEN_ENV_VAR}") { copyHttpConfig() })
         menu.add(item("Copy HTTP config with token…") { copyHttpConfigWithToken() })
+        menu.add(item("Copy the ${McpClientConfig.TOKEN_ENV_VAR} export line…") { copyExportLine() })
         menu.addSeparator()
         menu.add(item("Install into this project (${McpConfigInstaller.FILE_NAME})…") { installIntoProject() })
         menu.show(copyButton, 0, copyButton.height)
@@ -117,6 +119,34 @@ class McpConnectControls(
         say("Copied — this one is a live credential. Do not paste it into a chat.")
     }
 
+    /**
+     * The shell line that sets the variable the HTTP config reads.
+     *
+     * Without this the env-var config is a dead end: it names a variable, and nothing in the
+     * plugin would say what to set it to — the only other source was [offerExportLine], which
+     * runs after a rotation, so completing the setup meant invalidating every client you
+     * already had. The line carries the token, so it is warned about exactly like the literal
+     * config.
+     */
+    private fun copyExportLine() {
+        val confirmed = Messages.showYesNoDialog(
+            project,
+            "This line contains your session token in plain text.\n\n" +
+                "Anything holding that token can drive your connected device and read and write " +
+                "files on this machine. It belongs in a shell profile or your client's " +
+                "environment — never in a chat, an issue or a committed file.\n\n" +
+                "If it does leak, use Rotate Token.",
+            "Copy Token",
+            "Copy Export Line",
+            "Cancel",
+            Messages.getWarningIcon(),
+        ) == Messages.YES
+        if (!confirmed) return
+
+        copy(service.tokenExportLine())
+        say("Copied — that line carries a live token. It belongs in a shell, not a chat.")
+    }
+
     // ------------------------------------------------------------------ installing
 
     /**
@@ -131,30 +161,13 @@ class McpConnectControls(
             return
         }
 
-        val file = basePath.resolve(McpConfigInstaller.FILE_NAME)
-        val transport = if (service.prefersStdio) "stdio" else "HTTP"
-        val envNote = when {
-            service.prefersStdio -> ""
-            else ->
-                "\n\nThe HTTP entry reads ${McpClientConfig.TOKEN_ENV_VAR} from the client's " +
-                    "environment, so set that variable before starting the client."
-        }
-        val confirmed = Messages.showYesNoDialog(
-            project,
-            "Write the $transport configuration to:\n$file\n\n" +
-                "Any other servers already in that file are kept, and the entry contains no " +
-                "token.$envNote",
-            "Install MCP Configuration",
-            "Install",
-            "Cancel",
-            null,
-        ) == Messages.YES
-        if (!confirmed) return
+        val entry = chooseEntry(basePath.resolve(McpConfigInstaller.FILE_NAME)) ?: return
 
-        val entry = service.preferredServerEntry()
-        // A small file, but still filesystem work: the EDT waits on disk here no more happily
-        // than it waits on a socket.
+        // A small file, but still filesystem work — and `isIgnored` reads another one. The EDT
+        // waits on disk no more happily than it waits on a socket.
         ApplicationManager.getApplication().executeOnPooledThread {
+            val alreadyIgnored = runCatching { McpConfigInstaller.isIgnored(basePath) }
+                .getOrDefault(true)
             val outcome = runCatching {
                 McpConfigInstaller.install(basePath, entry).also {
                     // Without this the file exists on disk but not in the IDE, so the developer
@@ -162,7 +175,98 @@ class McpConnectControls(
                     LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it.file)
                 }
             }
-            onEdt { reportInstall(outcome) }
+            onEdt {
+                reportInstall(outcome)
+                // Both entries are machine-local, so the offer is not stdio's alone.
+                if (outcome.isSuccess && !alreadyIgnored) offerToIgnore(basePath)
+            }
+        }
+    }
+
+    /**
+     * Asks which transport to write, on the axis that actually decides it.
+     *
+     * An earlier version offered this as shareable-versus-not, with HTTP as the entry a team
+     * could commit. That was wrong in three ways: the port is whatever the OS handed this
+     * machine on first start, there is no setting anywhere to fix it, and the token the config
+     * names lives in this machine's keychain. **Neither entry can leave this machine**, so the
+     * only real question is what the client can do — spawn a process, or open a URL.
+     *
+     * Returns null when the developer cancels.
+     */
+    private fun chooseEntry(file: Path): JsonObject? {
+        val shared = "Both entries only work on this machine: stdio names this JDK, plugin jar " +
+            "and IDE config by absolute path, and the HTTP URL names the port this IDE happens " +
+            "to be listening on. Keep the file out of a shared commit either way."
+
+        if (!service.prefersStdio) {
+            val confirmed = Messages.showYesNoDialog(
+                project,
+                "Write the HTTP configuration to:\n$file\n\n" +
+                    "Any other servers already in that file are kept, and the entry contains no " +
+                    "token — it reads ${McpClientConfig.TOKEN_ENV_VAR} from the client's " +
+                    "environment, which you can set from Copy Config.\n\n$shared",
+                "Install MCP Configuration",
+                "Install",
+                "Cancel",
+                null,
+            ) == Messages.YES
+            return if (confirmed) service.httpServerEntry() else null
+        }
+
+        val choice = Messages.showYesNoCancelDialog(
+            project,
+            "Write to:\n$file\n\n" +
+                "Any other servers already in that file are kept, and neither entry contains a " +
+                "token.\n\n" +
+                "stdio — for a client that spawns its server. Nothing else to set up.\n\n" +
+                "HTTP — for a client that only opens a URL. It reads " +
+                "${McpClientConfig.TOKEN_ENV_VAR} from the client's environment, so set that " +
+                "too: Copy Config has the export line.\n\n$shared",
+            "Install MCP Configuration",
+            "stdio",
+            "HTTP",
+            "Cancel",
+            null,
+        )
+        return when (choice) {
+            Messages.YES -> service.stdioServerEntry()
+            Messages.NO -> service.httpServerEntry()
+            else -> null
+        }
+    }
+
+    /**
+     * Offers to keep a machine-specific config out of the team's commits.
+     *
+     * Only after a stdio install, and only when `.gitignore` does not already say so — an offer
+     * that appears every time is one that gets clicked through.
+     */
+    private fun offerToIgnore(basePath: Path) {
+        val wanted = Messages.showYesNoDialog(
+            project,
+            "That configuration only works on this machine — the paths and the port are this " +
+                "IDE's. Add ${McpConfigInstaller.FILE_NAME} to this project's .gitignore, so it " +
+                "is not committed for the team?\n\n" +
+                "Teammates install their own from their own IDE.",
+            "Install MCP Configuration",
+            "Add to .gitignore",
+            "Leave It",
+            null,
+        ) == Messages.YES
+        if (!wanted) return
+
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val result = runCatching {
+                McpConfigInstaller.ignoreConfig(basePath).also {
+                    LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it)
+                }
+            }
+            onEdt {
+                result
+                    .onSuccess { say("Added ${McpConfigInstaller.FILE_NAME} to ${it.fileName}.") }
+                    .onFailure { say("Could not update .gitignore: ${it.message}") }
+            }
         }
     }
 
@@ -180,8 +284,9 @@ class McpConnectControls(
                 Messages.showErrorDialog(
                     project,
                     "Could not write ${McpConfigInstaller.FILE_NAME}: ${it.message}\n\n" +
-                        "Nothing was changed. If the file exists but is not valid JSON, fix it " +
-                        "first — overwriting it would take your other servers with it.",
+                        "Nothing was changed. If that file is not valid JSON, or its " +
+                        "\"mcpServers\" is not an object, fix it first — overwriting it " +
+                        "would take your other servers with it.",
                     "Install MCP Configuration",
                 )
             }
