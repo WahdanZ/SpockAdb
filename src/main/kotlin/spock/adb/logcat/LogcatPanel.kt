@@ -67,6 +67,13 @@ class LogcatPanel(
 
     private var view: LogcatView = newView()
 
+    /** See [LogcatAiHandoff]; both of its entry points are hidden by default. */
+    private val ai = LogcatAiHandoff(
+        request = { aiRequest() },
+        assistant = { assistant },
+        report = { message -> statusLabel.text = message },
+    )
+
     /**
      * Entries arrive on an ADB reader thread far faster than Swing can repaint. They queue
      * here and are drained on the EDT on a timer: appending per line would flood the event
@@ -74,6 +81,9 @@ class LogcatPanel(
      */
     private val incoming = java.util.concurrent.ConcurrentLinkedQueue<LogcatEntry>()
     private val flushTimer = Timer(FLUSH_INTERVAL_MS) { drainIncoming() }
+
+    /** See [wireFilterControls]: one rebuild per pause in typing, not one per keystroke. */
+    private val searchDebounce = Timer(SEARCH_DEBOUNCE_MS) { applyFilter() }.apply { isRepeats = false }
 
     private val scopeCombo = JComboBox(LogcatScope.entries.toTypedArray()).apply {
         renderWith { it.label }
@@ -112,8 +122,24 @@ class LogcatPanel(
 
     private var stream: LogcatStream? = null
     private var device: ConnectedDevice? = null
-    private var appPids: Set<Int> = emptySet()
-    private var appPackage: String = ""
+
+    /**
+     * What is known about the app's processes. Read from the ADB reader thread, written on the
+     * EDT, so it is volatile; the writes are rare (a process starting or dying).
+     */
+    @Volatile
+    private var app: AppProcesses = AppProcesses.UNKNOWN
+
+    /**
+     * Bumped whenever the panel changes what it is attached to.
+     *
+     * A `pidof` reply, a stream's `onStopped`, and a clear's result all arrive late and from
+     * other threads. Without a generation to check, a reply about the device you just switched
+     * away from would quietly overwrite the scope, or the status, of the one you switched to.
+     */
+    @Volatile
+    private var generation = 0
+
     private var paused = false
 
     private var useRegex = false
@@ -168,7 +194,7 @@ class LogcatPanel(
     }
 
     private fun showRowMenu(event: MouseEvent) {
-        val block = view.caretIndex()?.let { LogcatGroup.at(view.entries(), it) }
+        val block = view.focus().singleIndex?.let { LogcatGroup.at(view.entries(), it) }
 
         val group = DefaultActionGroup().apply {
             add(
@@ -188,7 +214,7 @@ class LogcatPanel(
             }
             if (AssistantFeature.LOGCAT_HANDOFF_VISIBLE) {
                 addSeparator()
-                addAll(aiActions())
+                addAll(ai.actions())
             }
         }
 
@@ -246,6 +272,14 @@ class LogcatPanel(
         if (connected?.serialNumber == device?.serialNumber) return
         stop()
         device = connected
+        // Everything held was about the previous device: its PIDs mean nothing here, and its
+        // lines would sit in the same buffer with nothing on screen saying where they came from.
+        app = AppProcesses.UNKNOWN
+        buffer.clear()
+        incoming.clear()
+        view.clear()
+        applyFilter()
+        refreshDetails()
         updateStatus()
     }
 
@@ -258,15 +292,20 @@ class LogcatPanel(
 
         resolveApp(target)
 
+        val session = generation
         val logcatStream = LogcatStream(
             device = target.device,
             onEntry = { entry ->
                 buffer.add(entry)
                 if (!paused) incoming.add(entry)
+                trackProcesses(entry, session)
             },
             onStopped = { error ->
                 ApplicationManager.getApplication().invokeLater({
-                    statusLabel.text = error?.let { "Stream ended: ${it.message}" } ?: "Stopped."
+                    // A stream that was replaced must not narrate over its successor.
+                    if (session == generation) {
+                        statusLabel.text = error?.let { "Stream ended: ${it.message}" } ?: "Stopped."
+                    }
                 }) { project.isDisposed }
             },
         )
@@ -276,6 +315,8 @@ class LogcatPanel(
     }
 
     fun stop() {
+        // Past this point nothing the old stream reports is about what the panel is showing.
+        generation++
         stream?.stop()
         stream = null
         updateStatus()
@@ -285,14 +326,28 @@ class LogcatPanel(
      * Resolves the app id and the PIDs it is running as, so the App scope filters by process
      * rather than by matching the package name against message text — which both misses lines
      * and returns unrelated ones.
+     *
+     * The failure cases are told apart rather than collapsed into an empty set: see
+     * [AppProcesses]. Until the answer lands the scope is [AppProcesses.State.RESOLVING] and
+     * App shows nothing, which is honest and lasts about as long as a `pidof`.
      */
     private fun resolveApp(target: ConnectedDevice) {
         val applicationId = runCatching {
             spock.adb.command.GetApplicationIDCommand.resolve(project)
-        }.getOrNull() ?: return
+        }.getOrNull()
+
+        if (applicationId == null) {
+            app = AppProcesses.UNKNOWN
+            applyFilter()
+            return
+        }
+
+        val session = generation
+        app = AppProcesses.resolving(applicationId)
+        applyFilter()
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val pids = runCatching {
+            val resolved = runCatching {
                 val receiver = spock.adb.ShellOutputReceiver()
                 target.device.executeShellCommand(
                     "pidof ${spock.adb.ShellQuote.quote(applicationId)}",
@@ -301,14 +356,37 @@ class LogcatPanel(
                     java.util.concurrent.TimeUnit.SECONDS,
                 )
                 receiver.toString().trim().split(Regex("\\s+")).mapNotNull(String::toIntOrNull).toSet()
-            }.getOrDefault(emptySet())
+            }
 
             ApplicationManager.getApplication().invokeLater({
-                appPids = pids
-                appPackage = applicationId
-                applyFilter()
+                // A reply about the device we have since left must not set the scope here.
+                if (session == generation) {
+                    app = resolved.fold(
+                        onSuccess = { AppProcesses.resolving(applicationId).withPids(it) },
+                        onFailure = { AppProcesses.failed(applicationId) },
+                    )
+                    applyFilter()
+                }
             }) { project.isDisposed }
         }
+    }
+
+    /**
+     * Keeps the PIDs current from the log itself.
+     *
+     * `pidof` answers once. A process restarts constantly during development, and the old
+     * behaviour kept filtering on the dead PID — hiding the app's own new logs, and looking
+     * exactly like an app that had stopped logging. The device announces both events with the
+     * PID in the line, so no extra `adb` call is needed. Called on the ADB reader thread.
+     */
+    private fun trackProcesses(entry: LogcatEntry, session: Int) {
+        val updated = AppProcessTracker.apply(app, entry) ?: return
+        ApplicationManager.getApplication().invokeLater({
+            if (session == generation) {
+                app = updated
+                applyFilter()
+            }
+        }) { project.isDisposed }
     }
 
     // ---------------------------------------------------------------- filtering
@@ -317,11 +395,14 @@ class LogcatPanel(
         scopeCombo.addActionListener { applyFilter() }
         intentCombo.addActionListener { applyFilter() }
         levelCombo.addActionListener { applyFilter() }
+        // Debounced: every keystroke re-filters up to 20,000 records and rebuilds the whole
+        // view, and typing "checkout" did that eight times. The delay is short enough to feel
+        // immediate and long enough that a word costs one rebuild rather than one per letter.
         searchField.addDocumentListener(
             object : DocumentListener {
-                override fun insertUpdate(event: DocumentEvent) = applyFilter()
-                override fun removeUpdate(event: DocumentEvent) = applyFilter()
-                override fun changedUpdate(event: DocumentEvent) = applyFilter()
+                override fun insertUpdate(event: DocumentEvent) = searchDebounce.restart()
+                override fun removeUpdate(event: DocumentEvent) = searchDebounce.restart()
+                override fun changedUpdate(event: DocumentEvent) = searchDebounce.restart()
             },
         )
     }
@@ -340,8 +421,7 @@ class LogcatPanel(
             minLevel = levelCombo.selectedItem as LogLevel,
             query = searchField.text.orEmpty(),
             useRegex = useRegex,
-            appPids = appPids,
-            appPackage = appPackage,
+            app = app,
         )
         rebuildFromBuffer()
     }
@@ -390,13 +470,9 @@ class LogcatPanel(
         }
         val deviceLabel = device?.info?.displayName ?: "no device"
         val invalid = if (filter.hasInvalidRegex) "  ·  invalid regex" else ""
-        // The same admission the AI context makes: a scope that names the app while showing
-        // every process is the panel's most misleading state, and it looks exactly like a
-        // working one.
-        val fallback = when {
-            filter.isScopeApplied -> ""
-            else -> "  ·  ${filter.scope.label} scope not applied — the app is not running"
-        }
+        // The same admission the AI context makes, from the same rule: an App scope that is
+        // not really App is the panel's most misleading state, and it looks like a working one.
+        val fallback = filter.scopeCaveat()?.let { "  ·  ${filter.scope.label}: $it" }.orEmpty()
         statusLabel.text =
             "$state  ·  $deviceLabel  ·  ${view.size()} shown of ${buffer.size()}$fallback$invalid"
     }
@@ -411,17 +487,16 @@ class LogcatPanel(
      * clearly what they are interested in.
      */
     private fun refreshDetails() {
-        val chosen = view.selectedEntries()
-        val single = view.caretIndex()
-        details.isVisible = showDetails && chosen.isNotEmpty()
+        val focus = view.focus()
+        details.isVisible = showDetails && focus.entries.isNotEmpty()
         if (details.isVisible) {
-            val anchor = chosen.first()
-            val group = when (single) {
-                null -> LogcatGroup.ofSelection(chosen)
+            val anchor = focus.entries.first()
+            val group = when (val single = focus.singleIndex) {
+                null -> LogcatGroup.ofSelection(focus.entries)
                 else -> LogcatGroup.at(view.entries(), single)
             }
             // The app is named only when the line really came from it, so the field cannot lie.
-            val owner = appPackage.takeIf { it.isNotBlank() && anchor.pid in appPids }
+            val owner = app.packageName.takeIf { it.isNotBlank() && app.contains(anchor.pid) }
             details.show(anchor, group, owner)
         }
         splitter.revalidate()
@@ -449,7 +524,7 @@ class LogcatPanel(
                 add(
                     JButton("Ask AI ▾", AllIcons.Actions.IntentionBulb).apply {
                         toolTipText = "Hand what is on screen to the Spock Assistant, or copy it as context"
-                        addActionListener { showPopup(DefaultActionGroup(aiActions()), this) }
+                        addActionListener { showPopup(DefaultActionGroup(ai.actions()), this) }
                     },
                 )
             }
@@ -499,15 +574,6 @@ class LogcatPanel(
         }
     }
 
-    private fun aiActions(): List<AnAction> = listOf(
-        simpleAction("Ask Spock Assistant", "Open the Assistant with these logs prefilled", null) {
-            askAssistant()
-        },
-        simpleAction("Copy for AI", "Copy the same prepared context to the clipboard", null) {
-            copyForAi()
-        },
-    )
-
     private fun showPopup(group: DefaultActionGroup, anchor: JComponent) {
         val context = DataManager.getInstance().getDataContext(anchor)
         JBPopupFactory.getInstance()
@@ -547,14 +613,7 @@ class LogcatPanel(
             simpleAction("Stop Streaming", "Disconnect from the device's log", AllIcons.Actions.Suspend) { stop() },
         )
         group.add(
-            simpleAction("Clear", "Clear the view and the device buffer", AllIcons.Actions.GC) {
-                buffer.clear()
-                incoming.clear()
-                view.clear()
-                stream?.clearDeviceBuffer()
-                refreshDetails()
-                updateStatus()
-            },
+            simpleAction("Clear", "Clear the view and the device buffer", AllIcons.Actions.GC) { clear() },
         )
         group.addSeparator()
         group.add(
@@ -604,9 +663,9 @@ class LogcatPanel(
      * never the raw buffer, which is mostly framework chatter and would cost a fortune to send.
      */
     private fun aiRequest() = LogcatAiRequest(
-        selected = view.selectedEntries(),
+        selected = view.selection(),
         visible = view.entries(),
-        appPackage = appPackage,
+        appPackage = app.packageName,
         deviceLabel = device?.info?.let { info ->
             listOfNotNull(info.displayName, info.androidVersionLabel().takeIf(String::isNotBlank))
                 .joinToString(" · ")
@@ -614,35 +673,38 @@ class LogcatPanel(
         filter = filter,
     )
 
-    private fun askAssistant() {
-        val target = assistant ?: run {
-            statusLabel.text = "The Assistant tab is not available."
-            return
-        }
-        val context = LogcatAiContextBuilder.build(aiRequest())
-        if (context.lineCount == 0) {
-            statusLabel.text = "Nothing to send — no lines match the current filter."
-            return
-        }
-        target.prefill(context.asPrompt())
-        statusLabel.text = "${context.summary()} Opened in the Assistant — review it, then press Send."
-    }
-
-    private fun copyForAi() {
-        val context = LogcatAiContextBuilder.build(aiRequest())
-        if (context.lineCount == 0) {
-            statusLabel.text = "Nothing to copy — no lines match the current filter."
-            return
-        }
-        LogcatClipboard.copy(context.text)
-        statusLabel.text = "${context.summary()} Copied."
-    }
-
     // ---------------------------------------------------------------- clipboard and files
 
     /** The lines a copy acts on: the selection, or the whole visible view when there is none. */
+    /**
+     * Empties the view at once, and the device's buffer in the background.
+     *
+     * `logcat -c` is a blocking shell command with a ten-second timeout, and this runs from a
+     * menu action — on the EDT. A device that is unplugged, asleep or wedged would have frozen
+     * the whole IDE for the full timeout.
+     */
+    private fun clear() {
+        buffer.clear()
+        incoming.clear()
+        view.clear()
+        refreshDetails()
+        updateStatus()
+
+        val running = stream ?: return
+        val session = generation
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val failure = running.clearDeviceBuffer()
+            ApplicationManager.getApplication().invokeLater({
+                if (session == generation && failure != null) {
+                    statusLabel.text = "The view is clear; the device buffer is not: ${failure.message}"
+                }
+            }) { project.isDisposed }
+        }
+    }
+
+    /** An explicit selection, or the whole visible view — never the single line under a caret. */
     private fun copyTarget(): List<LogcatEntry> =
-        view.selectedEntries().takeIf { it.isNotEmpty() } ?: view.entries()
+        view.selection().takeIf { it.isNotEmpty() } ?: view.entries()
 
     private fun copyRaw() {
         val copied = LogcatClipboard.copy(LogcatClipboard.rawText(copyTarget()))
@@ -656,6 +718,7 @@ class LogcatPanel(
 
     override fun dispose() {
         flushTimer.stop()
+        searchDebounce.stop()
         stop()
     }
 
@@ -668,6 +731,7 @@ class LogcatPanel(
         const val MENU_ROWS = 8
         const val SPLIT_PROPORTION = 0.68f
         const val EDITOR_VIEW_KEY = "spock.logcat.editorView"
+        const val SEARCH_DEBOUNCE_MS = 200
     }
 }
 

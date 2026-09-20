@@ -83,17 +83,17 @@ say "network with JSON bodies and credentials (Network filter, redaction)"
 emit d ApiClient <<'EOF'
 --> POST https://api.example.com/v1/auth/token
 Content-Type: application/json
-X-Api-Key: 7f3a9c1e5b2d4f6a8c0e2b4d6f8a1c3e
-{"grant_type":"refresh_token","refresh_token":"rt_9a8b7c6d5e4f3a2b1c0d","device_id":"emu-5554"}
+X-Api-Key: EXAMPLE-NOT-A-REAL-KEY
+{"grant_type":"refresh_token","refresh_token":"EXAMPLE-NOT-A-REAL-TOKEN","device_id":"emu-5554"}
 --> END POST (112-byte body)
 EOF
 
 emit d ApiClient <<'EOF'
 <-- 200 OK https://api.example.com/v1/auth/token (287ms)
-Set-Cookie: session=9f8a7b6c5d4e3f2a1b0c; Path=/; HttpOnly; Secure
+Set-Cookie: session=EXAMPLE-NOT-A-REAL-SESSION; Path=/; HttpOnly; Secure
 Content-Type: application/json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NSIsIm5hbWUiOiJBaG1lZCJ9.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+  "access_token": "eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature",
   "token_type": "Bearer",
   "expires_in": 3600,
   "scope": "offers.read profile.read"
@@ -103,7 +103,7 @@ EOF
 
 emit d OkHttp <<'EOF'
 --> GET https://api.example.com/v1/offers?city=berlin&limit=12
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NSJ9.dBjftJeZ4CVPmB92K27uhbUJU1p1r
+Authorization: Bearer eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature
 Accept: application/json
 --> END GET
 EOF

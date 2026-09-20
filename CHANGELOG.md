@@ -164,6 +164,35 @@
 - **Records with no message are no longer shown.** A device emits them — every `adb shell log`
   invocation ends with one — and they arrive as blank rows that cost a line of screen and say
   nothing. The raw record stays in the buffer
+- **`App` scope can no longer show another process's logs.** An unresolved app was an empty PID
+  set, and an empty set matched *everything* — so App and Related behaved exactly like All in
+  the most ordinary moments of Android development: the second after pressing Live, an app that
+  had been force-stopped, a `pidof` the device refused to answer. The toolbar said App, the
+  panel filled, and nothing on screen suggested those lines belonged to other processes until
+  they were in a bug report. The four states an empty set was standing in for — not asked,
+  asking, asked and not running, asked and failed — are now named, and only a running app
+  carries PIDs to match. App shows nothing it cannot prove is the app's; Related still works
+  unresolved, because its other rules — related tags, lines naming the package — need no PID
+- **`App` scope survives a process restart.** `pidof` answers once, and an Android process
+  restarts constantly — Apply Changes, a force-stop, a crash, the system reclaiming memory.
+  After any of those the filter was still matching a PID that no longer existed, so the app's
+  own new logs were the ones being hidden, and the panel looked like an app that had stopped
+  logging. The device announces both events with the PID in the line, so the scope now follows
+  the app from the log itself, with no extra `adb` call
+- **Clearing no longer freezes the IDE.** `logcat -c` is a blocking shell command with a
+  ten-second timeout, and Clear ran it straight from a menu action — on the EDT. An unplugged,
+  sleeping or wedged device would have frozen Android Studio for the full ten seconds. The view
+  empties immediately, the device command runs on a pooled thread, and a failure is reported
+  rather than leaving the developer believing a clear that never happened
+- **Late replies can no longer talk over the device you switched to.** A `pidof` result, a
+  stream's end-of-stream callback and a clear's outcome all arrive late and from other threads;
+  each is now tagged with the session it belongs to and ignored if the panel has moved on.
+  Switching devices also resets the buffer, the scope and the view, instead of leaving one
+  device's lines under another device's filter
+- **Typing in the search box no longer rebuilds the view per keystroke.** Every character
+  re-filtered up to 20,000 records and rebuilt the whole document; typing "checkout" did that
+  eight times. It is debounced, and a filter change is capped to the same visible limit the
+  incremental path enforces — previously a filter change or a view switch could render twice it
 - **The panel says when a scope could not be applied.** With the app not running there are no
   PIDs to filter by, so `App` quietly shows every process — the most misleading state the panel
   has, because it looks exactly like a working one. The status bar now says `App scope not

@@ -69,10 +69,10 @@ object LogcatDemo {
     /** Headers with credentials in them: what the AI context's redaction step is for. */
     private fun authRequest() {
         Log.d("ApiClient", "--> POST https://api.example.com/v1/auth/token")
-        Log.d("ApiClient", "X-Api-Key: 7f3a9c1e5b2d4f6a8c0e2b4d6f8a1c3e")
+        Log.d("ApiClient", "X-Api-Key: EXAMPLE-NOT-A-REAL-KEY")
         Log.d(
             "ApiClient",
-            """{"grant_type":"refresh_token","refresh_token":"rt_9a8b7c6d5e4f3a2b1c0d"}""",
+            """{"grant_type":"refresh_token","refresh_token":"EXAMPLE-NOT-A-REAL-TOKEN"}""",
         )
         Log.d("ApiClient", "--> END POST (112-byte body)")
     }
@@ -85,7 +85,7 @@ object LogcatDemo {
      */
     private fun authResponse() {
         Log.d("ApiClient", "<-- 200 OK https://api.example.com/v1/auth/token (287ms)")
-        Log.d("ApiClient", "Set-Cookie: session=9f8a7b6c5d4e3f2a1b0c; Path=/; HttpOnly; Secure")
+        Log.d("ApiClient", "Set-Cookie: session=EXAMPLE-NOT-A-REAL-SESSION; Path=/; HttpOnly; Secure")
         Log.d(
             "ApiClient",
             """
@@ -153,7 +153,12 @@ object LogcatDemo {
 
     private const val REPEATS = 8
 
-    /** Invented, and not a valid signature — it exists to be redacted. */
+    /**
+     * Deliberately not a plausible token: `alg: none`, a nonsense payload and a signature that
+     * says what it is. It keeps the *shape* a redaction rule matches while being something no
+     * secret scanner should ever flag — the demo is checked into a public repository, and a
+     * realistic-looking JWT there costs somebody a triage.
+     */
     private const val DEMO_JWT =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NSJ9.dBjftJeZ4CVPmB92K27uhbUJU1p1r"
+        "eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature"
 }

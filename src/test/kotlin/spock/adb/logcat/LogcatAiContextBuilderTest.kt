@@ -176,11 +176,11 @@ class LogcatAiContextBuilderTest {
 
     @Test
     fun `credentials are redacted and the redaction is declared`() {
-        val visible = listOf(entry("Authorization: Bearer abcdef1234567890", tag = "OkHttp"))
+        val visible = listOf(entry("Authorization: Bearer EXAMPLE-NOT-A-REAL-TOKEN", tag = "OkHttp"))
 
         val context = LogcatAiContextBuilder.build(LogcatAiRequest(visible = visible))
 
-        assertFalse(context.text.contains("abcdef1234567890"))
+        assertFalse(context.text.contains("EXAMPLE-NOT-A-REAL-TOKEN"))
         assertTrue(context.redactions > 0)
         assertTrue(context.text.contains("Redacted:"))
     }
@@ -201,11 +201,11 @@ class LogcatAiContextBuilderTest {
         val context = LogcatAiContextBuilder.build(
             LogcatAiRequest(
                 visible = noise(3),
-                filter = LogcatFilter(scope = LogcatScope.APP, appPids = emptySet()),
+                filter = LogcatFilter(scope = LogcatScope.APP, app = AppProcesses.resolving("com.example.app")),
             ),
         )
 
-        assertTrue(context.text.contains("Scope: App — not applied"), context.text)
+        assertTrue(context.text.contains("Scope: App — reading"), context.text)
     }
 
     @Test
@@ -213,12 +213,15 @@ class LogcatAiContextBuilderTest {
         val context = LogcatAiContextBuilder.build(
             LogcatAiRequest(
                 visible = noise(3),
-                filter = LogcatFilter(scope = LogcatScope.APP, appPids = setOf(3189)),
+                filter = LogcatFilter(
+                    scope = LogcatScope.APP,
+                    app = AppProcesses(AppProcesses.State.RUNNING, setOf(3189)),
+                ),
             ),
         )
 
         assertTrue(context.text.contains("Scope: App\n"), context.text)
-        assertFalse(context.text.contains("not applied"))
+        assertFalse(context.text.contains("Scope: App —"))
     }
 
     @Test

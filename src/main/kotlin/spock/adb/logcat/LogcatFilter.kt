@@ -18,10 +18,8 @@ data class LogcatFilter(
     val minLevel: LogLevel = LogLevel.VERBOSE,
     val query: String = "",
     val useRegex: Boolean = false,
-    /** Empty means "not resolved yet". Populated from the selected package's PIDs. */
-    val appPids: Set<Int> = emptySet(),
-    /** Used by [LogcatScope.RELATED] to recognise system lines that name the app. */
-    val appPackage: String = "",
+    /** What is known about the app's processes. See [AppProcesses]. */
+    val app: AppProcesses = AppProcesses.UNKNOWN,
     val tag: String = "",
 ) {
 
@@ -33,14 +31,11 @@ data class LogcatFilter(
     /** True when [query] is meant as a regex but does not compile, so the UI can say so. */
     val hasInvalidRegex: Boolean = useRegex && query.isNotBlank() && regex == null
 
-    /**
-     * False when the chosen scope could not be enforced.
-     *
-     * One place rather than two: the status bar and the AI context header both have to say
-     * "App" is not really App when the PIDs are unresolved, and two copies of that rule would
-     * eventually disagree — with the header being the one that lies to a model.
-     */
-    val isScopeApplied: Boolean get() = scope == LogcatScope.ALL || appPids.isNotEmpty()
+    /** Why the scope is not showing what its name promises, or null when it is. */
+    fun scopeCaveat(): String? = scope.caveat(app)
+
+    /** False when the chosen scope could not be enforced as named. */
+    val isScopeApplied: Boolean get() = scopeCaveat() == null
 
     fun matches(entry: LogcatEntry): Boolean {
         // A record with no message has nothing to show. The device emits them — every
@@ -48,7 +43,7 @@ data class LogcatFilter(
         // cost a line of screen and carry nothing. The raw record stays in the buffer.
         if (entry.message.isBlank()) return false
         if (!entry.level.isAtLeast(minLevel)) return false
-        if (!scope.matches(entry, appPids, appPackage)) return false
+        if (!scope.matches(entry, app)) return false
         if (!intent.matches(entry)) return false
         if (tag.isNotBlank() && !entry.tag.contains(tag, ignoreCase = true)) return false
         if (query.isBlank()) return true

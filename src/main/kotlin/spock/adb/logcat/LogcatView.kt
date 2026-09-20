@@ -31,11 +31,32 @@ interface LogcatView : Disposable {
 
     fun size(): Int
 
-    /** The records the developer is pointing at: the selection, or the line under the caret. */
-    fun selectedEntries(): List<LogcatEntry>
+    /**
+     * Only what the developer deliberately selected — empty when they have merely clicked.
+     *
+     * Distinct from [focused] because the two answer different questions and conflating them
+     * had a real cost: "Ask AI" promised the filtered view when nothing was selected, and an
+     * editor reports a caret line as a selection, so it sent exactly one line instead.
+     */
+    fun selection(): List<LogcatEntry>
 
-    /** The single line the caret is on, or null when a run of lines is selected. */
-    fun caretIndex(): Int?
+    /**
+     * What a details pane or a context menu should act on: the selection, or the caret line.
+     *
+     * One snapshot rather than two calls, so the lines and the index cannot describe different
+     * moments — the selection can change between them while a menu is being built.
+     */
+    fun focus(): Focus
+
+    /**
+     * @param entries the records in focus.
+     * @param singleIndex the index of the only record in focus, or null when several are.
+     */
+    data class Focus(val entries: List<LogcatEntry>, val singleIndex: Int?) {
+        companion object {
+            val NONE = Focus(emptyList(), null)
+        }
+    }
 
     /** Replaces everything, for a filter change. */
     fun setAll(replacement: List<LogcatEntry>, autoScroll: Boolean)

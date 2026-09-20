@@ -9,23 +9,23 @@ class LogcatRedactorTest {
 
     @Test
     fun `an authorization header loses its value`() {
-        val result = LogcatRedactor.redact("12:00:00.000 I/OkHttp: Authorization: Bearer abcdef1234567890")
+        val result = LogcatRedactor.redact("12:00:00.000 I/OkHttp: Authorization: Bearer EXAMPLE-NOT-A-REAL-TOKEN")
 
-        assertFalse(result.text.contains("abcdef1234567890"))
+        assertFalse(result.text.contains("EXAMPLE-NOT-A-REAL-TOKEN"))
         assertTrue(result.text.contains(LogcatRedactor.PLACEHOLDER))
         assertTrue(result.count >= 1)
     }
 
     @Test
     fun `a cookie header loses its value`() {
-        val result = LogcatRedactor.redact("Set-Cookie: session=9f8a7b6c5d; Path=/; HttpOnly")
+        val result = LogcatRedactor.redact("Set-Cookie: session=EXAMPLE-NOT-REAL; Path=/; HttpOnly")
 
-        assertFalse(result.text.contains("9f8a7b6c5d"))
+        assertFalse(result.text.contains("EXAMPLE-NOT-REAL"))
     }
 
     @Test
     fun `a JWT is redacted wherever it appears`() {
-        val jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.dBjftJeZ4CVPmB92K27uhbUJU1p1r"
+        val jwt = "eyJhbGciOiJub25lIn0.eyJub3RlIjoiZXhhbXBsZS1vbmx5In0.not-a-real-signature"
         val result = LogcatRedactor.redact("Response body: {\"id_token\":\"$jwt\"}")
 
         assertFalse(result.text.contains(jwt))
@@ -33,19 +33,19 @@ class LogcatRedactorTest {
 
     @Test
     fun `key-shaped assignments are redacted`() {
-        val result = LogcatRedactor.redact("api_key=A1B2C3D4E5 password=hunter2 sessionId: 55AA77BB")
+        val result = LogcatRedactor.redact("api_key=EXAMPLE-KEY password=EXAMPLE-PASSWORD sessionId: EXAMPLE-SESSION")
 
-        assertFalse(result.text.contains("A1B2C3D4E5"))
-        assertFalse(result.text.contains("hunter2"))
-        assertFalse(result.text.contains("55AA77BB"))
+        assertFalse(result.text.contains("EXAMPLE-KEY"))
+        assertFalse(result.text.contains("EXAMPLE-PASSWORD"))
+        assertFalse(result.text.contains("EXAMPLE-SESSION"))
         assertEquals(3, result.count)
     }
 
     @Test
     fun `credentials in a URL are redacted`() {
-        val result = LogcatRedactor.redact("connecting to https://admin:s3cr3t@internal.example.com/api")
+        val result = LogcatRedactor.redact("connecting to https://admin:EXAMPLE-PASSWORD@internal.example.com/api")
 
-        assertFalse(result.text.contains("s3cr3t"))
+        assertFalse(result.text.contains("EXAMPLE-PASSWORD"))
         assertTrue(result.text.contains("internal.example.com"))
     }
 

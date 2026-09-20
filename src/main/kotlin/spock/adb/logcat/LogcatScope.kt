@@ -23,26 +23,35 @@ enum class LogcatScope(val label: String, val description: String) {
     ;
 
     /**
-     * @param appPids the resolved PIDs of the selected app. Empty means "not resolved yet",
-     *   which matches everything rather than nothing: an empty panel while `pidof` is still in
-     *   flight reads as a broken stream, and the filter re-runs as soon as the answer lands.
+     * @param app what is known about the app's processes. When its PIDs are unknown, **App
+     *   matches nothing** rather than everything: a scope that silently widens to the whole
+     *   device is the one failure here that looks exactly like success, and it ends with
+     *   another process's logs in a bug report. Related still works unresolved, because its
+     *   other two rules — related tags, and lines naming the package — need no PID.
      */
-    fun matches(entry: LogcatEntry, appPids: Set<Int>, appPackage: String): Boolean = when (this) {
+    fun matches(entry: LogcatEntry, app: AppProcesses): Boolean = when (this) {
         ALL -> true
-        APP -> isAppProcess(entry, appPids)
-        RELATED -> isAppProcess(entry, appPids) ||
+        APP -> app.contains(entry.pid)
+        RELATED -> app.contains(entry.pid) ||
             LogcatSignals.isRelatedTag(entry.tag) ||
-            namesTheApp(entry, appPackage)
+            app.isNamedIn(entry.message)
     }
 
-    private fun isAppProcess(entry: LogcatEntry, appPids: Set<Int>): Boolean =
-        appPids.isEmpty() || entry.pid in appPids
-
     /**
-     * A system line that names the package — `ANR in com.example.app`, `Start proc … for
-     * com.example.app` — is about this app whatever process wrote it, and is usually the only
-     * record of what the system did to it.
+     * Why this scope is not showing what its name promises, or null when it is.
+     *
+     * One source for the status bar and the AI context header: when they disagreed about
+     * whether "App" meant App, the header was the one telling a model something false.
      */
-    private fun namesTheApp(entry: LogcatEntry, appPackage: String): Boolean =
-        appPackage.isNotBlank() && entry.message.contains(appPackage, ignoreCase = true)
+    fun caveat(app: AppProcesses): String? = when {
+        this == ALL -> null
+        app.isResolved -> null
+        this == RELATED -> "matching the app's tags and package references only — its process IDs are unknown"
+        else -> when (app.state) {
+            AppProcesses.State.RESOLVING -> "reading the app's process IDs…"
+            AppProcesses.State.NOT_RUNNING -> "the app is not running, so it has no logs of its own"
+            AppProcesses.State.FAILED -> "the app's process IDs could not be read from the device"
+            else -> "no app is selected, so there is nothing to scope to"
+        }
+    }
 }

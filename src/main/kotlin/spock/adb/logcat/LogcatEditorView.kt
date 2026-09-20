@@ -111,15 +111,19 @@ class LogcatEditorView(private val project: Project) : LogcatView {
      * A partial selection counts the whole line — half a message is not a log record, and every
      * consumer of this (the details pane, the AI context, copy) is about records.
      */
-    override fun selectedEntries(): List<LogcatEntry> {
+    /** A caret sitting on a line is not a selection: nothing was chosen. */
+    override fun selection(): List<LogcatEntry> {
+        if (!editor.selectionModel.hasSelection()) return emptyList()
         val range = selectedLineRange() ?: return emptyList()
         return entries.subList(range.first, range.last + 1).toList()
     }
 
-    /** The single line the caret is on, or null when a run of lines is selected. */
-    override fun caretIndex(): Int? {
-        val range = selectedLineRange() ?: return null
-        return range.first.takeIf { range.first == range.last }
+    override fun focus(): LogcatView.Focus {
+        val range = selectedLineRange() ?: return LogcatView.Focus.NONE
+        return LogcatView.Focus(
+            entries = entries.subList(range.first, range.last + 1).toList(),
+            singleIndex = range.first.takeIf { range.first == range.last },
+        )
     }
 
     private fun selectedLineRange(): IntRange? {
@@ -149,7 +153,10 @@ class LogcatEditorView(private val project: Project) : LogcatView {
         document.setText("")
         editor.markupModel.removeAllHighlighters()
         entries.clear()
-        appendInternal(replacement)
+        // Capped like an append is. Without this a filter change or a view switch could render
+        // the whole 20,000-line buffer — twice the limit the incremental path enforces — and
+        // pay for every highlighter in it on the EDT.
+        appendInternal(replacement.takeLast(VISIBLE_LIMIT))
         if (autoScroll) scrollToEnd()
     }
 

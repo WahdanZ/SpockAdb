@@ -57,13 +57,18 @@ class LogcatListView : LogcatView {
 
     override fun size(): Int = model.size()
 
-    override fun selectedEntries(): List<LogcatEntry> = list.selectedValuesList.toList()
+    /** In a list, clicking a row *is* choosing it: there is no caret-without-selection. */
+    override fun selection(): List<LogcatEntry> = list.selectedValuesList.toList()
 
-    override fun caretIndex(): Int? = list.selectedIndex.takeIf { it >= 0 && list.selectedIndices.size == 1 }
+    override fun focus(): LogcatView.Focus = LogcatView.Focus(
+        entries = selection(),
+        singleIndex = list.selectedIndex.takeIf { it >= 0 && list.selectedIndices.size == 1 },
+    )
 
     override fun setAll(replacement: List<LogcatEntry>, autoScroll: Boolean) {
         model.clear()
-        replacement.forEach(model::addElement)
+        // Capped like an append is; see LogcatEditorView.setAll.
+        replacement.takeLast(VISIBLE_LIMIT).forEach(model::addElement)
         if (autoScroll) scrollToEnd()
     }
 

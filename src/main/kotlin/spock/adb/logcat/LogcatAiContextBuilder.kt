@@ -299,18 +299,12 @@ private object LogcatAiHeader {
     /**
      * Says so when the scope on the label is not the scope that was applied.
      *
-     * With no resolved PIDs, App and Related fall back to matching every process — which keeps
-     * the panel from sitting empty while `pidof` is in flight, and is the right call there. In
-     * the context it is not: "Scope: App" above a screenful of `nativeloader` and
-     * `ThemeOverlayController` tells the model these are the app's own logs, and a model that
-     * believes it will attribute system behaviour to the code under debug.
+     * "Scope: App" above lines the app did not write tells a model these are the app's own
+     * logs, and a model that believes it will attribute system behaviour to the code under
+     * debug. Taken from the filter so this can never disagree with the status bar.
      */
-    private fun scopeCaveat(filter: LogcatFilter): String = when {
-        filter.isScopeApplied -> ""
-        else ->
-            " — not applied: the app's process IDs could not be resolved (is it running?), " +
-                "so lines from every process are included"
-    }
+    private fun scopeCaveat(filter: LogcatFilter): String =
+        filter.scopeCaveat()?.let { " — $it" }.orEmpty()
 
     /**
      * How many lines, and why that is fewer than the view held.
