@@ -95,13 +95,35 @@ class AssistantPanel(
     /** Kept across turns so the model can refer back to what it already found. */
     private val conversation = mutableListOf<LlmMessage>()
 
+    /**
+     * The last answer from [AssistantService.configurationProblem], re-read off the EDT.
+     *
+     * Cached rather than asked for on every repaint because answering it reads the API key out
+     * of `PasswordSafe`, which is the OS keychain: acceptable once while the panel opens, far
+     * too slow to sit in a method the send, stop and clear buttons call on the EDT.
+     * [reloadConfiguration] refreshes it whenever the configuration could have changed.
+     */
+    @Volatile
+    private var configurationProblem: String? = null
+
+    /**
+     * False until the first [reloadConfiguration] lands.
+     *
+     * Without it a null [configurationProblem] would read as "configured" before anything had
+     * been read, and the panel would offer a Send button that cannot work yet.
+     */
+    @Volatile
+    private var configurationLoaded = false
+
     init {
         setToolbar(header())
         setContent(body())
         wire()
         flushTimer.isRepeats = true
         flushTimer.start()
+        // Paint the disabled state now, then read the key off the EDT and paint again.
         refreshState()
+        reloadConfiguration()
     }
 
     // ------------------------------------------------------------------ layout
@@ -156,7 +178,7 @@ class AssistantPanel(
         // which reads as the feature being broken rather than as a stale screen.
         addComponentListener(
             object : java.awt.event.ComponentAdapter() {
-                override fun componentShown(event: java.awt.event.ComponentEvent) = refreshState()
+                override fun componentShown(event: java.awt.event.ComponentEvent) = reloadConfiguration()
             },
         )
     }
@@ -178,8 +200,12 @@ class AssistantPanel(
         val question = inputArea.text.orEmpty().trim()
         if (question.isEmpty()) return
 
-        settings.configurationProblem?.let {
-            note(AssistantTranscript.Kind.ERROR, "$it\n\n$SETUP_HINT")
+        // The cached answer rather than a fresh keychain read, because this is the EDT. A key
+        // that changed since the last reload is still caught: [AssistantService.newLoop] runs on
+        // the pooled thread below and refuses with the same sentence.
+        if (!configurationLoaded || configurationProblem != null) {
+            val problem = configurationProblem ?: STILL_READING_CONFIGURATION
+            note(AssistantTranscript.Kind.ERROR, "$problem\n\n$SETUP_HINT")
             return
         }
 
@@ -374,16 +400,46 @@ class AssistantPanel(
 
     // ------------------------------------------------------------------ state
 
+    /**
+     * Repaints the controls from what is already known, touching nothing slow.
+     *
+     * Asking [AssistantService] directly would read the key from `PasswordSafe` — blocking
+     * keychain I/O — and every caller here is on the EDT, which trips `SlowOperations` and
+     * stalls the tool window as it opens. [reloadConfiguration] does that read on a pooled
+     * thread; this only ever reads the snapshot it leaves behind.
+     */
     private fun refreshState() {
-        val configured = settings.isConfigured
+        val configured = configurationLoaded && configurationProblem == null
         sendButton.isEnabled = configured && !running
         stopButton.isEnabled = running
         clearButton.isEnabled = !running
         inputArea.isEnabled = configured
 
         if (transcript.isEmpty()) {
-            val problem = settings.configurationProblem
+            val problem = configurationProblem.takeIf { configurationLoaded }
             transcriptArea.text = if (problem == null) "" else "$problem\n\n$SETUP_HINT"
+        }
+    }
+
+    /**
+     * Re-reads the configuration off the EDT, then repaints.
+     *
+     * Called only where it can actually have changed — the panel opening, becoming visible
+     * again, or the Settings dialog closing — rather than from every [refreshState], so a
+     * streaming turn does not reach for the keychain between tokens.
+     */
+    private fun reloadConfiguration() {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // A locked or refused keychain throws rather than returning nothing, and this runs
+            // where nobody is catching: without this the panel would sit disabled for ever with
+            // only a stack trace in idea.log to say why.
+            val problem = runCatching { settings.configurationProblem }
+                .getOrElse { "The API key could not be read from the IDE's password store." }
+            onEdt {
+                configurationProblem = problem
+                configurationLoaded = true
+                refreshState()
+            }
         }
     }
 
@@ -394,7 +450,7 @@ class AssistantPanel(
     /** Blocks until the dialog closes, so the state can be re-read the moment it returns. */
     private fun openSettings() {
         ShowSettingsUtil.getInstance().showSettingsDialog(project, SETTINGS_DISPLAY_NAME)
-        refreshState()
+        reloadConfiguration()
     }
 
     override fun dispose() {
@@ -413,6 +469,9 @@ class AssistantPanel(
         const val FLUSH_INTERVAL_MS = 100
         const val CTRL_MASK = java.awt.event.InputEvent.CTRL_DOWN_MASK
         const val SETTINGS_DISPLAY_NAME = "Spock ADB"
+
+        /** Shown in the vanishingly rare case of a send before the first key read has landed. */
+        const val STILL_READING_CONFIGURATION = "The assistant is still reading its configuration."
         const val DEBUG_CONTEXT_TOOL = "android_get_debug_context"
 
         /** Not a model-issued call, but the audit trail wants an id like any other. */

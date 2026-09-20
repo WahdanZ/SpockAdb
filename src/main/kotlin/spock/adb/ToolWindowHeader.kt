@@ -32,8 +32,15 @@ internal class ToolWindowHeader(
 
     val deviceCombo = ComboBox<String>()
 
+    /**
+     * The one refresh in the header, and it re-reads both lists.
+     *
+     * The app picker used to carry a second one. Two identical icons sat side by side with only
+     * a tooltip between them, and they were never really two ideas: refreshing devices already
+     * reloads the apps, because the reply runs through `setDevice`, which loads the picker.
+     */
     val refreshButton = JButton(AllIcons.Actions.Refresh).apply {
-        toolTipText = "Read the device list again"
+        toolTipText = "Read the device and app lists again"
     }
 
     val settingsButton = JButton(AllIcons.General.Settings).apply {
@@ -67,8 +74,8 @@ internal class ToolWindowHeader(
         appPicker.onChosen = { packageName -> onAppChosen(packageName) }
 
         add(deviceCombo)
-        add(appPicker)
         add(refreshButton)
+        add(appPicker)
         add(settingsButton)
         add(agentTargetLabel)
     }

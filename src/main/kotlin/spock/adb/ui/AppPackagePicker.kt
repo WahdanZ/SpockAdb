@@ -1,6 +1,5 @@
 package spock.adb.ui
 
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
@@ -13,7 +12,6 @@ import spock.adb.command.ListInstalledPackagesCommand
 import spock.adb.device.ConnectedDevice
 import java.awt.FlowLayout
 import javax.swing.DefaultComboBoxModel
-import javax.swing.JButton
 import javax.swing.JPanel
 
 /**
@@ -34,9 +32,7 @@ internal class AppPackagePicker(
 
     private val model = DefaultComboBoxModel<String>()
     private val combo = ComboBox(model, JBUI.scale(COMBO_WIDTH))
-    private val refreshButton = JButton(AllIcons.Actions.Refresh)
 
-    private var device: ConnectedDevice? = null
     private var projectApp: String? = null
 
     /** The last package handed to [onChosen], so a pick that fires twice does not list the files twice. */
@@ -70,10 +66,7 @@ internal class AppPackagePicker(
         combo.addActionListener {
             if (!populating) selected?.let(::choose)
         }
-        refreshButton.toolTipText = "Reload the installed apps"
-        refreshButton.addActionListener { load(device, keepSelection = true) }
         add(combo)
-        add(refreshButton)
     }
 
     /**
@@ -81,7 +74,6 @@ internal class AppPackagePicker(
      * to [onChosen]. With [keepSelection], the app shown now stays selected and nothing is chosen.
      */
     fun load(connected: ConnectedDevice?, keepSelection: Boolean = false) {
-        device = connected
         val request = loads.begin()
         val kept = selected.takeIf { keepSelection }
         if (!keepSelection) lastChosen = null
@@ -119,7 +111,6 @@ internal class AppPackagePicker(
     override fun setEnabled(enabled: Boolean) {
         super.setEnabled(enabled)
         combo.isEnabled = enabled
-        refreshButton.isEnabled = enabled
     }
 
     private fun choose(packageName: String) {

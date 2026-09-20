@@ -1,6 +1,7 @@
 package spock.adb.mcp
 
 import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.Configurable
@@ -207,16 +208,48 @@ class SpockAdbConfigurable : Configurable {
     private fun selectedProvider(): AssistantProvider =
         providerBox.selectedItem as? AssistantProvider ?: AssistantProvider.ANTHROPIC
 
+    /**
+     * Asks `PasswordSafe` whether a key is stored, off the EDT.
+     *
+     * The answer comes from the OS keychain, which blocks, and this runs where the Settings
+     * dialog is being built — `reset` calls [onProviderChanged] as the dialog opens — so reading
+     * it inline trips `SlowOperations` and holds the dialog shut while the keychain answers.
+     * Nothing here needs the answer synchronously: it only decides a sentence in a label.
+     */
     private fun refreshKeyStatus() {
-        val stored = AssistantKeyStore.hasKey(selectedProvider())
+        val provider = selectedProvider()
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // A locked or refused keychain throws rather than answering, and this runs where
+            // nothing is catching it. Reported as "no key", which is the state that tells the
+            // developer to type one.
+            val stored = runCatching { AssistantKeyStore.hasKey(provider) }.getOrDefault(false)
+            ApplicationManager.getApplication().invokeLater(
+                { showKeyStatus(stored) },
+                // The dialog can be closed before the keychain answers, and a Configurable is
+                // reused across openings, so a late reply must not paint a dead panel.
+                { panel == null || provider != selectedProvider() },
+            )
+        }
+    }
+
+    /** The label alone, from an answer already in hand. */
+    private fun showKeyStatus(stored: Boolean) {
         keyStatusLabel.text = if (stored) "A key is stored for this provider." else "No key stored."
         keyStatusLabel.foreground = if (stored) com.intellij.ui.JBColor.foreground() else com.intellij.ui.JBColor.GRAY
     }
 
+    /**
+     * The write stays on the EDT, unlike the read in [refreshKeyStatus].
+     *
+     * This is an explicit click that has to have taken effect by the time it returns: the
+     * assistant panel re-reads its configuration when this dialog closes, and a clear still in
+     * flight would have it report a key that is on its way out. The label follows from what was
+     * just written rather than from another trip to the keychain.
+     */
     private fun removeKey() {
         AssistantKeyStore.store(selectedProvider(), "")
         apiKeyField.text = ""
-        refreshKeyStatus()
+        showKeyStatus(false)
     }
 
     /**
@@ -402,9 +435,17 @@ class SpockAdbConfigurable : Configurable {
         val typed = String(apiKeyField.password)
         // Blank means "leave what is stored", not "clear it" — otherwise opening Settings for
         // an unrelated change and pressing OK would silently delete the developer's key.
-        if (typed.isNotBlank()) AssistantKeyStore.store(selectedProvider(), typed)
+        //
+        // Written on the EDT for the same reason as [removeKey]: apply() is the commit point,
+        // and the assistant panel re-reads its configuration the moment this dialog closes.
+        if (typed.isNotBlank()) {
+            AssistantKeyStore.store(selectedProvider(), typed)
+            // A key was just stored, so there is nothing to go and ask.
+            showKeyStatus(true)
+        }
+        // Nothing typed means nothing about the key changed, and a provider switch already
+        // refreshed the label through [onProviderChanged] — so no read is owed here either.
         apiKeyField.text = ""
-        refreshKeyStatus()
     }
 
     override fun reset() {
