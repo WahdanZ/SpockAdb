@@ -91,6 +91,7 @@ object McpConfigInstaller {
     fun ignoreConfig(projectPath: Path): Path {
         val gitignore = projectPath.resolve(GIT_IGNORE)
         val existing = if (Files.exists(gitignore)) Files.readString(gitignore) else ""
+        if (mentionsConfig(existing)) return gitignore
         val separator = if (existing.isEmpty() || existing.endsWith("\n")) "" else "\n"
 
         Files.writeString(gitignore, existing + separator + IGNORE_BLOCK)

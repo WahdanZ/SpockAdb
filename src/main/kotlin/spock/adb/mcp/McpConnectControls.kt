@@ -83,12 +83,12 @@ class McpConnectControls(
         JMenuItem(text).apply { addActionListener { action() } }
 
     private fun copyStdioConfig() {
-        copy(service.stdioClientConfiguration())
+        copy(McpClientConfig.document(service.stdioServerEntry()))
         say("Copied — no token in it; the client reads one from a file only you can read.")
     }
 
     private fun copyHttpConfig() {
-        copy(service.clientConfiguration())
+        copy(McpClientConfig.document(service.httpServerEntry()))
         say("Copied — no token in it. Set ${McpClientConfig.TOKEN_ENV_VAR} in the client's environment.")
     }
 
@@ -115,7 +115,7 @@ class McpConnectControls(
         ) == Messages.YES
         if (!confirmed) return
 
-        copy(service.clientConfiguration(includeToken = true))
+        copy(McpClientConfig.document(service.httpServerEntry(includeToken = true)))
         say("Copied — this one is a live credential. Do not paste it into a chat.")
     }
 
