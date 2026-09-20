@@ -163,8 +163,9 @@ fun McpServerService.stdioClientConfiguration(): String =
  * The entry to install into a client's config file, preferring the one with no credential.
  *
  * stdio when the bridge bound, which is the normal case; HTTP otherwise, and then in its
- * env-var form. Either way a `.mcp.json` written from here is safe to share as far as secrets
- * go — it names a descriptor file or an environment variable, never a token.
+ * env-var form. Either way a `.mcp.json` written from here avoids embedding a token, but it is
+ * still machine-local: stdio names this machine's JDK, plugin jar and IDE config, and HTTP names
+ * the local port this IDE instance happens to be listening on.
  */
 fun McpServerService.preferredServerEntry(): JsonObject =
     if (prefersStdio) stdioServerEntry() else httpServerEntry(includeToken = false)
