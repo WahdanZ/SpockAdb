@@ -9,79 +9,80 @@ import spock.adb.isMarshmallow
 import spock.adb.premission.ListItem
 import java.util.concurrent.TimeUnit
 
+/**
+ * The app's runtime permissions, as the device itself classifies them.
+ *
+ * This used to filter what `dumpsys` reported against a list of permission names written into
+ * the plugin — the dangerous permissions as they stood in Android 6. Every runtime permission
+ * added since was silently dropped: `POST_NOTIFICATIONS`, the `READ_MEDIA_*` family, the
+ * Android 12 Bluetooth permissions, `ACCESS_BACKGROUND_LOCATION`, `ACTIVITY_RECOGNITION`. On
+ * this emulator that is fifteen of the thirty-two permissions Chrome actually holds, so the
+ * dialog showed half the list and Grant all granted half of it.
+ *
+ * The filtering is gone. `dumpsys package` has a `runtime permissions:` section, which is the
+ * device saying which of this app's permissions are runtime ones — by definition current for
+ * whatever Android it is running.
+ */
 class GetApplicationPermission : Command<String, List<ListItem>> {
 
     override fun execute(p: String, project: Project, device: IDevice): List<ListItem> {
-        if (device.isMarshmallow()) {
-            if (device.isAppInstall(p)) {
-                val shellOutputReceiver = ShellOutputReceiver()
-                val ps = mutableMapOf<String, Boolean>()
-                device.executeShellCommand(
-                    "dumpsys package ${ShellQuote.quote(p)} | grep permission",
-                    shellOutputReceiver,
-                    15L,
-                    TimeUnit.SECONDS
-                )
-                shellOutputReceiver.toString().split("\n")
-                    .map { it.trim() }
-                    .filter { it.contains(".permission.") }
-                    .distinct()
-                    .forEach { convertPermissionToMap(it, ps) }
+        check(device.isMarshmallow()) {
+            "Device API level is below Marshmallow. Runtime permissions are not supported on this device."
+        }
+        check(device.isAppInstall(p)) { "Application $p not installed" }
 
-                return ps.map { ListItem(it.key, it.value) }
-                    .filter {
-                        dangerousPermissions.find { dangerousPermission ->
-                            dangerousPermission.contains(it.name.split(".").getOrElse(2) { "any" })
-                        } != null
-                    }
-                    .toList()
-            } else
-                throw Exception("Application $p not installed")
-        } else
-            throw Exception("Device API level is below Marshmallow. Runtime permissions are not supported on this device.")
-
+        val receiver = ShellOutputReceiver()
+        device.executeShellCommand(
+            "dumpsys package ${ShellQuote.quote(p)}",
+            receiver,
+            TIMEOUT_SECONDS,
+            TimeUnit.SECONDS,
+        )
+        return parse(receiver.toString())
     }
-
-    private fun convertPermissionToMap(
-        it: String,
-        ps: MutableMap<String, Boolean>
-    ) {
-        val permission = it.split(":").getOrElse(0) { "" }
-        val grant = it.split("=").getOrElse(1) { "false" }.contains("true")
-        ps[permission] = grant
-    }
-
-    private val dangerousPermissions = listOf(
-        "READ_CALENDAR",
-        "WRITE_CALENDAR",
-        "CAMERA",
-        "READ_CONTACTS",
-        "WRITE_CONTACTS",
-        "GET_ACCOUNTS",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "RECORD_AUDIO",
-        "READ_PHONE_STATE",
-        "READ_PHONE_NUMBERS ",
-        "CALL_PHONE",
-        "ANSWER_PHONE_CALLS ",
-        "READ_CALL_LOG",
-        "WRITE_CALL_LOG",
-        "ADD_VOICEMAIL",
-        "USE_SIP",
-        "PROCESS_OUTGOING_CALLS",
-        "BODY_SENSORS",
-        "SEND_SMS",
-        "RECEIVE_SMS",
-        "READ_SMS",
-        "RECEIVE_WAP_PUSH",
-        "RECEIVE_MMS",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
-    )
 
     enum class PermissionOperation(val operationResult: String) {
         GRANT("granted"),
-        REVOKE("revoked")
+        REVOKE("revoked"),
+    }
+
+    companion object {
+        private const val TIMEOUT_SECONDS = 15L
+        private const val RUNTIME_MARKER = "runtime permissions:"
+        private const val GRANTED = ": granted="
+
+        /**
+         * Reads the `runtime permissions:` block, sorted by name.
+         *
+         * A device with more than one user prints the block once per user. Only the first —
+         * user 0, the one everything else in this plugin acts on — is read, so a work profile
+         * does not report the same permission twice with two different answers.
+         */
+        fun parse(dumpsys: String): List<ListItem> {
+            val found = linkedMapOf<String, Boolean>()
+            var inside = false
+
+            dumpsys.lineSequence().map { it.trim() }.forEach { line ->
+                when {
+                    line == RUNTIME_MARKER -> inside = true
+                    // Any other section heading, or the next user, ends the block.
+                    !inside -> Unit
+                    line.endsWith("permissions:") || line.startsWith("User ") -> inside = false
+                    else -> entry(line)?.let { (name, granted) -> found.putIfAbsent(name, granted) }
+                }
+            }
+            return found.map { (name, granted) -> ListItem(name, granted) }.sortedBy { it.name }
+        }
+
+        /** `android.permission.CAMERA: granted=true, flags=[ ... ]`, or null for anything else. */
+        private fun entry(line: String): Pair<String, Boolean>? {
+            val at = line.indexOf(GRANTED)
+            if (at <= 0) return null
+            val name = line.take(at)
+            // A permission name is one token with a package-like shape; the flags that follow
+            // contain spaces and brackets, and a wrapped line would otherwise look like a name.
+            if ('.' !in name || name.any { it.isWhitespace() }) return null
+            return name to line.substring(at + GRANTED.length).startsWith("true")
+        }
     }
 }

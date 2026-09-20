@@ -21,6 +21,7 @@ import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.WrapLayout
 import spock.adb.ui.renderWith
 import java.awt.BorderLayout
+import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
@@ -111,7 +112,16 @@ class McpServerPanel(
                 },
                 BorderLayout.NORTH,
             )
-            add(JBScrollPane(detailArea), BorderLayout.CENTER)
+            add(
+                JBScrollPane(detailArea).apply {
+                    // Stacked, this sits in BorderLayout.SOUTH and would take its preferred
+                    // height — which for a text area holding a pretty-printed response is most
+                    // of the panel, squeezing out the list it is supposed to be explaining.
+                    // The splitter sizes by proportion, so this is ignored when split.
+                    preferredSize = Dimension(0, JBUI.scale(MIN_DETAIL_HEIGHT))
+                },
+                BorderLayout.CENTER,
+            )
         }
     }
 
@@ -247,7 +257,7 @@ class McpServerPanel(
         lastHeight = height
         // Height 0 is the pre-layout pass: assume roomy, since that is the docked default and
         // the first real resize corrects it before anything is on screen.
-        val roomy = height == 0 || height >= COMPACT_HEIGHT
+        val roomy = height == 0 || height >= MIN_LIST_HEIGHT + MIN_DETAIL_HEIGHT
         val wanted = if (roomy && detailsSection.isExpanded) Arrangement.SPLIT else Arrangement.STACKED
         if (wanted == arrangement) return
         arrangement = wanted
@@ -552,8 +562,19 @@ class McpServerPanel(
         // Favour the list: the detail pane is empty until something is selected.
         const val SPLIT_PROPORTION = 0.72f
 
-        /** Below this the 28% detail pane is too small to read and too big to spare. */
-        const val COMPACT_HEIGHT = 500
+        /**
+         * What a split needs: a list worth scrolling, and a detail pane worth reading.
+         *
+         * This was one number, 500, chosen when the panel was a tool window tab of its own and
+         * had the whole window's height. It now sits under the shell's header and tab row with
+         * the status line below, some ninety pixels it no longer has — so an ordinary tool
+         * window fell under the threshold, the details collapsed to a title bar, and expanding
+         * them re-ran the same check and put them back. Stating the two minimums the split
+         * actually needs says what the number is for, and does not have to be re-tuned the
+         * next time something is added above the panel.
+         */
+        const val MIN_LIST_HEIGHT = 260
+        const val MIN_DETAIL_HEIGHT = 150
 
         const val UNIDENTIFIED_HINT = "A client is only known once it calls initialize: plain HTTP POST is " +
             "stateless, and a stdio session carries no identity before that first message."

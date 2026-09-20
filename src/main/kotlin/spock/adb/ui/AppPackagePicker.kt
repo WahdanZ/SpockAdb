@@ -1,4 +1,4 @@
-package spock.adb.storage
+package spock.adb.ui
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
@@ -24,7 +24,8 @@ import javax.swing.JPanel
  * resolved each time the list loads rather than once when the tab opens, because Gradle sync
  * often finishes after that, and a field left empty is exactly what made the developer type it.
  *
- * Its own component, as `HttpProxyRow` is, so the storage panel stays within Detekt's size limits.
+ * Shared by the tool window's header and anything that needs to name an app, so there is one
+ * answer to "which app" rather than one per tab.
  */
 internal class AppPackagePicker(
     private val project: Project,

@@ -6,6 +6,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -117,6 +118,29 @@ internal object StoragePanelUi {
         setFontColor(UIUtil.FontColor.BRIGHTER)
         border = JBUI.Borders.empty(0, GAP, 2, GAP)
     }
+
+    /**
+     * A read-only view of a file the table cannot open.
+     *
+     * Monospaced, because what lands here is a database header, a cached blob or somebody's
+     * JSON, and proportional text makes all three harder to read.
+     */
+    fun sourceArea(): JBTextArea = JBTextArea().apply {
+        isEditable = false
+        lineWrap = false
+        font = JBUI.Fonts.create(java.awt.Font.MONOSPACED, font.size)
+    }
+
+    /**
+     * Bytes as text, with anything unprintable shown rather than smuggled in.
+     *
+     * A database or a `.pb` is not text and will look like noise — which is the honest answer
+     * for a file the editor cannot decode. Control characters are replaced so a stray escape
+     * sequence cannot rearrange what is on screen.
+     */
+    fun asText(bytes: ByteArray): String = bytes.decodeToString()
+        .map { if (it.isISOControl() && it != '\n' && it != '\t') '\uFFFD' else it }
+        .joinToString("")
 
     /** A field that filters a list or a table, labelled by what it searches. */
     fun searchField(placeholder: String, tooltip: String): SearchTextField = SearchTextField(false).apply {

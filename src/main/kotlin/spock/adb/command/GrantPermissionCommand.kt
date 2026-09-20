@@ -11,11 +11,15 @@ import java.util.concurrent.TimeUnit
 class GrantPermissionCommand : Command2<String, ListItem, Unit> {
     override fun execute(p: String, p2: ListItem, project: Project, device: IDevice) {
         check(device.isAppInstall(p)) { "Application $p is not installed on this device" }
+        // `pm grant` prints nothing when it works and an exception when it does not, and sets
+        // no exit status either way — so the output is the only thing that can tell them apart.
+        val receiver = ShellOutputReceiver()
         device.executeShellCommand(
             "pm grant ${ShellQuote.quote(p)} ${ShellQuote.quote(p2.name)}",
-            ShellOutputReceiver(),
+            receiver,
             15L,
             TimeUnit.SECONDS,
         )
+        PermissionChange.failureOf(receiver.toString())?.let { error("${p2.name}: $it") }
     }
 }

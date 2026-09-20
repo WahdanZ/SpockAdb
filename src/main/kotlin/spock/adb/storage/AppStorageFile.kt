@@ -21,6 +21,22 @@ enum class StorageKind(val label: String) {
         }
 }
 
+/**
+ * One entry of the app's data directory, as the tree shows it.
+ *
+ * [editable] is the same question [AppStoragePaths.classify] answers: the tree lists everything
+ * the app has, and only preference files can be opened in the table and written back.
+ */
+data class StorageEntry(val path: String, val isDirectory: Boolean) {
+    val name: String get() = path.substringAfterLast('/')
+
+    val file: StorageFile? get() = if (isDirectory) null else AppStoragePaths.classify(path)
+
+    val editable: Boolean get() = file?.kind?.format != null
+
+    override fun toString(): String = path
+}
+
 /** A file in the app's storage, by its path relative to the app's data directory. */
 data class StorageFile(val path: String, val kind: StorageKind) {
     val name: String get() = path.substringAfterLast('/')
@@ -60,6 +76,32 @@ object AppStoragePaths {
             name.hasStem(PREFERENCES_DATASTORE_SUFFIX) -> StorageFile(path, StorageKind.PREFERENCES_DATASTORE)
             WORKING_FILE_SUFFIXES.any { name.endsWith(it) } -> null
             else -> StorageFile(path, StorageKind.PROTO_DATASTORE)
+        }
+    }
+
+    /**
+     * Whether [path] names something inside the app's own data directory.
+     *
+     * Wider than [classify] on purpose, and only for *browsing*: the tree lists whatever the
+     * app has, while [classify] still decides what may be edited. A path is browsable when it
+     * is relative and climbs nowhere — the empty path is the data directory itself.
+     *
+     * Widening this does not widen writing. A write takes a [StorageFile], and the only way to
+     * obtain one is [classify] or [parse], so `android_set_app_preference` reaches exactly the
+     * files it always did.
+     */
+    fun isBrowsable(path: String): Boolean {
+        if (path.isEmpty()) return true
+        if (path.startsWith('/')) return false
+        val segments = path.split('/')
+        return segments.all { isPlainName(it) }
+    }
+
+    /** @throws IllegalArgumentException when [path] leaves the app's data directory. */
+    fun requireBrowsable(path: String): String = path.also {
+        require(isBrowsable(it)) {
+            "'$it' is not a path inside the app's data directory. Give it relative to that " +
+                "directory, for example $SHARED_PREFS_DIR or ${DATASTORE_DIR}."
         }
     }
 

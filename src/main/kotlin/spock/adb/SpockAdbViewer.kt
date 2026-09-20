@@ -1,13 +1,11 @@
 package spock.adb
 
 import com.android.ddmlib.IDevice
-import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ApplicationManager
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.ui.DocumentAdapter
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
@@ -15,39 +13,23 @@ import com.intellij.util.ui.UIUtil
 import spock.adb.command.*
 import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
-import spock.adb.mcp.McpCall
-import spock.adb.mcp.McpServerService
 import spock.adb.premission.CheckBoxDialog
-import spock.adb.storage.AppStoragePanel
 import spock.adb.ui.CollapsibleSection
+import spock.adb.ui.ColumnsLayout
 import spock.adb.ui.VerticallyScrollablePanel
 import java.awt.BorderLayout
 import java.awt.GridLayout
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
-import java.awt.event.ItemEvent
 import javax.swing.*
+import javax.swing.Icon
+import javax.swing.event.DocumentEvent
 
 class SpockAdbViewer(
     private val project: Project,
-    /** Scopes the message bus connection; without a parent the connection is never released. */
-    private val parentDisposable: Disposable,
 ) : SimpleToolWindowPanel(true) {
     // Components are constructed here rather than bound from SpockAdbViewer.form. The form
     // required a reflective `$$$setupUI$$$` call, kept field names in sync by hand across two
     // files, and laid every action out as a full-width row — roughly fifteen of them, so in a
     // docked tool window most of the panel was below the fold.
-
-    /**
-     * The device and the app every action below is about, pinned above the scrolling column.
-     *
-     * It used to be the first row of that column, so by the time a developer had scrolled to
-     * Network or App storage the answer to "which device, which app" was off screen.
-     */
-    private val header = DeviceHeader(project)
-
-    private val devicesListComboBox get() = header.deviceCombo
-    private val setting get() = header.settingsButton
 
     private val currentActivityButton = JButton("Current activity").apply {
         toolTipText = "Open the class of the Activity now on screen in the editor"
@@ -102,11 +84,24 @@ class SpockAdbViewer(
 
     private val httpProxyRow = HttpProxyRow(project, GAP)
 
-    /** Disposed with the tool window, which drops the answers to storage reads and writes still in flight. */
-    private val appStorage = AppStoragePanel(project).also { Disposer.register(parentDisposable, it) }
-
     /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
     private val adbWifi = JButton()
+
+    private val appInfoCard = AppInfoCard()
+
+    /**
+     * How many runtime permissions the app holds.
+     *
+     * The tab offered Grant all and Revoke all with no way to see what the app had, so the
+     * answer to "did that take?" was to open the dialog and read a list.
+     */
+    /** Started and answered on the EDT, so a slow count cannot label a later app. */
+    private val permissionReads = LatestRequest()
+
+    private val permissionSummary = JBLabel(" ").apply {
+        setFontColor(UIUtil.FontColor.BRIGHTER)
+        border = JBUI.Borders.empty(2, 0)
+    }
 
     /** Every action that can be pinned, and the button that runs it. */
     private val pinnable: Map<QuickAction, JButton> = mapOf(
@@ -159,7 +154,7 @@ class SpockAdbViewer(
             ),
         ),
         ActionGroup(
-            "Destructive",
+            "Danger zone",
             "destructive",
             listOf(
                 QuickAction.CLEAR_DATA,
@@ -167,6 +162,7 @@ class SpockAdbViewer(
                 QuickAction.CLEAR_DATA_AND_RESTART,
                 QuickAction.UNINSTALL,
             ),
+            AllIcons.General.Warning,
         ),
         ActionGroup(
             "Permissions",
@@ -176,6 +172,8 @@ class SpockAdbViewer(
                 QuickAction.GRANT_ALL_PERMISSIONS,
                 QuickAction.REVOKE_ALL_PERMISSIONS,
             ),
+            AllIcons.Actions.Lightning,
+            permissionSummary,
         ),
     )
 
@@ -195,41 +193,116 @@ class SpockAdbViewer(
     }
 
     /** A section of nothing but action buttons: its heading, and the grid they are filled into. */
-    private inner class ActionGroup(val title: String, val key: String, val actions: List<QuickAction>) {
-        val content: JPanel = JPanel(GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP))).apply {
+    private inner class ActionGroup(
+        val title: String,
+        val key: String,
+        val actions: List<QuickAction>,
+        val icon: Icon? = null,
+        /** Shown above the buttons, for a group that can say something about the app. */
+        val summary: JBLabel? = null,
+    ) {
+        private val grid: JPanel = JPanel(GridLayout(0, COLUMNS, JBUI.scale(GAP), JBUI.scale(GAP))).apply {
             border = JBUI.Borders.empty(GAP, 0)
         }
-        lateinit var section: CollapsibleSection
-    }
 
-    private var devices: List<ConnectedDevice> = emptyList()
+        val content: JPanel = JPanel(BorderLayout()).apply {
+            summary?.let { add(it, BorderLayout.NORTH) }
+            add(grid, BorderLayout.CENTER)
+        }
+
+        lateinit var section: CollapsibleSection
+
+        fun fillGrid(buttons: List<JButton>) {
+            grid.removeAll()
+            buttons.forEach { grid.add(it) }
+            // An odd count leaves the last button on its own row rather than stretched across two.
+            if (buttons.size % COLUMNS != 0) grid.add(JPanel())
+        }
+    }
 
     // Sections, so a group whose actions are all switched off hides its heading too.
     private lateinit var quickSection: CollapsibleSection
+    private lateinit var appInfoSection: CollapsibleSection
     private lateinit var developerSection: CollapsibleSection
     private lateinit var networkSection: CollapsibleSection
     private lateinit var sendSection: CollapsibleSection
-    private lateinit var storageSection: CollapsibleSection
 
     /** Hidden as a whole, so switched-off toggles do not leave an empty padded band. */
     private lateinit var networkToggles: JPanel
     private lateinit var inputRow: JPanel
     private lateinit var deepLinkRow: JPanel
     private var selectedDevice: ConnectedDevice? = null
-        set(value) {
-            field = value
-            deviceListeners.forEach { it(value) }
-            // The mismatch is between this and the agent's choice, so changing either side
-            // has to re-evaluate it.
-            refreshAgentTarget()
+
+    /** The device chosen in the tool window's header, which is the one every tab acts on. */
+    fun setDevice(connected: ConnectedDevice?) {
+        selectedDevice = connected
+        refreshDeviceState()
+        refreshAppState()
+    }
+
+    /**
+     * Re-reads what this tab shows about the device, when the tool window becomes visible.
+     *
+     * Developer options and the network rows are the device's state, not the plugin's, and a
+     * device can be changed from anywhere while the tool window is hidden.
+     */
+    fun onShown() {
+        refreshDeviceState()
+        refreshAppState()
+    }
+
+    /** The app chosen in the tool window's header changed, so what this tab says about it has. */
+    fun setApp() {
+        refreshAppState()
+    }
+
+    /**
+     * Re-reads what the tab says about the app: its version and UID, and how many permissions
+     * it holds. Both are the app's state, not the plugin's.
+     */
+    private fun refreshAppState() {
+        appInfoCard.refresh()
+        refreshPermissionSummary()
+    }
+
+    private fun refreshPermissionSummary() {
+        val device = selectedDevice
+        // Taken before the early return, so a refresh that reads nothing still retires one in
+        // flight rather than letting its answer land on a line about another app.
+        val request = permissionReads.begin()
+        if (device == null || !isOn(SpockAction.PERMISSIONS)) {
+            permissionSummary.text = " "
+            return
         }
+        permissionSummary.text = "Reading permissions…"
+        adbController.permissionSummary(device.device) { result ->
+            if (!permissionReads.isLatest(request)) return@permissionSummary
+            permissionSummary.text = result.getOrNull()?.describe() ?: " "
+        }
+    }
 
-    /** Notified whenever the selected device changes, so other tool window tabs follow it. */
-    private val deviceListeners = mutableListOf<(ConnectedDevice?) -> Unit>()
-
-    fun onDeviceSelected(listener: (ConnectedDevice?) -> Unit) {
-        deviceListeners += listener
-        listener(selectedDevice)
+    /** Opens the dialog that chooses which actions this tab shows. Driven from the header's gear. */
+    fun showActionSettings() {
+        AppSettingService.getInstance().run {
+            val current = state
+            val dialog = CheckBoxDialog(current.list) { selectedItem ->
+                loadState(
+                    current.copy(
+                        list = current.list.map { item ->
+                            if (item.name == selectedItem.name) {
+                                item.copy(isSelected = selectedItem.isSelected)
+                            } else {
+                                item
+                            }
+                        },
+                    ),
+                )
+                updateUi(current)
+            }
+            dialog.setLocationRelativeTo(null)
+            dialog.pack()
+            dialog.isVisible = true
+        }
     }
 
     /** The ddmlib handle every command still operates on. */
@@ -237,52 +310,38 @@ class SpockAdbViewer(
 
     private lateinit var adbController: AdbController
 
-    /** The scrolling column of sections, kept so App storage can be given the height left over. */
     private lateinit var sectionColumn: JPanel
-    private val scrollPane: JScrollPane
+
+    /**
+     * Narrows the tab to the actions whose name answers what is typed.
+     *
+     * This tab's own control rather than the tool window's header: it searches these actions,
+     * and on Logcat or Commands there would be nothing for it to search.
+     */
+    private val actionSearch = SearchTextField(false).apply {
+        textEditor.emptyText.text = "Search actions…"
+        toolTipText = "Show only the matching actions, opening the sections that hold them"
+        border = JBUI.Borders.empty(2, GAP)
+    }
 
     init {
-        scrollPane = JScrollPane(buildLayout()).apply {
-            border = JBUI.Borders.empty()
-            // Never scroll sideways: the content shrinks to the panel instead, which is
-            // what stops the second button column being clipped in a docked tool window.
-            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
-            verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
-        }
-        setToolbar(header)
-        setContent(scrollPane)
-        // The tab is taller in an undocked tool window than in a docked one, and taller again
-        // with the sections above App storage collapsed; the editor follows rather than staying
-        // at the one height that fitted when it was written.
-        scrollPane.viewport.addComponentListener(
-            object : ComponentAdapter() {
-                override fun componentResized(e: ComponentEvent) = resizeStorage()
+        setToolbar(actionSearch)
+        setContent(
+            JScrollPane(buildLayout()).apply {
+                border = JBUI.Borders.empty()
+                // Never scroll sideways: the content shrinks to the panel instead, which is
+                // what stops the second button column being clipped in a docked tool window.
+                horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+                verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+            },
+        )
+        actionSearch.addDocumentListener(
+            object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) = search(actionSearch.text)
             },
         )
         AppSettingService.getInstance().run {
             updateUi(state)
-        }
-        onDeviceSelected { appStorage.setDevice(it) }
-    }
-
-    /**
-     * Gives App storage whatever height the sections above it leave.
-     *
-     * The tab is a scrolling column that sizes each section by its preferred height, so a
-     * component in it cannot simply stretch: the height has to be worked out and handed over.
-     * [AppStoragePanel.setAvailableHeight] has a floor, below which the tab scrolls again —
-     * the honest answer when every other section is expanded in a short tool window.
-     */
-    private fun resizeStorage() {
-        if (!storageSection.isVisible || !storageSection.isExpanded) return
-        val viewport = scrollPane.viewport.height
-        if (viewport <= 0) return
-
-        // Everything the column holds except the storage panel itself, which is the part
-        // being resized — measuring the whole column would feed its own height back in.
-        val others = sectionColumn.preferredSize.height - appStorage.preferredSize.height
-        if (appStorage.setAvailableHeight(viewport - others)) {
-            sectionColumn.revalidate()
         }
     }
 
@@ -299,55 +358,24 @@ class SpockAdbViewer(
             prepare(button)
             quickActions.install(action, button)
         }
+        markDestructive(clearAppDataButton, clearAppDataAndRestartButton, uninstallAppButton)
         // First, because that is what pinning one is for.
-        quickSection = section("Quick actions", "quick", quickActions)
-        groups.forEach { group -> group.section = section(group.title, group.key, group.content) }
-        developerSection = section("Developer options", "developer", developerOptions)
-        networkSection = section("Network", "network", networkContent())
-        sendSection = section("Send to device", "send", sendContent())
-        // Last, because it is by far the tallest: the buttons above stay in view without scrolling past a table.
-        storageSection = section("App storage", "storage", appStorage)
+        quickSection = section("Quick actions", "quick", quickActions, AllIcons.Actions.Lightning)
+        appInfoSection = section("App information", "appinfo", appInfoCard, AllIcons.Actions.Show)
+        groups.forEach { group -> group.section = section(group.title, group.key, group.content, group.icon) }
+        developerSection = section("Developer options", "developer", developerOptions, AllIcons.General.Settings)
+        networkSection = section("Device connectivity", "network", networkContent(), AllIcons.General.Web)
+        sendSection = section("Send to device", "send", sendContent(), AllIcons.Actions.Upload)
 
         val sections = allSections()
-        // Collapsing anything above App storage gives it that height instead.
-        sections.forEach { section -> section.onToggled = { resizeStorage() } }
-
-        sectionColumn = VerticallyScrollablePanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        // One column when docked narrow, more when there is room: seven cards of buttons run a
+        // long way down a wide window with the right-hand half of it empty.
+        sectionColumn = VerticallyScrollablePanel(ColumnsLayout()).apply {
             border = JBUI.Borders.empty(GAP)
             sections.forEach { add(it) }
             add(noMatches)
-            // Absorbs the slack so the sections stay at the top instead of stretching.
-            add(Box.createVerticalGlue())
         }
         return sectionColumn
-    }
-
-    /**
-     * Refreshed on every recorded MCP call rather than on a timer.
-     *
-     * The agent's target only changes through `android_select_device`, which is itself a
-     * recorded call, so the one event that can make this label wrong is the one that fires it.
-     */
-    private val mcpCallListener: (McpCall) -> Unit = {
-        ApplicationManager.getApplication().invokeLater(
-            { refreshAgentTarget() },
-        ) { project.isDisposed }
-    }
-
-    private fun watchAgentTarget() {
-        val service = McpServerService.getInstance()
-        service.addCallListener(mcpCallListener)
-        Disposer.register(parentDisposable) { service.removeCallListener(mcpCallListener) }
-        refreshAgentTarget()
-    }
-
-    private fun refreshAgentTarget() {
-        val service = McpServerService.getInstance()
-        val target = service.targetedSerial
-
-        val mismatched = service.isRunning && target != null && target != selectedDevice?.serialNumber
-        header.setAgentTarget(target.takeIf { mismatched })
     }
 
     private fun prepare(button: JButton) {
@@ -358,8 +386,8 @@ class SpockAdbViewer(
     }
 
     private fun allSections(): List<CollapsibleSection> =
-        listOf(quickSection) + groups.map { it.section } +
-            listOf(developerSection, networkSection, sendSection, storageSection)
+        listOf(quickSection, appInfoSection) + groups.map { it.section } +
+            listOf(networkSection, developerSection, sendSection)
 
     /** Field plus its action button, so the text and what it does stay adjacent. */
     private fun sendContent(): JPanel = JPanel().apply {
@@ -400,55 +428,14 @@ class SpockAdbViewer(
             add(button, BorderLayout.EAST)
         }
 
-    private fun section(title: String, key: String, content: JPanel): CollapsibleSection =
-        CollapsibleSection(title, content, key).apply {
+    private fun section(title: String, key: String, content: JPanel, icon: Icon? = null): CollapsibleSection =
+        CollapsibleSection(title, content, key, icon = icon).apply {
             alignmentX = LEFT_ALIGNMENT
         }
 
-        fun initPlugin(adbController: AdbController) {
+    fun initPlugin(adbController: AdbController) {
         this.adbController = adbController
-
-        // Registered only once the controller exists: the listener calls into it, and
-        // `adbController` is a lateinit property, so subscribing from the constructor risked
-        // an UninitializedPropertyAccessException on an early tool window state change.
-        setToolWindowListener()
-        watchAgentTarget()
-
-        updateDevicesList()
-
-        setting.isEnabled = true
-        setting.isVisible = true
-        setting.addActionListener {
-            AppSettingService.getInstance().run {
-                state.let {
-                    val dialog = CheckBoxDialog(it.list) { selectedItem ->
-                        this.loadState(it.copy(list = it.list.map { item ->
-                            if (item.name == selectedItem.name)
-                                item.copy(isSelected = selectedItem.isSelected)
-                            else item
-                        }))
-                        updateUi(it)
-                    }
-                    dialog.setLocationRelativeTo(null)
-                    dialog.pack()
-                    dialog.isVisible = true
-                }
-
-            }
-
-        }
         adbWifi.isVisible = false
-        devicesListComboBox.addItemListener { event ->
-            // A combo box fires DESELECTED then SELECTED, and reports index -1 when the
-            // model is emptied. Indexing straight into `devices` threw
-            // ArrayIndexOutOfBoundsException whenever the last device disconnected.
-            if (event.stateChange == ItemEvent.SELECTED) {
-                selectedDevice = devices.getOrNull(devicesListComboBox.selectedIndex)
-                rememberSelectedDevice()
-                header.setDeviceDetails(selectedDevice)
-                refreshDeviceState()
-            }
-        }
         activitiesBackStackButton.addActionListener {
             selectedIDevice?.let { device ->
                 adbController.currentBackStack(device)
@@ -520,14 +507,15 @@ class SpockAdbViewer(
             selectedIDevice?.let { device ->
                 adbController.getApplicationPermissions(device) { list ->
                     val dialog = CheckBoxDialog(list) { selectedItem ->
-                        if (selectedItem.isSelected)
-                            adbController.grantPermission(device, selectedItem)
-                        else
-                            adbController.revokePermission(device, selectedItem)
+                        // Every change is read back: the count on the card is about to be wrong.
+                        if (selectedItem.isSelected) {
+                            adbController.grantPermission(device, selectedItem) { refreshPermissionSummary() }
+                        } else {
+                            adbController.revokePermission(device, selectedItem) { refreshPermissionSummary() }
+                        }
                     }
                     dialog.pack()
                     dialog.isVisible = true
-
                 }
             }
         }
@@ -536,8 +524,7 @@ class SpockAdbViewer(
                 adbController.grantOrRevokeAllPermissions(
                     device,
                     GetApplicationPermission.PermissionOperation.GRANT,
-
-                    )
+                ) { refreshPermissionSummary() }
             }
         }
         revokeAllPermissionsButton.addActionListener {
@@ -546,7 +533,7 @@ class SpockAdbViewer(
                     adbController.grantOrRevokeAllPermissions(
                         device,
                         GetApplicationPermission.PermissionOperation.REVOKE,
-                    )
+                    ) { refreshPermissionSummary() }
                 }
             }
         }
@@ -563,8 +550,8 @@ class SpockAdbViewer(
         }
         openDeepLinkTextField.addActionListener { openDeepLinkButton.doClick() }
 
-        header.onSearch = { query -> search(query) }
         developerOptions.attach(adbController) { selectedDevice }
+        appInfoCard.attach(adbController) { selectedDevice }
         httpProxyRow.attach(adbController) { selectedDevice }
         wifiRow.attach(adbController) { selectedDevice }
         mobileDataRow.attach(adbController) { selectedDevice }
@@ -582,6 +569,17 @@ class SpockAdbViewer(
         wifiRow.refresh()
         mobileDataRow.refresh()
         developerOptions.refresh()
+    }
+
+    /** Red on the two actions that destroy something, so they are not read as the four beside them. */
+    private fun markDestructive(vararg buttons: JButton) {
+        buttons.forEach { button ->
+            button.foreground = DESTRUCTIVE
+            button.border = JBUI.Borders.compound(
+                com.intellij.ui.RoundedLineBorder(DESTRUCTIVE, JBUI.scale(BUTTON_ARC), 1),
+                JBUI.Borders.empty(2, GAP),
+            )
+        }
     }
 
     /**
@@ -650,10 +648,10 @@ class SpockAdbViewer(
         val searching = searchQuery.isNotBlank()
         // While searching, an empty Quick actions row is noise; its hint is not what was asked for.
         quickSection.setSectionVisible(pinnedButtons.isNotEmpty() || (!searching && quickActions.hasContent))
+        appInfoSection.setSectionVisible(shown(SpockAction.APP_INFO, APP_INFO_TERMS))
         developerSection.setSectionVisible(shown(SpockAction.DEVELOPER_OPTIONS, DEVELOPER_TERMS))
         networkSection.setSectionVisible(networkToggles.isVisible || httpProxyRow.isVisible)
         sendSection.setSectionVisible(inputRow.isVisible || deepLinkRow.isVisible)
-        storageSection.setSectionVisible(shown(SpockAction.APP_STORAGE, STORAGE_TERMS))
 
         // A match inside a collapsed section is a match the developer cannot see.
         val sections = allSections()
@@ -664,7 +662,6 @@ class SpockAdbViewer(
 
         revalidate()
         repaint()
-        resizeStorage()
     }
 
     /** Fills one group's grid with the actions it still holds: shown, and not pinned above. */
@@ -672,112 +669,20 @@ class SpockAdbViewer(
         val buttons = group.actions
             .filter { it !in quickActions.pinned && pinnable.getValue(it).isVisible }
             .map { pinnable.getValue(it) }
-        group.content.removeAll()
-        buttons.forEach { group.content.add(it) }
-        // An odd count leaves the last button on its own row rather than stretched across two.
-        if (buttons.size % COLUMNS != 0) group.content.add(JPanel())
+        group.fillGrid(buttons)
         group.section.setSectionVisible(buttons.isNotEmpty())
-    }
-
-    /**
-     * Rebuilds the device combo box. The callback is delivered on the EDT by
-     * [AdbController.connectedDevices]; it used to arrive on a ddmlib thread and mutate the
-     * Swing model directly.
-     */
-    private fun updateDevicesList() {
-        adbController.observeDevices { connected ->
-            this.devices = connected
-
-            // Match on serial rather than instance identity: ddmlib hands out a new IDevice
-            // after a reconnect, so identity comparison silently reset the selection.
-            // Falls back to the serial persisted from the previous session, then to the
-            // first device that is actually usable, so the plugin does not default to an
-            // offline or unauthorised device.
-            val preferredSerial = selectedDevice?.serialNumber ?: persistedDeviceSerial()
-            selectedDevice = connected.firstOrNull { it.serialNumber == preferredSerial }
-                ?: connected.firstOrNull { it.info.isUsable }
-                ?: connected.firstOrNull()
-
-            if (connected.isEmpty()) {
-                // An empty dropdown with no explanation is indistinguishable from a broken
-                // plugin. Say so, and say what to do about it.
-                devicesListComboBox.model = DefaultComboBoxModel(arrayOf(NO_DEVICES_LABEL))
-                devicesListComboBox.isEnabled = false
-                header.setDeviceDetails(
-                    null,
-                    hint = "Connect a device or start an emulator, then press Refresh. " +
-                        "If a device is attached, check idea.log for ADB errors.",
-                )
-            } else {
-                devicesListComboBox.isEnabled = true
-                // The name and the Android version only: the serial and the architecture are in
-                // the tooltip, where they do not push the name out of a docked tool window.
-                devicesListComboBox.model = DefaultComboBoxModel(
-                    connected.map { it.info.shortLabel() }.toTypedArray(),
-                )
-                selectedDevice?.let { devicesListComboBox.selectedIndex = connected.indexOf(it) }
-                header.setDeviceDetails(selectedDevice)
-            }
-            rememberSelectedDevice()
-            // Swapping the model fires no SELECTED event when the chosen index is 0 — a single
-            // device, first load, a reconnect — so the item listener cannot be relied on here.
-            refreshDeviceState()
-        }
-    }
-
-    private fun persistedDeviceSerial(): String? =
-        AppSettingService.getInstance().state.selectedDevice?.takeIf { it.isNotBlank() }
-
-    /**
-     * Persists the chosen device so it is reselected next session.
-     *
-     * `AppSetting.selectedDevice` has existed since the settings were introduced but was
-     * never read or written.
-     */
-    private fun rememberSelectedDevice() {
-        val service = AppSettingService.getInstance()
-        val current = service.state
-        val serial = selectedDevice?.serialNumber
-        if (current.selectedDevice != serial) {
-            service.loadState(current.copy(selectedDevice = serial))
-        }
-    }
-
-    private fun setToolWindowListener() {
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
-
-        project.messageBus
-            .connect(parentDisposable)
-            .subscribe(
-                ToolWindowManagerListener.TOPIC,
-                object : ToolWindowManagerListener {
-                    // The no-argument stateChanged() is deprecated; the ToolWindowManager
-                    // overload has been available since 2020.1.
-                    override fun stateChanged(toolWindowManager: ToolWindowManager) {
-                        if (!toolWindow.isVisible) return
-
-                        // Re-read the device list every time the panel is shown. There is no
-                        // refresh button in the form, so without this a dropdown that came up
-                        // empty — because ADB had not started yet, or a device was plugged in
-                        // afterwards — could only be recovered by reopening the project.
-                        adbController.refresh()
-                        // Gradle sync often finishes after the tool window is first built, and
-                        // it is what resolves the application ID shown in the header.
-                        header.refreshApp()
-                        refreshDeviceState()
-                        resizeStorage()
-                    }
-                },
-            )
     }
 
     private companion object {
         const val TOOL_WINDOW_ID = "Spock ADB"
         const val GAP = 4
         const val COLUMNS = 2
+        const val BUTTON_ARC = 6
+        val DESTRUCTIVE = com.intellij.ui.JBColor(0xB3261E, 0xF2857C)
         const val NO_DEVICES_LABEL = "No devices connected"
 
         // What a search matches a whole section on, since these hold no action buttons to match.
+        const val APP_INFO_TERMS = "app information package name version process uid identity build"
         const val DEVELOPER_TERMS = "developer options don't keep activities show taps layout bounds " +
             "window transition animator animation duration scale"
         const val NETWORK_TERMS = "network wifi wi-fi mobile data connection"
