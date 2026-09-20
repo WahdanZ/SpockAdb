@@ -15,7 +15,7 @@ Works in **Android Studio** and **IntelliJ IDEA**.
 <!-- Plugin description end -->
 
 <p align="center">
-  <img src="../../Downloads/spock-adb-readme-update%20(1)/images/spock-adb-overview.png" alt="Spock ADB unified Android tool window" width="100%">
+  <img src="/images/spock-adb-overview.png" alt="Spock ADB unified Android tool window" width="100%">
 </p>
 
 ---
@@ -224,7 +224,7 @@ The **Search actions…** field filters actions and settings by name or tooltip 
 ## App storage
 
 <p align="center">
-  <img src="../../Downloads/spock-adb-readme-update%20(1)/images/app-storage.png" alt="Spock ADB app storage browser and preference editor" width="100%">
+  <img src="/images/app-storage.png" alt="Spock ADB app storage browser and preference editor" width="100%">
 </p>
 
 Browse the selected app's data directly from the IDE.
@@ -356,7 +356,7 @@ The suggested fix is framework-aware, so Compose screens get Compose guidance in
 ## MCP Server
 
 <p align="center">
-  <img src="../../Downloads/spock-adb-readme-update%20(1)/images/mcp-server.png" alt="Spock ADB MCP server activity panel" width="100%">
+  <img src="/images/mcp-server.png" alt="Spock ADB MCP server activity panel" width="100%">
 </p>
 
 Give an AI coding agent structured access to a connected Android device.
@@ -416,7 +416,7 @@ See [docs/MCP.md](docs/MCP.md) for setup, the complete tool list, safety details
 ## IDE actions and keyboard shortcuts
 
 <p align="center">
-  <img src="../../Downloads/spock-adb-readme-update%20(1)/images/ide-actions.png" alt="Spock ADB actions in the Android Studio Tools menu" width="100%">
+  <img src="/images/ide-actions.png" alt="Spock ADB actions in the Android Studio Tools menu" width="100%">
 </p>
 
 Core operations are exposed as IntelliJ Actions, so they can be found through **Find Action**, the **Tools → Spock ADB** menu, and `Settings → Keymap → Spock ADB`.
