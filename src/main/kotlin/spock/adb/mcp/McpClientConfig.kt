@@ -95,9 +95,13 @@ object McpClientConfig {
      * [SERVER_NAME] key is written, so installing twice updates one entry — which is what makes
      * re-installing after a port change or a rotation safe.
      *
-     * A file that is not JSON — or whose `mcpServers` is not an object — is an error rather
-     * than something to overwrite: the alternative is destroying a config the developer
-     * hand-wrote and mistyped.
+     * A file that holds something and is not JSON — or whose `mcpServers` is not an object — is
+     * an error rather than something to overwrite: the alternative is destroying a config the
+     * developer hand-wrote and mistyped.
+     *
+     * An **empty or whitespace-only** file is treated as an absent one, deliberately. It is
+     * strictly not valid JSON, but it configures nothing and holds nothing to lose — refusing
+     * would block an install over a file someone had merely `touch`ed.
      */
     fun merge(existing: String?, server: JsonObject): String {
         val root = parseRoot(existing)

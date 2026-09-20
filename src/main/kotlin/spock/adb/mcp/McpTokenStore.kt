@@ -30,44 +30,60 @@ object McpTokenStore {
     private val cached = AtomicReference<String?>(null)
 
     /**
-     * The token, minted on first use.
+     * The token, resolved once per IDE session: from the keychain, from a token an earlier
+     * version left in the settings file, or freshly minted.
+     *
+     * **Resolution and migration are the same operation, deliberately.** They used to be two —
+     * a startup task that adopted the legacy token and this, which minted one — and whichever
+     * ran second lost: a server started before the adoption task captured a newly minted token,
+     * then adoption replaced the cache with the legacy one, so `token` and the generated config
+     * disagreed with the servers actually running. Doing both inside one synchronized call
+     * means the first caller decides and every later caller sees that decision.
      *
      * **Never call this on the EDT** the first time in an IDE session: `PasswordSafe` reads the
      * OS keychain, which blocks and trips `SlowOperations`. Afterwards it is a field read.
      *
-     * A keychain that cannot be read or written leaves the token in memory for this session
-     * rather than falling back to the settings file: a server that works until the next restart
-     * is a better answer than one that quietly writes a credential back into a plain file.
+     * @param legacy the token an earlier version wrote into the settings file, if any.
+     * @param onAdopted run when [legacy] has been safely written to the keychain — and only
+     *  then, since it is what clears the plain-text copy.
      */
     @Synchronized
-    fun current(): String {
+    fun current(legacy: () -> String = { "" }, onAdopted: () -> Unit = {}): String {
         cached.get()?.let { return it }
 
         val stored = runCatching { PasswordSafe.instance.getPassword(ATTRIBUTES).orEmpty() }
             .onFailure { log.warn("Could not read the MCP session token from PasswordSafe", it) }
             .getOrDefault("")
+        if (stored.isNotBlank()) return stored.also { cached.set(it) }
 
-        val token = stored.ifBlank { generate().also { store(it) } }
-        cached.set(token)
-        return token
+        val inherited = runCatching(legacy).getOrDefault("")
+        if (inherited.isNotBlank()) return adopt(inherited, onAdopted)
+
+        // A keychain that will not store leaves the token in memory for this session rather
+        // than falling back to the settings file: a server that works until the next restart is
+        // a better answer than one that quietly writes a credential back into a plain file.
+        val fresh = generate()
+        store(fresh)
+        cached.set(fresh)
+        return fresh
     }
 
     /**
      * Takes over a token an earlier version wrote into the settings file.
      *
-     * Returns whether the keychain accepted it, because the caller may only clear the plain-text
-     * copy once something else is holding it. Regenerating instead would leave the old secret in
-     * the file it was supposed to be got out of, and would break every HTTP client the developer
-     * has already configured.
+     * The value is cached **whether or not the keychain accepts it**: clients already hold this
+     * token, and minting a new one because a keychain write failed would break every one of them
+     * for the rest of the session. A failed write only means [onAdopted] does not run, so the
+     * plain-text copy stays and the migration is retried on the next startup.
      */
-    @Synchronized
-    fun adopt(legacy: String): Boolean {
-        if (legacy.isBlank()) return false
-        if (!store(legacy)) return false
-
+    private fun adopt(legacy: String, onAdopted: () -> Unit): String {
         cached.set(legacy)
-        log.info("Moved the MCP session token out of the settings file and into PasswordSafe")
-        return true
+        if (store(legacy)) {
+            log.info("Moved the MCP session token out of the settings file and into PasswordSafe")
+            runCatching(onAdopted)
+                .onFailure { log.warn("Could not clear the migrated MCP token from settings", it) }
+        }
+        return legacy
     }
 
     /**

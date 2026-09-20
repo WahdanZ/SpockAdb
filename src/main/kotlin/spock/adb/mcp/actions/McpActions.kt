@@ -241,7 +241,10 @@ class InstallMcpConfigurationAction : AnAction() {
                     LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it.file)
                 }
             }
-                .onSuccess { notifyLater(project = project, content = wrote(it, basePath)) }
+                .onSuccess {
+                    notifyLater(project = project, content = wrote(it))
+                    offerToIgnore(project, basePath)
+                }
                 .onFailure {
                     notifyLater(
                         project = project,
@@ -253,14 +256,54 @@ class InstallMcpConfigurationAction : AnAction() {
         }
     }
 
-    /** The warning is only worth printing when git is not already keeping the file back. */
-    private fun wrote(outcome: McpConfigInstaller.Outcome, basePath: Path): String {
-        val restart = "MCP configuration written to ${outcome.file}. Restart your MCP client to " +
-            "pick it up."
-        return when {
-            McpConfigInstaller.isIgnored(basePath) -> restart
-            else ->
-                "$restart Keep this file out of a shared commit — it only works on this machine."
+    private fun wrote(outcome: McpConfigInstaller.Outcome): String =
+        "MCP configuration written to ${outcome.file}. Restart your MCP client to pick it up."
+
+    /**
+     * The same offer the panel makes, so the two routes to Install do not differ.
+     *
+     * Runs on the EDT because it is a dialog, and only when `.gitignore` does not already say
+     * so — an offer that appears every time is one that gets clicked through.
+     */
+    private fun offerToIgnore(project: Project, basePath: Path) {
+        if (runCatching { McpConfigInstaller.isIgnored(basePath) }.getOrDefault(true)) return
+
+        ApplicationManager.getApplication().invokeLater({
+            val wanted = Messages.showYesNoDialog(
+                project,
+                "That configuration only works on this machine — the paths and the port are " +
+                    "this IDE's. Add ${McpConfigInstaller.FILE_NAME} to this project's " +
+                    ".gitignore, so it is not committed for the team?\n\n" +
+                    "Teammates install their own from their own IDE.",
+                "Install MCP Configuration",
+                "Add to .gitignore",
+                "Leave It",
+                null,
+            ) == Messages.YES
+            if (wanted) ignore(project, basePath)
+        }) { project.isDisposed }
+    }
+
+    private fun ignore(project: Project, basePath: Path) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            runCatching {
+                McpConfigInstaller.ignoreConfig(basePath).also {
+                    LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it)
+                }
+            }
+                .onSuccess {
+                    notifyLater(
+                        project = project,
+                        content = "Added ${McpConfigInstaller.FILE_NAME} to ${it.fileName}.",
+                    )
+                }
+                .onFailure {
+                    notifyLater(
+                        project = project,
+                        content = "Could not update .gitignore: ${it.message}",
+                        type = NotificationType.ERROR,
+                    )
+                }
         }
     }
 }
@@ -312,7 +355,15 @@ class RotateMcpTokenAction : AnAction() {
                 .onFailure {
                     notifyLater(
                         project = project,
-                        content = "Could not rotate the MCP token: ${it.message}",
+                        content = when (it) {
+                            is McpServerService.RestartFailed ->
+                                "The MCP token was rotated — clients holding the old one are " +
+                                    "already rejected — but the server did not restart: " +
+                                    "${it.cause?.message}. Start it again from the MCP panel."
+                            else ->
+                                "Could not rotate the MCP token: ${it.message}. The previous " +
+                                    "token still works."
+                        },
                         type = NotificationType.ERROR,
                     )
                 }

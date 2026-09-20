@@ -31,9 +31,10 @@ object McpConfigInstaller {
     /**
      * Merges [server] into `<projectPath>/.mcp.json`, preserving every other server in it.
      *
-     * Throws rather than overwriting when the file exists and is not JSON: a config a developer
-     * hand-wrote and mistyped is still theirs, and replacing it wholesale would take their other
-     * servers with it.
+     * Throws rather than overwriting when the file exists and holds something that is not JSON:
+     * a config a developer hand-wrote and mistyped is still theirs, and replacing it wholesale
+     * would take their other servers with it. An empty file is written to — it has nothing to
+     * lose; see [McpClientConfig.merge].
      */
     fun install(projectPath: Path, server: JsonObject): Outcome {
         val file = projectPath.resolve(FILE_NAME)

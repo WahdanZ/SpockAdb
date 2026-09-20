@@ -76,7 +76,19 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
      * either runs on a pooled thread already or asks only while the server is running, by which
      * point [start] has warmed [McpTokenStore]'s cache.
      */
-    val token: String get() = McpTokenStore.current()
+    val token: String get() = sessionToken()
+
+    /**
+     * Resolves the session token, migrating a legacy one out of the settings file if that is
+     * what is there.
+     *
+     * Every path to the token goes through here, so the migration cannot race a server start:
+     * whichever runs first resolves it, and [McpTokenStore.current] holds the lock for both.
+     */
+    private fun sessionToken(): String = McpTokenStore.current(
+        legacy = { settings.legacyToken },
+        onAdopted = { settings.legacyToken = "" },
+    )
 
     /** Where the stdio bridge is listening, or null when it could not be started. */
     val stdioEndpoint: McpBridgeServer.Endpoint? get() = bridge?.endpoint
@@ -94,9 +106,10 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         // either — the activity view shows what has arrived so far, and a call recorded while
         // it is in flight is kept rather than overwritten.
         ApplicationManager.getApplication().executeOnPooledThread {
-            // The plain-text copy is cleared only once the keychain is holding it; a keychain
-            // that is unavailable costs nothing but a retry on the next startup.
-            if (McpTokenStore.adopt(settings.legacyToken)) settings.legacyToken = ""
+            // Resolving the token is what performs the migration, and it is the same call
+            // [start] makes — so whichever happens first does it, and neither can end up with a
+            // token the other disagrees with.
+            sessionToken()
             ensureHistoryLoaded()
         }
     }
@@ -111,7 +124,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
         // Minted here rather than lazily on the first request: this runs on a pooled thread,
         // and the keychain read belongs off the path a client is waiting on.
-        val sessionToken = McpTokenStore.current()
+        val sessionToken = sessionToken()
 
         val mcpProtocol = McpProtocol(
             contextProvider = { toolContext },
@@ -215,10 +228,18 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
         if (isRunning) {
             stop()
-            start()
+            // The token is already replaced and every client holding the old one already
+            // rejected, so a restart that failed must not be reported as a rotation that went
+            // fine: the developer needs to know the server is down, not just that the token
+            // changed.
+            start().onFailure { throw RestartFailed(it) }
         }
         return fresh
     }
+
+    /** The token was rotated; bringing the server back up afterwards was not possible. */
+    class RestartFailed(cause: Throwable) :
+        IllegalStateException("the token was rotated, but the server did not restart", cause)
 
     /**
      * Whether [toolName] may run at all.
@@ -357,7 +378,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
     fun httpServerEntry(includeToken: Boolean = false): JsonObject =
         McpClientConfig.httpServer(
             port = port ?: settings.port,
-            token = if (includeToken) McpTokenStore.current() else null,
+            token = if (includeToken) sessionToken() else null,
         )
 
     /**

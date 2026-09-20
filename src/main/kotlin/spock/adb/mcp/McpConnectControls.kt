@@ -322,14 +322,23 @@ class McpConnectControls(
                 result
                     .onSuccess { offerExportLine() }
                     .onFailure {
-                        Messages.showErrorDialog(
-                            project,
-                            "Could not rotate the MCP token: ${it.message}",
-                            "Rotate MCP Token",
-                        )
+                        Messages.showErrorDialog(project, rotationFailure(it), "Rotate MCP Token")
                     }
             }
         }
+    }
+
+    /**
+     * A rotation that stopped the server and could not bring it back is not the same failure as
+     * one that changed nothing, and saying so is the difference between "try again" and "your
+     * clients are locked out and nothing is listening".
+     */
+    private fun rotationFailure(error: Throwable): String = when (error) {
+        is McpServerService.RestartFailed ->
+            "The token was rotated — clients holding the old one are already rejected — but the " +
+                "server did not restart: ${error.cause?.message}\n\n" +
+                "Start it again from this panel."
+        else -> "Could not rotate the MCP token: ${error.message}\n\nThe previous token still works."
     }
 
     /**

@@ -131,6 +131,19 @@ class McpClientConfigTest {
         }
     }
 
+    /**
+     * Deliberate, not an oversight: an empty file is strictly not valid JSON, but it configures
+     * nothing and has nothing to lose, so refusing would block an install over a `touch`.
+     */
+    @Test
+    fun `merge treats an empty file as an absent one`() {
+        for (empty in listOf(null, "", "   ", "\n\t ")) {
+            val merged = McpClientConfig.merge(empty, McpClientConfig.httpServer(1))
+
+            assertTrue(McpClientConfig.contains(merged), "should have installed over: '$empty'")
+        }
+    }
+
     @Test
     fun `merge refuses when the top level is not an object`() {
         assertThrows<JsonSyntaxException> {
