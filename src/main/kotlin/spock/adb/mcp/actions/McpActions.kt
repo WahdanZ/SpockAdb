@@ -353,8 +353,8 @@ class RotateMcpTokenAction : AnAction() {
                 "Generate a new session token?\n\n" +
                     "Every client holding the current one stops working until it is " +
                     "reconfigured$restartNote\n\n" +
-                    "Clients using the stdio configuration re-read the token file and need no " +
-                    "change.",
+                    "Clients using the stdio configuration re-read the token file on their " +
+                    "next connection and need no config edits.",
                 "Rotate MCP Token",
                 "Rotate",
                 "Cancel",
@@ -369,8 +369,9 @@ class RotateMcpTokenAction : AnAction() {
                 .onSuccess {
                     notifyLater(
                         project = project,
-                        content = "MCP token rotated. stdio clients need no change; an HTTP " +
-                            "client needs ${McpClientConfig.TOKEN_ENV_VAR} updated — the MCP " +
+                        content = "MCP token rotated. Existing stdio configurations need no " +
+                                "edits; an HTTP client needs ${McpClientConfig.TOKEN_ENV_VAR} " +
+                                "updated — the MCP " +
                                 "panel's Rotate Token button can copy the new environment line.",
                     )
                 }

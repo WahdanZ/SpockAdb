@@ -316,7 +316,8 @@ class McpConnectControls(
             "Generate a new session token?\n\n" +
                 "Every client holding the current one stops working until it is " +
                 "reconfigured$restartNote\n\n" +
-                "Clients using the stdio configuration re-read the token file and need no change.",
+            "Clients using the stdio configuration re-read the token file on their next " +
+                "connection and need no config edits.",
             "Rotate MCP Token",
             "Rotate",
             "Cancel",
@@ -362,7 +363,7 @@ class McpConnectControls(
     private fun offerExportLine() {
         val wantsLine = Messages.showYesNoDialog(
             project,
-            "New token generated. stdio clients need no change.\n\n" +
+            "New token generated. Existing stdio configurations need no edits.\n\n" +
             "Copy the line that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client " +
             "on this machine?",
             "Rotate MCP Token",

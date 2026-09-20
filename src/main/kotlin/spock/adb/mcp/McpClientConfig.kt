@@ -179,7 +179,7 @@ fun McpServerService.preferredServerEntry(): JsonObject =
  */
 fun McpServerService.tokenExportLine(): String =
     if (SystemInfo.isWindows) {
-        "\$env:${McpClientConfig.TOKEN_ENV_VAR}=${powershellSingleQuoted(token)}"
+        "\$env:${McpClientConfig.TOKEN_ENV_VAR} = ${powershellSingleQuoted(token)}"
     } else {
         "export ${McpClientConfig.TOKEN_ENV_VAR}=${shellSingleQuoted(token)}"
     }

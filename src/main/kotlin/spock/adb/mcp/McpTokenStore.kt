@@ -117,9 +117,15 @@ object McpTokenStore {
     }
 
     private fun store(token: String): Boolean =
-        runCatching { PasswordSafe.instance.set(ATTRIBUTES, Credentials(KEY, token)) }
+        runCatching {
+            PasswordSafe.instance.set(ATTRIBUTES, Credentials(KEY, token))
+            PasswordSafe.instance.getPassword(ATTRIBUTES) == token
+        }
             .onFailure { log.warn("Could not store the MCP session token in PasswordSafe", it) }
-            .isSuccess
+            .getOrDefault(false)
+            .also {
+                if (!it) log.warn("PasswordSafe did not persist the MCP session token after write")
+            }
 
     private const val TOKEN_BYTES = 32
 
