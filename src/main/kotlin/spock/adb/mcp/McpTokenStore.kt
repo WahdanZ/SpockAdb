@@ -58,7 +58,11 @@ object McpTokenStore {
             }
         if (stored.isNotBlank()) return stored.also { cached.set(it) }
 
-        val inherited = runCatching(legacy).getOrDefault("")
+        val inherited = runCatching(legacy)
+            .onFailure { log.warn("Could not read the legacy MCP session token from settings", it) }
+            .getOrElse {
+                throw IllegalStateException("Could not read the legacy MCP session token from settings", it)
+            }
         if (inherited.isNotBlank()) return adopt(inherited, onAdopted)
 
         // A keychain that will not store leaves the token in memory for this session rather

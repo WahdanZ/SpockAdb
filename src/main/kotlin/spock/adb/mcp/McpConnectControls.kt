@@ -163,11 +163,7 @@ class McpConnectControls(
 
         val entry = chooseEntry(basePath.resolve(McpConfigInstaller.FILE_NAME)) ?: return
 
-        // A small file, but still filesystem work — and `isIgnored` reads another one. The EDT
-        // waits on disk no more happily than it waits on a socket.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val alreadyIgnored = runCatching { McpConfigInstaller.isIgnored(basePath) }
-                .getOrDefault(true)
             val outcome = runCatching {
                 McpConfigInstaller.install(basePath, entry).also {
                     // Without this the file exists on disk but not in the IDE, so the developer
@@ -178,7 +174,7 @@ class McpConnectControls(
             onEdt {
                 reportInstall(outcome)
                 // Both entries are machine-local, so the offer is not stdio's alone.
-                if (outcome.isSuccess && !alreadyIgnored) offerToIgnore(basePath)
+                if (outcome.isSuccess) offerToIgnore(basePath)
             }
         }
     }
@@ -243,6 +239,8 @@ class McpConnectControls(
      * that appears every time is one that gets clicked through.
      */
     private fun offerToIgnore(basePath: Path) {
+        if (runCatching { McpConfigInstaller.isIgnored(basePath) }.getOrDefault(true)) return
+
         val wanted = Messages.showYesNoDialog(
             project,
             "That configuration only works on this machine — the paths and the port are this " +

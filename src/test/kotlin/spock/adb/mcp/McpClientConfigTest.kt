@@ -162,7 +162,10 @@ class McpClientConfigTest {
 
     @Test
     fun `shell export values are single quoted`() {
+        assertEquals("''", shellSingleQuoted(""))
         assertEquals("'plain-token'", shellSingleQuoted("plain-token"))
         assertEquals("'ab'\"'\"'cd'", shellSingleQuoted("ab'cd"))
+        assertEquals("'a b\tc\nd'", shellSingleQuoted("a b\tc\nd"))
+        assertEquals("'$HOME'", shellSingleQuoted("$HOME"))
     }
 }

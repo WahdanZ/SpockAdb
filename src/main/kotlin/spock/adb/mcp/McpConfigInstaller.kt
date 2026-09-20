@@ -36,6 +36,7 @@ object McpConfigInstaller {
      * would take their other servers with it. An empty file is written to — it has nothing to
      * lose; see [McpClientConfig.merge].
      */
+    @Synchronized
     fun install(projectPath: Path, server: JsonObject): Outcome {
         val file = projectPath.resolve(FILE_NAME)
         val existing = if (Files.exists(file)) Files.readString(file) else null
@@ -88,6 +89,7 @@ object McpConfigInstaller {
      * an unexplained entry in a shared `.gitignore` is the kind of thing someone deletes a year
      * later because nobody remembers what put it there.
      */
+    @Synchronized
     fun ignoreConfig(projectPath: Path): Path {
         val gitignore = projectPath.resolve(GIT_IGNORE)
         val existing = if (Files.exists(gitignore)) Files.readString(gitignore) else ""
