@@ -12,8 +12,18 @@ import spock.adb.models.BackStackData
  */
 internal sealed interface ActivityStackRow {
 
-    /** The package whose activities follow. */
-    data class Task(val appPackage: String, val isForeground: Boolean) : ActivityStackRow
+    /**
+     * The app whose activities follow.
+     *
+     * [appLabel] is the name the device shows for the app, and is null whenever that could not
+     * be proven — see `AppLabelParser`. The package is shown either way: as the heading when
+     * there is no label, and beneath it when there is.
+     */
+    data class Task(
+        val appPackage: String,
+        val appLabel: String? = null,
+        val isForeground: Boolean = false,
+    ) : ActivityStackRow
 
     /** One activity of [appPackage]'s stack, [className] fully qualified. */
     data class Activity(val className: String, val appPackage: String) : ActivityStackRow
@@ -30,10 +40,14 @@ internal sealed interface ActivityStackRow {
  * the task's own is the interesting half of it. The full name is always in [tooltip].
  */
 internal fun ActivityStackRow.displayText(): String = when (this) {
-    is ActivityStackRow.Task -> appPackage
+    is ActivityStackRow.Task -> appLabel ?: appPackage
     is ActivityStackRow.Activity -> className.removePrefix("$appPackage.").ifBlank { className }
     is ActivityStackRow.NoActivity -> NO_ACTIVITY_TEXT
 }
+
+/** The quieter second line under [displayText], where one adds something it does not already say. */
+internal fun ActivityStackRow.secondaryText(): String? =
+    (this as? ActivityStackRow.Task)?.takeIf { it.appLabel != null }?.appPackage
 
 /** The full name behind [displayText], or null where the row already shows everything it has. */
 internal fun ActivityStackRow.tooltip(): String? = when (this) {
@@ -53,12 +67,22 @@ internal const val CURRENT_BADGE = "CURRENT"
 /**
  * Flattens the back stack into popup rows: a task line per package, then its activities.
  *
- * A task with no readable activity still gets a line of its own rather than nothing, so the
- * stack stays complete and the gap is named instead of showing up as an empty row.
+ * [labels] holds the app names that could be read from the device, by package; a package missing
+ * from it is shown as itself. A task with no readable activity still gets a line of its own
+ * rather than nothing, so the stack stays complete and the gap is named instead of showing up as
+ * an empty row.
  */
-internal fun List<BackStackData>.toActivityStackRows(): List<ActivityStackRow> = buildList {
+internal fun List<BackStackData>.toActivityStackRows(
+    labels: Map<String, String> = emptyMap(),
+): List<ActivityStackRow> = buildList {
     this@toActivityStackRows.forEach { task ->
-        add(ActivityStackRow.Task(task.appPackage, task.isForeground))
+        add(
+            ActivityStackRow.Task(
+                appPackage = task.appPackage,
+                appLabel = labels[task.appPackage]?.takeIf { it.isNotBlank() && it != task.appPackage },
+                isForeground = task.isForeground,
+            ),
+        )
         val activities = task.activitiesList.filter { it.isNotBlank() }
         if (activities.isEmpty()) {
             add(ActivityStackRow.NoActivity(task.appPackage))

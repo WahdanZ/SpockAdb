@@ -54,15 +54,38 @@ internal class ActivityStackList(rows: List<ActivityStackRow>) : JBList<Activity
  * Draws a task heading, an activity under it, or the named gap where an activity could not be
  * read. Indentation and weight carry the hierarchy; the `CURRENT` badge carries the foreground
  * task, so it survives the selection moving somewhere else.
+ *
+ * A task whose app name is known reads as that name over its package, which is the pair a
+ * developer recognises an app by — the name alone is ambiguous across build variants, and the
+ * package alone is what made the old popup hard to scan.
  */
 internal class ActivityStackRenderer : ListCellRenderer<ActivityStackRow> {
 
     private val text = JBLabel()
+    private val secondary = JBLabel().apply { font = JBFont.small() }
+
+    // BorderLayout rather than a BoxLayout column: one renderer component is reused for every
+    // cell, and BoxLayout caches the child sizes it measured for the row before — which draws
+    // a long package name ellipsised to the width of the short one above it. BorderLayout
+    // measures each time, and skips the second line outright while it is hidden.
+    private val lines = JPanel(BorderLayout()).apply {
+        isOpaque = false
+        add(text, BorderLayout.NORTH)
+        add(secondary, BorderLayout.CENTER)
+    }
     private val badge = JBLabel(CURRENT_BADGE).apply { font = JBFont.small().asBold() }
+
+    // Top-aligned rather than centred, so the badge sits against the app name of a two-line task
+    // row rather than floating between its two lines.
+    private val badgeColumn = JPanel(BorderLayout()).apply {
+        isOpaque = false
+        add(badge, BorderLayout.NORTH)
+    }
+
     private val panel = JPanel(BorderLayout(JBUI.scale(GAP), 0)).apply {
         isOpaque = true
-        add(text, BorderLayout.CENTER)
-        add(badge, BorderLayout.EAST)
+        add(lines, BorderLayout.CENTER)
+        add(badgeColumn, BorderLayout.EAST)
     }
 
     override fun getListCellRendererComponent(
@@ -89,6 +112,11 @@ internal class ActivityStackRenderer : ListCellRenderer<ActivityStackRow> {
         }
         // Set on the renderer too: JList forwards tooltip questions here for cells it draws.
         text.toolTipText = row.tooltip()
+
+        val second = row.secondaryText()
+        secondary.isVisible = second != null
+        secondary.text = second.orEmpty()
+        secondary.foreground = if (isSelected) list.selectionForeground else UIUtil.getContextHelpForeground()
 
         badge.isVisible = row is ActivityStackRow.Task && row.isForeground
         badge.foreground = if (isSelected) list.selectionForeground else CURRENT_COLOUR

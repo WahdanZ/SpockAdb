@@ -154,7 +154,15 @@ class AdbControllerImp(
         // ADB must run on a background thread — wrap everything in execute {}
         execute {
             val stack: List<BackStackData> = GetBackStackCommand().execute(Any(), project, device)
-            val rows = stack.toActivityStackRows()
+
+            // Best effort, and deliberately not fatal: the stack is the point, and an app whose
+            // name the device will not give up is shown as its package, exactly as before.
+            val labels = runCatching {
+                GetAppLabelsCommand().execute(stack.map { it.appPackage }, project, device)
+            }.onFailure { log.warn("Could not read app labels for the activity stack", it) }
+                .getOrDefault(emptyMap())
+
+            val rows = stack.toActivityStackRows(labels)
 
             // PSI lookups require a ReadAction when called from a background thread.
             //

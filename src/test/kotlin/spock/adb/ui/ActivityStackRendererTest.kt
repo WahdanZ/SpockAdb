@@ -23,7 +23,11 @@ class ActivityStackRendererTest {
     private fun render(row: ActivityStackRow): JComponent =
         renderer.getListCellRendererComponent(list, row, 0, false, false) as JComponent
 
-    private fun Container.labels(): List<JBLabel> = components.filterIsInstance<JBLabel>()
+    private fun Container.labels(): List<JBLabel> =
+        components.flatMap { if (it is JBLabel) listOf(it) else (it as? Container)?.labels().orEmpty() }
+
+    /** The row's own text, in the order it is drawn, without the badge. */
+    private fun Container.textLabels(): List<JBLabel> = labels().filter { it.text != CURRENT_BADGE }
 
     private fun badge(row: ActivityStackRow): JBLabel =
         render(row).labels().single { it.text == CURRENT_BADGE }
@@ -43,10 +47,37 @@ class ActivityStackRendererTest {
     @Test
     fun `a row renders its display text and carries the full name as a tooltip`() {
         val component = render(ActivityStackRow.Activity("com.example.app.MainActivity", "com.example.app"))
-        val label = component.labels().single { it.text != CURRENT_BADGE }
+        val label = component.textLabels().first { it.isVisible }
 
         assertEquals("MainActivity", label.text)
         assertEquals("com.example.app.MainActivity", label.toolTipText)
+    }
+
+    @Test
+    fun `a named task draws its package as a quieter second line`() {
+        val component = render(ActivityStackRow.Task("com.example.app", appLabel = "My Application"))
+        val shown = component.textLabels().filter { it.isVisible }
+
+        assertEquals(listOf("My Application", "com.example.app"), shown.map { it.text })
+        assertTrue(shown.last().font.size <= shown.first().font.size)
+    }
+
+    @Test
+    fun `an unnamed task draws one line only`() {
+        val component = render(ActivityStackRow.Task("com.example.app"))
+
+        assertEquals(listOf("com.example.app"), component.textLabels().filter { it.isVisible }.map { it.text })
+    }
+
+    @Test
+    fun `a row is measured for itself, not for the row drawn before it`() {
+        // One renderer component is reused for every cell. A layout that caches what it
+        // measured last time reports the short row's width for the long one, and the list then
+        // draws `com.google.android.apps.nexuslauncher` ellipsised to the width of `Kanban`.
+        val short = render(ActivityStackRow.Task("com.app", appLabel = "Kanban")).preferredSize.width
+        val long = render(ActivityStackRow.Task("com.google.android.apps.nexuslauncher")).preferredSize.width
+
+        assertTrue(long > short, "long row measured $long, short row $short")
     }
 
     @Test

@@ -18,6 +18,9 @@ class ActivityStackRowTest {
 
     private fun rows(vararg tasks: BackStackData) = tasks.toList().toActivityStackRows()
 
+    private fun rows(labels: Map<String, String>, vararg tasks: BackStackData) =
+        tasks.toList().toActivityStackRows(labels)
+
     @Test
     fun `a task is followed by its own activities`() {
         val result = rows(
@@ -104,6 +107,50 @@ class ActivityStackRowTest {
         val tasks = result.filterIsInstance<ActivityStackRow.Task>()
         assertTrue(tasks.first().isForeground)
         assertFalse(tasks.last().isForeground)
+    }
+
+    @Test
+    fun `a task reads as its app name over its package when the device gave one up`() {
+        val result = rows(
+            mapOf("com.example.myapplication" to "My Application"),
+            BackStackData("com.example.myapplication", listOf("com.example.myapplication.MainActivity")),
+        )
+
+        assertEquals("My Application", result.first().displayText())
+        assertEquals("com.example.myapplication", result.first().secondaryText())
+    }
+
+    @Test
+    fun `a task with no app name is still just its package, on one line`() {
+        val result = rows(BackStackData("com.android.settings", emptyList()))
+
+        assertEquals("com.android.settings", result.first().displayText())
+        assertNull(result.first().secondaryText())
+    }
+
+    @Test
+    fun `an app name that only repeats the package is not shown twice`() {
+        val result = rows(
+            mapOf("com.example.app" to "com.example.app", "com.other.app" to "  "),
+            BackStackData("com.example.app", emptyList()),
+            BackStackData("com.other.app", emptyList()),
+        )
+
+        assertEquals(
+            listOf("com.example.app", "com.other.app"),
+            result.filterIsInstance<ActivityStackRow.Task>().map { it.displayText() },
+        )
+        assertTrue(result.all { it.secondaryText() == null })
+    }
+
+    @Test
+    fun `no row but a named task carries a second line`() {
+        val result = rows(
+            mapOf("com.example.app" to "My Application"),
+            BackStackData("com.example.app", listOf("com.example.app.MainActivity")),
+        )
+
+        assertEquals(listOf("com.example.app", null), result.map { it.secondaryText() })
     }
 
     @Test
