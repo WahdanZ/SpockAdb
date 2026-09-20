@@ -19,7 +19,14 @@ It shows what is actually true rather than a mock-up of it:
 
 - **Status** — running or stopped, the transports actually accepting connections
   (`HTTP (127.0.0.1:<port>)` and, when it bound, `stdio (unix:<path>)`), and the tool count.
-  Start / Stop / Restart / Copy Config / Settings.
+  Start / Stop / Restart / Copy Config / Rotate Token / Settings.
+- **Copy Config** — a menu, safest form first: the stdio configuration (no token), the HTTP
+  one that reads `$SPOCK_ADB_MCP_TOKEN` from the environment (no token), the HTTP one with the
+  token written into it (confirmed first), and **Install into this project**, which writes
+  `.mcp.json` in the project root.
+- **Rotate Token** — invalidates the current session token and issues a new one. stdio clients
+  re-read the token file and need no change; an HTTP client needs its environment updated, and
+  the new `export` line can be copied once, right after rotating.
 - **Tools tab** — the full catalogue of what an agent can do to your device, grouped by
   safety level with destructive first, searchable, and filterable to destructive only.
   Selecting a tool shows its description and argument schema. Available whether or not the
@@ -48,9 +55,34 @@ of green and grey dots next to client names would be invented rather than observ
 ## Quick start
 
 1. `Tools → SpockAdb → Spock: Start MCP Server for AI Agents`
-2. `Tools → SpockAdb → Spock: Copy MCP Client Configuration (stdio)` — or `(HTTP)` if your
-   client does not spawn processes
-3. Paste into your MCP client's config
+2. In the MCP Server panel, **Copy Config → Install into this project (`.mcp.json`)** — or
+   `Tools → SpockAdb → Spock: Install MCP Client Configuration Into This Project`
+3. Restart your MCP client
+
+That writes the project's `.mcp.json`, merging into whatever servers are already in it, and
+never writes a token into it. If you would rather paste it yourself, use `Copy Config` and pick
+a form.
+
+**Neither entry can leave this machine.** `.mcp.json` in a project root is a file teams share —
+that is what project scope is for — but nothing the plugin generates survives that:
+
+| Entry | Contains | Why it is machine-local |
+|---|---|---|
+| **stdio** | this machine's JDK, plugin jar and IDE config, by absolute path | Those paths do not exist on anyone else's machine |
+| **HTTP** | `http://127.0.0.1:<port>/mcp` and `${SPOCK_ADB_MCP_TOKEN}` | The port is whatever the OS handed this IDE on first start, and the token is in this machine's keychain |
+
+So the choice the install asks about is what your **client** can do — spawn a process (stdio) or
+open a URL (HTTP) — not who can use the file. After the install it offers to add `.mcp.json` to
+the project's `.gitignore`, whichever entry you picked, and only when `.gitignore` does not
+already say so. A teammate installs their own from their own IDE.
+
+If you pick HTTP, set the token too: **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` export
+line**. Without it the config names a variable that is never set and every request is rejected.
+
+> **Pasting a configuration into a chat connects nothing.** A client only ever reads its own
+> config file. If the snippet you paste is the HTTP one with the token in it, all that happens
+> is that a live credential for your device ends up in a transcript — rotate it if that
+> happens.
 
 Both transports are started together and serve the same tools. Pick whichever your client
 supports; **prefer stdio**, because its configuration contains no credential.
@@ -85,14 +117,36 @@ launcher runs on a JDK that is definitely present and new enough.
     "spock-adb": {
       "type": "http",
       "url": "http://127.0.0.1:<port>/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
+      "headers": { "Authorization": "Bearer ${SPOCK_ADB_MCP_TOKEN}" }
     }
   }
 }
 ```
 
-This one **does** contain a credential for your device. It is generated locally, never leaves
-your machine unless you paste it somewhere, and can be rotated.
+This is the form `Copy Config` produces by default, and it holds **no credential**: the token
+comes from `SPOCK_ADB_MCP_TOKEN` in the client's environment. Claude Code expands `${VAR}` in
+`.mcp.json`; clients that do not are served by `Copy HTTP config with token…`, which writes the
+token in literally and asks first.
+
+Get the value from **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` export line** (or from
+**Rotate Token**, which offers the same line once a new token exists):
+
+```sh
+export SPOCK_ADB_MCP_TOKEN=<the token>
+```
+
+Either way that token is a credential for your device: anything holding it can drive the device
+and read and write files on this machine. If one reaches a chat, an issue or a screen share,
+rotate it.
+
+### Rotating the token
+
+`Tools → SpockAdb → Spock: Rotate MCP Token`, or **Rotate Token** in the panel. It generates a
+new token, restarts the server if it is running, and disconnects every client still presenting
+the old one. stdio clients re-read the token file on their next connection and need no change.
+
+Rotation invalidates a leaked credential; it does not close the port. An IDE you no longer want
+reachable at all is best handled by stopping the server as well.
 
 ## Architecture
 
@@ -152,6 +206,15 @@ is unavailable — or the config path is too long for `sun_path` — the endpoin
 loopback TCP port, which any local process can connect to. The token is read from a `600` file
 rather than carried in the client config, and is the same one the HTTP transport uses, so
 rotating it rotates both.
+
+**Where the token itself lives.** In `PasswordSafe` — the IDE's credential store, backed by the
+OS keychain — and nowhere else. It used to sit in `spock-adb-mcp.xml` as a plain attribute,
+which put a credential for the device and the filesystem in a file that settings sync copies
+between machines, that backup tools pick up, and that anything running as the developer can
+read. An existing token is moved into the keychain on the first startup after the update and the
+attribute is cleared, so already-configured clients keep working. The `600` descriptor file the
+stdio launcher reads is the one deliberate copy: the relay is a separate process and has no
+other way to authenticate.
 
 A connection that opens and then says nothing is closed after ten seconds, and the session pool
 is bounded. Without both, anything that could reach the endpoint could hold threads open until

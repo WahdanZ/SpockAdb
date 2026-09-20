@@ -51,7 +51,17 @@ class McpServerPanel(
     private val clientLabel = JBLabel()
     private val startStopButton = JButton()
     private val restartButton = JButton("Restart")
-    private val copyConfigButton = JButton("Copy Config")
+
+    /**
+     * Copying and rotating the configuration, which is the part of this panel where a mistake
+     * hands out a credential. See [McpConnectControls].
+     */
+    private val connectControls = McpConnectControls(
+        project = project,
+        service = service,
+        say = ::say,
+        onServerChanged = ::refreshStatus,
+    )
 
     private val activityTable = McpActivityTable()
     private val detailArea = JBTextArea().apply {
@@ -178,7 +188,8 @@ class McpServerPanel(
             border = JBUI.Borders.empty(0, GAP, GAP, GAP)
             add(startStopButton)
             add(restartButton)
-            add(copyConfigButton)
+            add(connectControls.copyButton)
+            add(connectControls.rotateButton)
             add(JButton("Settings").apply { addActionListener { openSettings() } })
             add(feedbackLabel)
         }
@@ -287,10 +298,6 @@ class McpServerPanel(
     private fun wire() {
         startStopButton.addActionListener { if (service.isRunning) stopServer() else startServer() }
         restartButton.addActionListener { restartServer() }
-        copyConfigButton.addActionListener {
-            copy(service.clientConfiguration())
-            say("Copied — the configuration contains an access token for your devices.")
-        }
         searchField.addKeyListener(
             object : java.awt.event.KeyAdapter() {
                 override fun keyReleased(e: java.awt.event.KeyEvent) = refreshActivity()
@@ -335,7 +342,8 @@ class McpServerPanel(
         detailLabel.text = " "
         startStopButton.isEnabled = false
         restartButton.isEnabled = false
-        copyConfigButton.isEnabled = false
+        // Rotating mid-restart would race the stop/start that rotation itself performs.
+        connectControls.setBusy(true)
     }
 
     /** [failure] is reported after the refresh, which would otherwise overwrite it. */
@@ -371,7 +379,7 @@ class McpServerPanel(
         startStopButton.text = if (running) "Stop Server" else "Start MCP Server"
         startStopButton.icon = if (running) AllIcons.Actions.Suspend else AllIcons.Actions.Execute
         restartButton.isEnabled = running
-        copyConfigButton.isEnabled = running
+        connectControls.refresh(running)
 
         refreshClientLabel(running)
     }
