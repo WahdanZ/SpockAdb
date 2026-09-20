@@ -244,8 +244,8 @@ class McpConnectControls(
     /**
      * Offers to keep a machine-specific config out of the team's commits.
      *
-     * Only after a stdio install, and only when `.gitignore` does not already say so — an offer
-     * that appears every time is one that gets clicked through.
+     * Both installed entries are machine-local, and this is only reached when `.gitignore` does
+     * not already say so — an offer that appears every time is one that gets clicked through.
      */
     private fun offerToIgnore(basePath: Path) {
         if (project.isDisposed) return
