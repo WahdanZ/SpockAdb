@@ -98,6 +98,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
 
     override fun getState(): McpSettings = settings
 
+    @Synchronized
     override fun loadState(state: McpSettings) {
         settings = state
         disabledToolNames.set(state.disabledTools.toSet())

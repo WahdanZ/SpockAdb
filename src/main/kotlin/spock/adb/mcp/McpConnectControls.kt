@@ -152,7 +152,7 @@ class McpConnectControls(
         if (!confirmed) return
 
         copy(service.tokenExportLine())
-        say("Copied — that line carries a live token. It belongs in a shell, not a chat.")
+        say("Copied — that text carries a live token. It belongs in a shell, not a chat.")
     }
 
     // ------------------------------------------------------------------ installing
@@ -290,7 +290,7 @@ class McpConnectControls(
                     it.replaced -> "Updated the ${McpClientConfig.SERVER_NAME} entry in"
                     else -> "Added ${McpClientConfig.SERVER_NAME} to"
                 }
-                say("$verb ${it.file.fileName} — restart your MCP client to pick it up.")
+                say("$verb ${it.file} — restart your MCP client to pick it up.")
             }
             .onFailure {
                 Messages.showErrorDialog(
@@ -366,7 +366,7 @@ class McpConnectControls(
         val wantsLine = Messages.showYesNoDialog(
             project,
             "New token generated. Existing stdio configurations need no edits.\n\n" +
-            "Copy the line that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client " +
+            "Copy the environment command text that sets ${McpClientConfig.TOKEN_ENV_VAR} for an HTTP client " +
             "on this machine?",
             "Rotate MCP Token",
             "Copy Environment Line",
@@ -376,7 +376,7 @@ class McpConnectControls(
         if (!wantsLine) return
 
         copy(service.tokenExportLine())
-        say("Copied — that line carries the new token. It belongs in a shell, not a chat.")
+        say("Copied — that text carries the new token. It belongs in a shell, not a chat.")
     }
 
     // ------------------------------------------------------------------ plumbing

@@ -135,10 +135,14 @@ Get the value from **Copy Config → Copy the `SPOCK_ADB_MCP_TOKEN` environment 
 export SPOCK_ADB_MCP_TOKEN=<the token>
 ```
 
-On Windows, use the line the plugin copies there instead:
+On Windows, the plugin copies both forms:
 
 ```powershell
 $env:SPOCK_ADB_MCP_TOKEN='<the token>'
+```
+
+```bat
+set "SPOCK_ADB_MCP_TOKEN=<the token>"
 ```
 
 Either way that token is a credential for your device: anything holding it can drive the device
