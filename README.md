@@ -15,7 +15,7 @@ Works in **Android Studio** and **IntelliJ IDEA**.
 <!-- Plugin description end -->
 
 <p align="center">
-  <img src="/images/spock-adb-overview.png" alt="Spock ADB unified Android tool window" width="100%">
+  <img src="images/spock-adb-overview.png" alt="Spock ADB unified Android tool window" width="100%">
 </p>
 
 ---
