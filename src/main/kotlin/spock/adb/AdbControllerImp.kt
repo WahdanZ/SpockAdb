@@ -20,6 +20,10 @@ import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
 import spock.adb.notification.CommonNotifier
 import spock.adb.premission.ListItem
+import spock.adb.ui.ActivityStackList
+import spock.adb.ui.ActivityStackRow
+import spock.adb.ui.className
+import spock.adb.ui.toActivityStackRows
 
 
 class AdbControllerImp(
@@ -149,26 +153,61 @@ class AdbControllerImp(
     ) {
         // ADB must run on a background thread — wrap everything in execute {}
         execute {
-            val activitiesList = mutableListOf<String>()
-            val activitiesClass: List<BackStackData> = GetBackStackCommand().execute(Any(), project, device)
+            val stack: List<BackStackData> = GetBackStackCommand().execute(Any(), project, device)
 
-            activitiesClass.forEachIndexed { index, activityData ->
-                activitiesList.add("\t$index-${activityData.appPackage}")
-                activityData.activitiesList.forEachIndexed { activityIndex, activity ->
-                    activitiesList.add("\t\t\t\t$activityIndex-${activity}")
-                }
-            }
+            // Best effort, and deliberately not fatal: the stack is the point, and an app whose
+            // name the device will not give up is shown as its package, exactly as before.
+            val labels = runCatching {
+                GetAppLabelsCommand().execute(stack.map { it.appPackage }, project, device)
+            }.onFailure { log.warn("Could not read app labels for the activity stack", it) }
+                .getOrDefault(emptyMap())
 
-            // PSI lookups require a ReadAction when called from a background thread
-            val classes = com.intellij.openapi.application.ReadAction.compute<List<PsiClass?>, RuntimeException> {
-                activitiesList.map { it.trim().substringAfter("-").psiClassByNameFromProjct(project) }
+            val rows = stack.toActivityStackRows(labels)
+
+            // PSI lookups require a ReadAction when called from a background thread.
+            //
+            // Keyed by class name rather than by row position: the previous version looked the
+            // class up with `items.indexOf(item)`, so the same activity appearing in two tasks
+            // always opened the first one's entry.
+            val classes = com.intellij.openapi.application.ReadAction.compute<
+                Map<String, PsiClass?>,
+                RuntimeException,
+                > {
+                rows.mapNotNull { it.className() }
+                    .distinct()
+                    .associateWith { it.psiClassByNameFromProjct(project) }
             }
 
             // Popup creation and display must happen on the EDT
-            ApplicationManager.getApplication().invokeLater {
-                showClassPopup(title = "Activities", items = activitiesList, classes = classes)
-            }
+            ApplicationManager.getApplication().invokeLater { showActivityStackPopup(rows, classes) }
         }
+    }
+
+    /**
+     * The Activity Stack popup: a task line per app, its activities beneath it, and the task in
+     * front badged as current.
+     *
+     * It used to be a chooser over strings the controller had formatted itself, which put the
+     * parser's own indexes (`0-com.example.app`) in front of the developer and rendered an
+     * unreadable `dumpsys` line as the bare string `0-`.
+     */
+    private fun showActivityStackPopup(rows: List<ActivityStackRow>, classes: Map<String, PsiClass?>) {
+        if (rows.isEmpty()) {
+            showError("No activities found")
+            return
+        }
+        JBPopupFactory.getInstance()
+            .createListPopupBuilder(ActivityStackList(rows))
+            .setTitle("Activity Stack")
+            .setItemChosenCallback(
+                com.intellij.util.Consumer { row: ActivityStackRow ->
+                    // A task heading and the "no resumed activity" line name no class to open.
+                    val className = row.className() ?: return@Consumer
+                    classes[className]?.openIn(project) ?: showError("class $className Not Found")
+                },
+            )
+            .createPopup()
+            .showCenteredInCurrentWindow(project)
     }
 
     override fun currentApplicationBackStack(device: IDevice) {
@@ -627,21 +666,6 @@ class AdbControllerImp(
                 onDone?.let { onEdt(it) }
             }
         }
-    }
-
-    private fun showClassPopup(
-        title: String,
-        items: List<String>,
-        classes: List<PsiClass?>
-    ) {
-        JBPopupFactory.getInstance()
-            .createPopupChooserBuilder(items)
-            .setTitle(title)
-            .setItemChosenCallback { item ->
-                classes.getOrNull(items.indexOf(item))?.openIn(project)
-            }
-            .createPopup()
-            .showCenteredInCurrentWindow(project)
     }
 
     private fun addInnerFragmentsToList(
