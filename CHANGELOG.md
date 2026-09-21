@@ -33,6 +33,12 @@
   after that, such as the sample's after pressing Seed, never appeared. The tree is now listed
   again whenever the Storage tab is brought forward, and has a refresh button of its own. Both
   keep open folders open and leave the file being edited alone.
+- **Current fragment reports the fragments on screen, not framework internals.** It listed
+  `AutofillManager` and `ReportFragment` instead of the app's fragments, and could report
+  fragments from another activity in the task. It now reads only the resumed activity's androidx
+  fragments, follows nested child fragments, reports a Navigation host's destination rather than
+  the `NavHostFragment`, and skips hidden fragments. The sample app's screens also gain a toolbar
+  Up arrow that works like Back, including popping the Navigation back stack.
 - **Developer options no longer stop responding after a failed read.** When the device refused a
   shell command — an emulator whose adbd has run out of file descriptors answers every one with
   `closed` — the read behind the section threw out of its background task, which the IDE reported

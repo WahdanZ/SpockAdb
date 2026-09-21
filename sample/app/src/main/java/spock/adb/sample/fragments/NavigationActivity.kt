@@ -8,22 +8,28 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
+import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.fragment.findNavController
 import spock.adb.sample.R
+import spock.adb.sample.SampleActivity
 
 /**
  * A Navigation host three fragments deep, with a child fragment inside the last one, so Current
  * Fragment and the fragment back stack have real nesting to report.
  */
-class NavigationActivity : AppCompatActivity() {
+class NavigationActivity : SampleActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "Navigation"
         setContentView(R.layout.activity_navigation)
+        // Up and Back both pop the fragment back stack (see SampleActivity); the title names the
+        // destination so it is clear which fragment Current Fragment should report.
+        val host = supportFragmentManager.findFragmentById(R.id.nav_host) as NavHostFragment
+        host.navController.addOnDestinationChangedListener { _, destination, _ ->
+            title = "Navigation — ${destination.label}"
+        }
     }
 }
 
