@@ -159,7 +159,13 @@ class AppStoragePanel(
             table.setDefaultRenderer(String::class.java, renderer)
         }
 
-        setToolbar(header())
+        restartAfterWrite.toolTipText = "Every write stops the app first. Tick this to launch it again afterwards."
+        setToolbar(
+            JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+                border = JBUI.Borders.empty(2, GAP)
+                add(restartAfterWrite)
+            },
+        )
         setContent(body())
         wire()
         status(NO_DEVICE)
@@ -198,21 +204,23 @@ class AppStoragePanel(
         listFiles(wanted)
     }
 
+    /**
+     * Lists the files again, when the tab is brought forward or its refresh is pressed: the tree
+     * is read once, and the app has usually written since — the sample's Seed button is pressed
+     * after the app is chosen. The open file stays as it is, edits included: it has its own
+     * reload, and a listing is no reason to throw away what the developer typed.
+     */
+    fun onShown() {
+        if (device == null || listedPackage == null) return
+        fileTree.reload(keepOpen = true)
+    }
+
     override fun dispose() {
         disposed = true
         reads.begin()
     }
 
     // ---------------------------------------------------------------- layout
-
-    private fun header(): JComponent = JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
-        border = JBUI.Borders.empty(2, GAP)
-        add(
-            restartAfterWrite.apply {
-                toolTipText = "Every write stops the app first. Tick this to launch it again afterwards."
-            },
-        )
-    }
 
     private fun body(): JComponent {
         applyButton.toolTipText = "Stop the app, write the file, and read it back"
@@ -274,6 +282,7 @@ class AppStoragePanel(
 
     private fun wire() {
         fileTree.onSelected = { fileSelected() }
+        fileTree.onRefresh = { onShown() }
         fileTree.loadChildren = { path, done -> listDirectory(path, done) }
         table.selectionModel.addListSelectionListener { updateControls() }
         model.onEdited = { updateControls() }

@@ -52,6 +52,17 @@ internal class StorageTreeView : JPanel(BorderLayout()) {
     /** Called on the EDT when the developer selects a file, or null for a directory or nothing. */
     var onSelected: (StorageEntry?) -> Unit = {}
 
+    /** Called when the developer asks for the files to be listed again. */
+    var onRefresh: () -> Unit = {}
+
+    private val refreshButton = StoragePanelUi.iconButton(
+        AllIcons.Actions.Refresh,
+        "List the app's files again: the tree is read once, and the app may have written since",
+    )
+
+    /** Directories that were open before a refresh, opened again as the refresh reaches them. */
+    private val reopen = mutableSetOf<String>()
+
     /** True while the tree is being rebuilt by code, when a selection is not the developer's. */
     private var rebuilding = false
 
@@ -78,7 +89,14 @@ internal class StorageTreeView : JPanel(BorderLayout()) {
             },
         )
 
-        add(filter, BorderLayout.NORTH)
+        refreshButton.addActionListener { onRefresh() }
+        add(
+            JPanel(BorderLayout()).apply {
+                add(filter, BorderLayout.CENTER)
+                add(refreshButton, BorderLayout.EAST)
+            },
+            BorderLayout.NORTH,
+        )
         add(
             JBScrollPane(tree).apply {
                 minimumSize = Dimension(JBUI.scale(StoragePanelUi.FILE_LIST_WIDTH), 0)
@@ -87,8 +105,15 @@ internal class StorageTreeView : JPanel(BorderLayout()) {
         )
     }
 
-    /** Empties the tree and reads the app's data directory again. */
-    fun reload() {
+    /**
+     * Empties the tree and reads the app's data directory again.
+     *
+     * With [keepOpen], the directories open now are opened again once they are re-read, so a
+     * refresh shows what changed where the developer was looking rather than collapsing to the top.
+     */
+    fun reload(keepOpen: Boolean = false) {
+        reopen.clear()
+        if (keepOpen) reopen += openDirectories()
         rebuilding = true
         root.removeAllChildren()
         model.reload()
@@ -132,8 +157,20 @@ internal class StorageTreeView : JPanel(BorderLayout()) {
         }
         model.nodeStructureChanged(node)
         rebuilding = false
+        // Opening a directory reads it, which calls back here for its own children in turn.
+        node.children().toList()
+            .filterIsInstance<DefaultMutableTreeNode>()
+            .filter { child -> child.entry?.let { it.isDirectory && reopen.remove(it.path) } == true }
+            .forEach { tree.expandPath(TreePath(it.path)) }
         showMatches()
     }
+
+    private fun openDirectories(): Set<String> =
+        (0 until tree.rowCount)
+            .mapNotNull { tree.getPathForRow(it) }
+            .filter { tree.isExpanded(it) }
+            .mapNotNull { (it.lastPathComponent as? DefaultMutableTreeNode)?.entry?.path }
+            .toSet()
 
     /**
      * Narrows the tree to the entries whose name matches.

@@ -28,6 +28,11 @@
 
 ### Fixed
 
+- **The Storage tab shows files the app wrote after it was listed.** The file tree was read once,
+  when the app was chosen, and had no way to be read again. SharedPreferences an app created
+  after that, such as the sample's after pressing Seed, never appeared. The tree is now listed
+  again whenever the Storage tab is brought forward, and has a refresh button of its own. Both
+  keep open folders open and leave the file being edited alone.
 - **Current fragment reports the fragments on screen, not framework internals.** It listed
   `AutofillManager` and `ReportFragment` instead of the app's fragments, and could report
   fragments from another activity in the task. It now reads only the resumed activity's androidx
