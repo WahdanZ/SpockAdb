@@ -15,8 +15,16 @@
   periodic or backed-off work that is not due, which was seen on a device, instead of claiming the
   Worker ran. A dump that does not parse is shown raw instead of as an empty list. Agents get
   the same through `android_get_scheduled_jobs` and `android_get_pending_alarms` (read-only), and
-  `android_run_job_now` (safe action). Device conditions (Doze, standby buckets, battery) are left
-  for a follow-up. (#89)
+  `android_run_job_now` (safe action). (#89)
+- **Put the device into the states background work reacts to, and take it back out.** The
+  Background Work tab can force deep Doze, move the app between App Standby buckets, and report the
+  battery as unplugged. Each has a Reset. A banner shows whatever Spock has changed on the device,
+  whether from the tab or by an agent, until it is reset, and the last project to close resets it.
+  A standby bucket is read back after it is set. Android often keeps an app higher, for example an
+  app with exact-alarm permission never drops below the working set on Android 12+, and the tab
+  says so instead of reporting a change that did not happen. Agents get
+  `android_get_device_conditions`, `android_force_doze` (destructive), `android_set_standby_bucket`,
+  `android_unplug_battery` and `android_reset_device_conditions`. (#89)
 
 ## [4.0.4] - 2026-09-20
 

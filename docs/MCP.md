@@ -250,13 +250,13 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-53 tools, in three levels.
+58 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (24) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms` |
-| **Safe action** (22) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now` |
-| **Destructive** (7) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command` |
+| **Read-only** (25) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
+| **Safe action** (25) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_reset_device_conditions` |
+| **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
 Rules that hold regardless of what a client asks for:
 
@@ -529,6 +529,28 @@ its jobs in the `androidx.work.systemjobscheduler` namespace on API 34+.
 whether the work is due and puts periodic work inside its period, or work in retry backoff, back
 without running the Worker. The dump cannot show which WorkManager jobs are periodic, so the
 result says this rather than claiming the Worker ran. One-off work does run.
+
+### Device condition tools
+
+Background work behaves differently in Doze, in a low App Standby bucket, and on battery. These
+tools put the device in those states and take it back out:
+
+- `android_get_device_conditions` reads the deep Doze state, the app's bucket, and whether the
+  battery is overridden. It also lists what Spock changed and has not yet reset.
+- `android_force_doze` unplugs the battery (Doze requires it) and runs
+  `dumpsys deviceidle force-idle`. It is **destructive**: every app on the device is deferred until
+  reset, and a device left in forced Doze misbehaves for whoever uses it next.
+- `android_set_standby_bucket` runs `am set-standby-bucket` and reads the bucket back, because the
+  command prints nothing either way and Android often keeps an app higher. On Android 12+, an app
+  allowed to schedule exact alarms never drops below the working set.
+- `android_unplug_battery` runs `dumpsys battery unplug`.
+- `android_reset_device_conditions` runs `unforce` and `battery reset`, and sets every bucket Spock
+  moved back to active.
+
+Every change is tracked, whether an agent made it or the Background Work tab did. The tab shows a
+banner until the change is reset, and the last project to close resets every device that is still
+online. A device that is offline then keeps its state; a reboot clears Doze and the battery
+override.
 
 ### `android_select_project`
 

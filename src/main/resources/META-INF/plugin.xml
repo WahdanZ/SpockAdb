@@ -59,6 +59,12 @@
                     secondary="true"/>
     </extensions>
 
+    <applicationListeners>
+        <!-- Resets forced Doze, battery and standby buckets when the last project closes. -->
+        <listener class="spock.adb.backgroundwork.DeviceConditionsCloseListener"
+                  topic="com.intellij.openapi.project.ProjectManagerListener"/>
+    </applicationListeners>
+
     <actions>
         <!--
           Every operation is an Action so it appears in Find Action and in

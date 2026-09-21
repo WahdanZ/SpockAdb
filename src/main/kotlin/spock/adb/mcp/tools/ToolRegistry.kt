@@ -44,6 +44,12 @@ object ToolRegistry {
         GetScheduledJobsTool(),
         GetPendingAlarmsTool(),
         RunJobNowTool(),
+        // The device conditions background work reacts to, each undone by the reset tool
+        GetDeviceConditionsTool(),
+        ForceDozeTool(),
+        SetStandbyBucketTool(),
+        UnplugBatteryTool(),
+        ResetDeviceConditionsTool(),
         // The triage bundle: one round-trip instead of four, all describing the same moment.
         DebugContextTool(),
         // UI inspection — semantics-first, so it covers Views, Compose and hybrid screens

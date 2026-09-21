@@ -71,6 +71,8 @@ class BackgroundWorkPanel(
         wrapStyleWord = true
     }
 
+    private val conditions = DeviceConditionsRow(project, { disposed }) { status(it) }
+
     private var device: ConnectedDevice? = null
     private var packageName: String? = null
     private var jobs: List<ScheduledJob> = emptyList()
@@ -119,6 +121,7 @@ class BackgroundWorkPanel(
             return
         }
         device = connected
+        conditions.setDevice(connected)
         clear()
         if (isShowing) refresh()
     }
@@ -128,6 +131,7 @@ class BackgroundWorkPanel(
         val wanted = app?.trim()?.ifEmpty { null }
         if (wanted == packageName) return
         packageName = wanted
+        conditions.setApp(wanted)
         clear()
         if (isShowing) refresh()
     }
@@ -137,6 +141,7 @@ class BackgroundWorkPanel(
 
     override fun dispose() {
         disposed = true
+        conditions.dispose()
     }
 
     // ---------------------------------------------------------------- layout
@@ -192,6 +197,7 @@ class BackgroundWorkPanel(
 
         return JPanel(BorderLayout()).apply {
             add(toolbar.component, BorderLayout.NORTH)
+            add(conditions, BorderLayout.CENTER)
             add(
                 JPanel(BorderLayout()).apply {
                     border = JBUI.Borders.empty(0, GAP, 2, GAP)
@@ -228,6 +234,7 @@ class BackgroundWorkPanel(
 
     private fun refresh() {
         val target = device ?: return status(NO_DEVICE)
+        conditions.refresh()
         val app = packageName ?: return status(CHOOSE_APP)
         val request = reads.begin()
         busy = true
