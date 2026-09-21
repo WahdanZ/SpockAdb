@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A deep link that the device refused no longer reports success.** The Deep link field ran
+  `am start`, threw away everything the device said, and showed `Opened deep link …` in a success
+  notification — for a URI no activity handles, and for one that resolved to an activity the
+  device refused to start. `android_open_deep_link` was closer but decided by looking for the
+  word `Error`, which a `Permission Denial` trace does not contain. Both now run `am start -W`,
+  parse what came back through one shared reader, and say which it was: opened, naming the
+  activity that claimed the link, which is the thing you actually wanted to know; unhandled,
+  naming the package when the intent was scoped to one; refused, with the device's own words
+  attached; or brought to the front, which is a success that says so plainly — the existing task
+  is resumed and the link is *not* delivered to the activity, so "Opened" was the wrong word for
+  it too. The reverse mistake is guarded just as carefully, because a link that did open being
+  called a failure is no better: output in wording the plugin does not recognise, `am` giving up
+  on waiting, and a slow cold start that outlasts the device's idle timeout are all reported as
+  sent-but-unconfirmed rather than guessed either way — and only lines the device itself printed
+  decide any of this, never the URI it echoes back, so opening `myapp://help/SecurityException`
+  no longer reports a refusal that never happened
+
 ## [4.0.4] - 2026-09-20
 
 ### Added
