@@ -1,0 +1,325 @@
+Settings:
+  min_ready_non_active_jobs_count=5 
+  max_non_active_job_batch_delay_ms=1860000 
+  heavy_use_factor=0.9 
+  moderate_use_factor=0.5 
+  min_linear_backoff_time_ms=10000 
+  min_exp_backoff_time_ms=10000 
+  system_stop_to_failure_ratio=3 
+  conn_congestion_delay_frac=0.5 
+  conn_prefetch_relax_frac=0.5 
+  conn_use_cell_signal_strength=true 
+  conn_update_all_jobs_min_interval_ms=60000 
+  conn_low_signal_strength_relax_frac=0.5 
+  prefetch_force_batch_relax_threshold_ms=3600000 
+  enable_api_quotas=true 
+  aq_schedule_count=250 
+  aq_schedule_window_ms=60000 
+  aq_schedule_throw_exception=true 
+  aq_schedule_return_failure=false 
+  enable_execution_safeguards_udc=true 
+  es_u_timeout_uij_count=2 
+  es_u_timeout_ej_count=5 
+  es_u_timeout_reg_count=3 
+  es_u_timeout_total_count=10 
+  es_u_timeout_window_ms=86400000 
+  es_u_anr_count=3 
+  es_u_anr_window_ms=21600000 
+  runtime_min_guarantee_ms=600000 
+  runtime_min_ej_guarantee_ms=180000 
+  runtime_free_quota_max_limit_ms=1800000 
+  runtime_min_ui_guarantee_ms=21600000 
+  runtime_ui_limit_ms=43200000 
+  runtime_min_ui_data_transfer_guarantee_buffer_factor=1.35 
+  runtime_min_ui_data_transfer_guarantee_ms=21600000 
+  runtime_cumulative_ui_limit_ms=86400000 
+  runtime_use_data_estimates_for_limits=false 
+  persist_in_split_files=true 
+  max_num_persisted_job_work_items=100000 
+  enable_tare=false 
+  
+  PrefetchController:
+    pc_launch_time_threshold_ms=25200000 
+    pc_launch_time_allowance_ms=1200000 
+  
+  FlexibilityController:
+    fc_enable_flexibility=false 
+    fc_flexibility_deadline_proximity_limit_ms=900000 
+    fc_fallback_flexibility_deadline_ms=259200000 
+    fc_min_time_between_flexibility_alarms_ms=60000 
+    fc_percents_to_drop_num_flexible_constraints=[50, 60, 70, 80] 
+    fc_rescheduled_job_deadline_ms=3600000 
+    fc_max_rescheduled_deadline_ms=432000000 
+  
+  QuotaController:
+    qc_allowed_time_per_period_exempted_ms=600000 
+    qc_allowed_time_per_period_active_ms=600000 
+    qc_allowed_time_per_period_working_ms=600000 
+    qc_allowed_time_per_period_frequent_ms=600000 
+    qc_allowed_time_per_period_rare_ms=600000 
+    qc_allowed_time_per_period_restricted_ms=600000 
+    qc_in_quota_buffer_ms=30000 
+    qc_window_size_exempted_ms=600000 
+    qc_window_size_active_ms=600000 
+    qc_window_size_working_ms=7200000 
+    qc_window_size_frequent_ms=28800000 
+    qc_window_size_rare_ms=86400000 
+    qc_window_size_restricted_ms=86400000 
+    qc_max_execution_time_ms=14400000 
+    qc_max_job_count_exempted=75 
+    qc_max_job_count_active=75 
+    qc_max_job_count_working=120 
+    qc_max_job_count_frequent=200 
+    qc_max_job_count_rare=48 
+    qc_max_job_count_restricted=10 
+    qc_rate_limiting_window_ms=60000 
+    qc_max_job_count_per_rate_limiting_window=20 
+    qc_max_session_count_exempted=75 
+    qc_max_session_count_active=75 
+    qc_max_session_count_working=10 
+    qc_max_session_count_frequent=8 
+    qc_max_session_count_rare=3 
+    qc_max_session_count_restricted=1 
+    qc_max_session_count_per_rate_limiting_window=20 
+    qc_timing_session_coalescing_duration_ms=5000 
+    qc_min_quota_check_delay_ms=60000 
+    qc_ej_limit_exempted_ms=3600000 
+    qc_ej_limit_active_ms=1800000 
+    qc_ej_limit_working_ms=1800000 
+    qc_ej_limit_frequent_ms=600000 
+    qc_ej_limit_rare_ms=600000 
+    qc_ej_limit_restricted_ms=300000 
+    qc_ej_limit_addition_installer_ms=1800000 
+    qc_ej_limit_addition_special_ms=900000 
+    qc_ej_window_size_ms=86400000 
+    qc_ej_top_app_time_chunk_size_ms=30000 
+    qc_ej_reward_top_app_ms=10000 
+    qc_ej_reward_interaction_ms=15000 
+    qc_ej_reward_notification_seen_ms=0 
+    qc_ej_grace_period_temp_allowlist_ms=180000 
+    qc_ej_grace_period_top_app_ms=60000 
+    qc_quota_bump_additional_duration_ms=60000 
+    qc_quota_bump_additional_job_count=2 
+    qc_quota_bump_additional_session_count=1 
+    qc_quota_bump_window_size_ms=28800000 
+    qc_quota_bump_limit=8 
+
+Thermal status: 0
+
+QuotaTracker:
+  Is enabled: true
+  Is global quota free: false
+  Current elapsed time: 131843871
+  
+  
+  In quota alarms:
+    NOT WAITING
+  
+  Per-app free quota:
+
+Battery charging: false
+Battery not low: true
+
+Started users: [0]
+
+Media Cloud Providers: {}
+
+Registered 264 jobs:
+  JOB androidx.work.systemjobscheduler:u0a183/6: de10ab8 @androidx.work.systemjobscheduler@spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService
+    u0a183 tag=*job*/@androidx.work.systemjobscheduler@spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService#6
+    Source: uid=u0a183 user=0 pkg=spock.adb.sample
+    JobInfo:
+      Service: spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 300 [DEFAULT]
+      Requires: charging=true batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: NOT_METERED&INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10183 UnderlyingNetworks: Null] ]
+      Minimum latency: +14m59s806ms
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+    Required constraints: CHARGING TIMING_DELAY CONNECTIVITY [0x90000001]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400002]
+    Unsatisfied constraints: CHARGING TIMING_DELAY [0x80000001]
+    Constraint history:
+      -19s419ms = CONNECTIVITY [0x10000000]
+      -19s419ms = BATTERY_NOT_LOW CONNECTIVITY [0x10000002]
+      -19s419ms = BATTERY_NOT_LOW CONNECTIVITY BACKGROUND_NOT_RESTRICTED [0x10400002]
+      -19s419ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x12400002]
+      -19s419ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x13400002]
+      -19s419ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400002]
+    Uid: active
+    Tracking: BATTERY CONNECTIVITY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Network: 111
+    Standby bucket: ACTIVE
+    Enqueue time: -19s419ms
+    Run time: earliest=+14m40s387ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB androidx.work.systemjobscheduler:u0a183/7: c65d091 @androidx.work.systemjobscheduler@spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService
+    u0a183 tag=*job*/@androidx.work.systemjobscheduler@spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService#7
+    Source: uid=u0a183 user=0 pkg=spock.adb.sample
+    JobInfo:
+      Service: spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=true deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Minimum latency: +13m43s650ms
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+    Required constraints: BATTERY_NOT_LOW TIMING_DELAY [0x80000002]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+    Unsatisfied constraints: TIMING_DELAY [0x80000000]
+    Constraint history:
+      -19s283ms = BATTERY_NOT_LOW [0x2]
+      -19s283ms = BATTERY_NOT_LOW BACKGROUND_NOT_RESTRICTED [0x400002]
+      -19s283ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400002]
+      -19s283ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400002]
+      -19s283ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+    Uid: active
+    Tracking: BATTERY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: ACTIVE
+    Enqueue time: -19s283ms
+    Run time: earliest=+13m24s367ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB androidx.work.systemjobscheduler:u0a183/10: 1658473 @androidx.work.systemjobscheduler@spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService
+    u0a183 tag=*job*/@androidx.work.systemjobscheduler@spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService#10
+    Source: uid=u0a183 user=0 pkg=spock.adb.sample
+    JobInfo:
+      Service: spock.adb.sample/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Minimum latency: +19s964ms
+      Backoff: policy=0 initial=+10s0ms
+      Has early constraint
+    Required constraints: TIMING_DELAY [0x80000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+    Unsatisfied constraints: TIMING_DELAY [0x80000000]
+    Constraint history:
+      -8s901ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -8s901ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -8s901ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400000]
+      -8s901ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+    Uid: active
+    Tracking: TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: ACTIVE
+    Enqueue time: -8s901ms
+    Run time: earliest=+11s62ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a183/4242: d0c72a spock.adb.sample/.background.SampleJobService
+    u0a183 tag=*job*/spock.adb.sample/.background.SampleJobService#4242
+    Source: uid=u0a183 user=0 pkg=spock.adb.sample
+    JobInfo:
+      Service: spock.adb.sample/.background.SampleJobService
+      Priority: 300 [DEFAULT]
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=true batteryNotLow=false deviceIdle=true
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CHARGING IDLE [0x5]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+    Unsatisfied constraints: CHARGING IDLE [0x5]
+    Constraint history:
+      -19s484ms = BATTERY_NOT_LOW [0x2]
+      -19s484ms = BATTERY_NOT_LOW BACKGROUND_NOT_RESTRICTED [0x400002]
+      -19s484ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400002]
+      -19s484ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400002]
+      -19s484ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+    Uid: active
+    Tracking: BATTERY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: ACTIVE
+    Enqueue time: -19s484ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a183/4343: a0fc91b spock.adb.sample/.background.SampleJobService
+    u0a183 tag=*job*/spock.adb.sample/.background.SampleJobService#4343
+    Source: uid=u0a183 user=0 pkg=spock.adb.sample
+    JobInfo:
+      Service: spock.adb.sample/.background.SampleJobService
+      PERSISTED
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: NOT_METERED&INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10183 UnderlyingNetworks: Null] ]
+      Minimum latency: +10m0s0ms
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+    Required constraints: TIMING_DELAY CONNECTIVITY [0x90000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400000]
+    Unsatisfied constraints: TIMING_DELAY [0x80000000]
+    Constraint history:
+      -19s468ms = CONNECTIVITY [0x10000000]
+      -19s467ms = CONNECTIVITY BACKGROUND_NOT_RESTRICTED [0x10400000]
+      -19s467ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x12400000]
+      -19s467ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x13400000]
+      -19s467ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400000]
+    Uid: active
+    Tracking: CONNECTIVITY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Network: 111
+    Standby bucket: ACTIVE
+    Enqueue time: -19s468ms
+    Run time: earliest=+9m40s528ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+
+Pending queue:
+  None
+
+Active jobs:
+  N/A
+
+Idle contexts (16):
+  ID=5685186: inactive since -8s933ms, stopped because: app called jobFinished
+  ID=15225384: inactive since -1m7s584ms, stopped because: app called jobFinished
+  ID=19795620: inactive since -1m9s378ms, stopped because: app called jobFinished
+  ID=30442778: inactive since -5m43s250ms, stopped because: cancelled due to unsatisfied constraints
+  ID=31578342: inactive since -6m22s171ms, stopped because: last work dequeued
+  ID=40013372: inactive since -9m18s592ms, stopped because: job rescheduled by app
+  ID=59732240: inactive since -6m46s951ms, stopped because: timed out while binding
+  ID=90763731: inactive since -6m17s807ms, stopped because: app called jobFinished
+  ID=122083375: inactive since -6m21s624ms, stopped because: app called jobFinished
+  ID=127400247: inactive
+  ID=162858949: inactive since -18h17m2s656ms, stopped because: app called jobFinished
+  ID=175294539: inactive since -6h13m27s388ms, stopped because: app called jobFinished
+  ID=182858761: inactive since -1d12h35m54s557ms, stopped because: app called jobFinished
+  ID=249781057: inactive since -1d12h35m54s728ms, stopped because: app called jobFinished
+  ID=265623054: inactive since -1d12h35m41s182ms, stopped because: app called jobFinished
+  ID=267019277: inactive since -1d12h35m50s527ms, stopped because: app called jobFinished
+
+Recently completed jobs:

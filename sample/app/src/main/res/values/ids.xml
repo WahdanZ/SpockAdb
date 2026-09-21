@@ -1,0 +1,4 @@
+<resources>
+    <item name="views_name_field" type="id" />
+    <item name="views_terms" type="id" />
+</resources>

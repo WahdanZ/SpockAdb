@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **See why background work has not run, and run it on demand.** A new **Background Work** tab
+  shows the selected app's JobScheduler jobs, WorkManager's workers among them. For each job it
+  shows the id, the service, whether it is periodic, the constraints holding it back right now,
+  backoff, failure count, and next and last run. It also shows the app's pending alarms, with
+  their next trigger as a device clock time and their repeat interval. **Run Now** forces the
+  selected job with `cmd jobscheduler run -f`, and is disabled with the reason on devices that
+  cannot do that. It finds a job's namespace on its own, which matters because WorkManager 2.10+
+  puts every job in one on API 34. For a WorkManager job it says that WorkManager may still skip
+  periodic or backed-off work that is not due, which was seen on a device, instead of claiming the
+  Worker ran. A dump that does not parse is shown raw instead of as an empty list. Agents get
+  the same through `android_get_scheduled_jobs` and `android_get_pending_alarms` (read-only), and
+  `android_run_job_now` (safe action). Device conditions (Doze, standby buckets, battery) are left
+  for a follow-up. (#89)
+
 ### Fixed
 
 - **Developer options no longer stop responding after a failed read.** When the device refused a

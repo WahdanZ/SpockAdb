@@ -250,6 +250,8 @@ class McpSmokeTest {
             "android_get_http_proxy" to "{}",
             // The open project's app, which must be installed as a debuggable build.
             "android_list_app_storage" to "{}",
+            "android_get_scheduled_jobs" to """{"packageName":"com.android.settings"}""",
+            "android_get_pending_alarms" to """{"packageName":"android"}""",
             // Default sections only: the screenshot section is covered by its own tool above.
             "android_get_debug_context" to "{}",
         )

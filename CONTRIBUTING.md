@@ -24,6 +24,19 @@
    ./gradlew runIde
    ```
 
+### A sample app for every feature
+
+`sample/` is a small Android app with one screen per plugin feature: activity and fragment
+stacks, deep links, permissions, process death, network and proxy, storage, logcat, Compose and
+View screens for the UI Inspector, and background jobs, WorkManager work and alarms. It is a
+separate Gradle build that the plugin's build never includes:
+
+```bash
+./gradlew -p sample :app:installDebug
+```
+
+[sample/README.md](sample/README.md) maps each feature to its screen.
+
 ### Trying the Logcat tab without a bug to reproduce
 
 `scripts/demo-logcat.sh` writes a scripted, realistic log to a connected device — JSON request

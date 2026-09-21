@@ -40,6 +40,10 @@ object ToolRegistry {
         GetProcessesTool(),
         GetBatteryInfoTool(),
         GetNetworkInfoTool(),
+        // Background work: JobScheduler (and so WorkManager) jobs, and AlarmManager alarms
+        GetScheduledJobsTool(),
+        GetPendingAlarmsTool(),
+        RunJobNowTool(),
         // The triage bundle: one round-trip instead of four, all describing the same moment.
         DebugContextTool(),
         // UI inspection — semantics-first, so it covers Views, Compose and hybrid screens
