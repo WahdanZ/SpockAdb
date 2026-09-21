@@ -2,6 +2,7 @@ package spock.adb.mcp
 
 import com.android.ddmlib.IDevice
 import com.android.ddmlib.IShellOutputReceiver
+import com.android.ddmlib.ShellCommandUnresponsiveException
 import com.google.gson.JsonObject
 import io.mockk.every
 import io.mockk.mockk
@@ -16,12 +17,13 @@ import java.util.concurrent.TimeUnit
 /**
  * `android_open_deep_link` decided by looking for the word "Error", which a `Permission
  * Denial` trace does not contain — so an agent was told a refused link had opened and then
- * walked into a wrong-screen assertion it could not explain.
+ * walked into a wrong-screen assertion it could not explain. The opposite mistake matters
+ * just as much: a launch the device stopped narrating is not a launch that failed.
  */
 class DeepLinkToolTest {
 
-    /** A device whose shell answers with [reply], recording the commands it was sent. */
-    private class FakeDevice(reply: String) {
+    /** A device whose shell answers with [reply], then runs [afterOutput], recording commands. */
+    private class FakeDevice(reply: String, afterOutput: () -> Unit = {}) {
         val commands = mutableListOf<String>()
 
         val connected: ConnectedDevice = run {
@@ -35,6 +37,7 @@ class DeepLinkToolTest {
                 val bytes = reply.toByteArray()
                 receiver.captured.addOutput(bytes, 0, bytes.size)
                 receiver.captured.flush()
+                afterOutput()
             }
             FakeToolContext.device("emulator-5554").copy(device = device)
         }
@@ -77,6 +80,32 @@ class DeepLinkToolTest {
     }
 
     @Test
+    fun `a launch the device stopped narrating is not reported as a failure`() {
+        // `am -W` is silent until the launch completes, so ddmlib's idle timeout fires on a
+        // slow cold start. Telling the agent the link failed would send it debugging nothing.
+        val device = FakeDevice("Starting: Intent { act=android.intent.action.VIEW dat=$URI }") {
+            throw ShellCommandUnresponsiveException()
+        }
+
+        val result = OpenDeepLinkTool().execute(arguments(), contextFor(device))
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("did not say whether it started"), result.text())
+    }
+
+    @Test
+    fun `an unhandled link scoped to a package names the package`() {
+        val device = FakeDevice(
+            "Starting: Intent { dat=$URI }\nError: Activity not started, unable to resolve Intent { }",
+        )
+
+        val result = OpenDeepLinkTool().execute(arguments(packageName = "com.example.app"), contextFor(device))
+
+        assertTrue(result.isError, result.text())
+        assertTrue(result.text().contains("com.example.app"), result.text())
+    }
+
+    @Test
     fun `the packageName argument reaches the device`() {
         val device = FakeDevice("Status: ok")
 
@@ -85,6 +114,16 @@ class DeepLinkToolTest {
         val sent = device.commands.single()
         assertTrue(sent.contains(" -p 'com.example.app'"), sent)
         assertTrue(sent.contains("am start -W "), sent)
+    }
+
+    @Test
+    fun `a device that said nothing leaves no trailing blank lines in the result`() {
+        val device = FakeDevice("")
+
+        val text = OpenDeepLinkTool().execute(arguments(), contextFor(device)).text()
+
+        assertFalse(text.endsWith("\n"), "'$text'")
+        assertTrue(text.contains(URI), text)
     }
 
     private companion object {
