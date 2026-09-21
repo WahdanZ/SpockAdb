@@ -6,7 +6,6 @@ import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.util.Log
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,7 +20,7 @@ import java.net.URL
  * Set HTTP Proxy can be checked in a debugging proxy (Charles, mitmproxy, Proxyman). Also shows
  * which transport is active, for the Wi-Fi and mobile data toggles.
  */
-class NetworkActivity : AppCompatActivity() {
+class NetworkActivity : SampleActivity() {
 
     private lateinit var output: TextView
 

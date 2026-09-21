@@ -2,13 +2,12 @@ package spock.adb.sample
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 
 /**
  * Builds a back stack you can read with Current Activity and Activity Stack: each press adds
  * another instance, numbered, and one button starts a second task.
  */
-class StackActivity : AppCompatActivity() {
+class StackActivity : SampleActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,7 +29,7 @@ class StackActivity : AppCompatActivity() {
 }
 
 /** Lives in its own task, so the stack view has two tasks to show. */
-class SeparateTaskActivity : AppCompatActivity() {
+class SeparateTaskActivity : SampleActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         screen("Separate task") {

@@ -4,10 +4,9 @@ import android.app.job.JobScheduler
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -16,6 +15,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import spock.adb.sample.SampleActivity
 import spock.adb.sample.screen
 import java.util.concurrent.TimeUnit
 
@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * Schedule everything, open the tab, and each job should be listed with what it is waiting on.
  * Select one and press Run Now: it runs here, and the log below says so.
  */
-class BackgroundWorkActivity : AppCompatActivity() {
+class BackgroundWorkActivity : SampleActivity() {
 
     private lateinit var log: TextView
     private lateinit var appView: TextView

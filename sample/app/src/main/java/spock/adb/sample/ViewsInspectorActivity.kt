@@ -4,13 +4,12 @@ import android.os.Bundle
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageButton
-import androidx.appcompat.app.AppCompatActivity
 
 /**
  * The same kinds of elements as the Compose screen, built with Views and resource ids, for the
  * UI Inspector's View path and for Input Text on the Device tab.
  */
-class ViewsInspectorActivity : AppCompatActivity() {
+class ViewsInspectorActivity : SampleActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
