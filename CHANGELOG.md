@@ -498,6 +498,15 @@
   because the class was looked up by the row's position in a list of strings; and package and
   class names were cut short at their first digit or underscore — `com.android.launcher3` was
   read as `com.android.launcher` — so those activities could never be opened at all
+- **A deep link that the device refused no longer reports success.** The Deep link field ran
+  `am start`, threw away everything the device said, and showed `Opened deep link …` in a success
+  notification — for a URI no activity handles, and for one that resolved to an activity the
+  device refused to start. `android_open_deep_link` was closer but decided by looking for the
+  word `Error`, which a `Permission Denial` trace does not contain. Both now run `am start -W`,
+  parse what came back, and say which it was: opened (naming the activity that claimed the link,
+  which is the thing you actually wanted to know), already in the foreground, unhandled, or
+  refused — with the device's own words attached. Output in wording the plugin does not recognise
+  is reported as sent-but-unconfirmed rather than guessed either way
 
 ## [4.0.3] - 2026-09-12
 

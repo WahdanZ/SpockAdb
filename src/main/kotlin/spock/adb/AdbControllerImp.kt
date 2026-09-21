@@ -689,8 +689,10 @@ class AdbControllerImp(
 
     override fun openDeepLink(input: String, device: IDevice) {
         execute {
+            // `am start` exits 0 for a link nothing handles, so the verdict comes from what it
+            // printed — reporting the send as a success is how this lied before.
             val result = OpenDeepLinkCommand().execute(input, project, device)
-            showSuccess(result)
+            if (result.succeeded) showSuccess(result.message) else showError(result.message)
         }
     }
 
