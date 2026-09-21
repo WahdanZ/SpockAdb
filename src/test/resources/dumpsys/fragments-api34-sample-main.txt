@@ -1,0 +1,559 @@
+TASK 10182:spock.adb.sample id=43 userId=0 displayId=0(type=INTERNAL)
+  ACTIVITY spock.adb.sample/.MainActivity 25fa931 pid=5845 userId=0 uid=10182 displayId=0(type=INTERNAL)
+    Local Activity 75bad56 State:
+      mResumed=false mStopped=true mFinished=false
+      mIsInMultiWindowMode=false mIsInPictureInPictureMode=false
+      mChangingConfigurations=false
+      mCurrentConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}
+      mLoadersStarted=true
+      Active Fragments in 65cf791:
+        #0: ReportFragment{429c6f6 #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+          mFragmentId=#0 mContainerId=#0 mTag=androidx.lifecycle.LifecycleDispatcher.report_fragment_tag
+          mState=3 mIndex=0 mWho=android:fragment:0 mBackStackNesting=0
+          mAdded=true mRemoving=false mFromLayout=false mInLayout=false
+          mHidden=false mDetached=false mMenuVisible=true mHasMenu=false
+          mRetainInstance=false mRetaining=false mUserVisibleHint=true
+          mFragmentManager=FragmentManager{65cf791 in HostCallbacks{8acdaf7}}
+          mHost=android.app.Activity$HostCallbacks@8acdaf7
+          Child FragmentManager{e5aad64 in ReportFragment{429c6f6}}:
+            FragmentManager misc state:
+              mHost=android.app.Activity$HostCallbacks@8acdaf7
+              mContainer=android.app.Fragment$1@cc87bcd
+              mParent=ReportFragment{429c6f6 #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+              mCurState=3 mStateSaved=true mDestroyed=false
+      Added Fragments:
+        #0: ReportFragment{429c6f6 #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+      FragmentManager misc state:
+        mHost=android.app.Activity$HostCallbacks@8acdaf7
+        mContainer=android.app.Activity$HostCallbacks@8acdaf7
+        mCurState=3 mStateSaved=true mDestroyed=false
+    ViewRoot:
+      mAdded=true
+      mRemoved=false
+      mStopped=true
+      mPausedForTransition=false
+      mConsumeBatchedInputScheduled=false
+      mConsumeBatchedInputImmediatelyScheduled=false
+      mPendingInputEventCount=0
+      mProcessInputEventsScheduled=false
+      mTraversalScheduled=false
+      mReportNextDraw=false
+      mLastPerformTraversalsFailedReason=view_not_visible
+      mLastReportedMergedConfiguration={mGlobalConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.32 fontWeightAdjustment=0} mOverrideConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}}
+      mLastConfigurationFromResources={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}
+      mIsAmbientMode=false
+      mUnbufferedInputSource=0
+      mAttachInfo=       AttachInfo:
+        mHasWindowFocus=false
+        mWindowVisibility=8
+        mInTouchMode=true
+        mUnbufferedDispatchRequested=false
+      android.view.ViewRootImpl$NativePreImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$ImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$NativePostImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$WindowInputEventReceiver
+       mInputChannel: 65a0b77 spock.adb.sample/spock.adb.sample.MainActivity (client)
+       mSeqMap: {}
+       mReceiverPtr:
+        mInputConsumer:
+          mResampleTouch = true
+          mChannel = 65a0b77 spock.adb.sample/spock.adb.sample.MainActivity (client)
+          mMsgDeferred: false
+          Batches:
+              <empty>
+          mSeqChains:
+              <empty>
+          mConsumeTimes:
+              <empty>
+          
+        mBatchedInputEventPending: false
+        mOutboundQueue:
+          <empty>
+        
+    Choreographer:
+      mFrameScheduled=false
+      mLastFrameTime=2912487 (170 ms ago)
+    InsetsController:
+      InsetsState
+        mDisplayFrame=Rect(0, 0 - 1080, 2636)
+        mDisplayCutout=DisplayCutout{insets=Rect(0, 0 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=0 displayHeight=0 physicalDisplayWidth=0 physicalDisplayHeight=0 density={0.0} cutoutSpec={} rotation={0} scale={0.0} physicalPixelDisplaySizeRatio={0.0}}}}
+        mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=0, center=Point(0, 0)}, RoundedCorner{position=TopRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomLeft, radius=0, center=Point(0, 0)}]}
+        mRoundedCornerFrame=Rect(0, 0 - 1080, 2636)
+        mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(792, 0 - 1038, 72) rotation=0}
+        mDisplayShape=DisplayShape{ spec=11720875 displayWidth=1080 displayHeight=2636 physicalPixelDisplaySizeRatio=1.0 rotation=0 offsetX=0 offsetY=0 scale=1.0}
+          InsetsSource id=a4b20001 type=navigationBars frame=[0,2564][1080,2636] visible=true flags=SUPPRESS_SCRIM insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20004 type=systemGestures frame=[0,0][90,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20005 type=mandatorySystemGestures frame=[0,2540][1080,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20006 type=tappableElement frame=[0,0][0,0] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20024 type=systemGestures frame=[990,0][1080,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410000 type=statusBars frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410005 type=mandatorySystemGestures frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410006 type=tappableElement frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+    WindowOnBackDispatcher:
+        Top Callback: android.view.ViewRootImpl$$ExternalSyntheticLambda17@2391dc2
+        Callbacks: 
+          Callback: android.view.ViewRootImpl$$ExternalSyntheticLambda17@2391dc2 Priority=0
+    View Hierarchy:
+      DecorView@4a35c82[MainActivity]
+        android.widget.LinearLayout{e4a2f93 V.E...... .......D 0,0-1080,2564}
+          android.view.ViewStub{ec73bd0 G.E...... ......I. 0,0-0,0 #10201ca android:id/action_mode_bar_stub}
+          android.widget.FrameLayout{1ee07c9 V.E...... .......D 0,72-1080,2564}
+            androidx.appcompat.widget.ActionBarOverlayLayout{72ebece V.E...... .......D 0,0-1080,2492 #7f08007e app:id/decor_content_parent}
+              androidx.appcompat.widget.ActionBarOverlayLayout$NoSystemUiLayoutFlagView{e5e31ef V.E...... ........ 0,0-0,0}
+              androidx.appcompat.widget.ContentFrameLayout{f2c44fc V.E...... .......D 0,192-1080,2492 #1020002 android:id/content}
+                android.widget.ScrollView{9c65785 VFED.V... .......D 0,0-1080,2300}
+                  android.widget.LinearLayout{dfbf9da V.E...... .......D 0,0-1080,2206}
+                    android.widget.TextView{305fe0b V.ED..... ........ 48,48-1032,215}
+                    android.widget.TextView{476b4e8 VFED..CL. ........ 48,215-1032,308}
+                    android.widget.TextView{519e701 V.ED..... ........ 48,308-1032,441}
+                    android.widget.Button{c2fd9a6 VFED..C.. ......ID 48,441-1032,585}
+                    android.widget.Button{1146fe7 VFED..C.. ......ID 48,585-1032,729}
+                    android.widget.Button{3763794 VFED..C.. ......ID 48,729-1032,873}
+                    android.widget.Button{ebcf23d VFED..C.. ......ID 48,873-1032,1017}
+                    android.widget.Button{6fea32 VFED..C.. ......ID 48,1017-1032,1161}
+                    android.widget.Button{dae2383 VFED..C.. ......ID 48,1161-1032,1305}
+                    android.widget.TextView{c493900 V.ED..... ........ 48,1305-1032,1438}
+                    android.widget.Button{8b7539 VFED..C.. ......ID 48,1438-1032,1582}
+                    android.widget.Button{c2e777e VFED..C.. ......ID 48,1582-1032,1726}
+                    android.widget.Button{1a574df VFED..C.. ......ID 48,1726-1032,1870}
+                    android.widget.Button{88e52c VFED..C.. ......ID 48,1870-1032,2014}
+                    android.widget.Button{c252bf5 VFED..C.. ......ID 48,2014-1032,2158}
+              androidx.appcompat.widget.ActionBarContainer{3b68d8a V.ED..... ......ID 0,0-1080,192 #7f080032 app:id/action_bar_container}
+                androidx.appcompat.widget.Toolbar{6967ffb V.E...... ........ 0,0-1080,192 #7f080030 app:id/action_bar}
+                  androidx.appcompat.widget.AppCompatTextView{352818 V.ED..... ........ 48,52-467,140}
+                  androidx.appcompat.widget.ActionMenuView{3699271 V.E...... ......ID 1080,12-1080,180}
+                androidx.appcompat.widget.ActionBarContextView{2f7f856 G.E...... ......I. 0,0-0,0 #7f080038 app:id/action_context_bar}
+        android.view.View{9c320d7 V.ED..... ......ID 0,2564-1080,2636 #1020030 android:id/navigationBarBackground}
+        android.view.View{960adc4 V.ED..... ......ID 0,0-1080,72 #102002f android:id/statusBarBackground}
+    Looper (main, tid 2) {cb3e4ad}
+      Message 0: { when=+394ms callback=android.view.View$ScrollabilityCache target=android.view.ViewRootImpl$ViewRootHandler }
+      (Total messages: 1, polling=false, quitting=false)
+    ResourcesManager:
+      total apks: 5
+      resources: 9
+      resource impls: 3
+    1 dumpables:
+    #0: AutofillManager
+        AutofillManager:
+          sessionId: 2147483647
+          state: UNKNOWN
+          context: spock.adb.sample.MainActivity@75bad56
+          service client: null
+          client: android.view.autofill.AutofillClientController@aef373 (android.os.BinderProxy@ba46d21)
+          enabled: false
+          enabledAugmentedOnly: false
+          hasService: true
+          hasCallback: false
+          onInvisibleCalled false
+          last autofilled data: null
+          id of last fill UI shown: null
+          tracked views: null
+          fillable ids: null
+          entered ids: null
+          save trigger id: null
+          save on finish(): false
+          options: logLvl=2, compatMode=false, augmented=false, appDisabledExpiration=0
+          compat mode enabled:   fill dialog enabled: false
+          fill dialog enabled hints: [password, passwordAuto, creditCardNumber, creditCardSecurityCode, creditCardExpirationDate]
+        false
+          debug: true verbose: false
+        Autofill Compat Mode: false
+    Local FragmentActivity 75bad56 State:
+      mCreated=true mResumed=false mStopped=true    Back Stack Index: 0
+    FragmentManager misc state:
+      mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@ed71ea9
+      mContainer=androidx.fragment.app.FragmentActivity$HostCallbacks@ed71ea9
+      mCurState=4 mStateSaved=true mStopped=true mDestroyed=false
+
+  ACTIVITY spock.adb.sample/.fragments.NavigationActivity 3d5ca90 pid=5845 userId=0 uid=10182 displayId=0(type=INTERNAL)
+    Local Activity ddfe5c0 State:
+      mResumed=false mStopped=false mFinished=false
+      mIsInMultiWindowMode=false mIsInPictureInPictureMode=false
+      mChangingConfigurations=false
+      mCurrentConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.2 fontWeightAdjustment=0}
+      mLoadersStarted=true
+      Active Fragments in f41c7be:
+        #0: ReportFragment{4d2201f #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+          mFragmentId=#0 mContainerId=#0 mTag=androidx.lifecycle.LifecycleDispatcher.report_fragment_tag
+          mState=4 mIndex=0 mWho=android:fragment:0 mBackStackNesting=0
+          mAdded=true mRemoving=false mFromLayout=false mInLayout=false
+          mHidden=false mDetached=false mMenuVisible=true mHasMenu=false
+          mRetainInstance=false mRetaining=false mUserVisibleHint=true
+          mFragmentManager=FragmentManager{f41c7be in HostCallbacks{a3b4f6c}}
+          mHost=android.app.Activity$HostCallbacks@a3b4f6c
+          Child FragmentManager{6fbe935 in ReportFragment{4d2201f}}:
+            FragmentManager misc state:
+              mHost=android.app.Activity$HostCallbacks@a3b4f6c
+              mContainer=android.app.Fragment$1@e4ea1ca
+              mParent=ReportFragment{4d2201f #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+              mCurState=4 mStateSaved=false mDestroyed=false
+      Added Fragments:
+        #0: ReportFragment{4d2201f #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+      FragmentManager misc state:
+        mHost=android.app.Activity$HostCallbacks@a3b4f6c
+        mContainer=android.app.Activity$HostCallbacks@a3b4f6c
+        mCurState=4 mStateSaved=false mDestroyed=false
+    ViewRoot:
+      mAdded=true
+      mRemoved=false
+      mStopped=false
+      mPausedForTransition=false
+      mConsumeBatchedInputScheduled=false
+      mConsumeBatchedInputImmediatelyScheduled=false
+      mPendingInputEventCount=0
+      mProcessInputEventsScheduled=false
+      mTraversalScheduled=false
+      mReportNextDraw=false
+      mLastReportedMergedConfiguration={mGlobalConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.32 fontWeightAdjustment=0} mOverrideConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.2 fontWeightAdjustment=0}}
+      mLastConfigurationFromResources={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}
+      mIsAmbientMode=false
+      mUnbufferedInputSource=0
+      mAttachInfo=       AttachInfo:
+        mHasWindowFocus=false
+        mWindowVisibility=0
+        mInTouchMode=true
+        mUnbufferedDispatchRequested=false
+      android.view.ViewRootImpl$NativePreImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$ImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$NativePostImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$WindowInputEventReceiver
+       mInputChannel: 63e1faf spock.adb.sample/spock.adb.sample.fragments.NavigationActivity (client)
+       mSeqMap: {}
+       mReceiverPtr:
+        mInputConsumer:
+          mResampleTouch = true
+          mChannel = 63e1faf spock.adb.sample/spock.adb.sample.fragments.NavigationActivity (client)
+          mMsgDeferred: false
+          Batches:
+              <empty>
+          mSeqChains:
+              <empty>
+          mConsumeTimes:
+              <empty>
+          
+        mBatchedInputEventPending: false
+        mOutboundQueue:
+          <empty>
+        
+    Choreographer:
+      mFrameScheduled=false
+      mLastFrameTime=2912487 (220 ms ago)
+    InsetsController:
+      InsetsState
+        mDisplayFrame=Rect(0, 0 - 1080, 2636)
+        mDisplayCutout=DisplayCutout{insets=Rect(0, 0 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=0 displayHeight=0 physicalDisplayWidth=0 physicalDisplayHeight=0 density={0.0} cutoutSpec={} rotation={0} scale={0.0} physicalPixelDisplaySizeRatio={0.0}}}}
+        mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=0, center=Point(0, 0)}, RoundedCorner{position=TopRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomLeft, radius=0, center=Point(0, 0)}]}
+        mRoundedCornerFrame=Rect(0, 0 - 1080, 2636)
+        mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(792, 0 - 1038, 72) rotation=0}
+        mDisplayShape=DisplayShape{ spec=11720875 displayWidth=1080 displayHeight=2636 physicalPixelDisplaySizeRatio=1.0 rotation=0 offsetX=0 offsetY=0 scale=1.0}
+          InsetsSource id=a4b20001 type=navigationBars frame=[0,2564][1080,2636] visible=true flags=SUPPRESS_SCRIM insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20004 type=systemGestures frame=[0,0][90,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20005 type=mandatorySystemGestures frame=[0,2540][1080,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20006 type=tappableElement frame=[0,0][0,0] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20024 type=systemGestures frame=[990,0][1080,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410000 type=statusBars frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410005 type=mandatorySystemGestures frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410006 type=tappableElement frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+    WindowOnBackDispatcher:
+        Top Callback: android.view.ViewRootImpl$$ExternalSyntheticLambda17@8d0a8d1
+        Callbacks: 
+          Callback: android.view.ViewRootImpl$$ExternalSyntheticLambda17@8d0a8d1 Priority=0
+    View Hierarchy:
+      DecorView@9029f3b[NavigationActivity]
+        android.widget.LinearLayout{543f658 V.E...... ........ 0,0-1080,2564}
+          android.view.ViewStub{30ee3b1 G.E...... ......I. 0,0-0,0 #10201ca android:id/action_mode_bar_stub}
+          android.widget.FrameLayout{29d1096 V.E...... ........ 0,72-1080,2564}
+            androidx.appcompat.widget.ActionBarOverlayLayout{1f1f417 V.E...... ........ 0,0-1080,2492 #7f08007e app:id/decor_content_parent}
+              androidx.appcompat.widget.ActionBarOverlayLayout$NoSystemUiLayoutFlagView{d2e2004 V.E...... ........ 0,0-0,0}
+              androidx.appcompat.widget.ContentFrameLayout{17d09ed V.E...... ........ 0,192-1080,2492 #1020002 android:id/content}
+                androidx.fragment.app.FragmentContainerView{591a022 V.E...... ........ 0,0-1080,2300 #7f08011f app:id/nav_host}
+                  androidx.fragment.app.FragmentContainerView{a17bab3 V.E...... ........ 0,0-1080,2300 #7f08011f app:id/nav_host}
+                    android.widget.LinearLayout{1ac1035 V.E...... ........ 0,0-1080,2300}
+                      android.widget.TextView{1313cca V.ED..... ........ 48,48-1032,136}
+                      android.widget.TextView{b89e3b V.ED..... ........ 48,136-1032,194}
+                      android.widget.Button{b738958 VFED..C.. ........ 48,194-1032,338}
+                      android.widget.Button{61a7ab1 VFED..C.. ........ 48,338-1032,482}
+                      android.widget.Button{8e5b96 VFED..C.. ........ 48,482-1032,626}
+              androidx.appcompat.widget.ActionBarContainer{d676b9c V.ED..... ........ 0,0-1080,192 #7f080032 app:id/action_bar_container}
+                androidx.appcompat.widget.Toolbar{e7a89a5 V.E...... ........ 0,0-1080,192 #7f080030 app:id/action_bar}
+                  androidx.appcompat.widget.AppCompatTextView{abb117a V.ED..... ........ 48,52-364,140}
+                  androidx.appcompat.widget.ActionMenuView{f55cd2b V.E...... ......ID 1080,12-1080,180}
+                androidx.appcompat.widget.ActionBarContextView{64da588 G.E...... ......I. 0,0-0,0 #7f080038 app:id/action_context_bar}
+        android.view.View{6af1b21 V.ED..... ........ 0,2564-1080,2636 #1020030 android:id/navigationBarBackground}
+        android.view.View{f58cb46 V.ED..... ........ 0,0-1080,72 #102002f android:id/statusBarBackground}
+    Looper (main, tid 2) {cb3e4ad}
+      Message 0: { when=+347ms callback=android.view.View$ScrollabilityCache target=android.view.ViewRootImpl$ViewRootHandler }
+      (Total messages: 1, polling=false, quitting=false)
+    ResourcesManager:
+      total apks: 5
+      resources: 9
+      resource impls: 3
+    1 dumpables:
+    #0: AutofillManager
+        AutofillManager:
+          sessionId: 2147483647
+          state: UNKNOWN
+          context: spock.adb.sample.fragments.NavigationActivity@ddfe5c0
+          service client: null
+          client: android.view.autofill.AutofillClientController@4e21107 (android.os.BinderProxy@40ee5af)
+          enabled: false
+          enabledAugmentedOnly: false
+          hasService: true
+          hasCallback: false
+          onInvisibleCalled false
+          last autofilled data: null
+          id of last fill UI shown: null
+          tracked views: null
+          fillable ids: null
+          entered ids: null
+          save trigger id: null
+          save on finish(): false
+          options: logLvl=2, compatMode=false, augmented=false, appDisabledExpiration=0
+          compat mode enabled:   fill dialog enabled: false
+          fill dialog enabled hints: [password, passwordAuto, creditCardNumber, creditCardSecurityCode, creditCardExpirationDate]
+        false
+          debug: true verbose: false
+        Autofill Compat Mode: false
+    Local FragmentActivity ddfe5c0 State:
+      mCreated=true mResumed=false mStopped=false    Active Fragments:
+    NavHostFragment{7db9234} (4561b0cb-b6cd-4b52-8e79-0d39f09e1e0f id=0x7f08011f)
+        mFragmentId=#7f08011f mContainerId=#7f08011f mTag=null
+        mState=5 mWho=4561b0cb-b6cd-4b52-8e79-0d39f09e1e0f mBackStackNesting=0
+        mAdded=true mRemoving=false mFromLayout=false mInLayout=false
+        mHidden=false mDetached=false mMenuVisible=true mHasMenu=false
+        mRetainInstance=false mUserVisibleHint=true
+        mFragmentManager=FragmentManager{741485d in HostCallbacks{fc655d2}}}
+        mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+        mPopDirection=false
+        mContainer=androidx.fragment.app.FragmentContainerView{591a022 V.E...... ........ 0,0-1080,2300 #7f08011f app:id/nav_host}
+        mView=androidx.fragment.app.FragmentContainerView{a17bab3 V.E...... ........ 0,0-1080,2300 #7f08011f app:id/nav_host}
+        Child FragmentManager{804b6a3 in NavHostFragment{7db9234}}}:
+          Active Fragments:
+          ListFragment{143e9ce} (8248bcd7-edde-4187-8f43-8813acf1b1c7 id=0x7f08011f tag=87d2ef22-0c02-4725-aa9f-3b8713d7664a)
+              mFragmentId=#7f08011f mContainerId=#7f08011f mTag=87d2ef22-0c02-4725-aa9f-3b8713d7664a
+              mState=5 mWho=8248bcd7-edde-4187-8f43-8813acf1b1c7 mBackStackNesting=2
+              mAdded=true mRemoving=false mFromLayout=false mInLayout=false
+              mHidden=false mDetached=false mMenuVisible=true mHasMenu=false
+              mRetainInstance=false mUserVisibleHint=true
+              mFragmentManager=FragmentManager{804b6a3 in NavHostFragment{7db9234}}}
+              mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+              mParentFragment=NavHostFragment{7db9234} (4561b0cb-b6cd-4b52-8e79-0d39f09e1e0f id=0x7f08011f)
+              mPopDirection=true
+              mContainer=androidx.fragment.app.FragmentContainerView{a17bab3 V.E...... ........ 0,0-1080,2300 #7f08011f app:id/nav_host}
+              mView=android.widget.LinearLayout{1ac1035 V.E...... ........ 0,0-1080,2300}
+              Child FragmentManager{9dc9502 in ListFragment{143e9ce}}}:
+                Back Stack Index: 0
+                FragmentManager misc state:
+                  mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+                  mContainer=androidx.fragment.app.Fragment$5@9de3e13
+                  mParent=ListFragment{143e9ce} (8248bcd7-edde-4187-8f43-8813acf1b1c7 id=0x7f08011f tag=87d2ef22-0c02-4725-aa9f-3b8713d7664a)
+                  mCurState=5 mStateSaved=false mStopped=false mDestroyed=false
+          HomeFragment{eb99da0} (29d8df8a-ae75-4f21-b203-a47a2b91b569 id=0x7f08011f tag=9284cfaf-82a8-4526-91f2-ac1ea4fcc245)
+              mFragmentId=#7f08011f mContainerId=#7f08011f mTag=9284cfaf-82a8-4526-91f2-ac1ea4fcc245
+              mState=1 mWho=29d8df8a-ae75-4f21-b203-a47a2b91b569 mBackStackNesting=2
+              mAdded=false mRemoving=true mFromLayout=false mInLayout=false
+              mHidden=false mDetached=false mMenuVisible=true mHasMenu=false
+              mRetainInstance=false mUserVisibleHint=true
+              mFragmentManager=FragmentManager{804b6a3 in NavHostFragment{7db9234}}}
+              mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+              mParentFragment=NavHostFragment{7db9234} (4561b0cb-b6cd-4b52-8e79-0d39f09e1e0f id=0x7f08011f)
+              mPopDirection=false
+              Child FragmentManager{ccf0d59 in HomeFragment{eb99da0}}}:
+                Back Stack Index: 0
+                FragmentManager misc state:
+                  mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+                  mContainer=androidx.fragment.app.Fragment$5@60ffd1e
+                  mParent=HomeFragment{eb99da0} (29d8df8a-ae75-4f21-b203-a47a2b91b569 id=0x7f08011f tag=9284cfaf-82a8-4526-91f2-ac1ea4fcc245)
+                  mCurState=1 mStateSaved=false mStopped=true mDestroyed=false
+          Added Fragments:
+            #0: ListFragment{143e9ce} (8248bcd7-edde-4187-8f43-8813acf1b1c7 id=0x7f08011f tag=87d2ef22-0c02-4725-aa9f-3b8713d7664a)
+          Back Stack:
+            #0: BackStackEntry{407b97c #0 87d2ef22-0c02-4725-aa9f-3b8713d7664a}
+              mName=87d2ef22-0c02-4725-aa9f-3b8713d7664a mIndex=0 mCommitted=true
+              Operations:
+                Op #0: UNSET_PRIMARY_NAV HomeFragment{eb99da0} (29d8df8a-ae75-4f21-b203-a47a2b91b569 id=0x7f08011f tag=9284cfaf-82a8-4526-91f2-ac1ea4fcc245)
+                Op #1: REMOVE HomeFragment{eb99da0} (29d8df8a-ae75-4f21-b203-a47a2b91b569 id=0x7f08011f tag=9284cfaf-82a8-4526-91f2-ac1ea4fcc245)
+                Op #2: ADD ListFragment{143e9ce} (8248bcd7-edde-4187-8f43-8813acf1b1c7 id=0x7f08011f tag=87d2ef22-0c02-4725-aa9f-3b8713d7664a)
+                Op #3: UNSET_PRIMARY_NAV null
+                Op #4: SET_PRIMARY_NAV ListFragment{143e9ce} (8248bcd7-edde-4187-8f43-8813acf1b1c7 id=0x7f08011f tag=87d2ef22-0c02-4725-aa9f-3b8713d7664a)
+          Back Stack Index: 2
+          FragmentManager misc state:
+            mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+            mContainer=androidx.fragment.app.Fragment$5@72219ff
+            mParent=NavHostFragment{7db9234} (4561b0cb-b6cd-4b52-8e79-0d39f09e1e0f id=0x7f08011f)
+            mCurState=5 mStateSaved=false mStopped=false mDestroyed=false
+    Added Fragments:
+      #0: NavHostFragment{7db9234} (4561b0cb-b6cd-4b52-8e79-0d39f09e1e0f id=0x7f08011f)
+    Back Stack Index: 0
+    FragmentManager misc state:
+      mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+      mContainer=androidx.fragment.app.FragmentActivity$HostCallbacks@fc655d2
+      mCurState=5 mStateSaved=false mStopped=false mDestroyed=false
+
+  ACTIVITY spock.adb.sample/.MainActivity 7784ba2 pid=5845 userId=0 uid=10182 displayId=0(type=INTERNAL)
+    Local Activity 19155a3 State:
+      mResumed=true mStopped=false mFinished=false
+      mIsInMultiWindowMode=false mIsInPictureInPictureMode=false
+      mChangingConfigurations=false
+      mCurrentConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.2 fontWeightAdjustment=0}
+      mLoadersStarted=true
+      Active Fragments in 97d3526:
+        #0: ReportFragment{1e56567 #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+          mFragmentId=#0 mContainerId=#0 mTag=androidx.lifecycle.LifecycleDispatcher.report_fragment_tag
+          mState=5 mIndex=0 mWho=android:fragment:0 mBackStackNesting=0
+          mAdded=true mRemoving=false mFromLayout=false mInLayout=false
+          mHidden=false mDetached=false mMenuVisible=true mHasMenu=false
+          mRetainInstance=false mRetaining=false mUserVisibleHint=true
+          mFragmentManager=FragmentManager{97d3526 in HostCallbacks{83bbf14}}
+          mHost=android.app.Activity$HostCallbacks@83bbf14
+          Child FragmentManager{320a3bd in ReportFragment{1e56567}}:
+            FragmentManager misc state:
+              mHost=android.app.Activity$HostCallbacks@83bbf14
+              mContainer=android.app.Fragment$1@7f77db2
+              mParent=ReportFragment{1e56567 #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+              mCurState=5 mStateSaved=false mDestroyed=false
+      Added Fragments:
+        #0: ReportFragment{1e56567 #0 androidx.lifecycle.LifecycleDispatcher.report_fragment_tag}
+      FragmentManager misc state:
+        mHost=android.app.Activity$HostCallbacks@83bbf14
+        mContainer=android.app.Activity$HostCallbacks@83bbf14
+        mCurState=5 mStateSaved=false mDestroyed=false
+    ViewRoot:
+      mAdded=true
+      mRemoved=false
+      mStopped=false
+      mPausedForTransition=false
+      mConsumeBatchedInputScheduled=false
+      mConsumeBatchedInputImmediatelyScheduled=false
+      mPendingInputEventCount=0
+      mProcessInputEventsScheduled=false
+      mTraversalScheduled=false
+      mReportNextDraw=false
+      mLastReportedMergedConfiguration={mGlobalConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.32 fontWeightAdjustment=0} mOverrideConfig={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.2 fontWeightAdjustment=0}}
+      mLastConfigurationFromResources={1.0 310mcc260mnc [en_US] ldltr sw360dp w360dp h831dp 480dpi nrml long port finger -keyb/v/h -nav/h winConfig={ mBounds=Rect(0, 0 - 1080, 2636) mAppBounds=Rect(0, 0 - 1080, 2564) mMaxBounds=Rect(0, 0 - 1080, 2636) mDisplayRotation=ROTATION_0 mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=standard mAlwaysOnTop=undefined mRotation=ROTATION_0} s.3 fontWeightAdjustment=0}
+      mIsAmbientMode=false
+      mUnbufferedInputSource=0
+      mAttachInfo=       AttachInfo:
+        mHasWindowFocus=false
+        mWindowVisibility=0
+        mInTouchMode=true
+        mUnbufferedDispatchRequested=false
+      android.view.ViewRootImpl$NativePreImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$ImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$NativePostImeInputStage: mQueueLength=0
+      android.view.ViewRootImpl$WindowInputEventReceiver
+       mInputChannel: 4b69969 spock.adb.sample/spock.adb.sample.MainActivity (client)
+       mSeqMap: {}
+       mReceiverPtr:
+        mInputConsumer:
+          mResampleTouch = true
+          mChannel = 4b69969 spock.adb.sample/spock.adb.sample.MainActivity (client)
+          mMsgDeferred: false
+          Batches:
+              <empty>
+          mSeqChains:
+              <empty>
+          mConsumeTimes:
+              <empty>
+          
+        mBatchedInputEventPending: false
+        mOutboundQueue:
+          <empty>
+        
+    Choreographer:
+      mFrameScheduled=false
+      mLastFrameTime=2912487 (252 ms ago)
+    InsetsController:
+      InsetsState
+        mDisplayFrame=Rect(0, 0 - 1080, 2636)
+        mDisplayCutout=DisplayCutout{insets=Rect(0, 0 - 0, 0) waterfall=Insets{left=0, top=0, right=0, bottom=0} boundingRect={Bounds=[Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0), Rect(0, 0 - 0, 0)]} cutoutPathParserInfo={CutoutPathParserInfo{displayWidth=0 displayHeight=0 physicalDisplayWidth=0 physicalDisplayHeight=0 density={0.0} cutoutSpec={} rotation={0} scale={0.0} physicalPixelDisplaySizeRatio={0.0}}}}
+        mRoundedCorners=RoundedCorners{[RoundedCorner{position=TopLeft, radius=0, center=Point(0, 0)}, RoundedCorner{position=TopRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomRight, radius=0, center=Point(0, 0)}, RoundedCorner{position=BottomLeft, radius=0, center=Point(0, 0)}]}
+        mRoundedCornerFrame=Rect(0, 0 - 1080, 2636)
+        mPrivacyIndicatorBounds=PrivacyIndicatorBounds {static bounds=Rect(792, 0 - 1038, 72) rotation=0}
+        mDisplayShape=DisplayShape{ spec=11720875 displayWidth=1080 displayHeight=2636 physicalPixelDisplaySizeRatio=1.0 rotation=0 offsetX=0 offsetY=0 scale=1.0}
+          InsetsSource id=a4b20001 type=navigationBars frame=[0,2564][1080,2636] visible=true flags=SUPPRESS_SCRIM insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20004 type=systemGestures frame=[0,0][90,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20005 type=mandatorySystemGestures frame=[0,2540][1080,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20006 type=tappableElement frame=[0,0][0,0] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=a4b20024 type=systemGestures frame=[990,0][1080,2636] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=3 type=ime frame=[0,0][0,0] visible=false flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410000 type=statusBars frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410005 type=mandatorySystemGestures frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+          InsetsSource id=49410006 type=tappableElement frame=[0,0][1080,72] visible=true flags= insetsRoundedCornerFrame=false
+    WindowOnBackDispatcher:
+        Top Callback: android.view.ViewRootImpl$$ExternalSyntheticLambda17@325ebab
+        Callbacks: 
+          Callback: android.view.ViewRootImpl$$ExternalSyntheticLambda17@325ebab Priority=0
+    View Hierarchy:
+      DecorView@658f103[MainActivity]
+        android.widget.LinearLayout{89fb880 V.E...... ........ 0,0-1080,2564}
+          android.view.ViewStub{938beb9 G.E...... ......I. 0,0-0,0 #10201ca android:id/action_mode_bar_stub}
+          android.widget.FrameLayout{35bc2fe V.E...... ........ 0,72-1080,2564}
+            androidx.appcompat.widget.ActionBarOverlayLayout{1ef9a5f V.E...... ........ 0,0-1080,2492 #7f08007e app:id/decor_content_parent}
+              androidx.appcompat.widget.ActionBarOverlayLayout$NoSystemUiLayoutFlagView{887dcac V.E...... ........ 0,0-0,0}
+              androidx.appcompat.widget.ContentFrameLayout{1d8d75 V.E...... ........ 0,192-1080,2492 #1020002 android:id/content}
+                android.widget.ScrollView{b2d110a VFED.V... ........ 0,0-1080,2300}
+                  android.widget.LinearLayout{51d7d7b V.E...... ........ 0,0-1080,2206}
+                    android.widget.TextView{1ec1798 V.ED..... ........ 48,48-1032,215}
+                    android.widget.TextView{8468bf1 VFED..CL. ........ 48,215-1032,308}
+                    android.widget.TextView{21333d6 V.ED..... ........ 48,308-1032,441}
+                    android.widget.Button{97c7657 VFED..C.. ........ 48,441-1032,585}
+                    android.widget.Button{4571544 VFED..C.. ........ 48,585-1032,729}
+                    android.widget.Button{826f62d VFED..C.. ........ 48,729-1032,873}
+                    android.widget.Button{b66b762 VFED..C.. ........ 48,873-1032,1017}
+                    android.widget.Button{e6820f3 VFED..C.. ........ 48,1017-1032,1161}
+                    android.widget.Button{b5241b0 VFED..C.. ........ 48,1161-1032,1305}
+                    android.widget.TextView{29c829 V.ED..... ........ 48,1305-1032,1438}
+                    android.widget.Button{57ce7ae VFED..C.. ........ 48,1438-1032,1582}
+                    android.widget.Button{359d94f VFED..C.. ........ 48,1582-1032,1726}
+                    android.widget.Button{f91c8dc VFED..C.. ........ 48,1726-1032,1870}
+                    android.widget.Button{26dbde5 VFED..C.. ........ 48,1870-1032,2014}
+                    android.widget.Button{cb3d0ba VFED..C.. ........ 48,2014-1032,2158}
+              androidx.appcompat.widget.ActionBarContainer{c04bb6b V.ED..... ........ 0,0-1080,192 #7f080032 app:id/action_bar_container}
+                androidx.appcompat.widget.Toolbar{ee096c8 V.E...... ........ 0,0-1080,192 #7f080030 app:id/action_bar}
+                  androidx.appcompat.widget.AppCompatTextView{a415361 V.ED..... ........ 48,52-467,140}
+                  androidx.appcompat.widget.ActionMenuView{33e3e86 V.E...... ......ID 1080,12-1080,180}
+                androidx.appcompat.widget.ActionBarContextView{a31a347 G.E...... ......I. 0,0-0,0 #7f080038 app:id/action_context_bar}
+        android.view.View{6cc5774 V.ED..... ........ 0,2564-1080,2636 #1020030 android:id/navigationBarBackground}
+        android.view.View{f5ec49d V.ED..... ........ 0,0-1080,72 #102002f android:id/statusBarBackground}
+    Looper (main, tid 2) {cb3e4ad}
+      Message 0: { when=+321ms callback=android.view.View$ScrollabilityCache target=android.view.ViewRootImpl$ViewRootHandler }
+      (Total messages: 1, polling=false, quitting=false)
+    ResourcesManager:
+      total apks: 5
+      resources: 9
+      resource impls: 3
+    1 dumpables:
+    #0: AutofillManager
+        AutofillManager:
+          sessionId: 2147483647
+          state: UNKNOWN
+          context: spock.adb.sample.MainActivity@19155a3
+          service client: null
+          client: android.view.autofill.AutofillClientController@9afbd12 (android.os.BinderProxy@86f1e0f)
+          enabled: false
+          enabledAugmentedOnly: false
+          hasService: true
+          hasCallback: false
+          onInvisibleCalled false
+          last autofilled data: null
+          id of last fill UI shown: null
+          tracked views: null
+          fillable ids: null
+          entered ids: null
+          save trigger id: null
+          save on finish(): false
+          options: logLvl=2, compatMode=false, augmented=false, appDisabledExpiration=0
+          compat mode enabled:   fill dialog enabled: false
+          fill dialog enabled hints: [password, passwordAuto, creditCardNumber, creditCardSecurityCode, creditCardExpirationDate]
+        false
+          debug: true verbose: false
+        Autofill Compat Mode: false
+    Local FragmentActivity 19155a3 State:
+      mCreated=true mResumed=true mStopped=false    Back Stack Index: 0
+    FragmentManager misc state:
+      mHost=androidx.fragment.app.FragmentActivity$HostCallbacks@95b2ce3
+      mContainer=androidx.fragment.app.FragmentActivity$HostCallbacks@95b2ce3
+      mCurState=7 mStateSaved=false mStopped=false mDestroyed=false

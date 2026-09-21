@@ -3,7 +3,6 @@ package spock.adb.sample
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import androidx.appcompat.app.AppCompatActivity
 
 /**
  * Shows exactly what a deep link delivered, so Open Deep Link's report can be checked against
@@ -15,7 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
  *  - spocksample://nav/detail/99   (lands in the Navigation fragment stack instead)
  *  - spocksample://nowhere         (matches no filter: the plugin should say nothing handled it)
  */
-class DeepLinkActivity : AppCompatActivity() {
+class DeepLinkActivity : SampleActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

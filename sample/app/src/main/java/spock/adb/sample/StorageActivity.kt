@@ -3,7 +3,6 @@ package spock.adb.sample
 import android.content.Context
 import android.os.Bundle
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -26,7 +25,7 @@ val Context.userPrefs by preferencesDataStore(name = "user_prefs")
  *  - files/datastore/user_prefs.preferences_pb: the same, plus double
  *  - cache/ and code_cache/ files, for Clear Cache (only these go) versus Clear Data (all go)
  */
-class StorageActivity : AppCompatActivity() {
+class StorageActivity : SampleActivity() {
 
     private lateinit var output: TextView
 

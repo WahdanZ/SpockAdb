@@ -5,7 +5,6 @@ import android.os.Process
 import android.os.SystemClock
 import android.widget.TextView
 import androidx.activity.viewModels
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.ViewModel
 
 /**
@@ -16,7 +15,7 @@ import androidx.lifecycle.ViewModel
  *  - Process death (the plugin's action, or `am kill`): only saved state survives, and the pid changes.
  *  - Force stop / Restart / Clear data: everything resets.
  */
-class ProcessDeathActivity : AppCompatActivity() {
+class ProcessDeathActivity : SampleActivity() {
 
     class Counters : ViewModel() {
         var viewModelCount = 0

@@ -6,7 +6,6 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
 /**
@@ -14,7 +13,7 @@ import androidx.core.content.ContextCompat
  * so a Grant or Revoke from the plugin is visible here. Revoking a granted permission kills the
  * process, which is expected: Android does that.
  */
-class PermissionsActivity : AppCompatActivity() {
+class PermissionsActivity : SampleActivity() {
 
     private lateinit var status: TextView
 

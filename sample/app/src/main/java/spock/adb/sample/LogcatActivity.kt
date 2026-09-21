@@ -4,14 +4,13 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import androidx.appcompat.app.AppCompatActivity
 
 /**
  * Produces the kinds of log output the Logcat tab groups, filters and hands to the Assistant:
  * every level, a burst, a caught exception with its stack trace, secrets for the redactor, and a
  * real crash.
  */
-class LogcatActivity : AppCompatActivity() {
+class LogcatActivity : SampleActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
