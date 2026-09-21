@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Network: HTTP proxy, Wi-Fi / mobile data toggles -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Runtime permissions, for Grant / Revoke / Permission dialog -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Background work -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <application
+        android:name=".SampleApp"
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SpockSample">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Activity stack: a plain second screen, and one that starts its own task -->
+        <activity android:name=".StackActivity" android:exported="false" />
+        <activity
+            android:name=".SeparateTaskActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="spock.adb.sample.separate" />
+
+        <!-- Fragments: a Navigation host with nested child fragments -->
+        <activity android:name=".fragments.NavigationActivity" android:exported="true">
+            <nav-graph android:value="@navigation/nav_graph" />
+        </activity>
+
+        <!-- Deep links -->
+        <activity android:name=".DeepLinkActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="spocksample" android:host="open" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="sample.spock.adb" android:pathPrefix="/item" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".PermissionsActivity" android:exported="false" />
+        <activity android:name=".StorageActivity" android:exported="false" />
+        <activity android:name=".NetworkActivity" android:exported="false" />
+        <activity android:name=".LogcatActivity" android:exported="false" />
+        <activity android:name=".compose.ComposeInspectorActivity" android:exported="false" />
+        <activity android:name=".ViewsInspectorActivity" android:exported="false" />
+        <activity android:name=".background.BackgroundWorkActivity" android:exported="false" />
+        <activity android:name=".ProcessDeathActivity" android:exported="false" />
+
+        <service
+            android:name=".background.SampleJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver android:name=".background.AlarmReceiver" android:exported="false" />
+    </application>
+</manifest>

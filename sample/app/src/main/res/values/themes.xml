@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.SpockSample" parent="Theme.Material3.DayNight">
+        <item name="colorPrimary">#3F51B5</item>
+    </style>
+</resources>

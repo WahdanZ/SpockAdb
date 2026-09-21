@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="spock.adb.sample.fragments.HomeFragment"
+        android:label="Home">
+        <action android:id="@+id/toList" app:destination="@id/listFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/listFragment"
+        android:name="spock.adb.sample.fragments.ListFragment"
+        android:label="List">
+        <action android:id="@+id/toDetail" app:destination="@id/detailFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/detailFragment"
+        android:name="spock.adb.sample.fragments.DetailFragment"
+        android:label="Detail">
+        <argument android:name="itemId" app:argType="string" android:defaultValue="none" />
+        <!-- Deep link straight into the fragment stack: spocksample://nav/detail/42 -->
+        <deepLink app:uri="spocksample://nav/detail/{itemId}" />
+    </fragment>
+</navigation>
