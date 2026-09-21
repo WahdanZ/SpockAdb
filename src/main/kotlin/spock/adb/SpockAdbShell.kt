@@ -103,7 +103,7 @@ class SpockAdbShell(
         }
 
         tabs.addTab("Device", devices)
-        tabs.addTab("Storage", storage)
+        tabs.addTab(STORAGE_TAB, storage)
         tabs.addTab("Logcat", logcat)
         tabs.addTab("Commands", commands)
         tabs.addTab("UI Inspector", uiInspector)
@@ -112,7 +112,13 @@ class SpockAdbShell(
         assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
         // Read on arrival rather than on every device or app change: two dumpsys round trips,
         // one of them the whole alarm table, for a tab that may never be opened.
-        tabs.onSelected = { title -> if (title == BACKGROUND_WORK_TAB) backgroundWork.onShown() }
+        // Storage lists again for the same reason: its tree is read once, and the app writes.
+        tabs.onSelected = { title ->
+            when (title) {
+                BACKGROUND_WORK_TAB -> backgroundWork.onShown()
+                STORAGE_TAB -> storage.onShown()
+            }
+        }
 
         // The header and the tabs are both about the whole window, so they sit together above
         // the content rather than the tabs being part of it.
@@ -283,5 +289,6 @@ class SpockAdbShell(
         const val NO_DEVICES = "No devices connected"
         const val ASSISTANT_TAB = "Assistant"
         const val BACKGROUND_WORK_TAB = "Background Work"
+        const val STORAGE_TAB = "Storage"
     }
 }

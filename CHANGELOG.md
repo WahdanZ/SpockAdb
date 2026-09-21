@@ -28,6 +28,11 @@
 
 ### Fixed
 
+- **The Storage tab shows files the app wrote after it was listed.** The file tree was read once,
+  when the app was chosen, and had no way to be read again. SharedPreferences an app created
+  after that, such as the sample's after pressing Seed, never appeared. The tree is now listed
+  again whenever the Storage tab is brought forward, and has a refresh button of its own. Both
+  keep open folders open and leave the file being edited alone.
 - **Developer options no longer stop responding after a failed read.** When the device refused a
   shell command — an emulator whose adbd has run out of file descriptors answers every one with
   `closed` — the read behind the section threw out of its background task, which the IDE reported
