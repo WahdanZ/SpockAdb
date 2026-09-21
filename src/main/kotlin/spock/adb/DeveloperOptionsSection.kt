@@ -1,6 +1,8 @@
 package spock.adb
 
+import com.android.ddmlib.IDevice
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -48,6 +50,8 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
         toolTipText = "Put all three animation scales back to 1×"
         isEnabled = false
     }
+
+    private val log = Logger.getInstance(DeveloperOptionsSection::class.java)
 
     private var controller: AdbController? = null
     private var selectedDevice: () -> ConnectedDevice? = { null }
@@ -113,12 +117,12 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
         val request = reads.begin()
         val target = selectedDevice()?.device
         ApplicationManager.getApplication().executeOnPooledThread {
-            val dontKeep = target?.areDontKeepActivitiesEnabled()
-            val taps = target?.areShowTapsEnabled()
-            val bounds = target?.areShowLayoutBoundsEnabled()
-            val window = target?.getWindowAnimatorScale()
-            val transition = target?.getTransitionAnimationScale()
-            val duration = target?.getAnimatorDurationScale()
+            // Caught, not left to escape. A device whose adbd refuses the shell ("closed") threw
+            // out of this task, which the IDE reported as an internal error — and the answer
+            // below never ran, so the listeners removed above never came back and every control
+            // in the section stopped doing anything until a later read happened to succeed.
+            val read = runCatching { DeveloperSettings.read(target) }
+            read.exceptionOrNull()?.let { log.warn("Could not read developer options from the device", it) }
 
             ApplicationManager.getApplication().invokeLater {
                 // A refresh this one has replaced must not touch the controls: the listeners
@@ -126,18 +130,24 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
                 // them off for exactly as long as an answer is still outstanding.
                 if (!reads.isLatest(request)) return@invokeLater
                 removeListeners()
-                dontKeepActivities.isSelected = dontKeep == DontKeepActivitiesState.ENABLED
-                showTaps.isSelected = taps == ShowTapsState.ENABLED
-                showLayoutBounds.isSelected = bounds == ShowLayoutBoundsState.ENABLED
-                // A device answers "1" where the list holds "1.0", and "null" where the setting
-                // has never been written; both used to select nothing, or worse, select Off.
-                windowScale.selectedItem = animationScaleEntry(window, SCALES)
-                transitionScale.selectedItem = animationScaleEntry(transition, SCALES)
-                durationScale.selectedItem = animationScaleEntry(duration, SCALES)
-                markNonDefaults()
+                // A failed read leaves the controls showing what they last showed rather than
+                // resetting them to Off, which would claim a state nobody read.
+                read.getOrNull()?.let(::show)
                 addListeners()
             }
         }
+    }
+
+    private fun show(settings: DeveloperSettings) {
+        dontKeepActivities.isSelected = settings.dontKeep == DontKeepActivitiesState.ENABLED
+        showTaps.isSelected = settings.taps == ShowTapsState.ENABLED
+        showLayoutBounds.isSelected = settings.bounds == ShowLayoutBoundsState.ENABLED
+        // A device answers "1" where the list holds "1.0", and "null" where the setting has never
+        // been written; both used to select nothing, or worse, select Off.
+        windowScale.selectedItem = animationScaleEntry(settings.window, SCALES)
+        transitionScale.selectedItem = animationScaleEntry(settings.transition, SCALES)
+        durationScale.selectedItem = animationScaleEntry(settings.duration, SCALES)
+        markNonDefaults()
     }
 
     private fun addListeners() {
@@ -275,4 +285,26 @@ internal fun scaleText(value: String?): String = when {
 internal fun animationScaleEntry(raw: String?, choices: List<String>): String? {
     val value = raw?.trim()?.toFloatOrNull() ?: return null
     return choices.firstOrNull { it.toFloat() == value }
+}
+
+/** What [DeveloperOptionsSection] shows, read in one go. Every field is null without a device. */
+internal data class DeveloperSettings(
+    val dontKeep: DontKeepActivitiesState?,
+    val taps: ShowTapsState?,
+    val bounds: ShowLayoutBoundsState?,
+    val window: String?,
+    val transition: String?,
+    val duration: String?,
+) {
+    companion object {
+        /** Six blocking shell reads. Throws whatever the device's shell throws. */
+        fun read(device: IDevice?): DeveloperSettings = DeveloperSettings(
+            dontKeep = device?.areDontKeepActivitiesEnabled(),
+            taps = device?.areShowTapsEnabled(),
+            bounds = device?.areShowLayoutBoundsEnabled(),
+            window = device?.getWindowAnimatorScale(),
+            transition = device?.getTransitionAnimationScale(),
+            duration = device?.getAnimatorDurationScale(),
+        )
+    }
 }

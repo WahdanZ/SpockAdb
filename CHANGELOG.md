@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **Developer options no longer stop responding after a failed read.** When the device refused a
+  shell command — an emulator whose adbd has run out of file descriptors answers every one with
+  `closed` — the read behind the section threw out of its background task, which the IDE reported
+  as an internal error. Worse, the switches and animation scales had their listeners removed for
+  the read and only got them back when it succeeded, so none of them did anything until a later
+  read happened to work. A failed read is now logged, the controls keep showing what they showed,
+  and they keep working.
 - **A deep link that the device refused no longer reports success.** The Deep link field ran
   `am start`, threw away everything the device said, and showed `Opened deep link …` in a success
   notification — for a URI no activity handles, and for one that resolved to an activity the
