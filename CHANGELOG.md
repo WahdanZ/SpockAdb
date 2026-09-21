@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A deep link that the device refused no longer reports success.** The Deep link field ran
+  `am start`, threw away everything the device said, and showed `Opened deep link …` in a success
+  notification — for a URI no activity handles, and for one that resolved to an activity the
+  device refused to start. `android_open_deep_link` was closer but decided by looking for the
+  word `Error`, which a `Permission Denial` trace does not contain. Both now run `am start -W`,
+  parse what came back through one shared reader, and say which it was: opened, naming the
+  activity that claimed the link, which is the thing you actually wanted to know; unhandled,
+  naming the package when the intent was scoped to one; refused, with the device's own words
+  attached; or brought to the front, which is a success that says so plainly — the existing task
+  is resumed and the link is *not* delivered to the activity, so "Opened" was the wrong word for
+  it too. The reverse mistake is guarded just as carefully, because a link that did open being
+  called a failure is no better: output in wording the plugin does not recognise, `am` giving up
+  on waiting, and a slow cold start that outlasts the device's idle timeout are all reported as
+  sent-but-unconfirmed rather than guessed either way — and only lines the device itself printed
+  decide any of this, never the URI it echoes back, so opening `myapp://help/SecurityException`
+  no longer reports a refusal that never happened
+
+## [4.0.4] - 2026-09-20
+
 ### Added
 
 - **Connect an MCP client without handing out a credential, and revoke one that got out.** The
@@ -477,44 +498,8 @@
   unreachable. Actions missing from stored settings are now merged in on load, switched on,
   as a fresh install would have had them. Choices already made are untouched, and entries
   for actions that no longer exist are still left alone
-- **The All activities popup showed the parser's own bookkeeping instead of the stack.** Rows
-  read `0-com.example.myapplication`, `0-com.example.myapplication.MainActivity` and — where
-  `dumpsys` had given up a line the plugin could not read — the bare string `0-`, with package
-  and activity at the same weight and indentation done in tab characters. The popup is now an
-  **Activity Stack**: a heading per task naming the app — its display name over its package
-  where the device can prove one, `My Application` rather than `com.example.myapplication` —
-  its activities beneath it shortened to the part that is not the package, the task holding the
-  resumed activity badged `CURRENT`, and the full package or class name in a tooltip for a
-  narrow tool window that truncates a row. There is no shell command that simply prints an app's
-  name: it is read from the app's `ApplicationInfo`, which either holds the name outright or
-  points at a string resource, and in the second case the resource is resolved against the app's
-  own resources and accepted only when it turns out to be the one the manifest named — so a task
-  is never labelled with the wrong app's name, and an app whose name cannot be proven is shown
-  as its package, as before. Both reads happen in one batched shell call each, and neither can
-  fail the popup. An
-  activity `dumpsys` does not name is dropped in the parser rather than rendered, and the task
-  it belonged to says `No resumed activity` instead of showing an empty row. Two older faults
-  went with it: an activity appearing in two tasks always opened the first task's class,
-  because the class was looked up by the row's position in a list of strings; and package and
-  class names were cut short at their first digit or underscore — `com.android.launcher3` was
-  read as `com.android.launcher` — so those activities could never be opened at all
-- **A deep link that the device refused no longer reports success.** The Deep link field ran
-  `am start`, threw away everything the device said, and showed `Opened deep link …` in a success
-  notification — for a URI no activity handles, and for one that resolved to an activity the
-  device refused to start. `android_open_deep_link` was closer but decided by looking for the
-  word `Error`, which a `Permission Denial` trace does not contain. Both now run `am start -W`,
-  parse what came back through one shared reader, and say which it was: opened, naming the
-  activity that claimed the link, which is the thing you actually wanted to know; unhandled,
-  naming the package when the intent was scoped to one; refused, with the device's own words
-  attached; or brought to the front, which is a success that says so plainly — the existing task
-  is resumed and the link is *not* delivered to the activity, so "Opened" was the wrong word for
-  it too. The reverse mistake is guarded just as carefully, because a link that did open being
-  called a failure is no better: output in wording the plugin does not recognise, `am` giving up
-  on waiting, and a slow cold start that outlasts the device's idle timeout are all reported as
-  sent-but-unconfirmed rather than guessed either way — and only lines the device itself printed
-  decide any of this, never the URI it echoes back, so opening `myapp://help/SecurityException`
-  no longer reports a refusal that never happened
 
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...HEAD
 ## [4.0.3] - 2026-09-12
 
 ### Fixed
@@ -621,7 +606,6 @@
   `./gradlew test` skips them, but its coverage assertion always runs — a read-only tool cannot
   be added without deciding how it is smoke-tested
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.2...HEAD
 ## [4.0.2] - 2026-09-04
 
 ### Added
@@ -810,7 +794,8 @@
 - Enable and Disable Permissions of your application
 - Kill or Restart Application
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...HEAD
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.4...HEAD
+[4.0.4]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...v4.0.4
 [4.0.3]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.2...v4.0.3
 [4.0.2]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.0...v4.0.1
