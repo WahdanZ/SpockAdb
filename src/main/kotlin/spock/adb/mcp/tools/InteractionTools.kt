@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
+import spock.adb.command.openDeepLinkWithAmStart
 import java.util.Base64
 
 /** `android_take_screenshot` — the screen, as MCP image content. */
@@ -66,17 +67,18 @@ class OpenDeepLinkTool : AdbTool {
         val uri = arguments.requiredString("uri")
         val target = arguments.optionalString("packageName")
 
-        val command = buildString {
-            append("am start -a android.intent.action.VIEW -d ").append(ShellQuote.quote(uri))
-            target?.let { append(" -p ").append(ShellQuote.quote(it)) }
+        // Shares the panel's implementation, so the verdict — and the silence a slow cold
+        // start produces under `am -W` — cannot differ between an agent and a developer.
+        // Classified by AmStartResult rather than by looking for the word "Error": a
+        // Permission Denial trace does not contain it, so a refused link was reported as opened.
+        val result = device.openDeepLinkWithAmStart(uri, target)
+        val text = with(McpShell) {
+            listOfNotNull(result.message, result.raw.takeIf { it.isNotBlank() })
+                .joinToString("\n\n")
+                .truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
         }
 
-        val output = McpShell.run(device, command)
-        return if (output.contains("Error", ignoreCase = true)) {
-            ToolResult.error("Could not open $uri:\n$output")
-        } else {
-            ToolResult.text("Opened $uri.\n$output")
-        }
+        return if (result.succeeded) ToolResult.text(text) else ToolResult.error(text)
     }
 }
 
