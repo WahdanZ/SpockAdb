@@ -27,6 +27,7 @@ import spock.adb.command.RunJobRequest
 import spock.adb.device.ConnectedDevice
 import spock.adb.mcp.tools.BackgroundWorkText
 import spock.adb.parser.AlarmDump
+import spock.adb.parser.DumpDurations
 import spock.adb.parser.JobSchedulerDump
 import spock.adb.parser.JobSchedulerDumpParser
 import spock.adb.parser.PendingAlarm
@@ -34,6 +35,10 @@ import spock.adb.parser.ScheduledJob
 import java.awt.BorderLayout
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
@@ -60,6 +65,10 @@ class BackgroundWorkPanel(
     private val detailArea = JBTextArea().apply {
         isEditable = false
         font = JBUI.Fonts.create(Font.MONOSPACED, font.size)
+        // Wrapped: the tool window is usually docked narrow, and the Run Now result and the
+        // constraint lists are sentences that otherwise run off its right edge.
+        lineWrap = true
+        wrapStyleWord = true
     }
 
     private var device: ConnectedDevice? = null
@@ -68,6 +77,16 @@ class BackgroundWorkPanel(
 
     /** The device clock when [jobs] was read, which their run times are offsets from. */
     private var jobsClock: Long? = null
+
+    /**
+     * What Run Now reported, shown once the read that follows it lands.
+     *
+     * Run Now reads the jobs back so the table shows the job running and its schedule moved, and
+     * that read used to replace the result on the status line within a second. For a WorkManager
+     * job the result is the part that matters — WorkManager may still have skipped the Worker —
+     * so it is carried across the read and put in the details pane.
+     */
+    private var runNotice: String? = null
     private var alarms: List<PendingAlarm> = emptyList()
     private var busy = false
     private var disposed = false
@@ -248,9 +267,17 @@ class BackgroundWorkPanel(
             alarmsResult.exceptionOrNull()?.let { "Alarms: ${it.message}" },
             alarmsDump?.problem?.let { "Alarms: $it" },
         )
+        val notice = runNotice.also { runNotice = null }
         if (problems.isEmpty()) {
-            detailArea.text = ""
-            status("${jobs.size} job(s) and ${alarms.size} alarm(s) for $app")
+            val counts = "${jobs.size} job(s) and ${alarms.size} alarm(s) for $app"
+            if (notice == null) {
+                detailArea.text = ""
+                status(counts)
+            } else {
+                status("${notice.substringBefore(". ")}. $counts")
+                detailArea.text = "Run Now\n\n$notice"
+                detailArea.caretPosition = 0
+            }
         } else {
             // A dump that did not parse is still worth reading: show it rather than nothing.
             status(problems.joinToString("  "))
@@ -301,6 +328,7 @@ class BackgroundWorkPanel(
                 result
                     .onSuccess {
                         status(it)
+                        runNotice = it
                         // Reading back shows whether it is now running, and where its schedule moved.
                         refresh()
                     }
@@ -348,9 +376,14 @@ class BackgroundWorkPanel(
         private const val LISTS_PROPORTION = 0.6f
         private const val DETAILS_PROPORTION = 0.65f
 
-        /** One row of the jobs table. */
+        /**
+         * One row of the jobs table.
+         *
+         * The id alone: WorkManager's namespace is 32 characters and pushed the id out of a docked
+         * tool window's column. The namespace is in the details pane, and Run Now finds it anyway.
+         */
         fun jobRow(job: ScheduledJob, now: Long = System.currentTimeMillis()): Array<Any> = arrayOf(
-            job.namespace?.let { "$it:${job.jobId}" } ?: job.jobId.toString(),
+            job.jobId.toString(),
             if (job.isWorkManager) {
                 "WorkManager" + (job.workSpecId?.let { " ($it)" } ?: "")
             } else {
@@ -359,18 +392,59 @@ class BackgroundWorkPanel(
             if (job.isPeriodic) "periodic" else "one-off",
             BackgroundWorkText.state(job),
             job.blockers.joinToString(", ") { JobSchedulerDumpParser.describeConstraint(it) },
-            BackgroundWorkText.nextRun(job, now).orEmpty(),
+            compactNextRun(job, now),
             if (job.failures > 0) job.failures.toString() else "",
         )
 
         /** One row of the alarms table. */
         fun alarmRow(alarm: PendingAlarm): Array<Any> = arrayOf(
             alarm.type,
-            alarm.tag.orEmpty(),
-            BackgroundWorkText.trigger(alarm),
+            shortTag(alarm),
+            compactTrigger(alarm),
             BackgroundWorkText.repeats(alarm).orEmpty(),
             if (alarm.isExact) "exact" else "",
         )
+
+        /**
+         * `in 9m 45s (21:35)`: the relative time first, because a table cell is cut from the
+         * right, and the clock time without the date when it is today.
+         */
+        fun compactNextRun(job: ScheduledJob, now: Long): String {
+            val offset = job.earliestRunOffsetMillis ?: return ""
+            return if (offset >= 0) {
+                "in ${DumpDurations.describe(offset)} (${shortClock(now + offset, now)})"
+            } else {
+                "overdue ${DumpDurations.describe(offset)}"
+            }
+        }
+
+        /** The alarm's trigger in the same shape as [compactNextRun]. */
+        fun compactTrigger(alarm: PendingAlarm): String {
+            val at = alarm.triggerAtMillis ?: return "never"
+            val dueIn = alarm.dueInMillis ?: return shortClock(at, at)
+            val span = DumpDurations.describe(dueIn)
+            val relative = if (dueIn >= 0) "in $span" else "overdue $span"
+            return "$relative (${shortClock(at, at - dueIn)})"
+        }
+
+        /** `21:35` today, `Sep 22 03:27` on another day. */
+        fun shortClock(at: Long, now: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+            val time = Instant.ofEpochMilli(at).atZone(zone)
+            val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+            val pattern = if (time.toLocalDate() == today) "HH:mm" else "MMM d HH:mm"
+            return time.format(DateTimeFormatter.ofPattern(pattern, Locale.US))
+        }
+
+        /**
+         * `ALARM_REPEATING` for `*walarm*:spock.adb.sample.ALARM_REPEATING`: without the wakeup
+         * marker, which the Type column already shows, and without the app's own package, which
+         * every row shares. The full tag is in the details pane.
+         */
+        fun shortTag(alarm: PendingAlarm): String {
+            val tag = alarm.tag ?: return ""
+            val action = if (tag.startsWith("*")) tag.substringAfter(':') else tag
+            return action.removePrefix("${alarm.packageName}.")
+        }
 
         private fun readOnlyModel(columns: Array<String>) = object : DefaultTableModel(columns, 0) {
             override fun isCellEditable(row: Int, column: Int) = false
