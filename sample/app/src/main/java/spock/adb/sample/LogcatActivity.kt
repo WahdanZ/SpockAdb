@@ -38,7 +38,7 @@ class LogcatActivity : AppCompatActivity() {
                 }
             }
             button("Log values the redactor should hide") {
-                Log.i(SampleApp.TAG, "Authorization: Bearer ${"eyJhbGciOiJub25lIn0"}.${"eyJub3RlIjoiZXhhbXBsZS1vbmx5In0"}.not-a-real-signature")
+                Log.i(SampleApp.TAG, "Authorization: Bearer $DEMO_JWT")
                 Log.i(SampleApp.TAG, "login email=spock@example.com password=hunter2")
             }
             button("Crash the app (uncaught exception)") {
@@ -51,4 +51,17 @@ class LogcatActivity : AppCompatActivity() {
     }
 
     private fun parseAmount(text: String): Double = text.toDouble()
+
+    private companion object {
+        /**
+         * Assembled rather than written out whole, as in scripts/demo/LogcatDemo.kt.
+         *
+         * It has to keep the shape the Logcat redactor matches, which is what it is here to show,
+         * but a complete JWT literal in a tracked file trips secret scanners. Not a credential:
+         * the header says `alg: none` and the payload says it is an example.
+         */
+        const val JWT_HEADER = "eyJhbGciOiJub25lIn0"
+        const val JWT_PAYLOAD = "eyJub3RlIjoiZXhhbXBsZS1vbmx5In0"
+        val DEMO_JWT = "$JWT_HEADER.$JWT_PAYLOAD.not-a-real-signature"
+    }
 }
