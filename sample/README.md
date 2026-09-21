@@ -22,6 +22,7 @@ feature it is for.
 | Logcat tab, redaction, Assistant hand-off                    | *Logcat*                             | Every level, a 200-line burst, a stack trace, secrets, a crash, an ANR                                                                                                      |
 | UI Inspector, accessibility audit, element MCP tools         | *UI Inspector — Compose* / *— Views* | Test tags (switchable `testTagsAsResourceId`), a text field, a checkbox, a list, and two deliberate accessibility faults                                                    |
 | Background Work tab, `android_run_job_now`                   | *Background work*                    | WorkManager one-off with constraints, periodic, and a flaky worker that backs off; JobScheduler jobs 4242 and 4343; exact, inexact and repeating alarms; a log of what ran  |
+| Device conditions: Doze, standby bucket, battery            | *Background work* → *What the app sees* | Doze, the bucket and the battery as the app's own APIs report them. The app asks for `SCHEDULE_EXACT_ALARM` and starts without it, so its bucket can move. *Allow exact alarms* grants it, and then Android keeps the app at Working set or higher |
 | Restart with debugger, Input Text, Show taps / layout bounds | any screen                           | The debug build is debuggable; the Views screen has a text field                                                                                                            |
 
 Everything the app does in the background is written to Logcat under the tag `SpockSample`.

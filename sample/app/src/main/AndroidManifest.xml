@@ -15,8 +15,10 @@
 
     <!-- Background work -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- SCHEDULE_EXACT_ALARM, not USE_EXACT_ALARM: it is off until granted in Settings, and an app
+         allowed exact alarms never drops below the working set bucket on Android 12+. Leaving it
+         off keeps the standby bucket controls testable; grant it to see the clamp. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".SampleApp"

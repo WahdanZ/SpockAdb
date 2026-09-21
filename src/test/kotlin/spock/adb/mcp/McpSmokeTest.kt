@@ -252,6 +252,7 @@ class McpSmokeTest {
             "android_list_app_storage" to "{}",
             "android_get_scheduled_jobs" to """{"packageName":"com.android.settings"}""",
             "android_get_pending_alarms" to """{"packageName":"android"}""",
+            "android_get_device_conditions" to """{"packageName":"com.android.settings"}""",
             // Default sections only: the screenshot section is covered by its own tool above.
             "android_get_debug_context" to "{}",
         )

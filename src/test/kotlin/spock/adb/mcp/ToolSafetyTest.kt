@@ -41,6 +41,8 @@ class ToolSafetyTest {
                 "android_set_app_preference",
                 "android_delete_app_preference",
                 "android_run_adb_command",
+                // Changes how every app on the device behaves until reset, and survives the session.
+                "android_force_doze",
             ),
             ToolRegistry.bySafety(ToolSafety.DESTRUCTIVE).map { it.name }.toSet(),
         )
@@ -74,6 +76,7 @@ class ToolSafetyTest {
                 "android_read_app_storage",
                 "android_get_scheduled_jobs",
                 "android_get_pending_alarms",
+                "android_get_device_conditions",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )

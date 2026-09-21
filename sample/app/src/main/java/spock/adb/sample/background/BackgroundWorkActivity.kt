@@ -1,6 +1,10 @@
 package spock.adb.sample.background
 
 import android.app.job.JobScheduler
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.os.Bundle
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -24,6 +28,7 @@ import java.util.concurrent.TimeUnit
 class BackgroundWorkActivity : AppCompatActivity() {
 
     private lateinit var log: TextView
+    private lateinit var appView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +45,10 @@ class BackgroundWorkActivity : AppCompatActivity() {
             }
             button("AlarmManager: exact, inexact and repeating") { result.text = AlarmReceiver.schedule(this@BackgroundWorkActivity) }
             button("Cancel everything") { result.text = cancelAll() }
+            heading("What the app sees")
+            note("Doze, standby bucket and battery as this app's own APIs report them. Change them from the plugin's Device conditions, then Refresh.")
+            appView = output()
+            button("Allow exact alarms (Settings)") { openExactAlarmSettings() }
             heading("What has run")
             log = output()
             button("Refresh") { refresh() }
@@ -53,6 +62,13 @@ class BackgroundWorkActivity : AppCompatActivity() {
 
     private fun refresh() {
         log.text = RunLog.read(this)
+        appView.text = AppConditions.describe(this)
+    }
+
+    private fun openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+        }
     }
 
     private fun scheduleAll(): String {
