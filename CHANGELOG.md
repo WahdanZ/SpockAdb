@@ -34,7 +34,6 @@
   fragments, follows nested child fragments, reports a Navigation host's destination rather than
   the `NavHostFragment`, and skips hidden fragments. The sample app's screens also gain a toolbar
   Up arrow that works like Back, including popping the Navigation back stack.
-
 - **Developer options no longer stop responding after a failed read.** When the device refused a
   shell command — an emulator whose adbd has run out of file descriptors answers every one with
   `closed` — the read behind the section threw out of its background task, which the IDE reported
