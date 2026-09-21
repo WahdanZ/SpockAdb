@@ -1,0 +1,17 @@
+Started users: [0]
+Registered 1 jobs:
+  JOB #u0a60/3: 44ab12c com.example.app/.LegacyJobService
+    u0a60 tag=*job*/com.example.app/.LegacyJobService
+    Source: uid=u0a60 user=0 pkg=com.example.app
+    JobInfo:
+      Service: com.example.app/.LegacyJobService
+      Requires: charging=true deviceIdle=true
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CHARGING IDLE
+    Satisfied constraints: IDLE APP_NOT_IDLE DEVICE_NOT_DOZING
+    Tracking: BATTERY IDLE
+    Enqueue time: -1h0m0s0ms
+    Run time: earliest=none, latest=none
+    Ready: false (job=false pending=false active=false user=true)
+
+Pending queue:

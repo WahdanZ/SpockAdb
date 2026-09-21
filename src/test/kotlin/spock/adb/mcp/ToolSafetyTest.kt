@@ -72,6 +72,8 @@ class ToolSafetyTest {
                 "android_get_http_proxy",
                 "android_list_app_storage",
                 "android_read_app_storage",
+                "android_get_scheduled_jobs",
+                "android_get_pending_alarms",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )

@@ -1,0 +1,27 @@
+Current Alarm Manager state:
+  Settings:
+    min_futurity=+5s0ms
+  nowRTC=1570182000000=2019-10-04 10:40:00 nowELAPSED=500000000
+  mLastTimeChangeClockTime=1570100000000=2019-10-03 11:53:20
+  Next non-wakeup alarm: +20m0s0ms = 2019-10-04 11:00:00
+
+  Pending alarm batches: 2
+Batch{3e4a1b2 num=1 start=501200000 end=501200000 flgs=0x1}:
+    RTC_WAKEUP #0: Alarm{8d6d443 type 0 when 1570183200000 com.example.app}
+      tag=*walarm*:com.example.app.ACTION_REMIND
+      type=0 whenElapsed=+20m0s0ms when=2019-10-04 11:00:00
+      window=0 repeatInterval=86400000 count=0 flags=0x1
+      operation=PendingIntent{f1e2d3c: PendingIntentRecord{a0b1c2d com.example.app broadcastIntent}}
+Batch{7c8d9e0 num=2 start=503600000 end=504500000}:
+    ELAPSED #0: Alarm{2b3c4d5 type 3 when 503600000 com.example.app}
+      tag=*alarm*:com.example.app.ACTION_REFRESH
+      type=3 whenElapsed=+1h0m0s0ms when=+1h0m0s0ms
+      window=+15m0s0ms repeatInterval=0 count=0 flags=0x0
+      operation=PendingIntent{9a8b7c6: PendingIntentRecord{5d4e3f2 com.example.app broadcastIntent}}
+    ELAPSED_WAKEUP #1: Alarm{6e7f8a9 type 2 when 503700000 android}
+      tag=*walarm*:*job.delay*
+      type=2 whenElapsed=+1h1m40s0ms when=+1h1m40s0ms
+      window=+15m0s0ms repeatInterval=0 count=0 flags=0x0
+      listener=android.app.AlarmManager$ListenerWrapper@1f2e3d4
+
+  Past-due non-wakeup alarms: (none)

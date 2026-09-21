@@ -250,12 +250,12 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-50 tools, in three levels.
+53 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (22) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage` |
-| **Safe action** (21) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy` |
+| **Read-only** (24) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms` |
+| **Safe action** (22) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now` |
 | **Destructive** (7) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command` |
 
 Rules that hold regardless of what a client asks for:
@@ -506,6 +506,29 @@ A write re-reads the file after stopping the app and refuses if it changed since
 replaces it and reads it back. What the editor does not understand is preserved: unknown XML
 elements and unknown protobuf fields survive an edit. Proto DataStore files with the app's own
 schema are listed as unsupported and never decoded.
+
+### Background work tools
+
+`android_get_scheduled_jobs` reads `dumpsys jobscheduler <package>` and lists each job the app
+has with JobScheduler, which is also where WorkManager's workers live on API 23 and above: job
+id, service, periodic or one-off, the constraints it requires and which of them are unsatisfied
+right now, backoff, failure count, next and last run. WorkManager's work spec id is shown only
+when the dump prints the job's extras readably. Usually it prints only their size, and then the
+tool says the id is not shown rather than guessing.
+
+`android_get_pending_alarms` reads `dumpsys alarm` and lists the app's alarms with their next
+trigger as a device clock time, their repeat interval and whether they are exact.
+
+`android_run_job_now` runs `cmd jobscheduler run -f`, which starts a job now whatever its
+constraints. It is a **safe action**: it runs code the app already scheduled, and changes no
+setting. It needs Android 7.0 (API 24); a job in a namespace needs Android 14. The namespace is
+found from the app's jobs when it is not given, which matters because WorkManager 2.10+ puts all
+its jobs in the `androidx.work.systemjobscheduler` namespace on API 34+.
+
+"Started" means JobScheduler started the job. For a WorkManager job, WorkManager then checks
+whether the work is due and puts periodic work inside its period, or work in retry backoff, back
+without running the Worker. The dump cannot show which WorkManager jobs are periodic, so the
+result says this rather than claiming the Worker ran. One-off work does run.
 
 ### `android_select_project`
 

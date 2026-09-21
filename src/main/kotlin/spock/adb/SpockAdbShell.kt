@@ -11,6 +11,7 @@ import com.intellij.util.ui.JBUI
 import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantPanel
 import spock.adb.assistant.AssistantPrefill
+import spock.adb.backgroundwork.BackgroundWorkPanel
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.device.ConnectedDevice
 import spock.adb.logcat.LogcatPanel
@@ -60,6 +61,7 @@ class SpockAdbShell(
     private val logcat = LogcatPanel(project)
     private val commands = CommandCenterPanel(project)
     private val uiInspector = UiInspectorPanel(project)
+    private val backgroundWork = BackgroundWorkPanel(project)
     private val mcp = McpServerPanel(project)
 
     /**
@@ -86,7 +88,7 @@ class SpockAdbShell(
     }
 
     init {
-        listOfNotNull(storage, logcat, commands, uiInspector, mcp, assistant)
+        listOfNotNull(storage, logcat, commands, uiInspector, backgroundWork, mcp, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
 
@@ -105,8 +107,12 @@ class SpockAdbShell(
         tabs.addTab("Logcat", logcat)
         tabs.addTab("Commands", commands)
         tabs.addTab("UI Inspector", uiInspector)
+        tabs.addTab(BACKGROUND_WORK_TAB, backgroundWork)
         tabs.addTab("MCP Server", mcp)
         assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
+        // Read on arrival rather than on every device or app change: two dumpsys round trips,
+        // one of them the whole alarm table, for a tab that may never be opened.
+        tabs.onSelected = { title -> if (title == BACKGROUND_WORK_TAB) backgroundWork.onShown() }
 
         // The header and the tabs are both about the whole window, so they sit together above
         // the content rather than the tabs being part of it.
@@ -202,6 +208,7 @@ class SpockAdbShell(
         logcat.setDevice(device)
         commands.setDevice(device)
         uiInspector.setDevice(device)
+        backgroundWork.setDevice(device)
         refreshAgentTarget()
     }
 
@@ -214,6 +221,7 @@ class SpockAdbShell(
     private fun selectApp(packageName: String) {
         controller.selectedApp = packageName
         storage.setApp(packageName)
+        backgroundWork.setApp(packageName)
         devices.setApp()
     }
 
@@ -274,5 +282,6 @@ class SpockAdbShell(
         const val TOOL_WINDOW_ID = "Spock ADB"
         const val NO_DEVICES = "No devices connected"
         const val ASSISTANT_TAB = "Assistant"
+        const val BACKGROUND_WORK_TAB = "Background Work"
     }
 }

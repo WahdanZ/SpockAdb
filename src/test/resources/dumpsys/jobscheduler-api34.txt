@@ -1,0 +1,865 @@
+Settings:
+  min_ready_non_active_jobs_count=5 
+  max_non_active_job_batch_delay_ms=1860000 
+  heavy_use_factor=0.9 
+  moderate_use_factor=0.5 
+  min_linear_backoff_time_ms=10000 
+  min_exp_backoff_time_ms=10000 
+  system_stop_to_failure_ratio=3 
+  conn_congestion_delay_frac=0.5 
+  conn_prefetch_relax_frac=0.5 
+  conn_use_cell_signal_strength=true 
+  conn_update_all_jobs_min_interval_ms=60000 
+  conn_low_signal_strength_relax_frac=0.5 
+  prefetch_force_batch_relax_threshold_ms=3600000 
+  enable_api_quotas=true 
+  aq_schedule_count=250 
+  aq_schedule_window_ms=60000 
+  aq_schedule_throw_exception=true 
+  aq_schedule_return_failure=false 
+  enable_execution_safeguards_udc=true 
+  es_u_timeout_uij_count=2 
+  es_u_timeout_ej_count=5 
+  es_u_timeout_reg_count=3 
+  es_u_timeout_total_count=10 
+  es_u_timeout_window_ms=86400000 
+  es_u_anr_count=3 
+  es_u_anr_window_ms=21600000 
+  runtime_min_guarantee_ms=600000 
+  runtime_min_ej_guarantee_ms=180000 
+  runtime_free_quota_max_limit_ms=1800000 
+  runtime_min_ui_guarantee_ms=21600000 
+  runtime_ui_limit_ms=43200000 
+  runtime_min_ui_data_transfer_guarantee_buffer_factor=1.35 
+  runtime_min_ui_data_transfer_guarantee_ms=21600000 
+  runtime_cumulative_ui_limit_ms=86400000 
+  runtime_use_data_estimates_for_limits=false 
+  persist_in_split_files=true 
+  max_num_persisted_job_work_items=100000 
+  enable_tare=false 
+  
+  PrefetchController:
+    pc_launch_time_threshold_ms=25200000 
+    pc_launch_time_allowance_ms=1200000 
+  
+  FlexibilityController:
+    fc_enable_flexibility=false 
+    fc_flexibility_deadline_proximity_limit_ms=900000 
+    fc_fallback_flexibility_deadline_ms=259200000 
+    fc_min_time_between_flexibility_alarms_ms=60000 
+    fc_percents_to_drop_num_flexible_constraints=[50, 60, 70, 80] 
+    fc_rescheduled_job_deadline_ms=3600000 
+    fc_max_rescheduled_deadline_ms=432000000 
+  
+  QuotaController:
+    qc_allowed_time_per_period_exempted_ms=600000 
+    qc_allowed_time_per_period_active_ms=600000 
+    qc_allowed_time_per_period_working_ms=600000 
+    qc_allowed_time_per_period_frequent_ms=600000 
+    qc_allowed_time_per_period_rare_ms=600000 
+    qc_allowed_time_per_period_restricted_ms=600000 
+    qc_in_quota_buffer_ms=30000 
+    qc_window_size_exempted_ms=600000 
+    qc_window_size_active_ms=600000 
+    qc_window_size_working_ms=7200000 
+    qc_window_size_frequent_ms=28800000 
+    qc_window_size_rare_ms=86400000 
+    qc_window_size_restricted_ms=86400000 
+    qc_max_execution_time_ms=14400000 
+    qc_max_job_count_exempted=75 
+    qc_max_job_count_active=75 
+    qc_max_job_count_working=120 
+    qc_max_job_count_frequent=200 
+    qc_max_job_count_rare=48 
+    qc_max_job_count_restricted=10 
+    qc_rate_limiting_window_ms=60000 
+    qc_max_job_count_per_rate_limiting_window=20 
+    qc_max_session_count_exempted=75 
+    qc_max_session_count_active=75 
+    qc_max_session_count_working=10 
+    qc_max_session_count_frequent=8 
+    qc_max_session_count_rare=3 
+    qc_max_session_count_restricted=1 
+    qc_max_session_count_per_rate_limiting_window=20 
+    qc_timing_session_coalescing_duration_ms=5000 
+    qc_min_quota_check_delay_ms=60000 
+    qc_ej_limit_exempted_ms=3600000 
+    qc_ej_limit_active_ms=1800000 
+    qc_ej_limit_working_ms=1800000 
+    qc_ej_limit_frequent_ms=600000 
+    qc_ej_limit_rare_ms=600000 
+    qc_ej_limit_restricted_ms=300000 
+    qc_ej_limit_addition_installer_ms=1800000 
+    qc_ej_limit_addition_special_ms=900000 
+    qc_ej_window_size_ms=86400000 
+    qc_ej_top_app_time_chunk_size_ms=30000 
+    qc_ej_reward_top_app_ms=10000 
+    qc_ej_reward_interaction_ms=15000 
+    qc_ej_reward_notification_seen_ms=0 
+    qc_ej_grace_period_temp_allowlist_ms=180000 
+    qc_ej_grace_period_top_app_ms=60000 
+    qc_quota_bump_additional_duration_ms=60000 
+    qc_quota_bump_additional_job_count=2 
+    qc_quota_bump_additional_session_count=1 
+    qc_quota_bump_window_size_ms=28800000 
+    qc_quota_bump_limit=8 
+
+Thermal status: 0
+
+QuotaTracker:
+  Is enabled: true
+  Is global quota free: false
+  Current elapsed time: 212195326
+  
+  
+  In quota alarms:
+    NOT WAITING
+  
+  Per-app free quota:
+
+Battery charging: false
+Battery not low: true
+
+Started users: [0]
+
+Media Cloud Providers: {}
+
+Registered 261 jobs:
+  JOB #u0a119/0: fa425e3 com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#0
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=false batteryNotLow=false deviceIdle=true
+      Extras: mParcelledData.dataSize=248
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: IDLE [0x4]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Unsatisfied constraints: IDLE WITHIN_QUOTA [0x1000004]
+    Constraint history:
+      -2d10h55m39s249ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -2d10h55m39s249ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -2d10h55m39s249ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400000]
+      -2d10h55m39s249ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -2d10h52m18s456ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+      -22h26m24s663ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Tracking: IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m39s249ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/9: ca02e99 com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#9
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=true batteryNotLow=false deviceIdle=true
+      Extras: mParcelledData.dataSize=248
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CHARGING IDLE [0x5]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Unsatisfied constraints: CHARGING IDLE WITHIN_QUOTA [0x1000005]
+    Constraint history:
+      -2d10h55m39s248ms = BATTERY_NOT_LOW [0x2]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW BACKGROUND_NOT_RESTRICTED [0x400002]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400002]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400002]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -2d10h52m18s456ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -22h23m4s657ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Tracking: BATTERY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m39s248ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/10: c693d3f com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#10
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=true batteryNotLow=false deviceIdle=true
+      Extras: mParcelledData.dataSize=248
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CHARGING IDLE [0x5]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Unsatisfied constraints: CHARGING IDLE WITHIN_QUOTA [0x1000005]
+    Constraint history:
+      -2d10h55m39s248ms = BATTERY_NOT_LOW [0x2]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW BACKGROUND_NOT_RESTRICTED [0x400002]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400002]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400002]
+      -2d10h55m39s248ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -2d10h52m18s456ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -22h23m4s657ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Tracking: BATTERY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m39s248ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/11: 9bc1b55 com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#11
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=true batteryNotLow=false deviceIdle=true
+      Extras: mParcelledData.dataSize=248
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CHARGING IDLE CONNECTIVITY [0x10000005]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Unsatisfied constraints: CHARGING IDLE CONNECTIVITY WITHIN_QUOTA [0x11000005]
+    Constraint history:
+      -2d10h55m39s247ms = BATTERY_NOT_LOW CONNECTIVITY BACKGROUND_NOT_RESTRICTED [0x10400002]
+      -2d10h55m39s247ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x12400002]
+      -2d10h55m39s247ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x13400002]
+      -2d10h55m39s247ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400002]
+      -2d10h55m18s456ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -2d10h52m18s456ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400002]
+      -22h26m4s659ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -22h23m4s657ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Tracking: BATTERY CONNECTIVITY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m39s247ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/12: 3e6e5b com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#12
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=true batteryNotLow=false deviceIdle=true
+      Extras: mParcelledData.dataSize=248
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: NOT_METERED&INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CHARGING IDLE CONNECTIVITY [0x10000005]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Unsatisfied constraints: CHARGING IDLE CONNECTIVITY WITHIN_QUOTA [0x11000005]
+    Constraint history:
+      -2d10h55m39s246ms = BATTERY_NOT_LOW CONNECTIVITY BACKGROUND_NOT_RESTRICTED [0x10400002]
+      -2d10h55m39s246ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x12400002]
+      -2d10h55m39s246ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x13400002]
+      -2d10h55m39s246ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400002]
+      -2d10h55m18s456ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -2d10h52m18s456ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400002]
+      -22h26m4s659ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -22h23m4s657ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+    Tracking: BATTERY CONNECTIVITY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m39s246ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/50: 2fc44cf com.google.android.dialer/com.android.dialer.spam.inapp.SpamJobService
+    u0a119 tag=*job*/com.google.android.dialer/com.android.dialer.spam.inapp.SpamJobService#50
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/com.android.dialer.spam.inapp.SpamJobService
+      PERIODIC: interval=+1h0m0s0ms flex=+1h0m0s0ms
+      PERSISTED
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=true
+      Extras: {spam_jobs_interval=3600000}
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: NOT_METERED&INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: TIMING_DELAY DEADLINE IDLE CONNECTIVITY [0xd0000004]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+    Unsatisfied constraints: IDLE CONNECTIVITY [0x10000004]
+    Constraint history:
+      -2d10h56m15s202ms = TIMING_DELAY [0x80000000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE [0xc0000000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE BACKGROUND_NOT_RESTRICTED [0xc0400000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0xc2400000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0xc3400000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+      -2d10h55m41s782ms = TIMING_DELAY DEADLINE CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xdb400000]
+      -2d10h55m18s456ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+      -22h26m24s663ms = TIMING_DELAY DEADLINE CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xdb400000]
+      -22h26m4s659ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+    Tracking: CONNECTIVITY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: EXEMPTED
+    Enqueue time: -2d10h56m18s318ms
+    Run time: earliest=-2d10h56m18s318ms, latest=-2d10h56m18s318ms, original latest=-2d10h56m18s318ms
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/51: 8bfd12e com.google.android.dialer/com.android.dialer.spam.inapp.SpamJobService
+    u0a119 tag=*job*/com.google.android.dialer/com.android.dialer.spam.inapp.SpamJobService#51
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/com.android.dialer.spam.inapp.SpamJobService
+      PERIODIC: interval=+8h0m0s0ms flex=+8h0m0s0ms
+      PERSISTED
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=true
+      Extras: {spam_jobs_interval=28800000}
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: TIMING_DELAY DEADLINE IDLE CONNECTIVITY [0xd0000004]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+    Unsatisfied constraints: IDLE CONNECTIVITY [0x10000004]
+    Constraint history:
+      -2d10h56m15s202ms = TIMING_DELAY [0x80000000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE [0xc0000000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE BACKGROUND_NOT_RESTRICTED [0xc0400000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0xc2400000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0xc3400000]
+      -2d10h56m15s202ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+      -2d10h55m41s782ms = TIMING_DELAY DEADLINE CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xdb400000]
+      -2d10h55m18s456ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+      -22h26m24s663ms = TIMING_DELAY DEADLINE CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xdb400000]
+      -22h26m4s659ms = TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400000]
+    Tracking: CONNECTIVITY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: EXEMPTED
+    Enqueue time: -2d10h56m18s318ms
+    Run time: earliest=-2d10h56m18s318ms, latest=-2d10h56m18s318ms, original latest=-2d10h56m18s318ms
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/100: 97a8e5c com.google.android.dialer/com.android.dialer.shortcuts.PeriodicJobService
+    u0a119 tag=*job*/com.google.android.dialer/com.android.dialer.shortcuts.PeriodicJobService#100
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/com.android.dialer.shortcuts.PeriodicJobService
+      PERIODIC: interval=+1d0h0m0s0ms flex=+1d0h0m0s0ms
+      PERSISTED
+      Priority: 300 [DEFAULT]
+      Requires: charging=true batteryNotLow=false deviceIdle=true
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: CHARGING TIMING_DELAY DEADLINE IDLE [0xc0000005]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400002]
+    Unsatisfied constraints: CHARGING IDLE [0x5]
+    Constraint history:
+      -2d10h56m15s222ms = TIMING_DELAY [0x80000000]
+      -2d10h56m15s222ms = TIMING_DELAY DEADLINE [0xc0000000]
+      -2d10h56m15s222ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE [0xc0000002]
+      -2d10h56m15s222ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE BACKGROUND_NOT_RESTRICTED [0xc0400002]
+      -2d10h56m15s222ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0xc2400002]
+      -2d10h56m15s222ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0xc3400002]
+      -2d10h56m15s222ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400002]
+    Tracking: BATTERY IDLE QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: EXEMPTED
+    Enqueue time: -2d10h56m18s318ms
+    Run time: earliest=-2d10h56m18s318ms, latest=-2d10h56m18s318ms, original latest=-2d10h56m18s318ms
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/201: 4e12548 com.google.android.dialer/com.android.voicemail.impl.StatusCheckJobService
+    u0a119 tag=*job*/com.google.android.dialer/com.android.voicemail.impl.StatusCheckJobService#201
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/com.android.voicemail.impl.StatusCheckJobService
+      PERIODIC: interval=+1d0h0m0s0ms flex=+1d0h0m0s0ms
+      Priority: 300 [DEFAULT]
+      Requires: charging=true batteryNotLow=false deviceIdle=false
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: CHARGING TIMING_DELAY DEADLINE CONNECTIVITY [0xd0000001]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xca400002]
+    Unsatisfied constraints: CHARGING CONNECTIVITY WITHIN_QUOTA [0x11000001]
+    Constraint history:
+      -2d10h55m38s542ms = BATTERY_NOT_LOW TIMING_DELAY CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x92400002]
+      -2d10h55m38s542ms = BATTERY_NOT_LOW TIMING_DELAY CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x93400002]
+      -2d10h55m38s541ms = BATTERY_NOT_LOW TIMING_DELAY CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x9b400002]
+      -2d10h55m18s456ms = BATTERY_NOT_LOW TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x8b400002]
+      -2d10h52m18s456ms = BATTERY_NOT_LOW TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400002]
+      -1d10h55m29s783ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xca400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400002]
+      -22h26m24s663ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xdb400002]
+      -22h26m4s659ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xcb400002]
+      -22h23m4s657ms = BATTERY_NOT_LOW TIMING_DELAY DEADLINE DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xca400002]
+    Tracking: BATTERY CONNECTIVITY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m38s563ms
+    Run time: earliest=-2d10h55m38s563ms, latest=-1d10h55m38s563ms, original latest=-1d10h55m38s563ms
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/385: 77017d1 com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#385
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Network type: NetworkRequest [ NONE id=0, [ Transports: CELLULAR Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CONNECTIVITY [0x10000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Unsatisfied constraints: CONNECTIVITY WITHIN_QUOTA [0x11000000]
+    Constraint history:
+      -2d10h55m39s246ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -2d10h55m39s245ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -2d10h55m39s245ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400000]
+      -2d10h55m39s245ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -2d10h52m18s456ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+      -22h26m24s663ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Tracking: CONNECTIVITY QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m39s246ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/397: da4dd3 com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#397
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Internal flags: 1 HAS_FOREGROUND_EXEMPTION
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Network type: NetworkRequest [ NONE id=0, [ Transports: CELLULAR Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CONNECTIVITY [0x10000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Unsatisfied constraints: CONNECTIVITY WITHIN_QUOTA [0x11000000]
+    Constraint history:
+      -2d10h55m39s244ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -2d10h55m39s244ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -2d10h55m39s244ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400000]
+      -2d10h55m39s244ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -2d10h52m18s456ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+      -22h26m24s663ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Tracking: CONNECTIVITY QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m39s244ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/408: deea15a com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#408
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Minimum latency: +23h59m59s988ms
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+    Required constraints: TIMING_DELAY [0x80000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Unsatisfied constraints: TIMING_DELAY WITHIN_QUOTA [0x81000000]
+    Constraint history:
+      -22h26m21s395ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -22h26m21s395ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -22h26m21s395ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400000]
+      -22h26m21s395ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Tracking: TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -22h23m4s657ms
+    Enqueue time: -22h26m21s395ms
+    Run time: earliest=+1h33m38s593ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/409: 79e99c com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#409
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Minimum latency: +1d23h59m59s944ms
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+    Required constraints: TIMING_DELAY CONNECTIVITY [0x90000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400000]
+    Unsatisfied constraints: CONNECTIVITY WITHIN_QUOTA [0x11000000]
+    Constraint history:
+      -2d10h55m38s431ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x12400000]
+      -2d10h55m38s431ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x13400000]
+      -2d10h55m38s431ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400000]
+      -2d10h55m18s456ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -2d10h52m18s456ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+      -22h26m24s663ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h26m24s663ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400000]
+      -22h26m4s659ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+      -10h54m59s442ms = TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400000]
+    Tracking: CONNECTIVITY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -2d10h52m18s456ms
+    Enqueue time: -2d10h55m38s432ms
+    Run time: earliest=-10h55m38s488ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/415: 79cf218 com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#415
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Minimum latency: +1d0h9m42s553ms
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+    Required constraints: TIMING_DELAY [0x80000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Unsatisfied constraints: TIMING_DELAY WITHIN_QUOTA [0x81000000]
+    Constraint history:
+      -22h26m22s212ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -22h26m22s212ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -22h26m22s212ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400000]
+      -22h26m22s212ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Tracking: TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -22h23m4s657ms
+    Enqueue time: -22h26m22s212ms
+    Run time: earliest=+1h43m20s341ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/416: adbf51d com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#416
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 300 [DEFAULT]
+      Requires: charging=true batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Minimum latency: +24m42s483ms
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+    Required constraints: CHARGING TIMING_DELAY [0x80000001]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: BATTERY_NOT_LOW TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400002]
+    Unsatisfied constraints: CHARGING WITHIN_QUOTA [0x1000001]
+    Constraint history:
+      -22h26m22s66ms = BATTERY_NOT_LOW [0x2]
+      -22h26m22s66ms = BATTERY_NOT_LOW BACKGROUND_NOT_RESTRICTED [0x400002]
+      -22h26m22s66ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400002]
+      -22h26m22s66ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400002]
+      -22h26m22s66ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400002]
+      -22h23m4s657ms = BATTERY_NOT_LOW DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400002]
+      -21h40m33s330ms = BATTERY_NOT_LOW TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400002]
+    Tracking: BATTERY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -22h23m4s657ms
+    Enqueue time: -22h26m22s66ms
+    Run time: earliest=-22h1m39s583ms, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/423: 294e658 com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+    u0a119 tag=*job*/com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService#423
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/androidx.work.impl.background.systemjob.SystemJobService
+      Priority: 400 [HIGH]
+      Flags: 2
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Extras: mParcelledData.dataSize=248
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+30s0ms
+    Required constraints: CONNECTIVITY [0x10000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Unsatisfied constraints: CONNECTIVITY WITHIN_QUOTA [0x11000000]
+    Constraint history:
+      -22h25m4s395ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -22h25m4s395ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -22h25m4s395ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Tracking: CONNECTIVITY QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -22h25m4s395ms
+    Enqueue time: -22h25m4s395ms
+    Run time: earliest=none, latest=none, original latest=none
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/1573857705: 4e9af6d com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService
+    u0a119 tag=*job*/com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService#1573857705
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService
+      PERIODIC: interval=+1d12h0m0s0ms flex=+1d12h0m0s0ms
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=1 initial=+15m0s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: TIMING_DELAY DEADLINE CONNECTIVITY [0xd0000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Unsatisfied constraints: TIMING_DELAY DEADLINE CONNECTIVITY WITHIN_QUOTA [0xd1000000]
+    Constraint history:
+      -22h26m18s652ms = CONNECTIVITY [0x10000000]
+      -22h26m18s652ms = CONNECTIVITY BACKGROUND_NOT_RESTRICTED [0x10400000]
+      -22h26m18s652ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x12400000]
+      -22h26m18s652ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x13400000]
+      -22h26m18s652ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400000]
+      -22h26m4s659ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+    Tracking: CONNECTIVITY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -22h23m4s657ms
+    Enqueue time: -22h26m18s652ms
+    Run time: earliest=+13h4m21s186ms, latest=+2d1h4m21s186ms, original latest=+2d1h4m21s186ms
+    Last successful run: 2026-09-20 22:06:06
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/1573857706: fb1a079 com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService
+    u0a119 tag=*job*/com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService#1573857706
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService
+      PERIODIC: interval=+1d0h0m0s0ms flex=+1d0h0m0s0ms
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Backoff: policy=0 initial=+30s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: TIMING_DELAY DEADLINE [0xc0000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400000]
+    Unsatisfied constraints: DEADLINE WITHIN_QUOTA [0x41000000]
+    Constraint history:
+      -22h26m20s229ms = BACKGROUND_NOT_RESTRICTED [0x400000]
+      -22h26m20s229ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x2400000]
+      -22h26m20s229ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x3400000]
+      -22h26m20s229ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+      -10h54m59s442ms = TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400000]
+    Tracking: TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -22h23m4s657ms
+    Enqueue time: -22h26m20s229ms
+    Run time: earliest=-10h55m38s690ms, latest=+13h4m21s310ms, original latest=+13h4m21s310ms
+    Last successful run: 2026-09-20 22:06:05
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a119/1573857707: feb713a com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService
+    u0a119 tag=*job*/com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService#1573857707
+    Source: uid=u0a119 user=0 pkg=com.google.android.dialer
+    JobInfo:
+      Service: com.google.android.dialer/com.google.android.libraries.internal.growth.growthkit.internal.jobs.impl.GrowthKitJobService
+      PERIODIC: interval=+1d0h0m0s0ms flex=+1d0h0m0s0ms
+      Priority: 300 [DEFAULT]
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&TRUSTED&VALIDATED&NOT_VCN_MANAGED Uid: 10119 UnderlyingNetworks: Null] ]
+      Backoff: policy=0 initial=+1h0m0s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: TIMING_DELAY DEADLINE CONNECTIVITY [0xd0000000]
+    Preferred constraints:
+    Dynamic constraints:
+    Satisfied constraints: TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400000]
+    Unsatisfied constraints: DEADLINE CONNECTIVITY WITHIN_QUOTA [0x51000000]
+    Constraint history:
+      -22h26m23s693ms = CONNECTIVITY [0x10000000]
+      -22h26m23s693ms = CONNECTIVITY BACKGROUND_NOT_RESTRICTED [0x10400000]
+      -22h26m23s693ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED [0x12400000]
+      -22h26m23s693ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED WITHIN_QUOTA [0x13400000]
+      -22h26m23s693ms = CONNECTIVITY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0x1b400000]
+      -22h26m4s659ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH WITHIN_QUOTA [0xb400000]
+      -22h23m4s657ms = DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0xa400000]
+      -10h54m59s442ms = TIMING_DELAY DEVICE_NOT_DOZING BACKGROUND_NOT_RESTRICTED TARE_WEALTH [0x8a400000]
+    Tracking: CONNECTIVITY TIME QUOTA
+    Implicit constraints:
+      readyNotDozing: true
+      readyNotRestrictedInBg: true
+      readyComponentEnabled: true
+    Started with foreground flag: false
+    Standby bucket: NEVER
+      Deferred since: -22h23m4s657ms
+    Enqueue time: -22h26m23s693ms
+    Run time: earliest=-10h55m38s721ms, latest=+13h4m21s279ms, original latest=+13h4m21s279ms
+    Last successful run: 2026-09-20 22:06:01
+    Restricted due to: none.
+    Ready: false (job=false user=true !restricted=true !pending=true !active=true !backingup=true comp=true)
+
+Pending queue:
+  None
+
+Active jobs:
+  N/A
+
+Idle contexts (16):
+  ID=5685186: inactive since -2m19s344ms, stopped because: cancel() called by app, callingUid=10120 uid=10120 jobId=1513
+  ID=15225384: inactive since -15m10s861ms, stopped because: job rescheduled by app
+  ID=19795620: inactive since -1h15m35s611ms, stopped because: app called jobFinished
+  ID=30442778: inactive since -4h35m57s898ms, stopped because: app called jobFinished
+  ID=31578342: inactive since -4h35m57s894ms, stopped because: app called jobFinished
+  ID=40013372: inactive since -4h35m57s863ms, stopped because: app called jobFinished
+  ID=59732240: inactive since -17h8m10s615ms, stopped because: app called jobFinished
+  ID=90763731: inactive since -10h54m57s421ms, stopped because: app called jobFinished
+  ID=122083375: inactive since -16h35m40s907ms, stopped because: app called jobFinished
+  ID=127400247: inactive since -16h35m40s328ms, stopped because: app called jobFinished
+  ID=162858949: inactive since -16h35m39s790ms, stopped because: app called jobFinished
+  ID=175294539: inactive since -4h35m57s888ms, stopped because: app called jobFinished
+  ID=182858761: inactive since -2d10h55m6s14ms, stopped because: app called jobFinished
+  ID=249781057: inactive since -2d10h55m6s185ms, stopped because: app called jobFinished
+  ID=265623054: inactive since -2d10h54m52s639ms, stopped because: app called jobFinished
+  ID=267019277: inactive since -2d10h55m1s984ms, stopped because: app called jobFinished
+
+Recently completed jobs:
+  None

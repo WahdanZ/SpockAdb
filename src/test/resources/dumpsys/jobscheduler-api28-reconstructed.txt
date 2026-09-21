@@ -1,0 +1,66 @@
+Settings:
+  min_idle_count=1
+  min_charging_count=1
+Heartbeat:
+  Last heartbeat: +41s23ms
+  Next beat: +9m18s977ms
+Registered 3 jobs:
+  JOB #u0a85/12: 5c3b2a1 com.example.app/androidx.work.impl.background.systemjob.SystemJobService
+    u0a85 tag=*job*/com.example.app/androidx.work.impl.background.systemjob.SystemJobService
+    Source: uid=u0a85 user=0 pkg=com.example.app
+    JobInfo:
+      Service: com.example.app/androidx.work.impl.background.systemjob.SystemJobService
+      PERSISTED
+      Requires: charging=false batteryNotLow=false deviceIdle=false
+      Network type: NetworkRequest [ NONE id=0, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&VALIDATED] ]
+      Extras: {EXTRA_WORK_SPEC_ID=0b6f3c2e-5d1a-4f7e-9a3b-2c1d0e9f8a7b, EXTRA_IS_PERIODIC=false}
+      Minimum latency: +15m0s0ms
+      Backoff: policy=0 initial=+10s0ms
+      Has early constraint
+    Required constraints: TIMING_DELAY CONNECTIVITY
+    Satisfied constraints: CONNECTIVITY APP_NOT_IDLE DEVICE_NOT_DOZING
+    Unsatisfied constraints: TIMING_DELAY
+    Tracking: CONNECTIVITY TIME
+    Standby bucket: ACTIVE
+    Base heartbeat: 0
+    Num failures: 3
+    Enqueue time: -3m12s456ms
+    Run time: earliest=+11m47s544ms, latest=none
+    Last successful run: 2019-10-04 10:12:01
+    Last failed run: 2019-10-04 10:31:17
+    Ready: false (job=false user=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a85/7: 9d1e4f0 com.example.app/.sync.SyncJobService
+    u0a85 tag=*job*/com.example.app/.sync.SyncJobService
+    Source: uid=u0a85 user=0 pkg=com.example.app
+    JobInfo:
+      Service: com.example.app/.sync.SyncJobService
+      PERIODIC: interval=+15m0s0ms flex=+5m0s0ms
+      Requires: charging=true batteryNotLow=false deviceIdle=false
+      Backoff: policy=1 initial=+30s0ms
+      Has early constraint
+      Has late constraint
+    Required constraints: CHARGING TIMING_DELAY DEADLINE
+    Satisfied constraints: TIMING_DELAY APP_NOT_IDLE DEVICE_NOT_DOZING
+    Unsatisfied constraints: CHARGING DEADLINE
+    Tracking: BATTERY TIME
+    Standby bucket: ACTIVE
+    Enqueue time: -20m0s0ms
+    Run time: earliest=-10m0s0ms, latest=+5m0s0ms
+    Ready: false (job=false user=true !pending=true !active=true !backingup=true comp=true)
+  JOB #u0a90/1: 1a2b3c4 com.other.app/.OtherJobService
+    u0a90 tag=*job*/com.other.app/.OtherJobService
+    Source: uid=u0a90 user=0 pkg=com.other.app
+    JobInfo:
+      Service: com.other.app/.OtherJobService
+    Required constraints:
+    Satisfied constraints: APP_NOT_IDLE DEVICE_NOT_DOZING
+    Unsatisfied constraints:
+    Run time: earliest=none, latest=none
+    Ready: true (job=true user=true !pending=true !active=false !backingup=true comp=true)
+
+Pending queue:
+
+Active jobs:
+  Slot #0: 7a8b9c0 #u0a90/1 com.other.app/.OtherJobService
+    Running for: +1s200ms, timeout at: +9m58s800ms
+  Slot #1: inactive since -2m0s0ms
