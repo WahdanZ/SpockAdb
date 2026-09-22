@@ -15,7 +15,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, Background Work, and an MCP server for AI agents.
+Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 58 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
