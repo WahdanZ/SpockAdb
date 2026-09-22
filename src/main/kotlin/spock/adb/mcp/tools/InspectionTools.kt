@@ -3,9 +3,8 @@ package spock.adb.mcp.tools
 import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
-import spock.adb.command.GetActivityCommand
-import spock.adb.command.GetBackStackCommand
-import spock.adb.command.GetFragmentsCommand
+import spock.adb.device.ops.InspectionOperations
+import spock.adb.models.FragmentData
 
 /** `android_get_current_activity` — the resumed activity. */
 class GetCurrentActivityTool : AdbTool {
@@ -17,10 +16,9 @@ class GetCurrentActivityTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.requireProject()
+        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
-        val activity = GetActivityCommand().execute(Any(), project, device.device)
+        val activity = InspectionOperations(device).currentActivity()
             ?: return ToolResult.error(
                 "No resumed activity was reported. The screen may be locked or showing the launcher.",
             )
@@ -38,10 +36,9 @@ class GetActivityStackTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.requireProject()
+        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
-        val stack = GetBackStackCommand().execute(Any(), project, device.device)
+        val stack = InspectionOperations(device).activityStack()
         if (stack.isEmpty()) return ToolResult.text("The activity stack is empty.")
 
         return ToolResult.text(
@@ -70,19 +67,14 @@ class GetCurrentFragmentsTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val project = context.requireProject()
+        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
-        val fragments = GetFragmentsCommand().execute(
-            context.resolvePackage(arguments),
-            project,
-            device.device,
-        )
+        val fragments = InspectionOperations(device).fragments(context.resolvePackage(arguments))
         if (fragments.isEmpty()) return ToolResult.text("No visible fragments were reported.")
 
         return ToolResult.text(
             buildString {
-                fun render(list: List<spock.adb.models.FragmentData>, depth: Int) {
+                fun render(list: List<FragmentData>, depth: Int) {
                     list.forEach { fragment ->
                         appendLine("  ".repeat(depth) + fragment.fragment)
                         render(fragment.innerFragments, depth + 1)

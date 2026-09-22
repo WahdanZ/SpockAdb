@@ -61,20 +61,24 @@ class SelectProjectToolTest {
     @Test
     fun `a tool needing a project fails with the reason, not a bare null`() {
         // McpProtocol turns a thrown IllegalStateException into a tool error result, so the
-        // agent reads why the call failed instead of receiving a bare null. This is the case
-        // where nothing is open at all; the ambiguous one, where several are open and the
-        // answer is "say which project", is covered by ProjectResolutionTest.
-        val protocol = McpProtocol(contextProvider = { FakeToolContext(project = null) })
+        // agent reads why the call failed instead of receiving a bare null.
+        //
+        // The subject is a tool that needs the project for what it actually uses it for: the
+        // application ID it defaults packageName to. Reading the screen does not — see
+        // InspectionParityTest, which pins that those tools answer with no project at all.
+        val protocol = McpProtocol(
+            contextProvider = { FakeToolContext(project = null, applicationId = null) },
+        )
         val response = protocol.handle(
             """{"jsonrpc":"2.0","id":1,"method":"tools/call",""" +
-                """"params":{"name":"android_get_current_activity","arguments":{}}}""",
+                """"params":{"name":"android_get_current_fragments","arguments":{}}}""",
         )!!
 
         val result = JsonParser.parseString(response).asJsonObject.getAsJsonObject("result")
         assertTrue(result.get("isError").asBoolean)
         assertTrue(
             result.getAsJsonArray("content").first().asJsonObject.get("text").asString
-                .contains("No project is open"),
+                .contains("application ID"),
         )
     }
 }
