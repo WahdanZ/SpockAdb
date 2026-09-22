@@ -78,6 +78,62 @@ class DeviceConditionShellTest {
     }
 
     @Test
+    fun `a battery level command is built only for a percentage`() {
+        assertEquals("dumpsys battery set level 5", DeviceConditionShell.setLevelCommand(5))
+        assertEquals("dumpsys battery set level 100", DeviceConditionShell.setLevelCommand(100))
+        assertThrows<IllegalArgumentException> { DeviceConditionShell.setLevelCommand(101) }
+        assertThrows<IllegalArgumentException> { DeviceConditionShell.setLevelCommand(-1) }
+    }
+
+    @Test
+    fun `a level the device did not take is explained`() {
+        assertNull(DeviceConditionShell.levelRefusal(20, 20))
+        assertTrue(DeviceConditionShell.levelRefusal(20, 87)!!.contains("still reports 87%"))
+        assertNotNull(DeviceConditionShell.levelRefusal(20, null))
+    }
+
+    @Test
+    fun `the battery override is refused before Android 6`() {
+        assertNotNull(DeviceConditionShell.batteryUnavailableReason(22))
+        assertNull(DeviceConditionShell.batteryUnavailableReason(23))
+        assertNull(DeviceConditionShell.batteryUnavailableReason(null))
+    }
+
+    @Test
+    fun `every preset is a percentage`() {
+        assertEquals(listOf(5, 20, 50, 100), BatteryLevelPreset.entries.map { it.level })
+        val percentages = DeviceConditionShell.MIN_LEVEL..DeviceConditionShell.MAX_LEVEL
+        assertTrue(BatteryLevelPreset.entries.all { it.level in percentages })
+    }
+
+    @Test
+    fun `each charger is read separately, so USB can stay on while AC is off`() {
+        val dump = """
+            Current Battery Service state:
+              (UPDATES STOPPED -- use 'reset' to restart)
+              AC powered: false
+              USB powered: true
+              Wireless powered: false
+              Dock powered: false
+              level: 20
+        """.trimIndent()
+
+        val chargers = DeviceConditionShell.parseChargers(dump)
+
+        assertEquals(false, chargers[ChargerSource.AC])
+        assertEquals(true, chargers[ChargerSource.USB])
+        assertEquals(false, chargers[ChargerSource.WIRELESS])
+        // Dock is reported by the device but cannot be set, so it is not a ChargerSource.
+        assertEquals(3, chargers.size)
+    }
+
+    @Test
+    fun `charger commands use the dumpsys argument and a 1 or 0`() {
+        assertEquals("dumpsys battery set usb 1", DeviceConditionShell.setChargerCommand(ChargerSource.USB, true))
+        assertEquals("dumpsys battery set ac 0", DeviceConditionShell.setChargerCommand(ChargerSource.AC, false))
+    }
+
+    @Test
     fun `a bucket the device did not take is explained`() {
         assertNull(DeviceConditionShell.bucketRefusal("a.b", StandbyBucket.RARE, StandbyBucket.RARE))
         val kept = DeviceConditionShell.bucketRefusal("a.b", StandbyBucket.RARE, StandbyBucket.WORKING_SET)!!

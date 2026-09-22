@@ -49,6 +49,9 @@ object ToolRegistry {
         ForceDozeTool(),
         SetStandbyBucketTool(),
         UnplugBatteryTool(),
+        SetBatteryLevelTool(),
+        SetChargerTool(),
+        ResetBatteryTool(),
         ResetDeviceConditionsTool(),
         // The triage bundle: one round-trip instead of four, all describing the same moment.
         DebugContextTool(),

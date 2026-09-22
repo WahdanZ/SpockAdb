@@ -17,7 +17,9 @@ import spock.adb.command.DeviceCondition
 import spock.adb.command.DeviceConditionTracker
 import spock.adb.mcp.tools.ForceDozeTool
 import spock.adb.mcp.tools.GetDeviceConditionsTool
+import spock.adb.mcp.tools.ResetBatteryTool
 import spock.adb.mcp.tools.ResetDeviceConditionsTool
+import spock.adb.mcp.tools.SetBatteryLevelTool
 import spock.adb.mcp.tools.SetStandbyBucketTool
 import spock.adb.mcp.tools.UnplugBatteryTool
 import java.util.concurrent.TimeUnit
@@ -31,6 +33,8 @@ class DeviceConditionToolsTest {
     private class FakeDevice(private val minimumBucket: Int = 10) {
         var deep = "ACTIVE"
         var batteryStopped = false
+        var level = 100
+        var realLevel = 100
         var bucket = 10
         val sent = mutableListOf<String>()
 
@@ -61,12 +65,18 @@ class DeviceConditionToolsTest {
                     }
                     text == "dumpsys battery reset" -> {
                         batteryStopped = false
+                        level = realLevel
+                        ""
+                    }
+                    text.startsWith("dumpsys battery set level ") -> {
+                        batteryStopped = true
+                        level = text.substringAfterLast(' ').toInt()
                         ""
                     }
                     text == "dumpsys battery" ->
                         "Current Battery Service state:\n" +
                             (if (batteryStopped) "  (UPDATES STOPPED -- use 'reset' to restart)\n" else "") +
-                            "  AC powered: false\n  level: 100"
+                            "  AC powered: ${!batteryStopped}\n  level: $level"
                     text.startsWith("am set-standby-bucket") -> {
                         val wanted = mapOf(
                             "active" to 10, "working_set" to 20, "frequent" to 30, "rare" to 40,
@@ -185,6 +195,63 @@ class DeviceConditionToolsTest {
         assertEquals("ACTIVE", device.deep)
         assertFalse(device.batteryStopped)
         assertFalse(DeviceConditionTracker.hasOnlineChanges())
+    }
+
+    @Test
+    fun `a level preset unplugs first, so the level actually discharges, and is read back`() {
+        val device = FakeDevice()
+
+        val result = SetBatteryLevelTool().execute(JsonObject().apply { addProperty("level", 5) }, device.context)
+
+        assertFalse(result.isError, result.text())
+        assertEquals(5, device.level)
+        assertTrue(device.batteryStopped)
+        // Unplugged before the level, or the device reports 5% while charging and nothing reacts.
+        val unplug = device.sent.indexOf("dumpsys battery unplug")
+        val set = device.sent.indexOf("dumpsys battery set level 5")
+        assertTrue(unplug in 0 until set, device.sent.toString())
+        assertEquals(setOf(DeviceCondition.Battery), DeviceConditionTracker.conditions(SERIAL))
+    }
+
+    @Test
+    fun `a level outside 0-100 never reaches the device`() {
+        val device = FakeDevice()
+
+        val result = SetBatteryLevelTool().execute(JsonObject().apply { addProperty("level", 140) }, device.context)
+
+        assertTrue(result.isError)
+        assertTrue(device.sent.none { it.startsWith("dumpsys battery") }, device.sent.toString())
+        assertTrue(DeviceConditionTracker.conditions(SERIAL).isEmpty())
+    }
+
+    @Test
+    fun `resetting the battery hands it back and leaves the bucket alone`() {
+        val device = FakeDevice()
+        device.realLevel = 73
+        SetStandbyBucketTool().execute(JsonObject().apply { addProperty("bucket", "rare") }, device.context)
+        SetBatteryLevelTool().execute(JsonObject().apply { addProperty("level", 20) }, device.context)
+
+        val result = ResetBatteryTool().execute(JsonObject(), device.context)
+
+        assertFalse(result.isError, result.text())
+        assertFalse(device.batteryStopped)
+        assertEquals(73, device.level)
+        assertTrue(result.text().contains("73%"), result.text())
+        // The bucket is a separate condition with no normal state; only Reset puts it back.
+        assertEquals(40, device.bucket)
+        assertEquals(setOf(DeviceCondition.Bucket(APP)), DeviceConditionTracker.conditions(SERIAL))
+    }
+
+    @Test
+    fun `resetting the battery also drops a forced Doze the charger ended`() {
+        val device = FakeDevice()
+        ForceDozeTool().execute(JsonObject(), device.context)
+        // A real device leaves idle the moment it reports a charger again.
+        device.deep = "ACTIVE"
+
+        ResetBatteryTool().execute(JsonObject(), device.context)
+
+        assertTrue(DeviceConditionTracker.conditions(SERIAL).isEmpty(), "Doze was over, so the banner must clear")
     }
 
     private companion object {

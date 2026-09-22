@@ -36,6 +36,41 @@ enum class StandbyBucket(val code: Int, val argument: String, val label: String)
     }
 }
 
+/**
+ * A charger the framework reports separately, and `dumpsys battery set` can switch on its own.
+ *
+ * Separate rather than one "plugged in" flag because they are not interchangeable: an app that
+ * only syncs on AC behaves differently from one that accepts USB, and testing "discharging while
+ * still connected over USB" means turning AC off and leaving USB alone.
+ */
+enum class ChargerSource(val argument: String, val label: String) {
+    AC("ac", "AC"),
+    USB("usb", "USB"),
+    WIRELESS("wireless", "Wireless"),
+    ;
+
+    companion object {
+        fun fromDumpsysName(name: String): ChargerSource? =
+            entries.firstOrNull { it.argument.equals(name.trim(), ignoreCase = true) }
+    }
+}
+
+/**
+ * The battery levels the Background Work tab offers in one click.
+ *
+ * Levels rather than a free number because these are the thresholds Android itself reacts at:
+ * 15% is where the low-battery warning and automatic Battery Saver land on a stock device, so 5%
+ * and 20% sit either side of it, and 100% is the "nothing is constrained" baseline.
+ */
+// The percentages are the point of the presets, not tunable constants.
+@Suppress("MagicNumber")
+enum class BatteryLevelPreset(val level: Int, val label: String, val note: String) {
+    CRITICAL(5, "5%", "critical"),
+    LOW(20, "20%", "low"),
+    HALF(50, "50%", "half"),
+    FULL(100, "100%", "full"),
+}
+
 /** What the device says about the conditions background work reacts to. */
 data class DeviceConditions(
     /** `IDLE`, `ACTIVE`, … from `dumpsys deviceidle get deep`, or null when it gave no state. */
@@ -47,6 +82,8 @@ data class DeviceConditions(
     /** True when any charger is reported connected. */
     val powered: Boolean?,
     val batteryLevel: Int?,
+    /** What each charger the device names is reporting; empty when the dump gave none. */
+    val chargers: Map<ChargerSource, Boolean> = emptyMap(),
 ) {
     val dozing: Boolean get() = deepIdle == "IDLE"
 }
@@ -58,6 +95,9 @@ data class DeviceConditions(
  * is read back and every one has a reset: a device left in forced Doze, or an app left in the
  * rare bucket, behaves strangely for whoever uses it next.
  */
+// One function per shell command and per thing parsed out of its output. Splitting it to satisfy
+// the threshold would scatter commands that are read and reset together.
+@Suppress("TooManyFunctions")
 internal object DeviceConditionShell {
 
     /** App Standby buckets arrived in Android 9. */
@@ -68,6 +108,12 @@ internal object DeviceConditionShell {
 
     /** `dumpsys battery unplug` arrived in Android 6, with Doze. */
     const val MIN_DOZE_API = 23
+
+    /** `dumpsys battery set level` is as old as the battery override itself. */
+    const val MIN_BATTERY_API = 23
+
+    const val MIN_LEVEL = 0
+    const val MAX_LEVEL = 100
 
     const val DEEP_IDLE_COMMAND = "dumpsys deviceidle get deep"
     const val BATTERY_COMMAND = "dumpsys battery"
@@ -81,7 +127,16 @@ internal object DeviceConditionShell {
     private const val FORCED_IDLE = "Now forced in to deep idle mode"
 
     private val levelRegex = Regex("""^\s*level:\s*(\d+)""", RegexOption.MULTILINE)
+    private val chargerRegex =
+        Regex("""^\s*(AC|USB|Wireless) powered:\s*(true|false)""", RegexOption.MULTILINE)
+
     private val poweredRegex = Regex("""^\s*(?:AC|USB|Wireless|Dock) powered:\s*(true|false)""", RegexOption.MULTILINE)
+
+    /** @throws IllegalArgumentException when [level] is not a percentage. */
+    fun setLevelCommand(level: Int): String {
+        require(level in MIN_LEVEL..MAX_LEVEL) { "A battery level is $MIN_LEVEL-$MAX_LEVEL, not $level." }
+        return "dumpsys battery set level $level"
+    }
 
     fun getBucketCommand(packageName: String): String =
         "am get-standby-bucket ${quoted(packageName)}"
@@ -101,6 +156,15 @@ internal object DeviceConditionShell {
         val said = output.trim()
         return said.toIntOrNull()?.let(StandbyBucket::fromCode) ?: StandbyBucket.fromArgument(said)
     }
+
+    /** Each charger the dump names, so the toggles show what the device actually reports. */
+    fun parseChargers(output: String): Map<ChargerSource, Boolean> =
+        chargerRegex.findAll(output).mapNotNull { match ->
+            ChargerSource.fromDumpsysName(match.groupValues[1])?.let { it to (match.groupValues[2] == "true") }
+        }.toMap()
+
+    fun setChargerCommand(source: ChargerSource, connected: Boolean): String =
+        "dumpsys battery set ${source.argument} ${if (connected) 1 else 0}"
 
     fun parseBattery(output: String): Triple<Boolean, Boolean?, Int?> {
         val powered = poweredRegex.findAll(output).map { it.groupValues[1] == "true" }.toList()
@@ -124,6 +188,25 @@ internal object DeviceConditionShell {
     fun dozeUnavailableReason(apiLevel: Int?): String? = when {
         apiLevel == null || apiLevel >= MIN_DOZE_API -> null
         else -> "Doze arrived in Android 6.0 (API 23). This device is API $apiLevel."
+    }
+
+    fun batteryUnavailableReason(apiLevel: Int?): String? = when {
+        apiLevel == null || apiLevel >= MIN_BATTERY_API -> null
+        else -> "Overriding the battery arrived in Android 6.0 (API 23). This device is API $apiLevel."
+    }
+
+    /**
+     * What to say when the battery did not end up at [wanted].
+     *
+     * `dumpsys battery set level` prints nothing either way, so only reading it back tells whether
+     * it took. Some vendor ROMs keep their own battery service and ignore the override.
+     */
+    fun levelRefusal(wanted: Int, actual: Int?): String? = when (actual) {
+        wanted -> null
+        null -> "Set the battery to $wanted%, but the device did not report a level afterwards."
+        else ->
+            "Asked for $wanted%, but the device still reports $actual%. Some vendor ROMs keep their own " +
+                "battery service and ignore dumpsys battery set level."
     }
 
     /** Null when `force-idle` reports deep idle, otherwise what the device said instead. */
@@ -162,7 +245,8 @@ private fun IDevice.shell(command: String): String {
 
 /** Reads Doze, the app's bucket and the battery override in three round trips. */
 internal fun IDevice.deviceConditions(packageName: String?): DeviceConditions {
-    val (overridden, powered, level) = DeviceConditionShell.parseBattery(shell(DeviceConditionShell.BATTERY_COMMAND))
+    val battery = shell(DeviceConditionShell.BATTERY_COMMAND)
+    val (overridden, powered, level) = DeviceConditionShell.parseBattery(battery)
     val bucket = packageName
         ?.takeIf { (apiLevel() ?: 0) >= DeviceConditionShell.MIN_BUCKET_API }
         ?.let { DeviceConditionShell.parseBucket(shell(DeviceConditionShell.getBucketCommand(it))) }
@@ -172,6 +256,7 @@ internal fun IDevice.deviceConditions(packageName: String?): DeviceConditions {
         batteryOverridden = overridden,
         powered = powered,
         batteryLevel = level,
+        chargers = DeviceConditionShell.parseChargers(battery),
     )
 }
 
@@ -204,8 +289,70 @@ internal fun IDevice.leaveDoze(): String {
     return "The device left Doze and reads the real battery again."
 }
 
+/**
+ * Reports the battery at [level] and discharging, then reads it back.
+ *
+ * The battery is unplugged first because a level on its own changes little: Android's low-battery
+ * warning, automatic Battery Saver and the job scheduler's charging constraints all key off a
+ * device that is discharging, so a phone reporting 5% while plugged in behaves like a full one.
+ * That makes one click enough to reproduce what a user at that level sees.
+ *
+ * Recorded before the device is asked, so a failure half way still leaves the change on the list
+ * Reset works from.
+ *
+ * @throws IllegalStateException when the device kept a different level.
+ */
+internal fun IDevice.setBatteryLevel(level: Int): String {
+    DeviceConditionShell.batteryUnavailableReason(apiLevel())?.let { error(it) }
+    val command = DeviceConditionShell.setLevelCommand(level)
+    DeviceConditionTracker.record(this, DeviceCondition.Battery)
+    shell(DeviceConditionShell.UNPLUG_COMMAND)
+    shell(command)
+    val (_, _, actual) = DeviceConditionShell.parseBattery(shell(DeviceConditionShell.BATTERY_COMMAND))
+    DeviceConditionShell.levelRefusal(level, actual)?.let { error(it) }
+    return "The battery reports $level% and discharging."
+}
+
+/**
+ * Connects or disconnects one charger, leaving the others and the level alone.
+ *
+ * The point of doing them separately is the case a single unplug cannot express: an app on a desk
+ * charger that still has USB for adb, or one that only syncs on AC. The state is read back,
+ * because `dumpsys battery set` prints nothing either way.
+ *
+ * @throws IllegalStateException when the device reports the charger the other way afterwards.
+ */
+internal fun IDevice.setCharger(source: ChargerSource, connected: Boolean): String {
+    DeviceConditionShell.batteryUnavailableReason(apiLevel())?.let { error(it) }
+    DeviceConditionTracker.record(this, DeviceCondition.Battery)
+    shell(DeviceConditionShell.setChargerCommand(source, connected))
+    val actual = DeviceConditionShell.parseChargers(shell(DeviceConditionShell.BATTERY_COMMAND))[source]
+    check(actual == null || actual == connected) {
+        "Asked to report ${source.label} ${if (connected) "connected" else "disconnected"}, " +
+            "but the device still says the opposite."
+    }
+    return "${source.label} is reported ${if (connected) "connected" else "disconnected"}."
+}
+
+/**
+ * Ends the battery override alone, leaving Doze and any bucket as they are.
+ *
+ * The conditions are read back rather than assumed: plugging the charger back in ends Doze on a
+ * real device, so the banner would otherwise keep claiming a forced Doze that is already over.
+ */
+internal fun IDevice.resetBattery(): String {
+    shell(DeviceConditionShell.BATTERY_RESET_COMMAND)
+    val conditions = deviceConditions(packageName = null)
+    check(!conditions.batteryOverridden) { "Asked to reset the battery, but the device still reports an override." }
+    DeviceConditionTracker.forget(serialNumber, DeviceCondition.Battery)
+    DeviceConditionTracker.reconcile(serialNumber, conditions)
+    return "The battery reads the real hardware again: " +
+        (conditions.batteryLevel?.let { "$it%" } ?: "level unknown") +
+        if (conditions.powered == true) ", charging." else ", not charging."
+}
+
 internal fun IDevice.unplugBattery(): String {
-    DeviceConditionShell.dozeUnavailableReason(apiLevel())?.let { error(it) }
+    DeviceConditionShell.batteryUnavailableReason(apiLevel())?.let { error(it) }
     DeviceConditionTracker.record(this, DeviceCondition.Battery)
     shell(DeviceConditionShell.UNPLUG_COMMAND)
     val (overridden, powered, _) = DeviceConditionShell.parseBattery(shell(DeviceConditionShell.BATTERY_COMMAND))
