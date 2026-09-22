@@ -34,7 +34,6 @@
   class declaration, and so do Current activity and the back stack popups. The Fragments popup
   lists each fragment above the ones nested in it, indented, and a fragment two or more levels
   deep is no longer reported as not found.
-
 - **The Storage tab shows files the app wrote after it was listed.** The file tree was read once,
   when the app was chosen, and had no way to be read again. SharedPreferences an app created
   after that, such as the sample's after pressing Seed, never appeared. The tree is now listed
