@@ -11,6 +11,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import spock.adb.command.*
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.DebugBridgeProvider
@@ -18,6 +19,7 @@ import spock.adb.device.DeviceLister
 import spock.adb.models.ActivityData
 import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
+import spock.adb.models.FragmentRow
 import spock.adb.notification.CommonNotifier
 import spock.adb.premission.ListItem
 import spock.adb.ui.ActivityStackList
@@ -277,32 +279,36 @@ class AdbControllerImp(
             val fragmentsClass = GetFragmentsCommand().execute(applicationID, project, device)
 
             if (getSize(fragmentsClass) > 1) {
-                val fragmentsList = mutableListOf<String>()
-
-                fragmentsClass.forEachIndexed { index, fragmentData ->
-                    fragmentsList.add(fragmentData.getListStr(index))
-                    addInnerFragmentsToList(fragmentData, fragmentsList)
-                }
-
-                fragmentsList.reverse()
+                val fragmentsList = fragmentsClass.flatMap { it.flatten() }
 
                 ApplicationManager.getApplication().invokeLater {
                     JBPopupFactory.getInstance()
                         .createPopupChooserBuilder(fragmentsList)
                         .setTitle("Fragments")
+                        .setRenderer(javax.swing.ListCellRenderer<FragmentRow> { _, row, _, selected, _ ->
+                            JBLabel(row.fragment).apply {
+                                val left = ROW_PADDING + row.depth * INDENT_PER_LEVEL
+                                border = JBUI.Borders.empty(ROW_PADDING, left, ROW_PADDING, ROW_PADDING)
+                                isOpaque = selected
+                                if (selected) {
+                                    background = UIUtil.getListSelectionBackground(true)
+                                    foreground = UIUtil.getListSelectionForeground(true)
+                                }
+                            }
+                        })
                         .setItemChosenCallback { selected ->
 
                             execute {
                                 val psiClass =
                                     com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
-                                        selected.psiClassByNameFromCache(project)
+                                        selected.fragment.psiClassByNameFromCache(project)
                                     }
 
                                 ApplicationManager.getApplication().invokeLater {
                                     psiClass?.openIn(project)
                                         ?: CommonNotifier.showNotifier(
                                             project = project,
-                                            content = "Class $selected Not Found",
+                                            content = "Class ${selected.fragment} Not Found",
                                             type = NotificationType.ERROR
                                         )
                                 }
@@ -668,17 +674,6 @@ class AdbControllerImp(
         }
     }
 
-    private fun addInnerFragmentsToList(
-        fragmentData: FragmentData,
-        fragmentsList: MutableList<String>,
-        indent: String = ""
-    ) {
-        fragmentData.innerFragments.forEachIndexed { fragmentIndex, innerFragmentData ->
-            fragmentsList.add("$indent${innerFragmentData.getListStr(fragmentIndex)}")
-            addInnerFragmentsToList(innerFragmentData, fragmentsList, "\t$indent")
-        }
-    }
-
     override fun openDeveloperOptions(
         device: IDevice
     ) {
@@ -736,3 +731,9 @@ class AdbControllerImp(
         deviceObservers.clear()
     }
 }
+
+/** How far each level of fragment nesting is indented in the Fragments popup, in pixels. */
+private const val INDENT_PER_LEVEL = 16
+
+/** Space around each row of the Fragments popup, in pixels. */
+private const val ROW_PADDING = 8
