@@ -2,22 +2,16 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import spock.adb.ShellOutputReceiver
-import spock.adb.ShellQuote
+import spock.adb.device.ops.InspectionOperations
 import spock.adb.models.ActivityData
-import spock.adb.parser.ApplicationBackStackParser
-import java.util.concurrent.TimeUnit
 
+/**
+ * The selected app's own activities and their fragments, for the tool window's popup.
+ *
+ * No agent tool reads this today; it is in [InspectionOperations] with its siblings so that
+ * when one does, it has the same implementation to reach for.
+ */
 class GetApplicationBackStackCommand : Command<String, List<ActivityData>> {
-
-    override fun execute(p: String, project: Project, device: IDevice): List<ActivityData> {
-        val shellOutputReceiver = ShellOutputReceiver()
-        device.executeShellCommand(
-            "dumpsys activity ${ShellQuote.quote(p)}",
-            shellOutputReceiver,
-            15L,
-            TimeUnit.SECONDS,
-        )
-        return ApplicationBackStackParser.parse(shellOutputReceiver.toString())
-    }
+    override fun execute(p: String, project: Project, device: IDevice): List<ActivityData> =
+        InspectionOperations(device).applicationBackStack(p)
 }

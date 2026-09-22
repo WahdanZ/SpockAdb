@@ -21,9 +21,8 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
-import spock.adb.ShellOutputReceiver
-import spock.adb.ShellQuote
 import spock.adb.device.ConnectedDevice
+import spock.adb.device.ops.UiTreeOperations
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.Component
@@ -32,7 +31,6 @@ import java.awt.Font
 import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
-import java.util.concurrent.TimeUnit
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComponent
@@ -241,40 +239,8 @@ class UiInspectorPanel(
         }
     }
 
-    private fun readTree(target: ConnectedDevice): UiTree {
-        val dumpPath = "/sdcard/spock-adb-inspector.xml"
-        val receiver = ShellOutputReceiver()
-        target.device.executeShellCommand(
-            "uiautomator dump $dumpPath",
-            receiver,
-            DUMP_TIMEOUT_SECONDS,
-            TimeUnit.SECONDS,
-        )
-        check(!receiver.toString().contains("ERROR", ignoreCase = true)) {
-            "uiautomator could not dump the UI. This happens when the screen is off, a secure " +
-                "window is showing, or the UI is still animating."
-        }
-
-        val xmlReceiver = ShellOutputReceiver()
-        target.device.executeShellCommand(
-            "cat ${ShellQuote.quote(dumpPath)}",
-            xmlReceiver,
-            DUMP_TIMEOUT_SECONDS,
-            TimeUnit.SECONDS,
-        )
-        runCatching {
-            target.device.executeShellCommand(
-                "rm -f ${ShellQuote.quote(dumpPath)}",
-                ShellOutputReceiver(),
-                DUMP_TIMEOUT_SECONDS,
-                TimeUnit.SECONDS,
-            )
-        }
-
-        val xml = xmlReceiver.toString()
-        check(xml.isNotBlank()) { "uiautomator produced an empty dump." }
-        return UiTreeParser.parse(xml)
-    }
+    /** The same capture the `android_get_ui_tree` family runs — see [UiTreeOperations]. */
+    private fun readTree(target: ConnectedDevice): UiTree = UiTreeOperations(target.device).read()
 
     /**
      * States the framework outright.
@@ -472,7 +438,6 @@ class UiInspectorPanel(
         const val GAP = 4
         const val SEARCH_COLUMNS = 16
         const val SPLIT_PROPORTION = 0.6f
-        const val DUMP_TIMEOUT_SECONDS = 30L
         const val MAX_AUTO_EXPAND_ROWS = 200
 
         /** Exactly what the developer has to add, so Copy Modifier pastes something that compiles. */

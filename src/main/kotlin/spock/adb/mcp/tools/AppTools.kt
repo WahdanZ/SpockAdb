@@ -2,12 +2,8 @@ package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
-import spock.adb.clearAppData
-import spock.adb.command.clearAppCacheOrThrow
-import spock.adb.forceKillApp
-import spock.adb.getDefaultActivityForApplication
-import spock.adb.isAppInstall
-import spock.adb.startActivity
+import spock.adb.device.ops.AppNotInstalledException
+import spock.adb.device.ops.AppOperations
 
 /** `android_list_packages` — installed packages, optionally filtered. */
 class ListPackagesTool : AdbTool {
@@ -65,8 +61,8 @@ class GetPackageInfoTool : AdbTool {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         val packageName = context.resolvePackage(arguments)
 
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        if (!AppOperations(device).isInstalled(packageName)) {
+            return ToolResult.error(AppNotInstalledException.message(packageName))
         }
         return ToolResult.text(
             McpShell.run(device, "dumpsys package ${ShellQuote.quote(packageName)}"),
@@ -87,18 +83,10 @@ class LaunchAppTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val operations = context.appOperations(arguments)
         val packageName = context.resolvePackage(arguments)
 
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
-        }
-        val activity = device.getDefaultActivityForApplication(packageName)
-        if (activity.isBlank()) {
-            return ToolResult.error("'$packageName' declares no launchable activity.")
-        }
-        device.startActivity(activity)
-        return ToolResult.text("Launched $activity.")
+        return appOperation { "Launched ${operations.launch(packageName)}." }
     }
 }
 
@@ -114,10 +102,13 @@ class StopAppTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val operations = context.appOperations(arguments)
         val packageName = context.resolvePackage(arguments)
-        device.forceKillApp(packageName, McpShell.DEFAULT_TIMEOUT_SECONDS)
-        return ToolResult.text("Force-stopped $packageName.")
+
+        return appOperation {
+            operations.stop(packageName)
+            "Force-stopped $packageName."
+        }
     }
 }
 
@@ -133,19 +124,10 @@ class RestartAppTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val operations = context.appOperations(arguments)
         val packageName = context.resolvePackage(arguments)
 
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
-        }
-        device.forceKillApp(packageName, McpShell.DEFAULT_TIMEOUT_SECONDS)
-        val activity = device.getDefaultActivityForApplication(packageName)
-        if (activity.isBlank()) {
-            return ToolResult.error("'$packageName' declares no launchable activity.")
-        }
-        device.startActivity(activity)
-        return ToolResult.text("Restarted $packageName ($activity).")
+        return appOperation { "Restarted $packageName (${operations.restart(packageName)})." }
     }
 }
 
@@ -163,10 +145,13 @@ class ClearAppDataTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
+        val operations = AppOperations(target.device)
         val packageName = context.resolvePackage(arguments)
 
-        if (!target.device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        // Asked before the confirmation, not after: offering to wipe an app that is not on
+        // the device is a question with no right answer.
+        if (!operations.isInstalled(packageName)) {
+            return ToolResult.error(AppNotInstalledException.message(packageName))
         }
         val approved = context.confirmDestructive(
             name,
@@ -176,8 +161,10 @@ class ClearAppDataTool : AdbTool {
         if (!approved) {
             return ToolResult.error("The developer declined to clear data for $packageName.")
         }
-        target.device.clearAppData(packageName, McpShell.DEFAULT_TIMEOUT_SECONDS)
-        return ToolResult.text("Cleared all data for $packageName.")
+        return appOperation {
+            operations.clearData(packageName)
+            "Cleared all data for $packageName."
+        }
     }
 }
 
@@ -195,16 +182,10 @@ class ClearAppCacheTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val operations = context.appOperations(arguments)
         val packageName = context.resolvePackage(arguments)
 
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
-        }
-        return runCatching { device.clearAppCacheOrThrow(packageName) }.fold(
-            onSuccess = { ToolResult.text(it) },
-            onFailure = { ToolResult.error(it.message ?: "Could not clear the cache for $packageName.") },
-        )
+        return appOperation { operations.clearCache(packageName) }
     }
 }
 
@@ -280,6 +261,22 @@ class RevokePermissionTool : AdbTool {
  * Defaulting to the open project's application ID is what makes "restart the app" work
  * without the agent first having to discover which app the developer is working on.
  */
+internal fun ToolContext.appOperations(arguments: JsonObject): AppOperations =
+    AppOperations(requireIDevice(arguments.optionalString("deviceSerial")))
+
+/**
+ * Runs one app operation and reports what it did, or why it would not.
+ *
+ * [AppOperations] throws, which is the right shape for the tool window — an action that
+ * failed is reported the same way whatever failed. An agent reads a result instead, so the
+ * refusal has to arrive as one it can explain and act on.
+ */
+private inline fun appOperation(block: () -> String): ToolResult =
+    runCatching(block).fold(
+        onSuccess = ToolResult::text,
+        onFailure = { ToolResult.error(it.message ?: "${it.javaClass.simpleName} while running the operation.") },
+    )
+
 internal fun ToolContext.resolvePackage(arguments: JsonObject): String =
     arguments.optionalString("packageName")
         ?: projectApplicationId()
@@ -303,10 +300,11 @@ class UninstallAppTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
+        val operations = AppOperations(target.device)
         val packageName = context.resolvePackage(arguments)
 
-        if (!target.device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        if (!operations.isInstalled(packageName)) {
+            return ToolResult.error(AppNotInstalledException.message(packageName))
         }
         val approved = context.confirmDestructive(
             name,
@@ -316,11 +314,9 @@ class UninstallAppTool : AdbTool {
         if (!approved) {
             return ToolResult.error("The developer declined to uninstall $packageName.")
         }
-        val output = target.device.uninstallPackage(packageName)
-        return if (output == null) {
-            ToolResult.text("Uninstalled $packageName.")
-        } else {
-            ToolResult.error("Could not uninstall $packageName: $output")
+        return appOperation {
+            operations.uninstall(packageName)
+            "Uninstalled $packageName."
         }
     }
 }

@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Uninstall reports a device that refuses instead of claiming the app is gone.** The tool
+  window threw away what ADB answered, so uninstalling a device-owner app, a system package, or
+  one another user on the device still has, showed "application uninstalled" while the app stayed
+  on screen. It now says what ADB said. An agent calling `android_uninstall_app` already got the
+  refusal — the button did not.
+- **Agents no longer force-stop a package that is not installed.** `android_stop_app` sent
+  `am force-stop` at whatever name it was given and reported it stopped, while the tool window's
+  Force Kill checked first. Both check now, and both answer a missing app, a missing launcher
+  activity, or a refused uninstall with the same sentence — the two paths run the same code for
+  launch, stop, restart, clear data, clear cache and uninstall, so a fix to one is a fix to both.
+- **A busy screen no longer reaches an agent cut in half.** The UI Inspector tab and the
+  `android_get_ui_tree` tools each captured the screen their own way, to a different file on the
+  device and with a different explanation when `uiautomator` refused. The agent's copy also read
+  the dump through the 400,000-character cap meant for text an agent is charged for, so a screen
+  larger than that arrived at the parser cut off mid-element. Both now run one capture, which is
+  parsed rather than shown raw and so has nothing to cap.
+
 ## [4.0.5] - 2026-09-22
 
 ### Added
