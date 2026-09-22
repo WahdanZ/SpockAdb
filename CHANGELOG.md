@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [4.0.5] - 2026-09-22
+
 ### Added
 
 - **See why background work has not run, and run it on demand.** A new **Background Work** tab
@@ -28,12 +30,6 @@
 
 ### Fixed
 
-- **Current fragment opens the fragment, not the top of its file.** It opened a class's file at the
-  first line, so a fragment declared alongside others, like the sample's in
-  `NavigationActivity.kt`, looked like the activity had been opened instead. It now goes to the
-  class declaration, and so do Current activity and the back stack popups. The Fragments popup
-  lists each fragment above the ones nested in it, indented, and a fragment two or more levels
-  deep is no longer reported as not found.
 - **The Storage tab shows files the app wrote after it was listed.** The file tree was read once,
   when the app was chosen, and had no way to be read again. SharedPreferences an app created
   after that, such as the sample's after pressing Seed, never appeared. The tree is now listed
@@ -69,6 +65,7 @@
   decide any of this, never the URI it echoes back, so opening `myapp://help/SecurityException`
   no longer reports a refusal that never happened
 
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.4...HEAD
 ## [4.0.4] - 2026-09-20
 
 ### Added
@@ -568,7 +565,6 @@
   class names were cut short at their first digit or underscore — `com.android.launcher3` was
   read as `com.android.launcher` — so those activities could never be opened at all
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...HEAD
 ## [4.0.3] - 2026-09-12
 
 ### Fixed
@@ -863,7 +859,8 @@
 - Enable and Disable Permissions of your application
 - Kill or Restart Application
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.4...HEAD
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...HEAD
+[4.0.5]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.4...v4.0.5
 [4.0.4]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...v4.0.4
 [4.0.3]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.2...v4.0.3
 [4.0.2]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.1...v4.0.2
