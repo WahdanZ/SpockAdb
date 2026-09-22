@@ -182,12 +182,26 @@ over stdio is confirmed, recorded in the activity panel and written to `idea.log
 the same call over HTTP, because it is the same call.
 
 The MCP layer **owns no ADB logic**. Tools resolve devices through the same
-`DebugBridgeProvider` and `DeviceLister` the tool window uses, and the app actions both
-surfaces offer — launch, stop, restart, clear data, clear cache, uninstall — are one class,
-`spock.adb.device.ops.AppOperations`. It holds Android behaviour and nothing else: no Swing,
-no PSI, no MCP, no confirmation policy. One implementation of every device operation means
-one set of behaviours, one set of error messages, and no chance of the UI and the agent path
-drifting apart.
+`DebugBridgeProvider` and `DeviceLister` the tool window uses, and what both surfaces do to a
+device lives in `spock.adb.device.ops`:
+
+| | |
+| --- | --- |
+| `AppOperations` | launch, stop, restart, clear data, clear cache, uninstall |
+| `InspectionOperations` | current activity, activity stack, fragments, app labels |
+| `UiTreeOperations` | the `uiautomator` capture behind the UI Inspector and the UI tools |
+
+Each holds Android behaviour and nothing else: no Swing, no PSI, no MCP, no confirmation
+policy. One implementation of every device operation means one set of behaviours, one set of
+error messages, and no chance of the UI and the agent path drifting apart.
+
+Three domains are shared already and were left alone rather than moved for symmetry: app
+storage goes through the `AppStorageCommands` extensions from both sides, the HTTP proxy
+through `IDevice.setHttpProxy` and its read-back, and the deep link through
+`openDeepLinkWithAmStart`. File transfer and coordinate input have no tool-window counterpart
+to drift from. Logcat looks shared and is not: the tool window streams `logcat -v threadtime`
+for as long as the tab is open, an agent reads a bounded `logcat -d -t n` snapshot, and those
+are two operations that happen to name the same command.
 
 They did drift while these were two implementations, in ways nobody chose: `android_stop_app`
 skipped the "is it installed" check the button made, and the button ignored the failure the

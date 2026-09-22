@@ -2,12 +2,11 @@ package spock.adb.mcp.tools
 
 import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
-import spock.adb.ShellQuote
+import spock.adb.device.ops.UiTreeOperations
 import spock.adb.uitree.UiFramework
 import spock.adb.uitree.UiNode
 import spock.adb.uitree.UiSelector
 import spock.adb.uitree.UiTree
-import spock.adb.uitree.UiTreeParser
 import spock.adb.uitree.UiTreeSearch
 
 /**
@@ -21,24 +20,14 @@ import spock.adb.uitree.UiTreeSearch
  */
 internal object UiTreeReader {
 
-    private const val DUMP_PATH = "/sdcard/spock-adb-ui-dump.xml"
-    private const val DUMP_TIMEOUT_SECONDS = 30L
-    private const val DUMP_MAX_CHARS = 400_000
-
-    /** @throws IllegalStateException with an actionable message when the dump fails. */
-    fun read(device: IDevice): UiTree {
-        val dumpOutput = McpShell.run(device, "uiautomator dump $DUMP_PATH", timeoutSeconds = DUMP_TIMEOUT_SECONDS)
-        check(!dumpOutput.contains("ERROR", ignoreCase = true)) {
-            "uiautomator could not dump the UI: $dumpOutput. This happens when the screen is " +
-                "off, a secure window is showing, or the UI is still animating."
-        }
-
-        val xml = McpShell.run(device, "cat ${ShellQuote.quote(DUMP_PATH)}", maxChars = DUMP_MAX_CHARS)
-        runCatching { McpShell.run(device, "rm -f ${ShellQuote.quote(DUMP_PATH)}") }
-
-        check(xml.isNotBlank()) { "uiautomator produced an empty dump." }
-        return UiTreeParser.parse(xml)
-    }
+    /**
+     * The capture itself is [UiTreeOperations], shared with the UI Inspector tab. What stays
+     * here is the part that is about talking to an agent: how a tree and a framework are
+     * described to one.
+     *
+     * @throws IllegalStateException with an actionable message when the dump fails.
+     */
+    fun read(device: IDevice): UiTree = UiTreeOperations(device).read()
 
     /** Guidance an agent needs before it starts matching elements on this screen. */
     fun UiTree.frameworkNote(): String = buildString {
