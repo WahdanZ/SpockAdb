@@ -1,11 +1,17 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
+import spock.adb.command.BatteryLevelPreset
+import spock.adb.command.ChargerSource
+import spock.adb.command.DeviceConditionShell
 import spock.adb.command.DeviceConditionTracker
 import spock.adb.command.StandbyBucket
 import spock.adb.command.deviceConditions
 import spock.adb.command.forceDoze
+import spock.adb.command.resetBattery
 import spock.adb.command.resetDeviceConditions
+import spock.adb.command.setBatteryLevel
+import spock.adb.command.setCharger
 import spock.adb.command.setStandbyBucket
 import spock.adb.command.unplugBattery
 import spock.adb.isAppInstall
@@ -133,6 +139,91 @@ class UnplugBatteryTool : AdbTool {
         return runCatching { device.unplugBattery() }.fold(
             onSuccess = { ToolResult.text("$it Call android_reset_device_conditions when done.") },
             onFailure = { ToolResult.error(it.message ?: "Could not unplug the battery.") },
+        )
+    }
+}
+
+/** `android_set_battery_level` — report a battery percentage, discharging, and read it back. */
+class SetBatteryLevelTool : AdbTool {
+    override val name = "android_set_battery_level"
+    override val description =
+        "Report the battery at a given percentage and discharging (dumpsys battery unplug, then set " +
+            "level), to test what an app does at a low battery: Battery Saver, deferred jobs, and " +
+            "charging constraints. The level is read back. Common levels are " +
+            BatteryLevelPreset.entries.joinToString { "${it.level} (${it.note})" } +
+            ". The real battery is ignored until android_reset_battery or " +
+            "android_reset_device_conditions."
+    override val safety = ToolSafety.SAFE_ACTION
+    override val inputSchema: JsonObject = Schema.obj {
+        integer(
+            "level",
+            "Battery percentage, ${DeviceConditionShell.MIN_LEVEL}-${DeviceConditionShell.MAX_LEVEL}.",
+            required = true,
+        )
+        deviceSerial()
+    }
+
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        val level = arguments.requiredInt("level")
+        if (level !in DeviceConditionShell.MIN_LEVEL..DeviceConditionShell.MAX_LEVEL) {
+            return ToolResult.error(
+                "A battery level is ${DeviceConditionShell.MIN_LEVEL}-${DeviceConditionShell.MAX_LEVEL}, " +
+                    "not $level.",
+            )
+        }
+        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        return runCatching { device.setBatteryLevel(level) }.fold(
+            onSuccess = { ToolResult.text("$it Call android_reset_battery when done.") },
+            onFailure = { ToolResult.error(it.message ?: "Could not set the battery level.") },
+        )
+    }
+}
+
+/** `android_set_charger` — switch one charger on its own, leaving the others and the level alone. */
+class SetChargerTool : AdbTool {
+    override val name = "android_set_charger"
+    override val description =
+        "Report one charger (ac, usb, wireless) as connected or disconnected, leaving the others and " +
+            "the battery level alone. Use it for the case a plain unplug cannot express: AC off with USB " +
+            "still on is a device discharging while still plugged into the machine. The state is read " +
+            "back. Undo with android_reset_battery."
+    override val safety = ToolSafety.SAFE_ACTION
+    override val inputSchema: JsonObject = Schema.obj {
+        enumeration("source", "The charger to switch.", ChargerSource.entries.map { it.argument }, required = true)
+        boolean("connected", "True to report it connected, false to disconnect it.", required = true)
+        deviceSerial()
+    }
+
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        val name = arguments.requiredString("source")
+        val source = ChargerSource.fromDumpsysName(name)
+            ?: return ToolResult.error(
+                "Unknown charger '$name'. Use one of: ${ChargerSource.entries.joinToString { it.argument }}.",
+            )
+        val connected = arguments.requiredBoolean("connected")
+        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        return runCatching { device.setCharger(source, connected) }.fold(
+            onSuccess = { ToolResult.text("$it Call android_reset_battery when done.") },
+            onFailure = { ToolResult.error(it.message ?: "Could not set the charger.") },
+        )
+    }
+}
+
+/** `android_reset_battery` — hand the battery back, leaving Doze and buckets alone. */
+class ResetBatteryTool : AdbTool {
+    override val name = "android_reset_battery"
+    override val description =
+        "Hand the battery back to the real hardware (dumpsys battery reset), undoing a level or unplug " +
+            "override. Leaves forced Doze and standby buckets alone; use " +
+            "android_reset_device_conditions to undo everything. Safe to call when nothing was changed."
+    override val safety = ToolSafety.SAFE_ACTION
+    override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
+
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        return runCatching { device.resetBattery() }.fold(
+            onSuccess = { ToolResult.text(it) },
+            onFailure = { ToolResult.error(it.message ?: "Could not reset the battery.") },
         )
     }
 }

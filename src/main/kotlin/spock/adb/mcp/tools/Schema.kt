@@ -176,6 +176,23 @@ private fun JsonElement.asStrictInt(name: String): Int {
     }
 }
 
+/**
+ * A required true/false argument.
+ *
+ * Held to the same standard as [requiredInt]: a missing flag is an error rather than a silent
+ * false, because "leave this charger alone" and "disconnect it" are different instructions.
+ *
+ * @throws IllegalArgumentException when absent or not a boolean.
+ */
+fun JsonObject.requiredBoolean(name: String): Boolean {
+    val element = get(name)?.takeIf { !it.isJsonNull }
+        ?: throw IllegalArgumentException("Missing required argument '$name'")
+    require(element.isJsonPrimitive && element.asJsonPrimitive.isBoolean) {
+        "Argument '$name' must be true or false, got $element."
+    }
+    return element.asBoolean
+}
+
 fun JsonObject.optionalBoolean(name: String, default: Boolean): Boolean =
     get(name)?.takeIf { !it.isJsonNull }?.asBoolean ?: default
 

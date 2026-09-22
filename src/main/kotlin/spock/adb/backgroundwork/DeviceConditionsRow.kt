@@ -11,6 +11,8 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import spock.adb.LatestRequest
+import spock.adb.command.BatteryLevelPreset
+import spock.adb.command.ChargerSource
 import spock.adb.command.DeviceCondition
 import spock.adb.command.DeviceConditionShell
 import spock.adb.command.DeviceConditionTracker
@@ -19,20 +21,28 @@ import spock.adb.command.GetDeviceConditionsCommand
 import spock.adb.command.StandbyBucket
 import spock.adb.command.forceDoze
 import spock.adb.command.leaveDoze
+import spock.adb.command.resetBattery
 import spock.adb.command.resetDeviceConditions
+import spock.adb.command.setBatteryLevel
+import spock.adb.command.setCharger
 import spock.adb.command.setStandbyBucket
 import spock.adb.command.unplugBattery
 import spock.adb.device.ConnectedDevice
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.FlowLayout
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JPanel
+import javax.swing.JSlider
 
 /**
  * The Background Work tab's device conditions: force Doze, move the app between standby buckets,
- * unplug the battery, and Reset — with a banner whenever Spock has left the device changed.
+ * put the battery at a preset or chosen level, switch each charger on its own, and Reset — with a
+ * banner whenever Spock has left the device changed.
  *
  * The banner is the point of the design. These are device-wide changes that survive the session:
  * a device left in forced Doze, or an app left in the rare bucket, misbehaves for whoever picks it
@@ -52,9 +62,56 @@ internal class DeviceConditionsRow(
         setFontColor(UIUtil.FontColor.BRIGHTER)
     }
 
+    private val levelReadout = JBLabel("$FULL%").apply {
+        setComponentStyle(UIUtil.ComponentStyle.SMALL)
+    }
+
     private val dozeButton = JButton(FORCE_DOZE).apply { toolTipText = DOZE_TOOLTIP }
-    private val batteryButton = JButton("Unplug battery").apply {
-        toolTipText = "Report the battery as unplugged (dumpsys battery unplug): jobs that need charging wait."
+    private val batteryButton = JButton("Unplug").apply {
+        toolTipText = "Report the battery as unplugged (dumpsys battery unplug) at its real level: " +
+            "jobs that need charging wait."
+    }
+    private val levelButtons = BatteryLevelPreset.entries.map { preset ->
+        JButton(preset.label).apply {
+            toolTipText = "Report the battery at ${preset.level}% (${preset.note}) and discharging. " +
+                "Unplugs it first, so the level actually drives Battery Saver and charging constraints."
+            addActionListener {
+                change("Setting the battery to ${preset.level}%…") { it.setBatteryLevel(preset.level) }
+            }
+        }
+    }
+
+    /**
+     * Any level, for the ones the presets do not cover — the threshold a bug actually shows at.
+     *
+     * It applies on release rather than on every tick: dragging fires dozens of changes, and each
+     * one is two shell round trips to the device.
+     */
+    private val levelSlider = JSlider(DeviceConditionShell.MIN_LEVEL, DeviceConditionShell.MAX_LEVEL, FULL).apply {
+        toolTipText = "Drag to report any battery level, applied when you let go."
+        addChangeListener { levelReadout.text = "$value%" }
+        addMouseListener(
+            object : MouseAdapter() {
+                override fun mouseReleased(e: MouseEvent?) {
+                    if (isEnabled) change("Setting the battery to $value%…") { it.setBatteryLevel(value) }
+                }
+            },
+        )
+    }
+    private val chargerBoxes = ChargerSource.entries.map { source ->
+        JCheckBox(source.label).apply {
+            toolTipText = "Report ${source.label} as connected or not. Leaving USB on while AC is off is " +
+                "how you test a device that is discharging but still plugged into the machine."
+            addActionListener {
+                change("Reporting ${source.label} ${if (isSelected) "connected" else "disconnected"}…") {
+                    it.setCharger(source, isSelected)
+                }
+            }
+        }
+    }
+    private val batteryResetButton = JButton("Reset battery").apply {
+        toolTipText = "Hand the battery back to the real hardware (dumpsys battery reset), leaving Doze " +
+            "and buckets alone."
     }
     private val bucketCombo = ComboBox(StandbyBucket.SETTABLE.toTypedArray()).apply {
         renderer = SimpleListCellRenderer.create("") { it.label }
@@ -92,10 +149,27 @@ internal class DeviceConditionsRow(
                 border = JBUI.Borders.empty(0, GAP / 2)
                 add(JBLabel("Device conditions:"))
                 add(dozeButton)
-                add(batteryButton)
                 add(bucketCombo)
                 add(bucketButton)
                 add(resetButton)
+            },
+        )
+        add(
+            JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+                border = JBUI.Borders.empty(0, GAP / 2)
+                add(JBLabel("Battery:"))
+                levelButtons.forEach(::add)
+                add(levelSlider)
+                add(levelReadout)
+            },
+        )
+        add(
+            JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(GAP), JBUI.scale(2))).apply {
+                border = JBUI.Borders.empty(0, GAP / 2)
+                add(JBLabel("Charger:"))
+                chargerBoxes.forEach(::add)
+                add(batteryButton)
+                add(batteryResetButton)
             },
         )
         add(
@@ -114,6 +188,7 @@ internal class DeviceConditionsRow(
             val bucket = bucketCombo.item ?: return@addActionListener
             change("Setting $app to ${bucket.label}…") { it.setStandbyBucket(app, bucket) }
         }
+        batteryResetButton.addActionListener { change("Resetting the battery…") { it.resetBattery() } }
         resetButton.addActionListener { reset() }
         bannerReset.addActionListener { reset() }
 
@@ -147,6 +222,12 @@ internal class DeviceConditionsRow(
                 // Shows the app's real bucket once per read, not on every control update, which
                 // would snap the choice back while the developer is making it.
                 observed?.bucket?.takeIf { it in StandbyBucket.SETTABLE }?.let { bucketCombo.item = it }
+                // Same reason as the bucket combo: snapping these back on every control update
+                // would fight the developer mid-drag or mid-click.
+                observed?.batteryLevel?.takeIf { !levelSlider.valueIsAdjusting }?.let { levelSlider.value = it }
+                observed?.chargers?.forEach { (source, on) ->
+                    chargerBoxes.getOrNull(source.ordinal)?.isSelected = on
+                }
                 stateLabel.text = result.fold(
                     { describe(it, app) },
                     { "Could not read device conditions: ${it.message}" },
@@ -213,7 +294,7 @@ internal class DeviceConditionsRow(
         val dozeReason = DeviceConditionShell.dozeUnavailableReason(api)
         dozeButton.isEnabled = ready && dozeReason == null
         dozeButton.toolTipText = dozeReason ?: DOZE_TOOLTIP
-        batteryButton.isEnabled = ready && dozeReason == null && observed?.batteryOverridden != true
+        updateBatteryControls(api, ready)
 
         val bucketReason = bucketCombo.item?.let { DeviceConditionShell.bucketUnavailableReason(api, it) }
         bucketCombo.isEnabled = ready && packageName != null
@@ -225,8 +306,22 @@ internal class DeviceConditionsRow(
         bannerReset.isEnabled = ready
     }
 
+    private fun updateBatteryControls(api: Int?, ready: Boolean) {
+        val reason = DeviceConditionShell.batteryUnavailableReason(api)
+        val available = ready && reason == null
+        batteryButton.isEnabled = available && observed?.batteryOverridden != true
+        levelButtons.forEach { it.isEnabled = available }
+        levelSlider.isEnabled = available
+        levelReadout.isEnabled = available
+        chargerBoxes.forEach { it.isEnabled = available }
+        // Enabled whether or not Spock is the one that overrode the battery: a reset is how a
+        // device left overridden by an earlier session, or from a terminal, gets its own back.
+        batteryResetButton.isEnabled = available
+    }
+
     companion object {
         private const val GAP = 6
+        private const val FULL = 100
         private const val FORCE_DOZE = "Force Doze"
         private const val LEAVE_DOZE = "Leave Doze"
         private const val DOZE_TOOLTIP =

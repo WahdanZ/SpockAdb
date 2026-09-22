@@ -281,12 +281,12 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-58 tools, in three levels.
+61 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
 | **Read-only** (25) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
-| **Safe action** (25) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_reset_device_conditions` |
+| **Safe action** (28) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
 Rules that hold regardless of what a client asks for:
@@ -574,7 +574,18 @@ tools put the device in those states and take it back out:
 - `android_set_standby_bucket` runs `am set-standby-bucket` and reads the bucket back, because the
   command prints nothing either way and Android often keeps an app higher. On Android 12+, an app
   allowed to schedule exact alarms never drops below the working set.
-- `android_unplug_battery` runs `dumpsys battery unplug`.
+- `android_unplug_battery` runs `dumpsys battery unplug`, leaving the level as it is.
+- `android_set_battery_level` runs `dumpsys battery unplug` and then `dumpsys battery set level`,
+  and reads the level back. It unplugs first on purpose: Battery Saver, the low-battery warning and
+  the job scheduler's charging constraints all key off a device that is discharging, so a phone
+  reporting 5% while plugged in behaves like a full one. The Background Work tab offers 5, 20, 50
+  and 100 as one-click presets.
+- `android_set_charger` runs `dumpsys battery set ac|usb|wireless 0|1` for one charger and reads it
+  back, leaving the others and the level alone. AC off with USB on is a device discharging while
+  still plugged into the machine — a state a plain unplug cannot express.
+- `android_reset_battery` runs `dumpsys battery reset` and leaves Doze and buckets alone. Plugging
+  the charger back in ends Doze on a real device, so the conditions are re-read afterwards rather
+  than assumed.
 - `android_reset_device_conditions` runs `unforce` and `battery reset`, and sets every bucket Spock
   moved back to active.
 
