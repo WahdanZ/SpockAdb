@@ -3,7 +3,7 @@ package spock.adb.command
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
-import spock.adb.isAppInstall
+import spock.adb.device.ops.AppOperations
 import java.util.concurrent.TimeUnit
 
 /**
@@ -87,12 +87,9 @@ internal fun IDevice.clearAppCacheOrThrow(packageName: String): String {
     return "Cleared cache and code_cache for $packageName."
 }
 
+/** The tool window's Clear Cache. Shares [AppOperations] with `android_clear_app_cache`. */
 class ClearAppCacheCommand : Command<String, Unit> {
     override fun execute(p: String, project: Project, device: IDevice) {
-        if (device.isAppInstall(p)) {
-            device.clearAppCacheOrThrow(p)
-        } else {
-            error("Application $p not installed")
-        }
+        AppOperations(device).clearCache(p)
     }
 }

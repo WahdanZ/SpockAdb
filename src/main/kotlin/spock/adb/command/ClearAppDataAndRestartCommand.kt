@@ -2,24 +2,16 @@ package spock.adb.command
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
-import spock.adb.clearAppData
-import spock.adb.getDefaultActivityForApplication
-import spock.adb.isAppInstall
-import spock.adb.startActivity
+import spock.adb.device.ops.AppOperations
 
+/**
+ * The tool window's Clear Data and Restart, which is how a first run is reproduced.
+ *
+ * No agent tool does this today; it is here rather than in the controller so that when one
+ * exists it has the same implementation to reach for as the button.
+ */
 class ClearAppDataAndRestartCommand : Command<String, Unit> {
     override fun execute(p: String, project: Project, device: IDevice) {
-        if (device.isAppInstall(p)) {
-            device.clearAppData(p, 15L)
-
-            val activity = device.getDefaultActivityForApplication(p)
-            if (activity.isNotEmpty()) {
-                device.startActivity(activity)
-            } else {
-                throw Exception("No Default Activity Found")
-            }
-
-        } else
-            throw Exception("Application $p not installed")
+        AppOperations(device).clearDataAndRestart(p)
     }
 }

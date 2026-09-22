@@ -3,23 +3,26 @@ package spock.adb.command
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.*
+import spock.adb.device.ops.AppNotInstalledException
+import spock.adb.device.ops.AppOperations
 import java.util.concurrent.TimeUnit
 
 class ProcessDeathCommand : Command<String, Unit> {
 
     override fun execute(p: String, project: Project, device: IDevice) {
-        if (device.isAppInstall(p)) {
-            sendAppToBackgroundIfInForeground(device, p)
+        // The same operations the tool window's other app actions and the agent tools use, so
+        // "not installed" and "no launchable activity" read the same here as everywhere else.
+        val operations = AppOperations(device)
+        if (!operations.isInstalled(p)) throw AppNotInstalledException(p)
 
-            Thread.sleep(2500L) //If we don't add this delay, the following commands executes without the app
-            // being on the background thus not working.
+        sendAppToBackgroundIfInForeground(device, p)
 
-            killAppProcess(device, p)
+        Thread.sleep(2500L) //If we don't add this delay, the following commands executes without the app
+        // being on the background thus not working.
 
-            startApplication(device, p)
-        } else {
-            throw Exception("Application $p not installed")
-        }
+        killAppProcess(device, p)
+
+        operations.launch(p)
     }
 
     private fun sendAppToBackgroundIfInForeground(device: IDevice, p: String) {
@@ -37,12 +40,4 @@ class ProcessDeathCommand : Command<String, Unit> {
             15L,
             TimeUnit.SECONDS,
         )
-
-    private fun startApplication(device: IDevice, p: String) {
-        val activity = device.getDefaultActivityForApplication(p)
-        when {
-            activity.isNotEmpty() -> device.startActivity(activity)
-            else -> throw Exception("No Default Activity Found")
-        }
-    }
 }
