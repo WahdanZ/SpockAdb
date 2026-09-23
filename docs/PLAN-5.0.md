@@ -1,6 +1,12 @@
 # Spock ADB 5.0 — AI-native Android debugging
 
-Working plan. Phases are executed **one at a time**, in order; each is a reviewable commit
+> **Internal working plan, not user documentation.** This records how the 5.0 release was
+> built — phases, decisions taken and why, what has landed so far — for whoever picks up the
+> next phase. If you're looking for how to *use* the MCP server or the AI assistant, see
+> [MCP.md](MCP.md) and [AI.md](AI.md); those describe what already ships, kept current as
+> features land.
+
+Phases are executed **one at a time**, in order; each is a reviewable commit
 with tests green before the next begins. Tick the boxes as they land.
 
 ## Starting point (verified against the tree at 4.0.3)
