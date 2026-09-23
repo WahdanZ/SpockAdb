@@ -42,6 +42,16 @@
   the dump through the 400,000-character cap meant for text an agent is charged for, so a screen
   larger than that arrived at the parser cut off mid-element. Both now run one capture, which is
   parsed rather than shown raw and so has nothing to cap.
+- Element taps, long presses, and text entry refuse ambiguous or disabled targets, with optional
+  package/container scoping and exact tag matching. Action results distinguish dispatch from a verified UI outcome.
+  A refusal names each candidate's label and class and says which selector field can tell them
+  apart, or that none can. Matches that land on the same control count once, so an icon inside a
+  button sharing its description is not ambiguous. Scrolling to an element swipes the outermost
+  of nested lists, such as a feed of carousels, and refuses only between unrelated lists.
+- Accessibility audits no longer count test tags as spoken labels and use the effective display
+  density for estimated 48dp touch targets. Missing density explicitly skips the size check.
+- View IDs outside Compose no longer imply exposed Compose tags on hybrid screens; missing-tag
+  guidance reports what was observed instead of assuming an application configuration error.
 
 ## [4.0.5] - 2026-09-22
 

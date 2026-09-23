@@ -49,6 +49,13 @@ data class UiNode(
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
 
+    /** Text exposed for announcement; automation identifiers are deliberately excluded. */
+    val accessibleLabel: String
+        get() = contentDescription.takeIf { it.isNotBlank() }
+            ?: text.takeIf { it.isNotBlank() }
+            ?: children.filterNot { it.isInteractive }.map { it.accessibleLabel }
+                .filter { it.isNotBlank() }.joinToString(" ")
+
     /** Interactive in the sense an agent cares about: something it can act on. */
     val isInteractive: Boolean get() = clickable || longClickable || scrollable || checkable
 
@@ -90,6 +97,7 @@ data class UiTree(
     val root: UiNode?,
     val framework: UiFramework,
     val testTagSupport: TestTagSupport,
+    val densityDpi: Int? = null,
 ) {
     fun nodes(): Sequence<UiNode> = root?.asSequence() ?: emptySequence()
 

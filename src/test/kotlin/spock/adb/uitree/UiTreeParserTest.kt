@@ -17,6 +17,22 @@ class UiTreeParserTest {
     private val composeTree by lazy { UiTreeParser.parse(dump("compose-material3.xml")) }
 
     @Test
+    fun `View resource IDs do not imply exposed Compose tags in a hybrid screen`() {
+        val tree = UiTreeParser.parse(
+            """
+            <hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][500,500]">
+              <node class="android.widget.Button" resource-id="p:id/save" bounds="[0,0][100,100]" />
+              <node class="androidx.compose.ui.platform.AndroidComposeView" bounds="[0,100][500,500]">
+                <node class="android.widget.TextView" text="Compose" bounds="[0,100][100,200]" />
+              </node>
+            </node></hierarchy>
+            """.trimIndent(),
+        )
+        assertEquals(UiFramework.HYBRID, tree.framework)
+        assertEquals(UiTree.TestTagSupport.UNAVAILABLE, tree.testTagSupport)
+    }
+
+    @Test
     fun `identifies a traditional View hierarchy`() {
         assertEquals(UiFramework.VIEWS, viewsTree.framework)
         assertEquals(UiTree.TestTagSupport.NOT_APPLICABLE, viewsTree.testTagSupport)

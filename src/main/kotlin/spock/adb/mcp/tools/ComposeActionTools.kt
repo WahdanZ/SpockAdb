@@ -20,14 +20,14 @@ import spock.adb.uitree.UiTreeSearch
  */
 private fun ToolContext.resolveElement(
     arguments: JsonObject,
-    requireInteractive: Boolean,
+    action: UiTreeSearch.Action,
 ): Pair<UiTree, UiNode> {
     val device = requireIDevice(arguments.optionalString("deviceSerial"))
     val selector = arguments.toSelector()
     require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
     val tree = UiTreeReader.read(device)
-    val match = UiTreeSearch.findOne(tree, selector)
+    val match = UiTreeSearch.findUnique(tree, selector, action)
         ?: throw IllegalStateException(
             "No element matched ${selector.describe()}. " + tree.frameworkNote() +
                 " Call android_get_ui_tree to see what is actually on screen.",
@@ -35,7 +35,7 @@ private fun ToolContext.resolveElement(
 
     // Compose usually puts text on a child and the click handler on its parent, so the node
     // carrying the text is often not the one that can be tapped.
-    val target = if (requireInteractive) UiTreeSearch.interactiveTarget(tree, match) else match
+    val target = UiTreeSearch.actionTarget(tree, match, action, selector)
     return tree to target
 }
 
@@ -51,14 +51,10 @@ class TapElementTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { elementSelector() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val (_, target) = context.resolveElement(arguments, requireInteractive = true)
-        if (!target.enabled) {
-            return ToolResult.error("Matched '${target.label}' but it is disabled, so tapping it does nothing.")
-        }
-
+        val (_, target) = context.resolveElement(arguments, UiTreeSearch.Action.TAP)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         McpShell.run(device, "input tap ${target.bounds.centerX} ${target.bounds.centerY}")
-        return ToolResult.text("Tapped '${target.label}' at ${target.bounds}.")
+        return ToolResult.text("Tap dispatched to '${target.label}' at ${target.bounds}; UI outcome not verified.")
     }
 }
 
@@ -74,19 +70,21 @@ class LongPressElementTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val (_, target) = context.resolveElement(arguments, requireInteractive = true)
+        val (_, target) = context.resolveElement(arguments, UiTreeSearch.Action.LONG_PRESS)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         val duration = arguments.optionalInt("durationMs", DEFAULT_LONG_PRESS_MS)
+        require(duration in 1..MAX_LONG_PRESS_MS) { "durationMs must be between 1 and $MAX_LONG_PRESS_MS." }
 
         // A swipe that starts and ends at the same point is a long press.
         val x = target.bounds.centerX
         val y = target.bounds.centerY
         McpShell.run(device, "input swipe $x $y $x $y $duration")
-        return ToolResult.text("Long-pressed '${target.label}' for ${duration}ms.")
+        return ToolResult.text("Long press dispatched to '${target.label}' for ${duration}ms; UI outcome not verified.")
     }
 
     private companion object {
         const val DEFAULT_LONG_PRESS_MS = 800
+        const val MAX_LONG_PRESS_MS = 10_000
     }
 }
 
@@ -118,7 +116,7 @@ class ScrollToElementTool : AdbTool {
                 )
             }
 
-            val scrollable = tree.nodes().firstOrNull { it.scrollable && it.bounds.isVisible }
+            val scrollable = UiTreeSearch.scrollTarget(tree, selector)
                 ?: return ToolResult.error(
                     "No element matched ${selector.describe()} and nothing on screen is scrollable.",
                 )
@@ -162,12 +160,12 @@ class InputTextIntoElementTool : AdbTool {
         // not go through McpProtocol's argument check, and failing on the element would
         // misreport a caller that simply omitted the text.
         val value = arguments.requiredString("value")
-        val (_, target) = context.resolveElement(arguments, requireInteractive = true)
+        val (_, target) = context.resolveElement(arguments, UiTreeSearch.Action.TEXT_INPUT)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
         McpShell.run(device, "input tap ${target.bounds.centerX} ${target.bounds.centerY}")
         McpShell.run(device, "input text ${ShellQuote.quote(value)}")
-        return ToolResult.text("Typed ${value.length} characters into '${target.label}'.")
+        return ToolResult.text("Text input dispatched to '${target.label}'; focus and resulting text not verified.")
     }
 }
 
@@ -273,15 +271,16 @@ class AccessibilityAuditTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val tree = UiTreeReader.read(device)
+        val tree = UiTreeReader.read(device).copy(densityDpi = spock.adb.uitree.DisplayDensity.read(device))
         val findings = spock.adb.uitree.AccessibilityAudit.audit(tree)
 
+        val coverage = spock.adb.uitree.AccessibilityAudit.coverageNote(tree)
         if (findings.isEmpty()) {
-            return ToolResult.text(tree.frameworkNote() + "\n\nNo accessibility problems found.")
+            return ToolResult.text(tree.frameworkNote() + "\n\nNo issues detected by these checks.\n" + coverage)
         }
         return ToolResult.text(
             tree.frameworkNote() + "\n\n${findings.size} finding(s):\n\n" +
-                findings.joinToString("\n\n") { it.describe(tree.framework) },
+                findings.joinToString("\n\n") { it.describe(tree.framework) } + "\n\n" + coverage,
         )
     }
 }

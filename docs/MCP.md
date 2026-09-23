@@ -376,6 +376,19 @@ would report every pure-Compose screen as hybrid.
 
 ### Semantics first, coordinates last
 
+Element selectors accept optional `packageName` and `containerTag` scopes. A container tag
+must identify exactly one subtree; `exactTag: true` matches a complete case-sensitive tag or
+raw resource ID. Existing substring matching remains the default for compatibility.
+Taps, long presses, and text entry reject multiple matches and disabled or ineligible targets.
+Matches that resolve to the same control count once. A refusal lists the candidates and names
+what can separate them: often `exact: true`. Action results report command dispatch, not a
+verified change in the app; follow with an assertion. `android_scroll_to_element` swipes the
+outermost of nested scrollable containers and refuses only between unrelated ones.
+
+Accessibility audits separate spoken labels from test tags. Touch-target estimates use the
+reported default-display density; when it cannot be read, the size check is explicitly skipped.
+Reported bounds may differ from expanded touch regions, so these checks do not certify accessibility.
+
 `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`,
 `android_input_text_into_element`, `android_find_ui_element`, `android_assert_visible`,
 `android_assert_enabled` and `android_assert_text` all resolve elements by **testTag → content
@@ -387,15 +400,15 @@ or after any layout change, and is the single biggest cause of flaky AI-driven U
 
 One Compose-specific detail matters: Compose usually puts the text on a child node and the
 click handler on its **parent**, so the node matching "Continue" often is not the tappable
-one. `android_tap_element` walks up to the nearest interactive ancestor automatically.
+one. `android_tap_element` walks up to the nearest clickable ancestor automatically.
 
 ### Limitations, stated plainly
 
 - **Compose test tags require the app to opt in.** `Modifier.testTag` is only visible over
   ADB when the app sets `Modifier.semantics { testTagsAsResourceId = true }` (Compose UI
-  1.2+). When it has not, `android_get_ui_tree` says so explicitly and tells the agent to
-  match on text or content description instead. It does not pretend the tag is missing for
-  some other reason.
+  1.2+). When no exposed tags are observed, `android_get_ui_tree` suggests matching on
+  text or content description. The capture alone cannot establish whether tags were never
+  added, their subtree was not exposed, or the tagged content is absent from this capture.
 
 - **The current Compose Navigation route is not observable over ADB.** Navigation Compose
   keeps its back stack in memory and publishes nothing to `dumpsys` or the accessibility

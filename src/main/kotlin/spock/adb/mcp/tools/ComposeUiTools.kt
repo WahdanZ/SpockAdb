@@ -37,9 +37,9 @@ internal object UiTreeReader {
                 append("\nCompose test tags are visible, so prefer matching on testTag.")
             UiTree.TestTagSupport.UNAVAILABLE ->
                 append(
-                    "\nCompose test tags are NOT visible on this screen. The app has not set " +
-                        "`Modifier.semantics { testTagsAsResourceId = true }`, so testTag cannot be " +
-                        "read over ADB. Match on text or contentDescription instead.",
+                    "\nNo exposed Compose test tags were observed in this capture. Add tags and enable " +
+                        "`Modifier.semantics { testTagsAsResourceId = true }` on their subtree if needed. " +
+                        "Match on text or contentDescription when tags are unavailable.",
                 )
             UiTree.TestTagSupport.NOT_APPLICABLE -> Unit
         }
@@ -90,6 +90,9 @@ internal object UiTreeReader {
         contentDescription = optionalString("contentDescription"),
         exact = optionalBoolean("exact", false),
         interactiveOnly = interactiveOnly,
+        packageName = optionalString("packageName"),
+        exactTag = optionalBoolean("exactTag", false),
+        containerTag = optionalString("containerTag"),
     )
 
     fun Schema.ObjectBuilder.elementSelector() {
@@ -97,6 +100,9 @@ internal object UiTreeReader {
         string("text", "Visible text of the element.")
         string("contentDescription", "Accessibility content description.")
         boolean("exact", "Match the whole value rather than a substring. Defaults to false.")
+        string("packageName", "Restrict matches to this application package.")
+        string("containerTag", "Exact tag or resource ID of one container to search within.")
+        boolean("exactTag", "Case-sensitive whole tag or resource ID match. Defaults to false for compatibility.")
         deviceSerial()
     }
 }

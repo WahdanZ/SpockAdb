@@ -156,8 +156,8 @@ class UiInspectorPanel(
     private fun buildTestTagBanner(): JComponent {
         testTagBannerLabel.foreground = HYBRID_COLOR
         testTagBannerLabel.text =
-            "<html><b>Compose test tags are not exposed on this screen.</b> Elements can only " +
-                "be matched by text or content description until you add one modifier.</html>"
+            "<html><b>No exposed Compose test tags were observed in this capture.</b> " +
+                "Use text or content description, or add tags and expose them on their subtree.</html>"
 
         testTagBanner.border = JBUI.Borders.empty(2, GAP)
         testTagBanner.add(testTagBannerLabel, BorderLayout.CENTER)
@@ -240,7 +240,8 @@ class UiInspectorPanel(
     }
 
     /** The same capture the `android_get_ui_tree` family runs — see [UiTreeOperations]. */
-    private fun readTree(target: ConnectedDevice): UiTree = UiTreeOperations(target.device).read()
+    private fun readTree(target: ConnectedDevice): UiTree =
+        UiTreeOperations(target.device).read().copy(densityDpi = DisplayDensity.read(target.device))
 
     /**
      * States the framework outright.
@@ -374,11 +375,12 @@ class UiInspectorPanel(
         val findings = AccessibilityAudit.audit(uiTree)
 
         detailArea.text = if (findings.isEmpty()) {
-            "No accessibility problems found on this screen."
+            "No issues detected by these checks."
         } else {
             val rendered = findings.joinToString("\n\n") { it.describe(uiTree.framework) }
             "${findings.size} finding(s):\n\n$rendered"
         }
+        detailArea.append("\n\n" + AccessibilityAudit.coverageNote(uiTree))
         detailArea.caretPosition = 0
         statusLabel.text = "${findings.size} accessibility finding(s)."
     }
