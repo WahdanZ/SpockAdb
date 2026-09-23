@@ -84,6 +84,7 @@ same scenario, emitted from the app's own process. Neither file is part of the p
 | `src/main/kotlin/spock/adb/AppSettingService.kt` | Persisted settings + `SpockAction` enum |
 | `src/main/resources/META-INF/plugin.xml` | Plugin manifest |
 | `CHANGELOG.md` | Release history (used by CI for release notes) |
+| [`docs/PLAN-5.0.md`](docs/PLAN-5.0.md) | Working plan for the AI-native 5.0 release — phases, decisions and why, what's landed |
 
 ### Adding a new action
 

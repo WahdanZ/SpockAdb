@@ -277,7 +277,9 @@ That means less setup, fewer targeting mistakes, and less time spent fighting yo
 
 ## Documentation
 
-[MCP setup & tools](docs/MCP.md) · [IDE compatibility](docs/COMPATIBILITY.md) · [Release history](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+[MCP setup & tools](docs/MCP.md) · [AI assistant](docs/AI.md) · [IDE compatibility](docs/COMPATIBILITY.md) · [Release history](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+
+Looking for something specific? [docs/README.md](docs/README.md) indexes every document and says who each one is for.
 
 ## License
 
