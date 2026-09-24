@@ -4,10 +4,13 @@ import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import spock.adb.mcp.tools.UiTreeReader.elementSelector
 import spock.adb.mcp.tools.UiTreeReader.frameworkNote
+import spock.adb.mcp.tools.UiTreeReader.preface
 import spock.adb.mcp.tools.UiTreeReader.toSelector
+import spock.adb.uitree.AccessibilityAudit
+import spock.adb.uitree.DisplayMetrics
 import spock.adb.uitree.UiNode
+import spock.adb.uitree.UiObservation
 import spock.adb.uitree.UiSelector
-import spock.adb.uitree.UiTree
 import spock.adb.uitree.UiTreeSearch
 
 /**
@@ -17,26 +20,37 @@ import spock.adb.uitree.UiTreeSearch
  * breaks on a different screen size, density or font scale, and is the main reason
  * AI-driven UI automation is flaky. Every tool here resolves the element from semantics and
  * only then derives the tap point from the matched node's own bounds.
+ *
+ * A refusal starts with the observation's summary too, so "no match" or "ambiguous" says which
+ * window on which device it was decided against.
  */
 private fun ToolContext.resolveElement(
     arguments: JsonObject,
     action: UiTreeSearch.Action,
-): Pair<UiTree, UiNode> {
-    val device = requireIDevice(arguments.optionalString("deviceSerial"))
+): Pair<UiObservation, UiNode> {
+    val device = requireDevice(arguments.optionalString("deviceSerial"))
     val selector = arguments.toSelector()
     require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
-    val tree = UiTreeReader.read(device)
-    val match = UiTreeSearch.findUnique(tree, selector, action)
+    val observation = UiTreeReader.read(device)
+    val tree = observation.tree
+    val match = observation.refusing { UiTreeSearch.findUnique(tree, selector, action) }
         ?: throw IllegalStateException(
-            "No element matched ${selector.describe()}. " + tree.frameworkNote() +
+            observation.summary() + "\nNo element matched ${selector.describe()}. " + tree.frameworkNote() +
                 " Call android_get_ui_tree to see what is actually on screen.",
         )
 
     // Compose usually puts text on a child and the click handler on its parent, so the node
     // carrying the text is often not the one that can be tapped.
-    val target = UiTreeSearch.actionTarget(tree, match, action, selector)
-    return tree to target
+    val target = observation.refusing { UiTreeSearch.actionTarget(tree, match, action, selector) }
+    return observation to target
+}
+
+/** Runs a selection step, prefixing a refusal (ambiguous, disabled, out of scope) with [this] summary. */
+private inline fun <T> UiObservation.refusing(select: () -> T): T = try {
+    select()
+} catch (e: IllegalArgumentException) {
+    throw IllegalArgumentException(summary() + "\n" + e.message, e)
 }
 
 /** `android_tap_element` — tap by semantics, not coordinates. */
@@ -51,10 +65,13 @@ class TapElementTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { elementSelector() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val (_, target) = context.resolveElement(arguments, UiTreeSearch.Action.TAP)
+        val (observation, target) = context.resolveElement(arguments, UiTreeSearch.Action.TAP)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         McpShell.run(device, "input tap ${target.bounds.centerX} ${target.bounds.centerY}")
-        return ToolResult.text("Tap dispatched to '${target.label}' at ${target.bounds}; UI outcome not verified.")
+        return ToolResult.text(
+            observation.summary() +
+                "\nTap dispatched to '${target.label}' at ${target.bounds}; UI outcome not verified.",
+        )
     }
 }
 
@@ -70,7 +87,7 @@ class LongPressElementTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val (_, target) = context.resolveElement(arguments, UiTreeSearch.Action.LONG_PRESS)
+        val (observation, target) = context.resolveElement(arguments, UiTreeSearch.Action.LONG_PRESS)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         val duration = arguments.optionalInt("durationMs", DEFAULT_LONG_PRESS_MS)
         require(duration in 1..MAX_LONG_PRESS_MS) { "durationMs must be between 1 and $MAX_LONG_PRESS_MS." }
@@ -79,7 +96,10 @@ class LongPressElementTool : AdbTool {
         val x = target.bounds.centerX
         val y = target.bounds.centerY
         McpShell.run(device, "input swipe $x $y $x $y $duration")
-        return ToolResult.text("Long press dispatched to '${target.label}' for ${duration}ms; UI outcome not verified.")
+        return ToolResult.text(
+            observation.summary() +
+                "\nLong press dispatched to '${target.label}' for ${duration}ms; UI outcome not verified.",
+        )
     }
 
     private companion object {
@@ -102,23 +122,30 @@ class ScrollToElementTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val connected = context.requireDevice(arguments.optionalString("deviceSerial"))
+        val device = connected.device
         val selector = arguments.toSelector()
         require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
         val maxSwipes = arguments.optionalInt("maxSwipes", DEFAULT_MAX_SWIPES).coerceIn(1, MAX_SWIPES)
 
+        // Measured once: a swipe does not change the display, and each measurement is two commands.
+        var metrics: DisplayMetrics? = null
         repeat(maxSwipes) { attempt ->
-            val tree = UiTreeReader.read(device)
+            val observation = UiTreeReader.read(connected, metrics)
+            metrics = observation.metrics
+            val tree = observation.tree
             UiTreeSearch.findOne(tree, selector)?.let { found ->
                 return ToolResult.text(
-                    "Found '${found.label}' after $attempt scroll(s) at ${found.bounds}.",
+                    observation.preface() +
+                        "\nFound '${found.label}' after $attempt scroll(s) at ${found.bounds}.",
                 )
             }
 
             val scrollable = UiTreeSearch.scrollTarget(tree, selector)
                 ?: return ToolResult.error(
-                    "No element matched ${selector.describe()} and nothing on screen is scrollable.",
+                    observation.preface() +
+                        "\nNo element matched ${selector.describe()} and nothing on screen is scrollable.",
                 )
 
             // Swipe within the scrollable container's own bounds, inset from the edges so the
@@ -160,12 +187,15 @@ class InputTextIntoElementTool : AdbTool {
         // not go through McpProtocol's argument check, and failing on the element would
         // misreport a caller that simply omitted the text.
         val value = arguments.requiredString("value")
-        val (_, target) = context.resolveElement(arguments, UiTreeSearch.Action.TEXT_INPUT)
+        val (observation, target) = context.resolveElement(arguments, UiTreeSearch.Action.TEXT_INPUT)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
         McpShell.run(device, "input tap ${target.bounds.centerX} ${target.bounds.centerY}")
         McpShell.run(device, "input text ${ShellQuote.quote(value)}")
-        return ToolResult.text("Text input dispatched to '${target.label}'; focus and resulting text not verified.")
+        return ToolResult.text(
+            observation.summary() +
+                "\nText input dispatched to '${target.label}'; focus and resulting text not verified.",
+        )
     }
 }
 
@@ -179,16 +209,19 @@ class AssertVisibleTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { elementSelector() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
         val selector = arguments.toSelector()
         require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
-        val tree = UiTreeReader.read(device)
-        val match = UiTreeSearch.findOne(tree, selector)
+        val observation = UiTreeReader.read(device)
+        val match = UiTreeSearch.findOne(observation.tree, selector)
         return when {
-            match != null -> ToolResult.text("PASS: '${match.label}' is visible at ${match.bounds}.")
+            match != null -> ToolResult.text(
+                observation.preface() + "\nPASS: '${match.label}' is visible at ${match.bounds}.",
+            )
             else -> ToolResult.error(
-                "FAIL: nothing matched ${selector.describe()}.\n\n" + tree.frameworkNote(),
+                observation.preface() + "\nFAIL: nothing matched ${selector.describe()}.\n\n" +
+                    observation.tree.frameworkNote(),
             )
         }
     }
@@ -201,16 +234,17 @@ class AssertEnabledTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { elementSelector() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
         val selector = arguments.toSelector()
         require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
-        val match = UiTreeSearch.findOne(UiTreeReader.read(device), selector)
-            ?: return ToolResult.error("FAIL: nothing matched ${selector.describe()}.")
+        val observation = UiTreeReader.read(device)
+        val match = UiTreeSearch.findOne(observation.tree, selector)
+            ?: return ToolResult.error(observation.preface() + "\nFAIL: nothing matched ${selector.describe()}.")
 
         return when {
-            match.enabled -> ToolResult.text("PASS: '${match.label}' is enabled.")
-            else -> ToolResult.error("FAIL: '${match.label}' is present but disabled.")
+            match.enabled -> ToolResult.text(observation.preface() + "\nPASS: '${match.label}' is enabled.")
+            else -> ToolResult.error(observation.preface() + "\nFAIL: '${match.label}' is present but disabled.")
         }
     }
 }
@@ -228,17 +262,18 @@ class AssertTextTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
         val expected = arguments.requiredString("text")
         val exact = arguments.optionalBoolean("exact", false)
 
-        val tree = UiTreeReader.read(device)
+        val observation = UiTreeReader.read(device)
+        val tree = observation.tree
         // Content description counts: Compose text is often exposed that way.
         val match = UiTreeSearch.findOne(tree, UiSelector(text = expected, exact = exact))
             ?: UiTreeSearch.findOne(tree, UiSelector(contentDescription = expected, exact = exact))
 
         return when {
-            match != null -> ToolResult.text("PASS: found '$expected' at ${match.bounds}.")
+            match != null -> ToolResult.text(observation.preface() + "\nPASS: found '$expected' at ${match.bounds}.")
             else -> {
                 val visible = tree.nodes()
                     .mapNotNull { it.text.takeIf(String::isNotBlank) }
@@ -246,7 +281,7 @@ class AssertTextTool : AdbTool {
                     .take(VISIBLE_TEXT_SAMPLE)
                     .toList()
                 ToolResult.error(
-                    "FAIL: '$expected' is not on screen. Visible text: " +
+                    observation.preface() + "\nFAIL: '$expected' is not on screen. Visible text: " +
                         visible.joinToString(", ") { "\"$it\"" },
                 )
             }
@@ -270,16 +305,18 @@ class AccessibilityAuditTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val tree = UiTreeReader.read(device).copy(densityDpi = spock.adb.uitree.DisplayDensity.read(device))
-        val findings = spock.adb.uitree.AccessibilityAudit.audit(tree)
+        // The observation carries the density its touch-target estimates are made at.
+        val observation = UiTreeReader.read(context.requireDevice(arguments.optionalString("deviceSerial")))
+        val tree = observation.tree
+        val findings = AccessibilityAudit.audit(tree)
 
-        val coverage = spock.adb.uitree.AccessibilityAudit.coverageNote(tree)
+        val coverage = AccessibilityAudit.coverageNote(tree)
+        val preface = observation.preface() + "\n" + tree.frameworkNote()
         if (findings.isEmpty()) {
-            return ToolResult.text(tree.frameworkNote() + "\n\nNo issues detected by these checks.\n" + coverage)
+            return ToolResult.text(preface + "\n\nNo issues detected by these checks.\n" + coverage)
         }
         return ToolResult.text(
-            tree.frameworkNote() + "\n\n${findings.size} finding(s):\n\n" +
+            preface + "\n\n${findings.size} finding(s):\n\n" +
                 findings.joinToString("\n\n") { it.describe(tree.framework) } + "\n\n" + coverage,
         )
     }

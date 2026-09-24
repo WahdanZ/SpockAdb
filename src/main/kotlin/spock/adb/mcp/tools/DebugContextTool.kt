@@ -133,14 +133,17 @@ class DebugContextTool : AdbTool {
     /**
      * The framework note is always emitted, never only on failure: an agent that does not know
      * this screen is Compose without `testTagsAsResourceId` will keep matching on test tags
-     * that cannot exist, and blame the app rather than the opt-in it is missing.
+     * that cannot exist, and blame the app rather than the opt-in it is missing. The observation
+     * summary comes first, so the section says which window it is and when it was taken.
      */
     private fun renderUi(arguments: JsonObject, device: spock.adb.device.ConnectedDevice): String {
         val depth = arguments.optionalInt("maxUiDepth", DEFAULT_UI_DEPTH).coerceIn(1, MAX_UI_DEPTH)
-        val tree = UiTreeReader.read(device.device)
+        val observation = UiTreeReader.read(device)
+        val tree = observation.tree
         return with(UiTreeReader) {
-            val root = tree.root ?: return@with tree.frameworkNote() + "\n\nThe dump contained no UI nodes."
-            tree.frameworkNote() + "\n\n" + root.render(maxDepth = depth)
+            val preface = observation.preface() + "\n" + tree.frameworkNote()
+            val root = tree.root ?: return@with preface + "\n\nThe dump contained no UI nodes."
+            preface + "\n\n" + root.render(maxDepth = depth)
         }
     }
 

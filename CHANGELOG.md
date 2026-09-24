@@ -56,11 +56,25 @@
   `android_get_ui_tree` request used to leave `uiautomator dump` running on the device until it
   finished or hit its 30-second timeout, because the capture never told adb to stop. It now stops
   at adb's next read and sends nothing further. A capture that fails says which way it failed:
-  cancelled, device unreachable (naming the device and pointing to `android_list_devices`), a
-  command that timed out (naming the command and how long it was given), or `uiautomator` refusing
-  or writing an empty dump. Before, a lost device or a timeout came back as whatever adb's
-  exception said, sometimes nothing more than a class name. A cancel that adb reports as a closed
-  connection or a timeout is still reported as a cancel.
+  cancelled, device unreachable (naming the device), a command that timed out (naming the command
+  and how long it was given), or `uiautomator` refusing or writing an empty dump. Before, a lost
+  device or a timeout came back as whatever adb's exception said, sometimes nothing more than a
+  class name. A cancel that adb reports as a closed connection or a timeout is still reported as a
+  cancel. A lost device is followed by the next step for whoever is reading: an agent is pointed
+  to `android_list_devices`, and the UI Inspector tells you to reconnect or pick another device
+  rather than naming a tool you cannot call.
+- **Every UI tool result says which screen it read.** A tree, a match or a PASS used to arrive
+  with nothing to say which device, which window or which moment it came from, or what the
+  capture cannot see — so a missing keyboard in the tree read the same as a keyboard that was not
+  there. Every `android_get_ui_tree`-family result, the element actions and assertions, the
+  accessibility audit and the debug-context UI section now open with one line: the device, the
+  package owning the dumped window, when it was captured by the host's clock and how long it
+  took, the viewport and rotation, the effective density, and the data source. Results that make
+  a claim about the screen add one line of limits: only the active window's accessibility tree,
+  no occlusion from bounds, and — when they apply — unobserved test tags, the `AndroidView` tag
+  gap, or a density or display size that could not be read. The UI Inspector's status line shows
+  the viewport and density too. The audit now takes its density from the same capture instead of
+  a separate read that hid its failures.
 
 ## [4.0.5] - 2026-09-22
 

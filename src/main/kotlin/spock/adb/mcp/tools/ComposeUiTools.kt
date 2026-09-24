@@ -1,10 +1,13 @@
 package spock.adb.mcp.tools
 
-import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
+import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.UiTreeOperations
+import spock.adb.uitree.DisplayMetrics
+import spock.adb.uitree.UiCaptureException
 import spock.adb.uitree.UiFramework
 import spock.adb.uitree.UiNode
+import spock.adb.uitree.UiObservation
 import spock.adb.uitree.UiSelector
 import spock.adb.uitree.UiTree
 import spock.adb.uitree.UiTreeSearch
@@ -25,9 +28,30 @@ internal object UiTreeReader {
      * here is the part that is about talking to an agent: how a tree and a framework are
      * described to one.
      *
-     * @throws IllegalStateException with an actionable message when the dump fails.
+     * The serial named in the observation is the one the agent chose, read from [device]'s
+     * resolved metadata rather than from ddmlib.
+     *
+     * @param metrics display metrics an earlier capture in the same call already read; see
+     *   [UiTreeOperations.observe].
+     * @throws IllegalStateException with an actionable message when the dump fails. A lost
+     *   device is told what an agent can do about it, which a person in the Inspector cannot.
      */
-    fun read(device: IDevice): UiTree = UiTreeOperations(device).read()
+    fun read(device: ConnectedDevice, metrics: DisplayMetrics? = null): UiObservation = try {
+        UiTreeOperations(device.device, serial = device.serialNumber).observe(metrics)
+    } catch (e: UiCaptureException) {
+        throw when (e.kind) {
+            UiCaptureException.Kind.DEVICE_UNAVAILABLE ->
+                e.withAdvice("Call android_list_devices to see which devices are connected.")
+            else -> e
+        }
+    }
+
+    /**
+     * What every result built on a capture starts with: the summary line and, when the result
+     * makes a claim about the screen, the limits line. Two lines, so the cost stays small.
+     */
+    fun UiObservation.preface(withLimits: Boolean = true): String =
+        if (withLimits) summary() + "\n" + limitsNote() else summary()
 
     /** Guidance an agent needs before it starts matching elements on this screen. */
     fun UiTree.frameworkNote(): String = buildString {
@@ -123,19 +147,20 @@ class GetUiTreeTool : AdbTool {
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val tree = UiTreeReader.read(device)
-        val root = tree.root ?: return ToolResult.error("The dump contained no UI nodes.")
+        val observation = UiTreeReader.read(context.requireDevice(arguments.optionalString("deviceSerial")))
+        val tree = observation.tree
 
         with(UiTreeReader) {
+            val root = tree.root
+                ?: return ToolResult.error(observation.preface() + "\nThe dump contained no UI nodes.")
             if (arguments.optionalBoolean("interactiveOnly", false)) {
                 val interactive = tree.nodes().filter { it.isInteractive && it.bounds.isVisible }.toList()
                 return ToolResult.text(
-                    tree.frameworkNote() + "\n\nInteractive elements:\n" +
+                    observation.preface() + "\n" + tree.frameworkNote() + "\n\nInteractive elements:\n" +
                         interactive.joinToString("\n") { "  " + it.render() },
                 )
             }
-            return ToolResult.text(tree.frameworkNote() + "\n\n" + root.render())
+            return ToolResult.text(observation.preface() + "\n" + tree.frameworkNote() + "\n\n" + root.render())
         }
     }
 }
@@ -151,22 +176,24 @@ class FindUiElementTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj { with(UiTreeReader) { elementSelector() } }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
         val selector = with(UiTreeReader) { arguments.toSelector() }
         if (selector.isEmpty) {
             return ToolResult.error("Give at least one of testTag, text or contentDescription.")
         }
 
-        val tree = UiTreeReader.read(device)
+        val observation = UiTreeReader.read(device)
+        val tree = observation.tree
         val matches = UiTreeSearch.findAll(tree, selector)
 
         return with(UiTreeReader) {
             when {
                 matches.isEmpty() -> ToolResult.text(
-                    "No element matched ${selector.describe()}.\n\n" + tree.frameworkNote(),
+                    observation.preface() + "\nNo element matched ${selector.describe()}.\n\n" +
+                        tree.frameworkNote(),
                 )
                 else -> ToolResult.text(
-                    "${matches.size} match(es) for ${selector.describe()}:\n" +
+                    observation.preface() + "\n${matches.size} match(es) for ${selector.describe()}:\n" +
                         matches.joinToString("\n") { "  " + it.render() },
                 )
             }

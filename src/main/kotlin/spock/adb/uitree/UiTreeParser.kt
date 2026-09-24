@@ -59,13 +59,15 @@ object UiTreeParser {
         }.getOrNull() ?: return UiTree(null, UiFramework.UNKNOWN, UiTree.TestTagSupport.NOT_APPLICABLE)
 
         val hierarchy = document.documentElement ?: return empty()
-        val root = hierarchy.childElements().firstOrNull()?.toNode() ?: return empty()
+        val rotation = hierarchy.getAttribute("rotation").toIntOrNull()?.takeIf { it in 0..MAX_ROTATION }
+        val root = hierarchy.childElements().firstOrNull()?.toNode() ?: return empty(rotation)
 
         val framework = detectFramework(root)
-        return UiTree(root, framework, detectTestTagSupport(framework, composeNodes(root)))
+        return UiTree(root, framework, detectTestTagSupport(framework, composeNodes(root)), rotation = rotation)
     }
 
-    private fun empty() = UiTree(null, UiFramework.UNKNOWN, UiTree.TestTagSupport.NOT_APPLICABLE)
+    private fun empty(rotation: Int? = null) =
+        UiTree(null, UiFramework.UNKNOWN, UiTree.TestTagSupport.NOT_APPLICABLE, rotation = rotation)
 
     /**
      * Compose hosts itself inside a `ComposeView` / `AndroidComposeView`, which does appear
@@ -174,6 +176,9 @@ object UiTreeParser {
             UiNode.Bounds(0, 0, 0, 0)
         }
     }
+
+    /** `Surface.ROTATION_270`, the last of the four quarter turns `uiautomator` reports. */
+    private const val MAX_ROTATION = 3
 
     private const val BOUNDS_VALUES = 4
     private const val B_LEFT = 0

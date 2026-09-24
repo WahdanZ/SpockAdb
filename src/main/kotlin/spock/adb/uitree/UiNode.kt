@@ -98,6 +98,11 @@ data class UiTree(
     val framework: UiFramework,
     val testTagSupport: TestTagSupport,
     val densityDpi: Int? = null,
+    /**
+     * The display's rotation when the dump was taken, as `uiautomator` writes it on
+     * `<hierarchy>`: 0 to 3, in quarter turns. Null when the dump did not say.
+     */
+    val rotation: Int? = null,
 ) {
     fun nodes(): Sequence<UiNode> = root?.asSequence() ?: emptySequence()
 

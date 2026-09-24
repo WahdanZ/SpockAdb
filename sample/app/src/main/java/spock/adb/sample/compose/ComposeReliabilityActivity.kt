@@ -49,21 +49,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import spock.adb.sample.R
 import spock.adb.sample.SampleActivity
 
 /**
  * Fixtures for the element tools' refusals, scroll-container resolution, the accessibility
- * audit, capture failures and hybrid tag detection — one tab each, so a capture of one tab is
+ * audit, capture failures, hybrid tag detection and the capture summary — one tab each, so a capture of one tab is
  * not muddied by another's fixtures. The calls to run and what each should answer are in
  * docs/COMPOSE-SUPPORT-PLAN.md, "Device checks".
  *
@@ -84,6 +89,7 @@ private enum class FixtureTab(val title: String, val tag: String) {
     AUDIT("Audit", "tab_audit"),
     BUSY("Busy", "tab_busy"),
     HYBRID("Hybrid", "tab_hybrid"),
+    WINDOW("Window", "tab_window"),
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -109,6 +115,7 @@ private fun ReliabilityScreen() {
             FixtureTab.AUDIT -> AuditTab()
             FixtureTab.BUSY -> BusyTab()
             FixtureTab.HYBRID -> HybridTab(exposeTags) { exposeTags = it }
+            FixtureTab.WINDOW -> WindowTab()
         }
     }
 }
@@ -363,6 +370,70 @@ private fun HybridTab(exposeTags: Boolean, onExposeTags: (Boolean) -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+    }
+}
+
+/**
+ * What a capture's summary line says about the window, the viewport and the density. The app
+ * shows its own view of the display, so the summary can be checked against something other than
+ * the plugin: rotation here is the same quarter-turn count `uiautomator` writes.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun WindowTab() {
+    var dialogOpen by rememberSaveable { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    val view = LocalView.current
+    val rotation = view.display?.rotation
+    // The decor view is the window; its size is known once laid out, and changes with rotation.
+    var window by remember { mutableStateOf(IntSize.Zero) }
+
+    Column(
+        Modifier.fillMaxSize()
+            .onGloballyPositioned { window = IntSize(view.rootView.width, view.rootView.height) }
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "This app sees: rotation ${rotation ?: "unknown"}, ${configuration.densityDpi} dpi, " +
+                "window ${window.width}x${window.height} px",
+            modifier = Modifier.testTag("window_metrics"),
+        )
+        Section(
+            "11. A second window",
+            "Call android_get_ui_tree, then open the dialog with the button below and call it again. Compare the " +
+                "two summaries: window package, viewport size and origin. Whether uiautomator dumps the dialog's " +
+                "window or the activity's is exactly what this checks.",
+        )
+        Button(onClick = { dialogOpen = true }, modifier = Modifier.testTag("open_dialog")) { Text("Open a dialog") }
+
+        Section(
+            "12. Rotation",
+            "Turn auto-rotate on and rotate the device, then capture again: the summary's rot should match the " +
+                "rotation above, and the viewport's width and height should swap.",
+        )
+        Section(
+            "13. Density",
+            "Run adb shell wm density 320 and capture again: the summary should say 320 dpi, as should the line " +
+                "above once the app redraws. Put it back with adb shell wm density reset.",
+        )
+    }
+
+    if (dialogOpen) {
+        Dialog(onDismissRequest = { dialogOpen = false }) {
+            // A dialog is its own composition, so the screen's testTagsAsResourceId does not reach it.
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.semantics { testTagsAsResourceId = true }.testTag("dialog_surface"),
+            ) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("This is a separate window. Capture now, then close it.")
+                    Button(onClick = { dialogOpen = false }, modifier = Modifier.testTag("dialog_close")) {
+                        Text("Close")
+                    }
+                }
+            }
         }
     }
 }

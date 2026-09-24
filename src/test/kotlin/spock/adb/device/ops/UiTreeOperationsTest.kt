@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import spock.adb.uitree.DisplayMetrics
 import spock.adb.uitree.UiCaptureException
 import spock.adb.uitree.UiCaptureException.Kind
 import spock.adb.uitree.UiNode
@@ -192,7 +193,10 @@ class UiTreeOperationsTest {
     }
 
     @Test
-    fun `adb refusing the device names it and says how to find one that is there`() {
+    fun `adb refusing the device names it without advice meant for only one kind of caller`() {
+        // The next step differs by reader: an agent calls android_list_devices, a person in the
+        // Inspector reconnects. Each adds its own (UiTreeReader, captureFailureText); the shared
+        // message does not presume. The agent's hint is asserted in ComposeUiObservationToolsTest.
         val (device, _) = scriptedDevice { throw AdbCommandRejectedException("device offline") }
         every { device.serialNumber } returns SERIAL
 
@@ -200,7 +204,8 @@ class UiTreeOperationsTest {
 
         assertEquals(Kind.DEVICE_UNAVAILABLE, thrown.kind)
         assertTrue(thrown.message!!.contains(SERIAL), thrown.message)
-        assertTrue(thrown.message!!.contains("android_list_devices"), thrown.message)
+        assertTrue(thrown.message!!.contains("no longer available"), thrown.message)
+        assertFalse(thrown.message!!.contains("android_list_devices"), thrown.message)
         assertTrue(thrown.message!!.contains("device offline"), thrown.message)
     }
 
@@ -243,11 +248,102 @@ class UiTreeOperationsTest {
     }
 
     @Test
+    fun `an observation dumps, then measures the display, in that order`() {
+        val (device, commands) = scriptedDevice(::measuredScreen)
+
+        val observation = UiTreeOperations(device, serial = SERIAL).observe()
+
+        assertEquals(DUMP_COMMANDS + listOf("wm size", "wm density"), commands)
+        assertEquals(SERIAL, observation.deviceSerial)
+        assertEquals(DisplayMetrics(DENSITY, WIDTH, HEIGHT), observation.metrics)
+        assertEquals(DENSITY, observation.tree.densityDpi, "the audit reads density from the tree")
+        assertEquals(0, observation.tree.rotation)
+        assertTrue(observation.startedAtMillis <= observation.completedAtMillis)
+    }
+
+    @Test
+    fun `metrics already known are not read again`() {
+        // A later wait polls one screen many times; two shell calls a poll add up.
+        val (device, commands) = scriptedDevice(::measuredScreen)
+        val known = DisplayMetrics(DENSITY, WIDTH, HEIGHT)
+
+        val observation = UiTreeOperations(device).observe(known)
+
+        assertEquals(DUMP_COMMANDS, commands)
+        assertEquals(known, observation.metrics)
+        assertEquals(DENSITY, observation.densityDpi)
+    }
+
+    @Test
+    fun `a cancel while the display is measured cancels the capture`() {
+        var cancelled = false
+        val (device, commands) = scriptedDevice { command ->
+            if (command == "wm size") cancelled = true
+            measuredScreen(command)
+        }
+
+        val thrown = assertThrows<UiCaptureException> {
+            UiTreeOperations(device, cancellation = { cancelled }).observe()
+        }
+
+        assertEquals(Kind.CANCELLED, thrown.kind)
+        assertEquals("wm size", commands.last(), "nothing is sent after the cancel")
+    }
+
+    @Test
+    fun `a device lost while the display is measured is a lost device, not an unmeasured screen`() {
+        val (device, _) = scriptedDevice { command ->
+            if (command.startsWith("wm ")) throw IOException("Connection reset by peer")
+            measuredScreen(command)
+        }
+
+        val thrown = assertThrows<UiCaptureException> { UiTreeOperations(device, serial = SERIAL).observe() }
+
+        assertEquals(Kind.DEVICE_UNAVAILABLE, thrown.kind)
+    }
+
+    @Test
+    fun `a display that will not be measured leaves the metrics unknown rather than failing`() {
+        // Metrics are best effort; the tree is not. A slow `wm` must not cost a good capture.
+        val (device, commands) = scriptedDevice { command ->
+            when (command) {
+                "wm size" -> throw TimeoutException()
+                "wm density" -> throw ShellCommandUnresponsiveException()
+                else -> measuredScreen(command)
+            }
+        }
+
+        val observation = UiTreeOperations(device).observe()
+
+        assertEquals(DisplayMetrics.UNKNOWN, observation.metrics)
+        assertEquals(null, observation.densityDpi)
+        assertTrue(observation.tree.root != null)
+        assertEquals("wm density", commands.last(), "one failed command does not skip the other")
+    }
+
+    @Test
+    fun `an unreadable answer from wm is an unknown, not a guess`() {
+        val (device, _) = scriptedDevice { command ->
+            if (command.startsWith("wm ")) "Permission denial: nope" else measuredScreen(command)
+        }
+
+        assertEquals(DisplayMetrics.UNKNOWN, UiTreeOperations(device).observe().metrics)
+    }
+
+    @Test
     fun `only a refused or empty dump is worth retrying as it is`() {
         assertEquals(
             setOf(Kind.DUMP_REFUSED, Kind.EMPTY_DUMP),
             Kind.entries.filter { it.retryable }.toSet(),
         )
+    }
+
+    /** A healthy device showing one line of text on a measurable display. */
+    private fun measuredScreen(command: String): String = when {
+        command.startsWith("cat") -> screen(listOf("Continue"))
+        command == "wm size" -> "Physical size: ${WIDTH}x$HEIGHT"
+        command == "wm density" -> "Physical density: $DENSITY"
+        else -> ""
     }
 
     private fun UiNode.flatten(): List<UiNode> = listOf(this) + children.flatMap { it.flatten() }
@@ -284,6 +380,16 @@ class UiTreeOperationsTest {
         const val LARGE_SCREEN_NODES = 1_500
 
         const val SERIAL = "emulator-5554"
+
+        const val WIDTH = 1080
+        const val HEIGHT = 2220
+        const val DENSITY = 420
+
+        val DUMP_COMMANDS = listOf(
+            "uiautomator dump ${UiTreeOperations.DUMP_PATH}",
+            "cat '${UiTreeOperations.DUMP_PATH}'",
+            "rm -f '${UiTreeOperations.DUMP_PATH}'",
+        )
 
         /** Distinct from the default, so a message quoting it proves which value it read. */
         const val TIMEOUT_SECONDS = 7L

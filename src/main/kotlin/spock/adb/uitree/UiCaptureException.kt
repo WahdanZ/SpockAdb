@@ -16,6 +16,13 @@ class UiCaptureException(
     cause: Throwable? = null,
 ) : IllegalStateException(message, cause) {
 
+    /**
+     * The same failure with the caller's next step appended, for a message that stays neutral
+     * about who is reading it: `android_list_devices` means something to an agent and nothing
+     * to a person in the Inspector tab.
+     */
+    fun withAdvice(advice: String): UiCaptureException = UiCaptureException(kind, "$message $advice", this)
+
     enum class Kind(
         /** Whether the same capture, repeated on the same device, has a fair chance of working. */
         val retryable: Boolean,

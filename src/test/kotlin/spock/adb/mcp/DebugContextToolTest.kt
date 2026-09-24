@@ -121,6 +121,15 @@ class DebugContextToolTest {
     }
 
     @Test
+    fun `the UI section opens with the observation it describes`() {
+        val text = textOf(run(include("ui")))
+        val section = text.substringAfter("## UI semantics tree\n").lines()
+
+        assertTrue(section[0].startsWith("Observed on emulator-5554, window "), text)
+        assertTrue(section[1].startsWith("Limits: "), text)
+    }
+
+    @Test
     fun `the UI tree is bounded by maxUiDepth and says how much it hid`() {
         val arguments = include("ui").apply { addProperty("maxUiDepth", 1) }
 

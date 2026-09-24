@@ -83,7 +83,8 @@ class UiInspectorPanel(
     private val interactiveOnly = JCheckBox("Interactive only")
 
     private var device: ConnectedDevice? = null
-    private var capturedTree: UiTree? = null
+    private var captured: UiObservation? = null
+    private val capturedTree: UiTree? get() = captured?.tree
 
     init {
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
@@ -220,17 +221,17 @@ class UiInspectorPanel(
 
         // The dump is a blocking ADB round trip plus a file read; never on the EDT.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching { readTree(target) }
+            val result = runCatching { observe(target) }
 
             ApplicationManager.getApplication().invokeLater({
                 result
                     .onSuccess {
-                        capturedTree = it
+                        captured = it
                         rebuildTree()
-                        showFramework(it)
+                        showFramework(it.tree)
                     }
                     .onFailure {
-                        statusLabel.text = "Capture failed: ${it.message}"
+                        statusLabel.text = captureFailureText(it)
                         frameworkLabel.text = " "
                         hintLabel.text = " "
                         testTagBanner.isVisible = false
@@ -240,8 +241,8 @@ class UiInspectorPanel(
     }
 
     /** The same capture the `android_get_ui_tree` family runs — see [UiTreeOperations]. */
-    private fun readTree(target: ConnectedDevice): UiTree =
-        UiTreeOperations(target.device).read().copy(densityDpi = DisplayDensity.read(target.device))
+    private fun observe(target: ConnectedDevice): UiObservation =
+        UiTreeOperations(target.device, serial = target.serialNumber).observe()
 
     /**
      * States the framework outright.
@@ -326,7 +327,8 @@ class UiInspectorPanel(
     private fun updateCount(uiTree: UiTree) {
         val total = uiTree.nodes().count()
         val interactive = uiTree.nodes().count { it.isInteractive && it.bounds.isVisible }
-        statusLabel.text = "$total nodes · $interactive interactive · ${uiTree.framework.description}"
+        val measured = captured?.let { " · viewport ${it.describeViewport()} · ${it.describeDensity()}" }.orEmpty()
+        statusLabel.text = "$total nodes · $interactive interactive · ${uiTree.framework.description}$measured"
     }
 
     // ---------------------------------------------------------------- details
@@ -461,4 +463,19 @@ class UiInspectorPanel(
             if (!enabled) append("  DISABLED")
         }
     }
+}
+
+/**
+ * What the status line says when a capture fails, worded for the person at the IDE. The shared
+ * message only names the device and says it is gone; an agent is pointed at
+ * `android_list_devices`, which is no use here, so this points at what a person can do.
+ */
+internal fun captureFailureText(failure: Throwable): String {
+    val message = failure.message ?: failure.javaClass.simpleName
+    val advice = when ((failure as? UiCaptureException)?.kind) {
+        UiCaptureException.Kind.DEVICE_UNAVAILABLE ->
+            " Reconnect it, or choose another device in the Devices tab, then capture again."
+        else -> ""
+    }
+    return "Capture failed: $message$advice"
 }

@@ -33,6 +33,26 @@ class UiTreeParserTest {
     }
 
     @Test
+    fun `reads the display rotation off the hierarchy element`() {
+        fun rotationOf(hierarchy: String) = UiTreeParser.parse(
+            "$hierarchy<node class=\"android.widget.FrameLayout\" bounds=\"[0,0][500,500]\" /></hierarchy>",
+        ).rotation
+
+        assertEquals(1, rotationOf("""<hierarchy rotation="1">"""))
+        assertEquals(3, rotationOf("""<hierarchy rotation="3">"""))
+        assertNull(rotationOf("<hierarchy>"), "an absent rotation is unknown, not 0")
+        assertNull(rotationOf("""<hierarchy rotation="sideways">"""))
+        assertNull(rotationOf("""<hierarchy rotation="4">"""))
+    }
+
+    @Test
+    fun `real device dumps report the rotation they were taken at`() {
+        listOf("views-navigation-fragment.xml", "compose-material3.xml", "compose-only-real.xml").forEach {
+            assertEquals(0, UiTreeParser.parse(dump(it)).rotation, it)
+        }
+    }
+
+    @Test
     fun `identifies a traditional View hierarchy`() {
         assertEquals(UiFramework.VIEWS, viewsTree.framework)
         assertEquals(UiTree.TestTagSupport.NOT_APPLICABLE, viewsTree.testTagSupport)
