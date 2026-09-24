@@ -23,6 +23,21 @@
   express: AC off with USB left on is a device that is discharging while still plugged into the
   machine, which is how most people debug one. Each toggle is read back, and the row shows what
   the device actually reports. Agents get `android_set_charger` (safe action).
+- **A redesigned UI Inspector, and a selector for any element in one click.** The tree is drawn
+  with the IDE's own renderer, so rows follow the theme instead of sitting on mismatched grey
+  blocks, and each row reads as the class, then the test tag, the text and the content
+  description in their own colours, then what the element can do. A header line gives a
+  Compose / Hybrid / Views badge and the capture in brief — device, window, time, viewport and
+  density — with the full description and its limits on hover. Search is the IDE's search field,
+  **Interactive only** is a toggle beside it, and typing in the tree jumps to a row. The details
+  pane is a properties table — identity, geometry with sizes in dp as well as px, and state —
+  under a **Selector** for the selected element: MCP arguments, a Compose test finder and a UI
+  Automator selector, each one click to copy (or right-click the tree). The selector is built from
+  the test tag, else the whole text, else the whole content description, and is checked against
+  the captured screen, so one that would find three elements says so, with the refusal an element
+  action would give, before it is pasted anywhere. Audit findings are a list with severity icons;
+  selecting one selects its element in the tree and shows its fix. Before the first capture, the
+  empty tree offers a **Capture UI** link.
 
 ### Fixed
 
@@ -72,9 +87,15 @@
   took, the viewport and rotation, the effective density, and the data source. Results that make
   a claim about the screen add one line of limits: only the active window's accessibility tree,
   no occlusion from bounds, and — when they apply — unobserved test tags, the `AndroidView` tag
-  gap, or a density or display size that could not be read. The UI Inspector's status line shows
-  the viewport and density too. The audit now takes its density from the same capture instead of
+  gap, or a density or display size that could not be read. The UI Inspector shows the viewport
+  and density too. The audit now takes its density from the same capture instead of
   a separate read that hid its failures.
+- **The UI Inspector no longer tells you to capture a screen it is showing.** The device list
+  refreshes on its own, and each refresh replaced the capture's status with "press Capture UI"
+  while the captured tree was still on screen. The status line now follows the capture: it keeps
+  the node count while the same device stays selected, and when another device is selected it
+  keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
+  rather than hiding what was captured.
 
 ## [4.0.5] - 2026-09-22
 
