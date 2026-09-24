@@ -52,6 +52,15 @@
   density for estimated 48dp touch targets. Missing density explicitly skips the size check.
 - View IDs outside Compose no longer imply exposed Compose tags on hybrid screens; missing-tag
   guidance reports what was observed instead of assuming an application configuration error.
+- **Cancelling a screen capture stops it, and a failed one says why.** Cancelling an
+  `android_get_ui_tree` request used to leave `uiautomator dump` running on the device until it
+  finished or hit its 30-second timeout, because the capture never told adb to stop. It now stops
+  at adb's next read and sends nothing further. A capture that fails says which way it failed:
+  cancelled, device unreachable (naming the device and pointing to `android_list_devices`), a
+  command that timed out (naming the command and how long it was given), or `uiautomator` refusing
+  or writing an empty dump. Before, a lost device or a timeout came back as whatever adb's
+  exception said, sometimes nothing more than a class name. A cancel that adb reports as a closed
+  connection or a timeout is still reported as a cancel.
 
 ## [4.0.5] - 2026-09-22
 
