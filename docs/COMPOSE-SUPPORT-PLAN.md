@@ -136,7 +136,9 @@ The branch `feature/compose-reliability` is pushed; no pull request has been cre
 
 Run against the sample app (`./gradlew -p sample :app:installDebug`), screen **UI Inspector —
 Compose reliability fixtures**, on the tab named in the first column. Tapped controls report
-themselves in the Taps tab's *Last tap* line, so a wrong tap is visible.
+themselves in the *Last tap* line above every tab, so a wrong tap is visible. Each fixture card's
+info button opens its rows of this table, with each call one tap from the clipboard; the sheet's
+text lives in `FixtureCards.kt`, so change the two together, and close the sheet before capturing.
 
 | Fixture (tab) | MCP call | Expected |
 |---|---|---|
