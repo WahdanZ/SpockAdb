@@ -130,3 +130,32 @@ passed. IDE compatibility verification was attempted before the review fixes but
 invalid cached IntelliJ IDEA 2025.1 installation (missing core plugin), so compatibility is not
 yet verified. Real-device smoke tests require an active test setup and are not claimed as passed.
 The branch `feature/compose-reliability` is pushed; no pull request has been created.
+
+### Device checks
+
+Run against the sample app (`./gradlew -p sample :app:installDebug`), screen **UI Inspector —
+Compose reliability fixtures**, on the tab named in the first column. Tapped controls report
+themselves in the Taps tab's *Last tap* line, so a wrong tap is visible.
+
+| Fixture (tab) | MCP call | Expected |
+|---|---|---|
+| 1. One label, two forms (Taps) | `android_tap_element {text: "Save"}` | Refused, two `Save` candidates |
+| | `{text: "Save", containerTag: "form_a"}` · `{testTag: "form_b_button"}` | Taps that form's button; *Last tap* names it |
+| 2. Title and button (Taps) | `android_tap_element {text: "Discard"}` | Refused, naming `Discard changes?` and `Discard`; suggests `exact` |
+| | `{text: "Discard", exact: true}` | Taps `confirm_button` |
+| 3. Identical rows (Taps) | `android_tap_element {text: "Archive"}` | Refused: no selector field can tell the candidates apart |
+| 4. Row and icon (Taps) | `android_tap_element {contentDescription: "Share report"}` | One tap on the row, not a refusal |
+| | `{text: "Weekly report", containerTag: "report_label"}` | Refused: action target is outside the selected container |
+| 5. Disabled button (Taps) | `android_tap_element {testTag: "disabled_button"}` | Refused as disabled; nothing dispatched |
+| 6a. Feed of carousels (Scroll) | `android_scroll_to_element {testTag: "feed_end", containerTag: "feed", maxSwipes: 20}` | Found; the feed is swiped directly |
+| | `{testTag: "feed_end", containerTag: "feed_section", maxSwipes: 20}` | Found; the feed wins over the carousels inside it |
+| 6b. Sibling lists (Scroll) | `android_scroll_to_element {text: "Right 35"}` | Refused: several scrollable containers |
+| | `{text: "Right 35", containerTag: "list_right"}` | Found |
+| 7. Audit (Audit) | `android_accessibility_audit {}` | Two findings: `audit_unlabelled` (no accessible text, despite its tag) and `audit_small_target` (below 48dp). Nothing for `audit_list` or its rows |
+| 8. Never idle (Busy) | `android_tap_element {testTag: "busy_switch"}`, then `android_get_ui_tree {}` | Capture fails as `DUMP_REFUSED` ("could not get idle state"), or `TIMED_OUT` where `uiautomator` waits past 30 s. The switch turns itself off after 30 s |
+| 9. Hybrid, tags off (Hybrid) | `android_tap_element {testTag: "expose_tags_switch"}`, then `android_get_ui_tree {}` | Hybrid screen, no exposed Compose tags observed: the toolbar's View IDs do not count. `{text: "Expose test tags"}` turns them back on |
+| 10. Known gap (Hybrid, tags off) | `android_tap_element {text: "Show a View inside Compose"}`, then `android_get_ui_tree {}` | Still reports Compose tags as visible, because of the `AndroidView` ID. Expected until the gap is closed |
+
+Rows 1–5 were resolved offline with the plugin's selector against a `uiautomator` dump of the
+Taps tab from an API 34 emulator, and matched the table. Nothing was dispatched through MCP, and
+rows 6–10 have not been run on a device yet.
