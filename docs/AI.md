@@ -73,9 +73,11 @@ you cannot verify a key by looking at it. Leaving the field blank keeps whatever
 Type a question and press **Ctrl+Enter** (or Send). **Esc** stops.
 
 **Attach debugging context** runs `android_get_debug_context` once, at the start of a
-conversation, and prepends the result: the current activity, the UI semantics, recent logcat.
-That is most of what "why is this screen wrong" needs, in one call rather than four the model
-has to know to make. Switch it off when your question is not about the current screen.
+conversation, and prepends its summary: the likely problems first — a crash, a failed request, a
+repeated error — then the screen, whether the app is running, and short UI, background-work and
+device-condition summaries. That is most of what "why is this screen wrong" needs, in a few
+thousand tokens rather than a raw dump, and the model can ask for the full log or UI tree when
+the summary points there. Switch it off when your question is not about the current screen.
 
 Stopping ends the turn at the next step rather than tearing down the connection mid-request. If
 the model was about to run tools, none of them run — clearing app data and *then* noticing Stop

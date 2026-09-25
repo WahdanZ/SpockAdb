@@ -85,6 +85,19 @@
 
 ### Changed
 
+- **`android_get_debug_context` now answers with what is wrong, not everything it saw.** It used to
+  hand an agent the whole UI tree and hundreds of raw logcat lines, which cost thousands of tokens
+  on every call and still left the agent to work out which line mattered. It now returns a bounded
+  JSON summary — at most 12,000 characters — with `likelyProblems` first: a crash (even after the
+  process has died), an ANR, `POST /payment returned HTTP 500`, an error repeated forty times shown
+  once with its count, a job that keeps failing, a device stuck in Doze. After that come short
+  summaries of the screen, whether the app is running, the log, the UI and its accessibility faults,
+  background work and device conditions, and for each one the tool call that returns its raw data.
+  URLs lose their query strings and credentials are redacted before anything is summarised. The
+  Assistant's **Attach debugging context** gets the same summary, so a first question costs a few
+  thousand tokens instead of a dump. Clients that parse the old text bundle get it unchanged with
+  `format: "full"`, and the old section names `activity` and `logcat` still work. Sections live
+  in their own layer, apart from the tool window and MCP, so the next one is a class and a line.
 - **Element actions refuse to guess.** `android_tap_element`, `android_long_press_element` and
   `android_input_text_into_element` acted on the first match, so with two **Save** buttons on screen
   an agent pressed whichever came first. They now refuse an ambiguous target, a disabled one, or one

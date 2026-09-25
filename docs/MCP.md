@@ -636,18 +636,78 @@ was dispatched.
 
 ### `android_get_debug_context`
 
-The call to reach for first when something is wrong. It returns the current activity, the UI
-semantics tree with its framework identified, recent logcat, and optionally a screenshot — in
-one round trip, all describing **the same moment**. Assembling those separately costs three or
-four turns, and by the time the last one lands the screen may have moved on, so the bundle it
-produces describes no single moment at all.
+The call to reach for first when something is wrong. It answers with a **bounded JSON summary**
+of one moment — what is most likely wrong, then just enough about the screen, the app, the log,
+the UI, background work and device conditions to act on it — instead of a dump an agent has to
+read to find out. Raw logcat and the UI tree are never embedded: each section names the one call
+that returns its detail, so the agent fetches it only when the summary points there.
 
-Sections are chosen with `include` (`activity`, `ui`, `logcat`, `screenshot`); the first three
-are the default. The screenshot is opt-in because it is by far the most expensive section.
+```json
+{
+  "schemaVersion": 2,
+  "device": { "serial": "emulator-5554", "description": "Pixel 7 (Android 14, API 34)" },
+  "packageName": "com.example.app",
+  "likelyProblems": [
+    { "type": "network", "severity": "error", "summary": "POST /payment (api.example.com) returned HTTP 500",
+      "count": 3, "lastSeen": "09-25 10:41:07.112", "section": "logs" },
+    { "type": "accessibility", "severity": "warning",
+      "summary": "Interactive element has no text, content description or test tag", "count": 2, "section": "ui" }
+  ],
+  "screen": { "activity": "CheckoutActivity", "component": "com.example.app/com.example.app.CheckoutActivity",
+              "appInForeground": true, "fragments": ["PaymentFragment"] },
+  "app": { "packageName": "com.example.app", "running": true, "pids": ["4312"] },
+  "logs": { "windowLines": 1500, "appLines": 41, "errors": 6, "warnings": 9, "distinctProblems": 3 },
+  "ui": { "framework": "Jetpack Compose", "composeTestTags": "available", "visibleNodes": 58, "interactive": 11,
+          "text": ["Checkout", "Pay now"], "accessibility": { "errors": 2, "warnings": 0 } },
+  "backgroundWork": { "jobs": 2, "workManagerJobs": 2, "running": 0, "waiting": 1, "failing": 0, "alarms": 1 },
+  "deviceConditions": { "deepIdle": "ACTIVE", "dozing": false, "standbyBucket": "active", "batteryLevel": 80,
+                        "charging": true, "batteryOverridden": false, "changedBySpock": [] },
+  "more": {
+    "logs": { "tool": "android_get_logcat", "arguments": { "minLevel": "W", "packageName": "com.example.app" } },
+    "ui": { "tool": "android_get_ui_tree", "arguments": {} }
+  }
+}
+```
 
-**A failing section does not fail the call.** A screenshot blocked by `FLAG_SECURE` must not
-cost you the crash sitting beside it in logcat, so each section reports its own failure in place
-and the rest still come back.
+**The schema.** Keys appear in this order, and an agent that reads only the top has the answer.
+
+| Key | Always | Meaning |
+|---|---|---|
+| `schemaVersion` | yes | `2`. Bumped when a field changes meaning or goes away; adding one does not. |
+| `device` | yes | The device the report describes. |
+| `packageName` | yes | The app it is about, or `null` when none is known. |
+| `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then crashes, ANRs, a stopped process, network, exceptions; then how often. Each has `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
+| `moreProblems` | no | How many problems were ranked below the cut. |
+| `screen`, `app`, `logs`, `ui`, `backgroundWork`, `deviceConditions` | per `include` | One short summary per section. |
+| `sectionErrors` | no | `{section: reason}` for each section that failed. A failure never fails the call. |
+| `omittedForSize` | no | Sections dropped whole, least important first, to stay under 12,000 characters. |
+| `more` | yes | `{section: {tool, arguments}}`: the call that returns each section's raw data. |
+| `screenshot` | no | `"attached"` when `include` asked for one and it was taken. |
+
+**What becomes a problem.** From the log: crashes (attributed even after the process has died,
+from the crash block's `Process:` line), ANRs (printed by the system on the app's behalf), HTTP
+4xx/5xx responses from OkHttp's logging interceptor or any line shaped `METHOD url … HTTP nnn`,
+network exceptions, other logged exceptions joined to the message that introduced them, and
+other warnings and errors — each distinct one once, with a count. Query strings are stripped
+from URLs and credentials are redacted, as they are for the Assistant. From the rest: the app
+not running, another app in the foreground, accessibility faults, failing or blocked jobs, Doze,
+a rationed standby bucket, and device conditions Spock changed and has not reset.
+
+**Choosing sections.** `include` takes `screen`, `app`, `logs`, `ui`, `backgroundWork` and
+`deviceConditions`; all are on by default. `screenshot` is opt-in, attached as an image, because
+it is by far the most expensive part. `maxLogcatLines` sets how much log is scanned (1,500 by
+default, capped at 2,000).
+
+**Migrating from 4.x.** The tool used to return a text bundle of the current activity, the whole
+UI tree and raw logcat. That is still available, unchanged, with `format: "full"` — pass it if
+you parse the `## Current activity` / `## UI semantics tree` / `## Recent logcat` headings. The
+4.x section names still work in the summary: `activity` means `screen`, `logcat` means `logs`,
+and an unknown name is ignored rather than fatal, so a newer client cannot break an older plugin.
+
+**Adding a section** is implementing `DiagnosticSection` in `spock.adb.diagnostics` and listing
+it in `DiagnosticSections.ALL`. A section reads the device and returns data and problems; it
+knows nothing of the tool window or of MCP, so the tool, the Assistant and anything later share
+it as is.
 
 ### `android_push_file` and `android_pull_file`
 
@@ -797,8 +857,9 @@ unnecessary.
 
 ## Example workflows
 
-**Debug a crash.** `android_get_debug_context(include: ["activity", "ui", "logcat"], minLevel:
-"E")` → analyse. That is one call where it used to be four, and every section describes the same
+**Debug a crash.** `android_get_debug_context()` → read `likelyProblems` → follow the `more`
+reference for the section it names, e.g. `android_get_logcat(minLevel: "E")` for the full stack
+trace. The first call is small enough to always make, and every section describes the same
 moment.
 
 **Test a deep link.** `android_open_deep_link(uri)` → `android_get_current_activity` →

@@ -1,9 +1,20 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
+import spock.adb.diagnostics.DiagnosticCollector
+import spock.adb.diagnostics.DiagnosticProbe
+import spock.adb.diagnostics.DiagnosticSection
+import spock.adb.diagnostics.DiagnosticSections
+import spock.adb.diagnostics.DiagnosticShell
 
 /**
  * `android_get_debug_context` — the whole triage bundle in one call.
+ *
+ * Two shapes. The default, `format: "summary"`, is a bounded JSON report built by
+ * [DiagnosticCollector]: ranked likely problems first, then one short summary per section, then
+ * the tool call that returns each section's raw data. It embeds no raw logcat and no UI tree —
+ * an agent reads the answer, and fetches the detail only when the answer points there.
+ * `format: "full"` is the 4.x text bundle, unchanged, for clients that parse it.
  *
  * Answering "why does this screen look wrong" previously cost an agent three or four
  * round-trips: current activity, UI tree, logcat, screenshot. Each is a separate turn, and by
@@ -19,39 +30,116 @@ class DebugContextTool : AdbTool {
     override val name = "android_get_debug_context"
 
     override val description =
-        "Everything needed to triage what is on screen right now, in one call: the current " +
-            "activity, the UI semantics tree with its framework identified, recent logcat, and " +
-            "optionally a screenshot. Prefer this over calling android_get_current_activity, " +
-            "android_get_ui_tree and android_get_logcat separately — it is one round-trip and " +
-            "every section describes the same moment. Start here when asked why a screen looks " +
-            "wrong, why an app crashed, or what state the app is in."
+        "Start here when asked why a screen looks wrong, why an app crashed, or what state the " +
+            "app is in. Returns a bounded JSON summary of the same moment: likelyProblems ranked " +
+            "(crashes, ANRs, failed HTTP requests, exceptions, repeated errors), then the current " +
+            "screen, whether the app is running, log counts, a UI and accessibility summary, " +
+            "background work and device conditions. Raw logcat and the UI tree are not included; " +
+            "each section names the tool that returns its detail under 'more'. Pass format=full " +
+            "for the older text bundle with raw logcat and the UI tree."
 
     override val safety = ToolSafety.READ_ONLY
 
     override val inputSchema: JsonObject = Schema.obj {
+        enumeration(
+            "format",
+            "summary (default): bounded JSON, problems first, no raw data. full: the older text " +
+                "bundle with raw logcat and the UI tree, for when you need the raw data in one call.",
+            listOf(FORMAT_SUMMARY, FORMAT_FULL),
+        )
         stringArray(
             "include",
-            "Which sections to capture. Defaults to activity, ui and logcat. Add \"screenshot\" " +
-                "only when you need to see the screen rather than read its structure — it is by " +
-                "far the most expensive section.",
-            values = Section.ALL.map { it.id },
+            "Which sections to capture. Summary sections: " +
+                DiagnosticSections.ALL.joinToString { it.id } + ", all by default. Full-format " +
+                "sections: activity, ui and logcat by default. Either format accepts \"screenshot\", " +
+                "attached as an image; add it only when you need to see the screen rather than read " +
+                "about it — it is by far the most expensive section.",
+            values = (DiagnosticSections.ALL.map { it.id } + Section.ALL.map { it.id }).distinct(),
         )
         string(
             "packageName",
-            "Package for the logcat section. Defaults to the open project's application ID. " +
-                "Pass an empty string to read the whole log.",
+            "The app the question is about. Defaults to the open project's application ID. " +
+                "Pass an empty string to consider the whole device.",
         )
         enumeration(
             "minLevel",
-            "Minimum logcat level. Defaults to V; use E when hunting a crash.",
+            "full format only: minimum logcat level. Defaults to V; use E when hunting a crash.",
             listOf("V", "D", "I", "W", "E", "F"),
         )
-        integer("maxLogcatLines", "Logcat lines to include. Defaults to 200, capped at 2000.")
-        integer("maxUiDepth", "How deep to render the UI tree. Defaults to 25.")
+        integer(
+            "maxLogcatLines",
+            "summary: log lines scanned for problems, default 1500. full: lines included, default " +
+                "200. Capped at 2000.",
+        )
+        integer("maxUiDepth", "full format only: how deep to render the UI tree. Defaults to 25.")
         deviceSerial()
     }
 
-    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult =
+        when (val format = arguments.optionalString("format")?.lowercase() ?: FORMAT_SUMMARY) {
+            FORMAT_SUMMARY -> summary(arguments, context)
+            FORMAT_FULL -> full(arguments, context)
+            else -> ToolResult.error("Unknown format '$format'. Use $FORMAT_SUMMARY or $FORMAT_FULL.")
+        }
+
+    /** Schema version 2: see [DiagnosticCollector] and docs/MCP.md. */
+    private fun summary(arguments: JsonObject, context: ToolContext): ToolResult {
+        val device = context.requireDevice(arguments.optionalString("deviceSerial"))
+        val requested = arguments.optionalStringList("include")?.map { it.trim() }?.filter { it.isNotEmpty() }
+        val sections: List<DiagnosticSection> = when {
+            requested.isNullOrEmpty() -> DiagnosticSections.ALL
+            else -> DiagnosticSections.ALL.filter { section ->
+                requested.any { DiagnosticSections.byId(it) == section }
+            }
+        }
+        val wantsScreenshot = requested.orEmpty().any { it.equals(Section.SCREENSHOT.id, ignoreCase = true) }
+        if (sections.isEmpty() && !wantsScreenshot) {
+            return ToolResult.error(
+                "No known section was requested. 'include' accepts any of: " +
+                    (DiagnosticSections.ALL.map { it.id } + Section.SCREENSHOT.id).joinToString() + ".",
+            )
+        }
+
+        val probe = DiagnosticProbe(
+            device = device.device,
+            serialNumber = device.serialNumber,
+            packageName = with(LogcatReader) { arguments.logcatPackage(context) },
+            logWindowLines = arguments.optionalInt("maxLogcatLines", DiagnosticProbe.DEFAULT_LOG_WINDOW_LINES)
+                .coerceIn(1, MAX_LOGCAT_LINES),
+        )
+        val preamble = JsonObject().apply {
+            add(
+                "device",
+                JsonObject().apply {
+                    addProperty("serial", device.serialNumber)
+                    addProperty("description", device.info.describe())
+                },
+            )
+        }
+        val report = DiagnosticCollector().collect(sections, probe, preamble)
+
+        val content = mutableListOf<ToolContent>()
+        if (wantsScreenshot) {
+            val shot = runCatching { TakeScreenshotTool().execute(arguments, context) }.getOrNull()
+            val image = shot?.content?.filterIsInstance<ToolContent.Image>()?.firstOrNull()
+            report.addProperty(
+                "screenshot",
+                // Added after the collector's size cut, so clipped here: a failed capture's message
+                // can carry tens of kilobytes of raw device output.
+                if (image != null) {
+                    "attached"
+                } else {
+                    shot?.let { DiagnosticShell.clip(textOf(it), MAX_SCREENSHOT_NOTE_CHARS) } ?: "could not be captured"
+                },
+            )
+            image?.let { content += it }
+        }
+        content.add(0, ToolContent.Text(DiagnosticCollector.render(report)))
+        return ToolResult(content)
+    }
+
+    /** The 4.x bundle, byte for byte, for clients that parse its headings. */
+    private fun full(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
         val sections = resolveSections(arguments)
         if (sections.isEmpty()) {
@@ -184,6 +272,10 @@ class DebugContextTool : AdbTool {
 
         const val BUDGET_SECONDS = 60L
         const val NANOS_PER_SECOND = 1_000_000_000L
+
+        const val FORMAT_SUMMARY = "summary"
+        const val FORMAT_FULL = "full"
+        const val MAX_SCREENSHOT_NOTE_CHARS = 300
 
         const val DEFAULT_LOGCAT_LINES = 200
         const val MAX_LOGCAT_LINES = 2_000

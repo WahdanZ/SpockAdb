@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
             heading("Other tabs")
             open("Storage — SharedPreferences, DataStore, cache", StorageActivity::class.java)
             open("Logcat — levels, stack traces, crash", LogcatActivity::class.java)
+            open("Debug context — failures for android_get_debug_context", DebugContextActivity::class.java)
             open("UI Inspector — Compose screen", ComposeInspectorActivity::class.java)
             open("UI Inspector — Compose reliability fixtures", ComposeReliabilityActivity::class.java)
             open("UI Inspector — Views screen", ViewsInspectorActivity::class.java)

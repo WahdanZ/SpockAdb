@@ -255,6 +255,8 @@ class McpSmokeTest {
             "android_get_device_conditions" to """{"packageName":"com.android.settings"}""",
             // Default sections only: the screenshot section is covered by its own tool above.
             "android_get_debug_context" to "{}",
+            // The 4.x text bundle, kept for the clients that parse it.
+            "android_get_debug_context" to """{"format":"full","maxLogcatLines":20}""",
         )
 
         /** Search for something. Reporting "no match" is a pass; anything else is not. */
