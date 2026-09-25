@@ -177,8 +177,9 @@ internal object Fixtures {
                     call("""android_tap_element {testTag: "busy_switch"}"""),
                     call("""android_wait_for_element {testTag: "busy_switch", until: "unchecked", timeoutMs: 10000}"""),
                 ),
-                "FAIL: timed out. Its one capture did not finish in the 10 s it was given, since a refused dump takes " +
-                    "about 13 s while the ticker runs. Let the switch turn itself off before the next check.",
+                "FAIL: timed out after 1 observation, about 13 s. The first capture always runs to completion, and " +
+                    "the ticker made it a refused one; the result says it took about 13 s, past the 10.0 s limit, " +
+                    "and counts 1 refused capture. Let the switch turn itself off before the next check.",
             ),
         ),
     )
