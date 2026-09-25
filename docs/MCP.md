@@ -381,8 +381,9 @@ must identify exactly one subtree; `exactTag: true` matches a complete case-sens
 raw resource ID. Existing substring matching remains the default for compatibility.
 Taps, long presses, and text entry reject multiple matches and disabled or ineligible targets.
 Matches that resolve to the same control count once. A refusal lists the candidates and names
-what can separate them: often `exact: true`. Action results report command dispatch, not a
-verified change in the app; follow with an assertion. `android_scroll_to_element` swipes the
+what can separate them: often `exact: true`. An action result reports that the input was
+dispatched, not that the app changed, unless the call names an expected result — see
+[Actions with an expected result](#actions-with-an-expected-result). `android_scroll_to_element` swipes the
 outermost of nested scrollable containers and refuses only between unrelated ones.
 
 Accessibility audits separate spoken labels from test tags. Touch-target estimates use the
@@ -449,7 +450,9 @@ offers no semantic identifier at all, and its own description says so.
 
 `android_assert_visible`, `android_assert_enabled` and `android_assert_text` let an agent verify
 the result of an action rather than infer it from pixels, and `android_wait_for_element` lets it wait
-for that result without guessing how long to sleep.
+for that result without guessing how long to sleep. Every assertion opens with the capture's summary
+line. `android_assert_enabled` needs exactly one match: with several it fails and lists them, as an
+action's refusal does, rather than answering for whichever came first.
 
 Screenshots are first-class MCP image content, so an agent can also look at the screen.
 
@@ -554,6 +557,48 @@ hold every thread for a minute, stalling every HTTP call behind them — `tools/
 HTTP a `timeoutMs` above 15000 is capped at 15000, and the result ends by saying it was capped and
 from what. An agent that needs longer calls the tool again, or uses the stdio transport, where a wait
 can be cancelled and so keeps its full 60 s.
+
+### Actions with an expected result
+
+`android_tap_element`, `android_long_press_element` and `android_input_text_into_element` can check
+what their input led to. Name the element expected afterwards with the same flat fields a wait
+takes, prefixed `expect`:
+
+| Argument | Meaning |
+|---|---|
+| `expectTestTag`, `expectText`, `expectContentDescription` | The element expected after the action. Any of them turns the check on |
+| `expectExact`, `expectExactTag` | Whole-value text and description match; case-sensitive whole tag match |
+| `expectUntil` | `android_wait_for_element`'s words: `visible` (default), `present`, `gone`, `hidden`, or a state |
+| `expectTimeoutMs` | How long to look, 0 to 60000, default 5000; at most 15000 over HTTP, as for a wait |
+
+The expected element is matched over the whole screen: `packageName` and `containerTag` scope only the
+element acted on, since a result often appears outside the control that caused it. `expectUntil` or
+`expectTimeoutMs` without an element to expect is an argument error, reported before the device is
+touched.
+
+The call observes the screen, resolves one target (the usual ambiguity and viewport rules), checks
+the expectation against that same pre-action capture, sends the input, and then looks for the result
+as `android_wait_for_element` would — the first look always completes, and the display metrics of the
+pre-action capture are reused. The answer is one of:
+
+| Outcome | Error? | Meaning |
+|---|---|---|
+| no expectation | no | Unchanged: "Tap dispatched once to …; UI outcome not verified." |
+| `VERIFIED` | no | Not there before the action, seen after it |
+| `NOT OBSERVED` | yes | Not seen within `expectTimeoutMs`. The input may still have landed, or the screen may need longer |
+| `INCONCLUSIVE` | yes | Already true before the action, so seeing it afterwards proves nothing. Expect something the action changes |
+| `CANCELLED` | yes | Stopped while checking; the input had been sent |
+
+**An action is dispatched once and never repeated** — not when the result is not observed, and not
+when the shell call itself fails. A tap whose `input tap` timed out or lost its device may still have
+reached the app, and a second one could place a second order. So a failed dispatch step is reported as
+**`Dispatch uncertain`**, with the failure classified as a capture's is (timed out, device unavailable),
+saying the input may have reached the device and was not repeated, and pointing to
+`android_find_ui_element` or `android_wait_for_element` before retrying. An uncertain dispatch is an
+error, sends nothing further and runs no check. For text input, `input text` is sent only after the
+focusing tap was: if that tap fails, the text is never typed. A cancel during a step says the input
+may or may not have reached the device; a cancel while the target is still being found says nothing
+was dispatched.
 
 ## Triage, files and screen recording
 

@@ -93,7 +93,8 @@ import spock.adb.sample.SampleActivity
 /**
  * Fixtures for the element tools' refusals, scroll-container resolution, the accessibility
  * audit, capture failures and bounded waits, hybrid tag detection, the capture summary and what is
- * in view — one tab each, so a capture of one tab is not muddied by another's fixtures. The calls to run and
+ * in view — one tab each, so a capture of one tab is not muddied by another's fixtures. Actions
+ * with an expected result share the Window tab, which has room. The calls to run and
  * what each should answer are in docs/COMPOSE-SUPPORT-PLAN.md, "Device checks", and behind each
  * card's info button.
  *
@@ -162,7 +163,7 @@ private fun ReliabilityScreen() {
                 FixtureTab.AUDIT -> AuditTab(showInfo)
                 FixtureTab.BUSY -> BusyTab(showInfo) { lastEvent = it }
                 FixtureTab.HYBRID -> HybridTab(exposeTags, showInfo) { exposeTags = it }
-                FixtureTab.WINDOW -> WindowTab(showInfo)
+                FixtureTab.WINDOW -> WindowTab(showInfo) { lastEvent = it }
                 FixtureTab.FOLD -> FoldTab(showInfo) { lastEvent = it }
             }
         }
@@ -477,10 +478,13 @@ private fun HybridTab(exposeTags: Boolean, onInfo: (Fixture) -> Unit, onExposeTa
  * What a capture's summary line says about the window, the viewport and the density. The app
  * shows its own view of the display, so the summary can be checked against something other than
  * the plugin: rotation here is the same quarter-turn count `uiautomator` writes.
+ *
+ * Below them, fixture 18: actions with an expected result. It shares this tab because the tab is
+ * quiet and has room; an eighth tab would narrow every tab under 48dp.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun WindowTab(onInfo: (Fixture) -> Unit) {
+private fun WindowTab(onInfo: (Fixture) -> Unit, onEvent: (String) -> Unit) {
     var dialogOpen by rememberSaveable { mutableStateOf(false) }
     val configuration = LocalConfiguration.current
     val view = LocalView.current
@@ -503,6 +507,7 @@ private fun WindowTab(onInfo: (Fixture) -> Unit) {
             FixtureCard(Fixtures.ROTATION, onInfo)
             FixtureCard(Fixtures.DENSITY, onInfo)
             FixtureCard(Fixtures.LOST_DEVICE, onInfo)
+            OutcomeCard(onInfo, onEvent)
         }
     }
 
@@ -629,6 +634,58 @@ private fun DelayedChange(
     }
 }
 
+/**
+ * An action and what it should lead to. One button shows its result [ORDER_MILLIS] after a press
+ * and keeps showing it, so a second press finds the result already there; the other changes
+ * nothing that is expected of it. Every press is counted, so a repeated dispatch shows. Switching
+ * tabs resets both.
+ */
+@Composable
+private fun OutcomeCard(onInfo: (Fixture) -> Unit, onEvent: (String) -> Unit) {
+    var orders by remember { mutableIntStateOf(0) }
+    var otherPresses by remember { mutableIntStateOf(0) }
+    var placed by remember { mutableStateOf(false) }
+    LaunchedEffect(orders) {
+        if (orders > 0) {
+            delay(ORDER_MILLIS)
+            placed = true
+        }
+    }
+
+    FixtureCard(Fixtures.OUTCOMES, onInfo) {
+        Row(
+            Modifier.fillMaxWidth().height(56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            FilledTonalButton(
+                onClick = {
+                    orders++
+                    onEvent("order button")
+                },
+                modifier = Modifier.testTag("order_button"),
+            ) { Text("Place order") }
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                if (placed) WaitChip("Order placed", "order_status")
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            FilledTonalButton(
+                onClick = {
+                    otherPresses++
+                    onEvent("inert button")
+                },
+                modifier = Modifier.testTag("inert_button"),
+            ) { Text("No effect") }
+            Text("Presses: $orders + $otherPresses", modifier = Modifier.testTag("press_counts"))
+        }
+    }
+}
+
 @Composable
 private fun WaitChip(text: String, tag: String) {
     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.testTag(tag)) {
@@ -648,3 +705,4 @@ private const val FOLD_HEIGHT_DP = 168
 private const val FOLD_ROWS_ABOVE = 3
 private const val FOLD_ROWS_BELOW = 6
 private const val WAIT_MILLIS = 3_000L
+private const val ORDER_MILLIS = 1_500L

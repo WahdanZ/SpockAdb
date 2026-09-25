@@ -59,9 +59,24 @@
   HTTP has no way to cancel a call, so a wait there is capped at 15 s and says so: the HTTP server
   has four threads, and four abandoned 60-second waits would have stalled every HTTP call,
   `tools/list` included, for a minute.
+- **An agent can say what a tap should do, and be told whether it happened.** `android_tap_element`,
+  `android_long_press_element` and `android_input_text_into_element` take an optional expected result
+  — `expectTestTag`, `expectText` or `expectContentDescription`, with `expectUntil` in
+  `android_wait_for_element`'s words and `expectTimeoutMs` (5 s by default). After sending the input
+  they look for it and answer **VERIFIED**, **NOT OBSERVED**, or **INCONCLUSIVE** when the expected
+  state was already there before the tap and so proves nothing; only VERIFIED is a success. Before, an
+  agent got "UI outcome not verified" and had to make a second call to find out, and one that assumed
+  the best moved on from a tap that did nothing. The input is **sent once and never repeated**: when
+  the check fails, and also when the shell call itself times out or loses the device, which is now
+  reported as *dispatch uncertain* — the tap may have landed, and a second one could place a second
+  order — with a pointer to look before retrying. Text is never typed if the tap that focuses its
+  field failed. Without an expectation the tools answer as before.
 
 ### Changed
 
+- **`android_assert_enabled` no longer answers for one of several matches.** It checked whichever
+  match came first, so with an enabled and a disabled **Save** on screen it could pass for the wrong
+  one. It now needs exactly one match, and with several it fails listing them, as a tap would.
 - **"Visible" now means in the viewport, not just in the tree.** `android_assert_visible` and
   `android_assert_text` passed for any node in the capture, including a row laid out below the
   edge of its list, where no one can see it and no tap reaches it. They now pass only when a
@@ -91,7 +106,6 @@
   with no answer, and a provider can reject a conversation holding a tool call with no result — so
   the next thing you typed could fail. Each call is now answered "Not run: the user pressed Stop.",
   the same as a call skipped after a stopped wait.
-
 - **Uninstall reports a device that refuses instead of claiming the app is gone.** The tool
   window threw away what ADB answered, so uninstalling a device-owner app, a system package, or
   one another user on the device still has, showed "application uninstalled" while the app stayed

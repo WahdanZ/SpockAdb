@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit
  * deciding what a cancel or a lost device looks like: [cancellation] is checked before and after
  * the command and handed to ddmlib, which stops reading when it is set, and every failure is a
  * [UiCaptureException] saying which kind it was.
+ *
+ * An element action sends its input through this too, named by [what], because whether a failed
+ * `input tap` was a cancel, a lost device or a timeout is the same question with the same traps.
  */
 internal class UiCaptureShell(
     private val device: IDevice,
@@ -25,6 +28,8 @@ internal class UiCaptureShell(
     /** Named in errors. Passed in rather than read from a device that may be gone by then. */
     private val serial: String,
     private val cancellation: CancellationSignal,
+    /** What a cancel says was cancelled. */
+    private val what: String = "UI capture",
 ) {
 
     fun run(command: String): String {
@@ -48,7 +53,7 @@ internal class UiCaptureShell(
 
     fun throwIfCancelled(command: String) {
         if (cancellation.isCancelled()) {
-            throw UiCaptureException(Kind.CANCELLED, "UI capture cancelled at `$command`.")
+            throw UiCaptureException(Kind.CANCELLED, "$what cancelled at `$command`.")
         }
     }
 
@@ -71,10 +76,10 @@ internal class UiCaptureShell(
     private fun failed(command: String, cause: Exception): Nothing = throw when {
         causedByInterrupt(cause) -> {
             Thread.currentThread().interrupt()
-            UiCaptureException(Kind.CANCELLED, "UI capture cancelled at `$command`.", cause)
+            UiCaptureException(Kind.CANCELLED, "$what cancelled at `$command`.", cause)
         }
         cancellation.isCancelled() ->
-            UiCaptureException(Kind.CANCELLED, "UI capture cancelled at `$command`.", cause)
+            UiCaptureException(Kind.CANCELLED, "$what cancelled at `$command`.", cause)
         cause is TimeoutException || cause is ShellCommandUnresponsiveException ->
             UiCaptureException(
                 Kind.TIMED_OUT,

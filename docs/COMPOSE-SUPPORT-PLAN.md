@@ -128,7 +128,14 @@ First increment, 23 September 2026:
   wait. Cancellation is polled during each capture and between captures: an interrupt over stdio,
   and a flag from the assistant's Stop (`CancellableToolContext`). HTTP has no cancellation, so a
   wait there runs to its limit, at most 60 s.
-- [ ] Finish Phase 1 outcome assertions: expected results on actions, and dispatched versus verified.
+- [x] Outcome assertions (`ElementActions`): tap, long press and text input take an optional expected
+  result (`expectTestTag`, `expectText`, `expectContentDescription`, `expectExact`, `expectExactTag`,
+  `expectUntil`, `expectTimeoutMs`), matched over the whole screen rather than the action's scope. It is
+  checked on the pre-action capture, and then after the input with `UiWaiter`. The answer is VERIFIED,
+  NOT OBSERVED, INCONCLUSIVE (already true before, so no evidence) or CANCELLED; only VERIFIED and "not
+  requested" are successes. A dispatch is never repeated: a shell step that fails is *dispatch
+  uncertain*, an error that sends nothing further and runs no check, and text is never typed after a
+  focusing tap that failed. `android_assert_enabled` needs a unique match and lists candidates otherwise.
 - [ ] Complete Phase 2 scrolling, input capability handling, lifecycle scenarios, and configuration recovery.
 - [ ] Complete Phase 3 scenario export and Phase 4 feasibility work.
 
@@ -186,6 +193,12 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | | `android_wait_for_element {testTag: "wait_never_there", until: "gone"}` | PASS on the first observation: `gone` is met at once by something that was never there |
 | 17. A button and a switch that change (Busy) | `android_tap_element {testTag: "start_enable"}`, then `android_wait_for_element {testTag: "wait_enable_target", until: "enabled"}` | PASS: enabled, after 1 or 2 observations |
 | | `android_tap_element {testTag: "start_flip"}`, then `android_wait_for_element {testTag: "wait_toggle_target", until: "checked"}` | PASS: checked, after 1 or 2 observations |
+| 18. An action and its result (Window) | Switch tabs and back to reset the card, then `android_tap_element {testTag: "order_button", expectTestTag: "order_status"}` | VERIFIED, not an error, after 1 or 2 observations; "Before the tap it was not: nothing matched". *Presses* reads `1 + 0` |
+| | The same call again, straight after | INCONCLUSIVE, an error: `order_status` was already visible before the tap. Dispatched once, not repeated: *Presses* `2 + 0` |
+| | `android_tap_element {testTag: "inert_button", expectTestTag: "inert_result", expectTimeoutMs: 3000}` | NOT OBSERVED, an error: "dispatched once … not repeated". The second count goes up by exactly 1 |
+| | In the assistant: the same call with `expectTimeoutMs: 60000`, and **Stop** once the tap is sent | CANCELLED while checking; the tap was dispatched once. The second count goes up by exactly 1 |
+| | In the assistant: the same call, and **Stop** within a second, before the tap | CANCELLED while finding the target; nothing dispatched, counts unchanged |
+| 19. Ambiguous assertion (Taps, fixture 1) | `android_assert_enabled {text: "Save"}` | FAIL, not PASS: ambiguous, listing both `Save` candidates. Nothing is tapped |
 
 Rows 1–5 were resolved offline with the plugin's selector against a `uiautomator` dump of the
 Taps tab from an API 34 emulator, and matched the table. Nothing was dispatched through MCP.
@@ -259,6 +272,38 @@ settle before it dumps. What the emulator showed:
   column does not scroll, and the audit is back to exactly two findings.
 - One run of the 45 s busy wait was spoiled by touches from outside the harness, which switched tabs
   part-way (visible in logcat as input at fractional coordinates). It was repeated untouched.
+
+The first-observation rule and Stage 5 were run on the same API 34 emulator (1080x2636, 480 dpi) with
+the plugin's tap, assertion, find, audit and wait tool classes, every command sent through `adb shell`
+by a temporary harness that polled each shell call every 20 ms and stood in for ddmlib. The assistant's
+Stop was the real `CancellableToolContext` with its flag set from a second thread. The MCP transports,
+the assistant UI and ddmlib itself were not exercised. Every dump took 2.4–4.1 s. What the emulator showed:
+
+- **Row 16 with `timeoutMs: 1000`, twice:** FAIL, timed out, "Last: nothing matched", from 1 observation
+  each time, in 3.1 and 3.4 s, saying "The first observation took 2.9 s (3.4 s), past the 1.0 s limit".
+  Before Stage 5 this ended after 1.0 s with no observation at all. The 3 s timer had not fired when
+  `uiautomator` read the screen. `timeoutMs: 0` right after: PASS, 1 observation, 2.6 s.
+- **Row 18, VERIFIED:** 1 observation, 3.2 s after the tap (the 1.5 s timer fired during the first dump);
+  the call took 6.9 s in all, one `input tap`, and *Presses* went from `0 + 0` to `1 + 0`.
+- **Row 18, INCONCLUSIVE:** an error, 1 observation, 2.8 s; one `input tap`; *Presses* `2 + 0`.
+- **Row 18, NOT OBSERVED** with 3 s: an error after 1 observation, 4.1 s, noting that first observation
+  ran past the 3.0 s limit; one `input tap`; the second count went from 0 to 1.
+- **Row 18, Stop after the tap:** CANCELLED 0.7 s into the first check capture, one `input tap`, the
+  second count up by exactly 1. **Stop 1 s in, before the tap:** the first run surfaced it as a bare
+  "UI capture cancelled" exception, which is why a cancel during resolution is now its own result:
+  "CANCELLED while finding testTag='inert_button'; nothing was dispatched", after 1.0 s, with no input
+  sent and the counts unchanged.
+- **Row 19:** FAIL listing both `Save` candidates, the two `TextView`s inside the form buttons, and
+  saying no selector field but `containerTag` can separate them. `{testTag: "form_a_button"}` still PASSes.
+- **The Window tab after adding card 18:** each of its 75 existing nodes has an exact twin, every
+  attribute and bound, in a dump taken after; the 15 new nodes are the card. Its audit reports no
+  issues. An uncertain dispatch cannot be provoked on a healthy emulator, so it, and text input with
+  an expectation, are covered by unit tests only.
+
+Stage 5 validation: `./gradlew test` ran 1083 tests with 9 skipped and no failures; `detekt`,
+`buildPlugin` and the sample's `assembleDebug` passed. `verifyPlugin` still stops on the broken cached
+IntelliJ IDEA 2025.1 install; the Plugin Verifier CLI, run directly against the other four targets,
+reported all four Compatible, with only the deprecated usages already known.
 
 Stage 4 validation: `./gradlew test` ran 1040 tests with 9 skipped and no failures; `detekt`,
 `buildPlugin` and the sample's `assembleDebug` passed. `verifyPlugin` still stops on the broken

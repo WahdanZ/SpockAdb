@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import spock.adb.mcp.tools.UiTreeReader.elementSelector
 import spock.adb.mcp.tools.UiTreeReader.preface
 import spock.adb.mcp.tools.UiTreeReader.toSelector
+import spock.adb.mcp.tools.WaitReport.withNote
 import spock.adb.uitree.DisplayMetrics
 import spock.adb.uitree.StateProperty
 import spock.adb.uitree.UiCaptureException
@@ -71,15 +72,8 @@ class WaitForElementTool : AdbTool {
         )
         val outcome = waiter.await(condition, timeoutMs.toLong(), pollMs.toLong())
         val result = WaitReport.report(outcome, condition, device.serialNumber, timeoutMs.toLong())
-        return if (timeoutMs < requestedMs) result.withNote(cappedNote(requestedMs)) else result
+        return if (timeoutMs < requestedMs) result.withNote(WaitReport.cappedNote("timeoutMs", requestedMs)) else result
     }
-
-    private fun cappedNote(requestedMs: Int): String =
-        " timeoutMs was capped at $UNCANCELLABLE_MAX_TIMEOUT_MS from $requestedMs: this transport cannot cancel " +
-            "a call, so a wait here is kept short. Wait again to wait longer, or use the stdio transport."
-
-    private fun ToolResult.withNote(note: String): ToolResult =
-        copy(content = content.map { if (it is ToolContent.Text) ToolContent.Text(it.text + note) else it })
 
     companion object {
         private const val DEFAULT_TIMEOUT_MS = 10_000
@@ -142,6 +136,15 @@ internal object WaitReport {
             )
         }
     }
+
+    /** Said when [argument] asked for longer than a transport that cannot cancel allows. */
+    fun cappedNote(argument: String, requestedMs: Int): String =
+        " $argument was capped at ${WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS} from $requestedMs: this " +
+            "transport cannot cancel a call, so a wait here is kept short. Wait again to wait longer, or use the " +
+            "stdio transport."
+
+    fun ToolResult.withNote(note: String): ToolResult =
+        copy(content = content.map { if (it is ToolContent.Text) ToolContent.Text(it.text + note) else it })
 
     fun took(outcome: WaitOutcome): String = "${outcome.captures} observation(s), ${seconds(outcome.elapsedMs)} s"
 

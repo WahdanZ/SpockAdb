@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
+import spock.adb.mcp.tools.ElementActions.expectation
 import spock.adb.mcp.tools.UiTreeReader.elementSelector
 import spock.adb.mcp.tools.UiTreeReader.frameworkNote
 import spock.adb.mcp.tools.UiTreeReader.preface
@@ -16,73 +17,15 @@ import spock.adb.uitree.UiSelector
 import spock.adb.uitree.UiTreeSearch
 import spock.adb.uitree.ViewportVisibility
 
-/**
+/*
  * Element-addressed interaction and assertions.
  *
  * These exist so an agent never has to compute a coordinate. A tap derived from a screenshot
  * breaks on a different screen size, density or font scale, and is the main reason
  * AI-driven UI automation is flaky. Every tool here resolves the element from semantics and
- * only then derives the tap point from the matched node's own bounds.
- *
- * A refusal starts with the observation's summary too, so "no match" or "ambiguous" says which
- * window on which device it was decided against.
+ * only then derives the tap point from the matched node's own bounds. The three actions share
+ * one path, [ElementActions], which also checks an expected result when one is given.
  */
-private fun ToolContext.resolveElement(arguments: JsonObject, action: UiTreeSearch.Action): Resolved {
-    val device = requireDevice(arguments.optionalString("deviceSerial"))
-    val selector = arguments.toSelector()
-    require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
-
-    val observation = UiTreeReader.read(device)
-    val tree = observation.tree
-    // Ambiguity is decided over the whole tree: an off-screen duplicate still makes a selector ambiguous.
-    val match = observation.refusing { UiTreeSearch.findUnique(tree, selector, action) }
-        ?: throw IllegalStateException(
-            observation.summary() + "\nNo element matched ${selector.describe()}. " + tree.frameworkNote() +
-                " Call android_get_ui_tree to see what is actually on screen. An element scrolled out of " +
-                "view is often left out of the capture entirely; android_scroll_to_element brings it in.",
-        )
-
-    // Compose usually puts text on a child and the click handler on its parent, so the node
-    // carrying the text is often not the one that can be tapped.
-    val target = observation.refusing { UiTreeSearch.actionTarget(tree, match, action, selector) }
-    val visibility = ViewportVisibility.of(observation, target)
-    observation.refusing {
-        require(visibility.presence != Presence.OUTSIDE_VIEWPORT && visibility.presence != Presence.ZERO_AREA) {
-            "'${target.label}' at ${target.bounds} is ${visibility.describe()}. Nothing was dispatched: " +
-                "call android_scroll_to_element with the same selector first."
-        }
-    }
-    return Resolved(observation, target, visibility)
-}
-
-private class Resolved(val observation: UiObservation, val target: UiNode, val visibility: NodeVisibility) {
-
-    /**
-     * The centre of the part in view, so a partly scrolled-out control is pressed where it can be
-     * seen rather than at a centre that may lie under its container's edge. Without a viewport it
-     * is the centre of the bounds, and [where] says the viewport was unknown.
-     */
-    val x: Int get() = (visibility.visibleRegion ?: target.bounds).centerX
-    val y: Int get() = (visibility.visibleRegion ?: target.bounds).centerY
-
-    val where: String
-        get() = when (visibility.visibleRegion) {
-            null ->
-                "at ($x,$y), the centre of its bounds ${target.bounds}; viewport unknown, so whether it " +
-                    "is on screen was not checked"
-            target.bounds -> "at ($x,$y), ${visibility.describe()}"
-            else ->
-                "at ($x,$y), the centre of its part in the viewport ${visibility.visibleRegion} of " +
-                    "${target.bounds}; ${visibility.describe()}"
-        }
-}
-
-/** Runs a selection step, prefixing a refusal (ambiguous, disabled, out of scope) with [this] summary. */
-private inline fun <T> UiObservation.refusing(select: () -> T): T = try {
-    select()
-} catch (e: IllegalArgumentException) {
-    throw IllegalArgumentException(summary() + "\n" + e.message, e)
-}
 
 /** `android_tap_element` — tap by semantics, not coordinates. */
 class TapElementTool : AdbTool {
@@ -91,47 +34,48 @@ class TapElementTool : AdbTool {
         "Tap an element identified by test tag, text or content description. Prefer this over " +
             "android_tap: coordinates guessed from a screenshot break on a different screen " +
             "size, density or font scale. Resolves the tappable parent automatically, which " +
-            "Compose needs because the click handler usually sits above the text."
+            "Compose needs because the click handler usually sits above the text. $EXPECTATION_HINT"
     override val safety = ToolSafety.SAFE_ACTION
-    override val inputSchema: JsonObject = Schema.obj { elementSelector() }
-
-    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val resolved = context.resolveElement(arguments, UiTreeSearch.Action.TAP)
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        McpShell.run(device, "input tap ${resolved.x} ${resolved.y}")
-        return ToolResult.text(
-            resolved.observation.summary() +
-                "\nTap dispatched to '${resolved.target.label}' ${resolved.where}; UI outcome not verified.",
-        )
+    override val inputSchema: JsonObject = Schema.obj {
+        elementSelector()
+        expectation()
     }
+
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult = ElementActions.perform(
+        context,
+        arguments,
+        ElementActions.Spec(UiTreeSearch.Action.TAP, "Tap", unverified = "UI outcome not verified.") { x, y ->
+            listOf(ElementActions.Step("input tap $x $y", "the tap"))
+        },
+    )
 }
 
 /** `android_long_press_element`. */
 class LongPressElementTool : AdbTool {
     override val name = "android_long_press_element"
     override val description =
-        "Long-press an element identified by test tag, text or content description."
+        "Long-press an element identified by test tag, text or content description. $EXPECTATION_HINT"
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         elementSelector()
         integer("durationMs", "Press duration in milliseconds. Defaults to 800.")
+        expectation()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val resolved = context.resolveElement(arguments, UiTreeSearch.Action.LONG_PRESS)
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         val duration = arguments.optionalInt("durationMs", DEFAULT_LONG_PRESS_MS)
         require(duration in 1..MAX_LONG_PRESS_MS) { "durationMs must be between 1 and $MAX_LONG_PRESS_MS." }
 
-        // A swipe that starts and ends at the same point is a long press.
-        val x = resolved.x
-        val y = resolved.y
-        McpShell.run(device, "input swipe $x $y $x $y $duration")
-        return ToolResult.text(
-            resolved.observation.summary() +
-                "\nLong press dispatched to '${resolved.target.label}' ${resolved.where} for ${duration}ms; " +
-                "UI outcome not verified.",
-        )
+        val spec = ElementActions.Spec(
+            UiTreeSearch.Action.LONG_PRESS,
+            "Long press",
+            unverified = "UI outcome not verified.",
+            details = " for ${duration}ms",
+        ) { x, y ->
+            // A swipe that starts and ends at the same point is a long press.
+            listOf(ElementActions.Step("input swipe $x $y $x $y $duration", "the long press"))
+        }
+        return ElementActions.perform(context, arguments, spec)
     }
 
     private companion object {
@@ -227,11 +171,12 @@ class InputTextIntoElementTool : AdbTool {
     override val description =
         "Tap a text field identified by test tag, text or content description, then type into " +
             "it. Use this instead of android_input_text, which types into whatever happens to " +
-            "be focused."
+            "be focused. $EXPECTATION_HINT"
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         string("value", "The text to type.", required = true)
         elementSelector()
+        expectation()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -239,18 +184,27 @@ class InputTextIntoElementTool : AdbTool {
         // not go through McpProtocol's argument check, and failing on the element would
         // misreport a caller that simply omitted the text.
         val value = arguments.requiredString("value")
-        val resolved = context.resolveElement(arguments, UiTreeSearch.Action.TEXT_INPUT)
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-
-        McpShell.run(device, "input tap ${resolved.x} ${resolved.y}")
-        McpShell.run(device, "input text ${ShellQuote.quote(value)}")
-        return ToolResult.text(
-            resolved.observation.summary() +
-                "\nText input dispatched to '${resolved.target.label}' ${resolved.where}; focus and resulting " +
-                "text not verified.",
-        )
+        val spec = ElementActions.Spec(
+            UiTreeSearch.Action.TEXT_INPUT,
+            "Text input",
+            unverified = "focus and resulting text not verified.",
+        ) { x, y ->
+            // Typed only once the focusing tap was sent: text sent without it lands wherever focus was.
+            listOf(
+                ElementActions.Step("input tap $x $y", "the focusing tap"),
+                ElementActions.Step("input text ${ShellQuote.quote(value)}", "the text"),
+            )
+        }
+        return ElementActions.perform(context, arguments, spec)
     }
 }
+
+/** How each action's description points to its optional check. */
+private const val EXPECTATION_HINT =
+    "Optionally name what should happen, with expectTestTag, expectText or expectContentDescription and " +
+        "expectUntil, and the result says whether it was seen: VERIFIED, NOT OBSERVED, or INCONCLUSIVE when " +
+        "it already held before. The input is sent once and never repeated, even when the check fails or " +
+        "the dispatch is uncertain."
 
 /**
  * The verdict of a visibility assertion over every match, not just the first: one match in the
@@ -311,7 +265,9 @@ class AssertVisibleTool : AdbTool {
 
 class AssertEnabledTool : AdbTool {
     override val name = "android_assert_enabled"
-    override val description = "Check that an element is present and enabled."
+    override val description =
+        "Check that exactly one element matches and that it is enabled. Several matches fail, listing them, " +
+            "rather than answering for whichever came first."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { elementSelector() }
 
@@ -321,8 +277,12 @@ class AssertEnabledTool : AdbTool {
         require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
         val observation = UiTreeReader.read(device)
-        val match = UiTreeSearch.findOne(observation.tree, selector)
-            ?: return ToolResult.error(observation.preface() + "\nFAIL: nothing matched ${selector.describe()}.")
+        // One element or none: with several, "enabled" would be answered for whichever came first.
+        val match = try {
+            UiTreeSearch.findUnique(observation.tree, selector)
+        } catch (e: IllegalArgumentException) {
+            return ToolResult.error(observation.preface() + "\nFAIL: ${e.message}")
+        } ?: return ToolResult.error(observation.preface() + "\nFAIL: nothing matched ${selector.describe()}.")
 
         return when {
             match.enabled -> ToolResult.text(observation.preface() + "\nPASS: '${match.label}' is enabled.")

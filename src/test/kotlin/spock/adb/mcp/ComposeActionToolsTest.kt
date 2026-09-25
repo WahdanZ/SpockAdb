@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.mcp.tools.AssertEnabledTool
 import spock.adb.mcp.tools.AssertTextTool
 import spock.adb.mcp.tools.AssertVisibleTool
 import spock.adb.mcp.tools.InputTextIntoElementTool
@@ -182,6 +183,38 @@ class ComposeActionToolsTest {
 
         assertTrue(result.isError)
         assertTrue(result.text().contains("FAIL: nothing matched"), result.text())
+    }
+
+    @Test
+    fun `assert_enabled fails on two matches, listing both, rather than answering for the first`() {
+        // The first is enabled and the second disabled: checking only the first would pass.
+        val screen = Screen(screenXml(control("Save", "save_draft") + control("Save", "save_final", enabled = false)))
+
+        val result = AssertEnabledTool().execute(JsonObject().apply { addProperty("text", "Save") }, screen.context)
+
+        assertTrue(result.isError, result.text())
+        val text = result.text()
+        assertTrue(text.startsWith("Observed on emulator-5554"), text)
+        assertTrue(text.contains("FAIL: Ambiguous selector text='Save': 2 matches"), text)
+        assertTrue(text.contains("id='save_draft'") && text.contains("id='save_final'"), text)
+        assertFalse(text.contains("PASS"), text)
+    }
+
+    @Test
+    fun `assert_enabled still passes one enabled match and fails one disabled match`() {
+        val enabled = AssertEnabledTool().execute(
+            JsonObject().apply { addProperty("testTag", "near") },
+            Screen(listScreen(button("near", "[0,100][300,200]")), size = PHONE).context,
+        )
+        assertFalse(enabled.isError, enabled.text())
+        assertTrue(enabled.text().contains("PASS: 'Label' is enabled"), enabled.text())
+
+        val disabled = AssertEnabledTool().execute(
+            JsonObject().apply { addProperty("testTag", "name") },
+            Screen(screenXml(control("Name", "name", enabled = false))).context,
+        )
+        assertTrue(disabled.isError, disabled.text())
+        assertTrue(disabled.text().contains("present but disabled"), disabled.text())
     }
 
     @Test

@@ -72,6 +72,11 @@ internal object Fixtures {
                 listOf(call("""android_tap_element {testTag: "form_b_button"}""")),
                 "Taps that form's button; Last tap names it.",
             ),
+            Check(
+                listOf(call("""android_assert_enabled {text: "Save"}""")),
+                "Row 19. FAIL, not PASS: the selector is ambiguous, and both Save candidates are listed rather than " +
+                    "one checked. Nothing is tapped.",
+            ),
         ),
     )
     val TITLE_AND_BUTTON = Fixture(
@@ -294,8 +299,9 @@ internal object Fixtures {
                     call("""android_tap_element {testTag: "start_arrival"}"""),
                     call("""android_wait_for_element {testTag: "wait_appears", until: "visible", timeoutMs: 1000}"""),
                 ),
-                "FAIL: timed out. A 1 s wait cannot finish one dump on an API 34 emulator, so it says its capture did " +
-                    "not finish in the time left.",
+                "A verdict from 1 observation, which always completes: a dump takes 2–7 s, so the result says the " +
+                    "first observation ran past the 1.0 s limit. PASS if the timer fired during the dump, else FAIL: " +
+                    "timed out, nothing matched.",
             ),
             Check(
                 listOf(
@@ -326,6 +332,50 @@ internal object Fixtures {
                     call("""android_wait_for_element {testTag: "wait_toggle_target", until: "checked"}"""),
                 ),
                 "PASS: checked, after 1 or 2 observations.",
+            ),
+        ),
+    )
+    val OUTCOMES = Fixture(
+        "18", "An action and its result", "Checked afterwards, never sent twice",
+        listOf(
+            Check(
+                listOf(
+                    instruction("Start fresh: switch tabs and back, which resets the card."),
+                    call("""android_tap_element {testTag: "order_button", expectTestTag: "order_status"}"""),
+                ),
+                "VERIFIED, not an error: order_status visible after 1 or 2 observations, and not there before the " +
+                    "tap. Presses: 1 + 0, and Last tap names the order button.",
+            ),
+            Check(
+                listOf(
+                    instruction("Straight after the check above:"),
+                    call("""android_tap_element {testTag: "order_button", expectTestTag: "order_status"}"""),
+                ),
+                "INCONCLUSIVE, an error: order_status was already visible before the tap, so seeing it proves " +
+                    "nothing. The tap was dispatched once and not repeated: Presses: 2 + 0.",
+            ),
+            Check(
+                listOf(
+                    call(
+                        """android_tap_element {testTag: "inert_button", expectTestTag: "inert_result", """ +
+                            """expectTimeoutMs: 3000}""",
+                    ),
+                ),
+                "NOT OBSERVED, an error: dispatched once and not repeated. The second count goes up by exactly 1.",
+            ),
+            Check(
+                listOf(
+                    instruction("In the assistant, with expectTimeoutMs: 60000, press Stop once the tap is sent:"),
+                    call(
+                        """android_tap_element {testTag: "inert_button", expectTestTag: "inert_result", """ +
+                            """expectTimeoutMs: 60000}""",
+                    ),
+                ),
+                "CANCELLED while checking; the tap was dispatched once. The second count goes up by exactly 1.",
+            ),
+            Check(
+                listOf(instruction("The same, but press Stop within a second, before the tap is sent.")),
+                "CANCELLED while finding the target; nothing dispatched, both counts unchanged.",
             ),
         ),
     )
