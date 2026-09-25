@@ -63,43 +63,54 @@
   as the selection moves on.
 - **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`
   (read-only) looks at the screen every half second, or as often as asked, until an element is
-  visible, present, gone or hidden, or until it is enabled, disabled, checked, unchecked, selected,
-  unselected or focused, for up to 60 s (15 s over HTTP — see below). Before, an agent either
-  slept a number of seconds it made up, or asserted again and again, paying for a whole screen
-  each time. The answer says how many
-  looks it took and how long, and counts the looks `uiautomator` refused while the UI was still
-  animating, which it retries. A lost device stops the wait at once rather than letting it run
-  out. The first look always finishes, and each later one is given only what is left of the wait,
-  so after the first look the wait ends within about a second of its limit. A state is only reported for exactly one match: a selector that matches two switches
-  times out saying so rather than answering for one of them.
+  visible, present, gone or hidden, or until exactly one match is enabled, disabled, checked,
+  unchecked, selected, unselected or focused — for up to 60 s, or 15 s over HTTP (see below).
+  Before, an agent either slept a number of seconds it made up, or asserted again and again, paying
+  for a whole screen each time. A screen capture takes 2 to 7 s on an emulator, so the first look
+  always runs to completion, even past the limit, and the answer comes from what it saw: every wait
+  sees the screen at least once, `timeoutMs: 0` means "look once", and an answer reached after the
+  limit says so. Each later look is given only what is left of the wait, so after the first the
+  wait ends within about a second of its limit. The answer says how many looks it took and how
+  long, and counts the looks `uiautomator` refused while the UI was still animating, which it
+  retries. A lost device stops the wait at once rather than letting it run out. A selector that
+  matches two switches times out saying so rather than answering for one of them.
 - **Stop in the assistant ends a running wait, even in the middle of a screen capture.** Stop only
   took effect between tool calls, so a wait would have run for up to a minute after it was pressed.
-  `android_wait_for_element` now sees Stop during each capture and between captures, and reports
-  that nothing was changed on the device. A tool call the model queued behind the wait — a tap on
-  the element it was waiting for — is not run after Stop either: it is answered "Not run: the user
-  pressed Stop." instead, so a stopped turn cannot still act on the device or ask to confirm a
-  destructive call. MCP clients on stdio cancel a wait the same way, by interrupting the request.
-  HTTP has no way to cancel a call, so a wait there is capped at 15 s and says so: the HTTP server
-  has four threads, and four abandoned 60-second waits would have stalled every HTTP call,
-  `tools/list` included, for a minute.
+  `android_wait_for_element` now sees Stop during each capture, the first one included, and between
+  captures, and reports that nothing was changed on the device. A tool call the model queued behind
+  the wait — a tap on the element it was waiting for — is not run after Stop either: it is answered
+  "Not run: the user pressed Stop." instead, so a stopped turn cannot still act on the device or ask
+  to confirm a destructive call. MCP clients on stdio cancel a wait the same way, by interrupting
+  the request. HTTP has no way to cancel a call, so a wait there is capped at 15 s and says so: the
+  HTTP server has four threads, and four abandoned 60-second waits would have stalled every HTTP
+  call, `tools/list` included, for a minute.
 - **An agent can say what a tap should do, and be told whether it happened.** `android_tap_element`,
   `android_long_press_element` and `android_input_text_into_element` take an optional expected result
   — `expectTestTag`, `expectText` or `expectContentDescription`, with `expectUntil` in
-  `android_wait_for_element`'s words and `expectTimeoutMs` (5 s by default). After sending the input
-  they look for it and answer **VERIFIED**, **NOT OBSERVED**, or **INCONCLUSIVE** when the expected
-  state was already there before the tap and so proves nothing; only VERIFIED is a success. Before, an
-  agent got "UI outcome not verified" and had to make a second call to find out, and one that assumed
-  the best moved on from a tap that did nothing. The input is **sent once and never repeated**: when
-  the check fails, and also when the shell call itself times out or loses the device, which is now
-  reported as *dispatch uncertain* — the tap may have landed, and a second one could place a second
-  order — with a pointer to look before retrying. Text is never typed if the tap that focuses its
-  field failed. Without an expectation the tools answer as before.
+  `android_wait_for_element`'s words and `expectTimeoutMs` (5 s by default, at most 15 s over HTTP).
+  After sending the input they look for it and answer **VERIFIED**, **NOT OBSERVED**, or
+  **INCONCLUSIVE** when the expected state was already there before the tap and so proves nothing;
+  only VERIFIED is a success. Before, an agent got "UI outcome not verified" and had to make a second
+  call to find out, and one that assumed the best moved on from a tap that did nothing. The input is
+  **sent once and never repeated**: when the check fails, and also when the shell call itself times
+  out or loses the device, which is now reported as *dispatch uncertain* — the tap may have landed,
+  and a second one could place a second order — with a pointer to look before retrying. Text is
+  never typed if the tap that focuses its field failed. Stop answers **CANCELLED**, saying how far
+  the action had got. Without an expectation the tools answer as before.
 
 ### Changed
 
-- **`android_assert_enabled` no longer answers for one of several matches.** It checked whichever
-  match came first, so with an enabled and a disabled **Save** on screen it could pass for the wrong
-  one. It now needs exactly one match, and with several it fails listing them, as a tap would.
+- **Element actions refuse to guess.** `android_tap_element`, `android_long_press_element` and
+  `android_input_text_into_element` acted on the first match, so with two **Save** buttons on screen
+  an agent pressed whichever came first. They now refuse an ambiguous target, a disabled one, or one
+  outside the selected container, and send nothing. A refusal names each candidate's label and class
+  and says which selector field can tell them apart — often `exact: true` — or that none can. Matches
+  that land on the same control count once, so an icon inside a button sharing its description is
+  not ambiguous. Optional `packageName` and `containerTag` scopes and `exactTag` matching narrow a
+  selector; substring matching stays the default. `android_scroll_to_element` swipes the outermost
+  of nested lists, such as a feed of carousels, and refuses only between unrelated lists. An action
+  result says the input was dispatched, not that the app changed, unless an expected result was
+  checked.
 - **"Visible" now means in the viewport, not just in the tree.** `android_assert_visible` and
   `android_assert_text` passed for any node in the capture, including a row laid out below the
   edge of its list, where no one can see it and no tap reaches it. They now pass only when a
@@ -114,21 +125,24 @@
   `android_get_ui_tree` marks the nodes that are not in view, such as `[outside viewport]`. The
   UI Inspector marks those rows too, and shows a **Viewport** line under the selected element's
   geometry.
-- **A wait always looks at the screen at least once.** A screen capture takes 2 to 7 s on an
-  emulator, and a wait gave its first capture only the time it had, so a one-second
-  `android_wait_for_element` ended without having seen anything and could only report that it
-  timed out. The first capture of a wait now always runs to completion, even past the limit, and
-  the answer comes from what it saw; when that took longer than the whole wait was given, the
-  answer says so. `timeoutMs: 0` now reliably means "look once". Stop and MCP cancellation still
-  end that first capture at once.
+- **`android_assert_enabled` no longer answers for one of several matches.** It checked whichever
+  match came first, so with an enabled and a disabled **Save** on screen it could pass for the wrong
+  one. It now needs exactly one match, and with several it fails listing them, as a tap would.
+- **Every UI tool result says which screen it read.** A tree, a match or a PASS used to arrive
+  with nothing to say which device, which window or which moment it came from, or what the
+  capture cannot see — so a missing keyboard in the tree read the same as a keyboard that was not
+  there. Every `android_get_ui_tree`-family result, the element actions and assertions, the
+  accessibility audit and the debug-context UI section now open with one line: the device, the
+  package owning the dumped window, when it was captured by the host's clock and how long it
+  took, the viewport and rotation, the effective density, and the data source. Results that make
+  a claim about the screen add one line of limits: only the active window's accessibility tree,
+  no occlusion from bounds, and — when they apply — unobserved test tags, the `AndroidView` tag
+  gap, or a density or display size that could not be read. The UI Inspector shows the viewport
+  and density too. The audit now takes its density from the same capture instead of a separate
+  read that hid its failures.
 
 ### Fixed
 
-- **Stop pressed while the model was still asking for tools no longer breaks the next message.**
-  The tools were rightly not run, but the model's request for them was left in the conversation
-  with no answer, and a provider can reject a conversation holding a tool call with no result — so
-  the next thing you typed could fail. Each call is now answered "Not run: the user pressed Stop.",
-  the same as a call skipped after a stopped wait.
 - **Uninstall reports a device that refuses instead of claiming the app is gone.** The tool
   window threw away what ADB answered, so uninstalling a device-owner app, a system package, or
   one another user on the device still has, showed "application uninstalled" while the app stayed
@@ -145,16 +159,11 @@
   the dump through the 400,000-character cap meant for text an agent is charged for, so a screen
   larger than that arrived at the parser cut off mid-element. Both now run one capture, which is
   parsed rather than shown raw and so has nothing to cap.
-- Element taps, long presses, and text entry refuse ambiguous or disabled targets, with optional
-  package/container scoping and exact tag matching. Action results distinguish dispatch from a verified UI outcome.
-  A refusal names each candidate's label and class and says which selector field can tell them
-  apart, or that none can. Matches that land on the same control count once, so an icon inside a
-  button sharing its description is not ambiguous. Scrolling to an element swipes the outermost
-  of nested lists, such as a feed of carousels, and refuses only between unrelated lists.
-- Accessibility audits no longer count test tags as spoken labels and use the effective display
-  density for estimated 48dp touch targets. Missing density explicitly skips the size check.
-- View IDs outside Compose no longer imply exposed Compose tags on hybrid screens; missing-tag
-  guidance reports what was observed instead of assuming an application configuration error.
+- **Stop pressed while the model was still asking for tools no longer breaks the next message.**
+  The tools were rightly not run, but the model's request for them was left in the conversation
+  with no answer, and a provider can reject a conversation holding a tool call with no result — so
+  the next thing you typed could fail. Each call is now answered "Not run: the user pressed Stop.",
+  the same as a call skipped after a stopped wait.
 - **Cancelling a screen capture stops it, and a failed one says why.** Cancelling an
   `android_get_ui_tree` request used to leave `uiautomator dump` running on the device until it
   finished or hit its 30-second timeout, because the capture never told adb to stop. It now stops
@@ -173,24 +182,14 @@
   was decoded on its own, so a character that straddled two came back as replacement characters —
   and a `text=` selector for it matched nothing, on one capture and not the next. A capture is now
   decoded once, whole.
-- **Every UI tool result says which screen it read.** A tree, a match or a PASS used to arrive
-  with nothing to say which device, which window or which moment it came from, or what the
-  capture cannot see — so a missing keyboard in the tree read the same as a keyboard that was not
-  there. Every `android_get_ui_tree`-family result, the element actions and assertions, the
-  accessibility audit and the debug-context UI section now open with one line: the device, the
-  package owning the dumped window, when it was captured by the host's clock and how long it
-  took, the viewport and rotation, the effective density, and the data source. Results that make
-  a claim about the screen add one line of limits: only the active window's accessibility tree,
-  no occlusion from bounds, and — when they apply — unobserved test tags, the `AndroidView` tag
-  gap, or a density or display size that could not be read. The UI Inspector shows the viewport
-  and density too. The audit now takes its density from the same capture instead of
-  a separate read that hid its failures.
-- **The UI Inspector no longer tells you to capture a screen it is showing.** The device list
-  refreshes on its own, and each refresh replaced the capture's status with "press Capture UI"
-  while the captured tree was still on screen. The status line now follows the capture: it keeps
-  the node count while the same device stays selected, and when another device is selected it
-  keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
-  rather than hiding what was captured.
+- **The accessibility audit no longer counts a test tag as a spoken label, and measures touch
+  targets in dp.** A test tag is an automation identifier no screen reader announces, so a control
+  with only a tag is now reported as unlabelled, while a bare scroll container is not asked for a
+  label of its own. Touch targets were compared with 48 pixels, which is 16dp on a 480 dpi phone;
+  they are now estimated in dp at the display's effective density, and when the density cannot be
+  read the size check is skipped and the audit says so. A clean result reads "No issues detected
+  by these checks." rather than "No accessibility problems found.", because these checks cannot
+  certify a screen.
 - **The accessibility audit no longer blames an app for a half-scrolled list row.** `uiautomator`
   reports a row partly scrolled out of its list with its bounds cut short and its out-of-view
   text left out, so the audit reported the row as both smaller than 48dp and unlabelled — two
@@ -198,6 +197,18 @@
   edge is now left out of the size and label checks, and the coverage note says how many were
   skipped so they can be checked when fully in view. A control out of view but with whole bounds
   is still checked.
+- **A View id outside Compose no longer counts as an exposed Compose test tag.** On a hybrid
+  screen, the toolbar's resource ids made the tools report Compose tags as exposed when they were
+  not. And when no tags were seen, the tools said the app had not enabled `testTagsAsResourceId`;
+  they now say only that no exposed tags were observed, since the captured subtree may simply have
+  none. A View id inside an `AndroidView` still counts, so every capture that shows Compose tags says so
+  in its limits line.
+- **The UI Inspector no longer tells you to capture a screen it is showing.** The device list
+  refreshes on its own, and each refresh replaced the capture's status with "press Capture UI"
+  while the captured tree was still on screen. The status line now follows the capture: it keeps
+  the node count while the same device stays selected, and when another device is selected it
+  keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
+  rather than hiding what was captured.
 
 ## [4.0.5] - 2026-09-22
 

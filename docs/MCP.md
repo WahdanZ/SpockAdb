@@ -388,12 +388,15 @@ outermost of nested scrollable containers and refuses only between unrelated one
 
 Accessibility audits separate spoken labels from test tags. Touch-target estimates use the
 reported default-display density; when it cannot be read, the size check is explicitly skipped.
-Reported bounds may differ from expanded touch regions, so these checks do not certify accessibility.
+Reported bounds may differ from expanded touch regions, so these checks do not certify
+accessibility, and a clean result says only "No issues detected by these checks."
 
 `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`,
 `android_input_text_into_element`, `android_find_ui_element`, `android_assert_visible`,
 `android_assert_enabled`, `android_assert_text` and `android_wait_for_element` all resolve elements
-by **testTag → content description → text**, and only then derive a tap point from the matched node's own bounds.
+by **testTag → content description → text**. Only then does an action derive a point to press, from
+the resolved target's own bounds: the centre of its part in view, as described in
+[In the tree, in the viewport, and in view](#in-the-tree-in-the-viewport-and-in-view).
 
 A coordinate guessed from a screenshot breaks on a different screen size, density, font scale
 or after any layout change, and is the single biggest cause of flaky AI-driven UI automation.
@@ -450,11 +453,40 @@ offers no semantic identifier at all, and its own description says so.
 
 `android_assert_visible`, `android_assert_enabled` and `android_assert_text` let an agent verify
 the result of an action rather than infer it from pixels, and `android_wait_for_element` lets it wait
-for that result without guessing how long to sleep. Every assertion opens with the capture's summary
-line. `android_assert_enabled` needs exactly one match: with several it fails and lists them, as an
-action's refusal does, rather than answering for whichever came first.
+for that result without guessing how long to sleep. `android_assert_enabled` needs exactly one match:
+with several it fails and lists them, as an action's refusal does, rather than answering for
+whichever came first.
 
 Screenshots are first-class MCP image content, so an agent can also look at the screen.
+
+### Which screen a result describes
+
+Every result built on a capture opens with one line saying what was read:
+
+```
+Observed on emulator-5554, window com.example, 2026-09-23T10:15:02Z (host clock, 1.8 s capture), viewport 1080x2400 rot 0, 420 dpi, source: uiautomator accessibility dump of the active window.
+```
+
+- **`window`** is the package that owns the dumped window, not "the foreground app": with a system
+  dialog or another app's window on top, it is that window's package, and the app underneath is not
+  in the dump at all.
+- **The time** is the host's clock, not the device's; the two can disagree by minutes.
+- **The viewport** is the dumped window clipped to the display, with `at (x,y)` when it does not
+  start at the corner, and `rot` is the quarter-turn count `uiautomator` reports. Display size and
+  density come from `wm` and are best effort: one that cannot be read is reported as unknown, never
+  guessed.
+
+Results that make a claim about the screen — the tree, matches, assertions, waits, scrolling, the
+accessibility audit and the UI section of `android_get_debug_context` — add a second line, starting
+`Limits:`. It always names two: the capture holds only the active window's accessibility tree, not
+every composable and not the keyboard, other apps' dialogs or the system bars; and bounds cannot show
+whether an element is covered. When they apply it adds: no exposed Compose test tags were observed; a
+View id inside an `AndroidView` counts as an exposed tag, so tags may look exposed when Compose's are
+not; the density, or the display size, could not be read; or there is no viewport at all.
+
+Element actions open with the summary line alone, since sending input makes no claim about the
+screen. When an action checks an expected result, the capture that settled it follows with both
+lines. The UI Inspector shows the same summary in its header, with the limits on hover.
 
 ### In the tree, in the viewport, and in view
 
@@ -477,7 +509,7 @@ read — *viewport unknown*.
   workflow stops — when the viewport is unknown.
 - **`android_scroll_to_element`** stops at a match in the viewport, not at a match that is only
   in the tree. Without a viewport it keeps the old rule, any match, and says so. It still does
-  not look again after its last swipe.
+  not look again after its last swipe, and swipes vertically only; both are planned work.
 - **`android_find_ui_element`** describes where each match is, and **`android_get_ui_tree`**
   marks only the nodes that are not plainly in view — `[outside viewport]`, `[62% in viewport]`,
   `[partly in viewport, clipped by scroll container]` — so a screen that is all in view costs no
@@ -537,15 +569,15 @@ So after the first look a wait overruns its limit by under a second, plus the ti
 that finished just in time. A later capture that runs out of time ends the wait, since it had all that
 was left, and the result says so along with what the last completed capture showed. A first capture
 that runs out of its full 30 s is a dump that never finished, and the result says the device may be
-badly loaded. Cancelling does not wait for the first capture to finish: it stops at adb's next check,
+badly loaded. Cancelling does not wait for the first capture to finish: it stops at adb's next read,
 as any capture does.
 
 **Cancellation** depends on who is asking:
 
 | Caller | What stops a wait |
 |---|---|
-| A stdio client, with `notifications/cancelled` | The worker running the request is interrupted. A capture in progress stops at ddmlib's next check, and a pause between captures ends at once |
-| The in-IDE assistant's **Stop** | A flag, checked during each capture and every 100 ms of a pause. No thread is interrupted, since that would drop the model's HTTP connection too |
+| A stdio client, with `notifications/cancelled` | The worker running the request is interrupted. A capture in progress stops at adb's next read, and a pause between captures ends at once |
+| The in-IDE assistant's **Stop** | A flag, checked during each capture and every 100 ms of a pause. No thread is interrupted, since that would drop the model's HTTP connection too. Every other tool call in the same turn, or still being requested, is answered "Not run: the user pressed Stop." instead of being run |
 | An HTTP client | Nothing. The call runs to its limit — at most 15 s over HTTP, or one first capture when that takes longer, plus the overrun above — and holds one of the HTTP server's four worker threads while it does |
 
 A cancelled wait answers `CANCELLED …; nothing was changed on the device`. Over stdio that answer is
@@ -783,8 +815,8 @@ Recorded honestly so the gaps are not mistaken for features:
   document are prose an agent cannot call.
 - **Cancellation over HTTP.** stdio honours `notifications/cancelled` by interrupting the
   request; the HTTP transport is stateless by design and has nothing to cancel against, so a
-  slow tool call there runs to its timeout. For `android_wait_for_element` that is capped at 15 s
-  over HTTP, so abandoned waits cannot hold all four of the server's threads for long.
+  slow tool call there runs to its timeout. Waits, and an action's expected result, are capped at
+  15 s over HTTP for that reason — see [The HTTP cap](#waiting-for-the-screen-to-change).
 
 ## Testing
 

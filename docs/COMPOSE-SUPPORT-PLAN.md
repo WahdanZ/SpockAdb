@@ -1,6 +1,9 @@
 # Jetpack Compose support plan for Spock ADB
 
-Research date: 23 September 2026. Status: first Phase 1 increment implemented locally; later work remains open.
+Research date: 23 September 2026. Status, 25 September 2026: Phase 1 is implemented on
+`feature/compose-reliability` and open for review as
+[PR #122](https://github.com/WahdanZ/SpockAdb/pull/122). Phases 2–4 have not started. What is
+proven, and by what, is set out in [What is proven, and how](#what-is-proven-and-how).
 
 ## Product direction
 
@@ -66,6 +69,8 @@ Avoid adding a separate Compose tab initially. Extend the existing Inspector wit
 
 Acceptance: two Save buttons never cause an arbitrary tap; tagged but unlabelled controls remain audit findings; equivalent targets produce consistent density-aware results; disconnected devices and timeouts produce explicit errors. A present node is not automatically described as fully visible or unobscured.
 
+Status: implemented in PR #122. Each criterion's evidence, and what is still unproven, is in [What is proven, and how](#what-is-proven-and-how).
+
 ### Phase 2 — Practical Compose debugging scenarios
 
 - Add nested scrolling and final-swipe verification.
@@ -107,7 +112,21 @@ The recommended first release is Phase 1 plus container-scoped scrolling and one
 
 ## Implementation progress
 
-First increment, 23 September 2026:
+Phase 1 landed in stages, each one or more commits on `feature/compose-reliability` (PR #122):
+
+| Stage | Commits | What it delivered |
+|---|---|---|
+| First increment | `87549c1` | Refusals, scoping, exact tags, action targets, audit labels and density, hybrid tag detection |
+| 1 | `a7cd894`, `f702b95` | A cancellable capture whose failures are classified, including adblib's way of reporting a cancel |
+| Sample | `66a37af`, `cfa8655` | The *Compose reliability fixtures* screen, then a Material 3 look with the fixtures unchanged |
+| 2 | `1b37e84`, `ac1bc2e` | The observation model and its summary and limits lines; a capture decoded as UTF-8 once |
+| Inspector | `49ad167` | The UI Inspector redesign, and a status line that no longer forgets a capture |
+| 3 | `19178b0` | In the tree, in the viewport, and in view told apart |
+| 4 | `28fca7f`, `d5d1c90`, `d2bcf12` | Bounded waits, the assistant's Stop during a wait and for the rest of its tool batch, the 15 s HTTP cap |
+| 5 | `7c1875e`, `d295c34`, `b5e395d` | Stop answered for every requested tool call, the first observation always completing, actions with an expected result |
+| Jump to Source | `28498a4`, `acadc80`, `d9f20e6` | Source navigation from the Inspector, its sample targets, and relatives for rows with nothing of their own |
+
+Phase 1 checklist:
 
 - [x] Refuse ambiguous tap, long-press, and text-input matches. Ambiguity is counted by resolved action target, so matches landing on one control count once. Refusals list each candidate's label, class, ID, package, and bounds, suggest `exact`, and say plainly when no selector field can separate the candidates.
 - [x] Add optional package/container scoping and case-sensitive exact tag matching without changing legacy substring defaults.
@@ -117,6 +136,12 @@ First increment, 23 September 2026:
 - [x] Separate accessible labels from automation identifiers; estimate touch targets using effective density and disclose skipped checks. Bare scroll containers are not required to carry their own label.
 - [x] Correct hybrid tag detection for View IDs outside Compose, and missing-tag guidance. Known gap: View IDs from `AndroidView` interop *inside* a Compose host still count as exposed tags. The parser has no confirmed interop-boundary signal, and a device capture is needed to find one (see `UiTreeParser.composeNodes`).
 - [x] Add selector, action-dispatch, density, parser, and accessibility regression tests, including nested and sibling scroll containers, target de-duplication, ambiguity messages, and scroll-container audit exemption.
+- [x] Cancellable, classified capture (`UiTreeOperations`, `UiCaptureException`): a cancel stops
+  `uiautomator dump` at adb's next read and sends nothing further. A failure is CANCELLED,
+  DEVICE_UNAVAILABLE (naming the device), TIMED_OUT (naming the command and its limit), DUMP_REFUSED
+  or an empty dump. A cancel that adb reports as a closed connection, a timeout or, through adblib in
+  Android Studio 2025.1, an I/O error is still a cancel. The UI Inspector and the MCP tools run the
+  same capture, decoded as UTF-8 once it is all in.
 - [x] Shared observation model (`UiObservation`): device serial, the package owning the dumped window (not claimed to be the foreground app), host-clock start and duration, display rotation, viewport (window clipped to the display), effective density, data source, and the capture's limits. Every MCP UI tool opens with its one-line summary and, where it makes a claim about the screen, one line of limits; the Inspector's status line shows viewport and density. Display size and density are best effort: a failed `wm` read leaves them unknown and says so.
 - [x] Viewport-aware visibility (`ViewportVisibility`): every node is in the viewport, partly in it (with its share and the part in view), outside it, of zero area, or unclassified when the capture has no viewport. The viewport is narrowed by each scroll container above a node, and by nothing else. Nothing is described as fully visible or unobscured. `Bounds.isVisible` is now `hasArea`, which is all it ever checked. Element actions refuse a target out of view and point to `android_scroll_to_element`, and press a partly visible target at the centre of its part in view. `assert_visible` and `assert_text` pass only for a match in view, and are inconclusive without a viewport. `scroll_to_element` stops only at a match in view. `find_ui_element`, `get_ui_tree` and the Inspector say where each node is. A node whose bounds reach a scroll container's edge is flagged as possibly cut: its size is unknown, and the audit leaves it out of the size and label checks and counts it in the coverage note.
 - [x] Bounded waits (`UiWaiter`, `android_wait_for_element`): for an element to be visible, present,
@@ -126,8 +151,9 @@ First increment, 23 September 2026:
   the limit says so. Each later capture gets what is left of the wait, rounded up to whole seconds;
   refused and empty dumps are counted and retried; a lost device or a capture out of time ends the
   wait. Cancellation is polled during each capture and between captures: an interrupt over stdio,
-  and a flag from the assistant's Stop (`CancellableToolContext`). HTTP has no cancellation, so a
-  wait there runs to its limit, at most 60 s.
+  and a flag from the assistant's Stop (`CancellableToolContext`). After Stop, every tool call left
+  in the model's batch, or still being requested, is answered "Not run: the user pressed Stop."
+  HTTP has no cancellation, so a wait there is capped at 15 s and says so.
 - [x] Outcome assertions (`ElementActions`): tap, long press and text input take an optional expected
   result (`expectTestTag`, `expectText`, `expectContentDescription`, `expectExact`, `expectExactTag`,
   `expectUntil`, `expectTimeoutMs`), matched over the whole screen rather than the action's scope. It is
@@ -136,18 +162,94 @@ First increment, 23 September 2026:
   requested" are successes. A dispatch is never repeated: a shell step that fails is *dispatch
   uncertain*, an error that sends nothing further and runs no check, and text is never typed after a
   focusing tap that failed. `android_assert_enabled` needs a unique match and lists candidates otherwise.
+- [x] UI Inspector redesign (`InspectorHeader`, `NodeDetailsPanel`, `AuditFindingsPanel`): a
+  Compose / Hybrid / Views badge and the capture's summary in the header, the limits on hover, a
+  properties table with sizes in dp, a **Viewport** line, and a **Selector** for the selected element
+  (MCP arguments, Compose finder, UI Automator selector) checked against the capture, so an
+  ambiguous one shows the refusal an action would give.
+- [x] Jump to Source (`SourceLocator`, `SourceRanking`, `SourceNavigator`): a search of the open
+  project by test tag, `android:id` or `R.id`, text or content description (literal, template, or
+  `strings.xml` value followed to its `R.string` use), then a custom View's class. A row with
+  nothing of its own borrows from its label, its content, then what encloses it; with nothing found
+  at all it opens the captured screen's activity. Every answer says what matched.
+- [x] Sample fixtures for every row of the two tables below, each card's checks one tap from the
+  clipboard behind its info button.
 - [ ] Complete Phase 2 scrolling, input capability handling, lifecycle scenarios, and configuration recovery.
 - [ ] Complete Phase 3 scenario export and Phase 4 feasibility work.
 
-The first increment intentionally does not claim that shell text input supports arbitrary Unicode,
-that positive-area bounds prove visibility, or that a dispatched action changed application state.
+Phase 1 does not claim that shell text input supports arbitrary Unicode, that bounds show whether
+an element is covered, or that a dispatched action changed application state unless its expected
+result came back VERIFIED.
 
-Validation for this increment, after the review fixes and the rebase onto master: `./gradlew test`
-ran 897 tests with 9 skipped and no failures; `./gradlew detekt` and `./gradlew buildPlugin`
-passed. IDE compatibility verification was attempted before the review fixes but stopped on an
-invalid cached IntelliJ IDEA 2025.1 installation (missing core plugin), so compatibility is not
-yet verified. Real-device smoke tests require an active test setup and are not claimed as passed.
-The branch `feature/compose-reliability` is pushed; no pull request has been created.
+## What is proven, and how
+
+Three kinds of evidence, in falling order of strength short of a real user:
+
+- **Emulator** — run on an API 34 emulator (1080x2636, 480 dpi) through the plugin's own tool
+  classes, every command sent through `adb shell` by a temporary harness standing in for ddmlib. No
+  MCP transport, no ddmlib, no IDE. The recorded results are under [Device checks](#device-checks).
+- **Emulator dump** — the plugin's selector run offline against a `uiautomator` dump taken from that
+  emulator; nothing dispatched.
+- **Unit tests** — `./gradlew test`, with scripted devices and fixture trees. Jump to Source also
+  has one platform test against real PSI and the word index, in a light in-memory project.
+
+| Phase 1 acceptance criterion | Proven by | Not yet proven |
+|---|---|---|
+| Two Save buttons never cause an arbitrary tap | Unit tests; emulator dump for rows 1–5; emulator for row 19 (`assert_enabled` fails listing both) and row 18 (one dispatch, never repeated, counted by the app) | A refusal through a real MCP transport; an uncertain dispatch, which a healthy emulator cannot provoke (unit tests only) |
+| Tagged but unlabelled controls remain audit findings | Unit tests; emulator, row 7: exactly two findings, `audit_unlabelled` among them | — |
+| Equivalent targets produce consistent density-aware results | Unit tests; emulator, row 7 at 480 dpi: the 24dp target reported at 72px, 24dp | Row 13, a changed density (`wm density 320`), not run |
+| Disconnected devices and timeouts produce explicit errors | Unit tests for every failure kind; emulator, row 8: `DUMP_REFUSED` after 11.7–13.4 s; waits that time out, rows 8 and 16 | Row 14, a lost device, not run; `TIMED_OUT` from a real dump (the emulator refused rather than timed out) |
+| A present node is not described as fully visible or unobscured | Unit tests; emulator, row 15: absent below the fold, flagged as clipped at the edge, pressed at the centre of its part in view, every PASS saying occlusion was not checked | `ZERO_AREA` (a zero-size node is left out of the dump; unit tests only) |
+
+Beyond the acceptance criteria:
+
+- **Waits and cancellation** — emulator, rows 8, 16 and 17, before and after the first-observation
+  rule; a 60 s wait cancelled 3.5 s in by interrupt (13 ms later) and by the assistant's flag
+  (18 ms later). Both latencies come from the harness polling every 20 ms: **how quickly ddmlib
+  itself stops is not verified**, nor is the adblib path Android Studio 2025.1 uses, whose I/O-error
+  cancel is covered by unit tests only. The HTTP cap and "Not run" answers after Stop are unit-tested.
+- **Actions with an expected result** — emulator, row 18: VERIFIED, INCONCLUSIVE, NOT OBSERVED, and
+  CANCELLED both before and after the tap. Text input with an expectation is unit-tested only.
+- **Observation summary** — unit tests. Its window, viewport, rotation and density lines against a
+  real dialog, rotation or density change (rows 11–13) have not been run.
+- **Scroll containers and hybrid screens** — unit tests. Rows 6, 9 and 10 have not been run.
+- **Real MCP transports** — none of the above went through stdio or HTTP. `McpSmokeTest`'s live
+  checks, which do, are opt-in and have not been recorded as run for this branch.
+- **Physical devices** — none. Every device result above is from one API 34 emulator.
+- **The IDE UI** — the Inspector redesign and Jump to Source have not been looked at in a running IDE.
+  None of the [Source navigation checks](#source-navigation-checks) has been run; the ranking is
+  unit-tested and the search has its one platform test.
+- **IDE compatibility** — CI's Plugin Verifier, which runs `verifyPlugin` against all five targets
+  (Android Studio 2023.2.1.25, 2024.2.1.12 and 2025.1.1.14, IntelliJ IDEA Community 2023.2.8 and
+  2025.1), passed on every pushed commit of the branch through `acadc80`. Locally, `verifyPlugin`
+  stops on a broken cached IntelliJ IDEA 2025.1 install, so that target has been verified by CI only;
+  the Plugin Verifier CLI run directly against the other four reported them Compatible, with only
+  the deprecated usages already known.
+
+Test counts as the stages landed (`./gradlew test`, always 9 skipped and no failures; `detekt` and
+`buildPlugin` passed each time, and the sample's `assembleDebug` from Stage 3 on): first increment
+897, Stage 3 1008, Stage 4 1040, Stage 5 1083, and 1154 with Jump to Source.
+
+### Known follow-ups
+
+- **`ShellOutputReceiver` still decodes each chunk on its own**, with the platform's default
+  charset. The UI capture no longer uses it, but every other command's output does, so non-Latin text
+  split across two chunks can still become `�` there.
+- **Jump to Source does not trace a tag passed as a variable.** `testTag(tag)` is not followed to
+  the callers that supply `tag`; only a literal or template argument is read. Where the value is
+  written as a literal elsewhere, the plain literal search may still find it.
+- **`semantics { testTag = … }` is not read as a tag.** A literal there is found only as an ordinary
+  string, ranked no higher than any other, and a template there is not found at all.
+- **The `AndroidView` tag gap.** A View id inside an `AndroidView` still counts as an exposed Compose
+  tag, and every capture with Compose tags says so in its limits line. Closing it needs an
+  interop-boundary signal, which no capture has shown yet (row 10).
+- **HTTP has no cancellation.** A call over HTTP runs to its end; `android_wait_for_element` and an
+  action's expected result are capped at 15 s there so abandoned calls cannot hold the server's
+  four threads for long.
+- **Phase 2:** nested and horizontal scrolling — the swipe is vertical only, so an inner carousel
+  cannot be scrolled on purpose — and a check after the final swipe, which
+  `android_scroll_to_element` still does not make.
+- **Which window a dialog's capture reads** is unrecorded (row 11).
 
 ### Source navigation checks
 
@@ -210,14 +312,14 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | 7. Audit (Audit) | `android_accessibility_audit {}` | Two findings: `audit_unlabelled` (no accessible text, despite its tag) and `audit_small_target` (24dp, below 48dp). Nothing for `audit_list` or its rows. The coverage note says 1 control at a scroll container's edge was skipped: the half-visible fifth row |
 | 8. Never idle (Busy) | `android_tap_element {testTag: "busy_switch"}`, then `android_get_ui_tree {}` | Capture fails as `DUMP_REFUSED` ("could not get idle state"), after about 12 s on an API 34 emulator; `TIMED_OUT` where `uiautomator` waits past 30 s. The switch turns itself off after 30 s |
 | | `android_tap_element {testTag: "busy_switch"}`, then `android_wait_for_element {testTag: "busy_switch", until: "unchecked", timeoutMs: 45000}` | PASS once the switch turns itself off, about 33 s in, counting the captures refused before it |
-| | The same with `timeoutMs: 10000`; afterwards let the switch turn itself off | FAIL: timed out, its one capture not finished in the 10 s it was given, since a refused dump takes about 13 s |
+| | The same with `timeoutMs: 10000`; afterwards let the switch turn itself off | FAIL: timed out after 1 observation, about 13 s: the first capture always runs to completion, and `uiautomator` refused it. The result says the first observation took about 13 s, past the 10.0 s limit, and counts 1 refused capture. *Expected from the code since Stage 5; last run before it, when this ended after 10.1 s with no observation* |
 | 9. Hybrid, tags off (Hybrid) | `android_tap_element {testTag: "expose_tags_switch"}`, then `android_get_ui_tree {}` | Hybrid screen, no exposed Compose tags observed: the toolbar's View IDs do not count. `{text: "Expose test tags"}` turns them back on |
 | 10. Known gap (Hybrid, tags off) | `android_tap_element {text: "Show a View inside Compose"}`, then `android_get_ui_tree {}` | Still reports Compose tags as visible, because of the `AndroidView` ID. Expected until the gap is closed |
 | 11. A second window (Window) | `android_get_ui_tree {}` with the dialog closed | First line `Observed on <serial>, window spock.adb.sample, <ISO-8601 instant> (host clock, <n> s capture), viewport <W>x<H> rot 0, <dpi> dpi, source: uiautomator accessibility dump of the active window.` Second line starts `Limits:` and, tags being exposed, names the `AndroidView` gap. Rotation and dpi match the tab's own *This app sees* line |
 | | `android_tap_element {testTag: "open_dialog"}`, then `android_get_ui_tree {}` | **Unverified which window is dumped — record it.** If the dialog: a viewport smaller than the display with an `at (x,y)` origin, and `dialog_close` in the tree. If the activity: the same viewport as before and no `dialog_close`. Either way `window` is the package that owns the dumped window |
 | 12. Rotation (Window) | Rotate the device, then `android_get_ui_tree {}` | `rot` equals the rotation the tab shows (1 or 3 for landscape); the viewport's width and height swap |
 | 13. Density (Window) | `adb shell wm density 320`, then `android_accessibility_audit {}`; afterwards `adb shell wm density reset` | Summary says `320 dpi`, and the coverage note says touch-target estimates use 320dpi |
-| 14. Lost device (any) | Disconnect the device (`adb disconnect`, or unplug) and call `android_get_ui_tree {}`; then press **Capture UI** in the Inspector | MCP: `DEVICE_UNAVAILABLE` naming the serial and pointing to `android_list_devices`. Inspector: the same failure, telling the person to reconnect or choose another device, with no tool name. Its status line after a good capture ends `· viewport <W>x<H> rot <r> · <dpi> dpi` |
+| 14. Lost device (Window; any tab will do) | Disconnect the device (`adb disconnect`, or unplug) and call `android_get_ui_tree {}`; then press **Capture UI** in the Inspector | MCP: `DEVICE_UNAVAILABLE` naming the serial and pointing to `android_list_devices`. Inspector: the same failure, telling the person to reconnect or choose another device, with no tool name. Its status line after a good capture ends `· viewport <W>x<H> rot <r> · <dpi> dpi` |
 | 15. In the tree, in view, or neither (Fold) | `android_assert_visible {testTag: "below_fold"}` | FAIL: nothing matched, pointing to `android_scroll_to_element`. The row is left out of the capture while it is scrolled out of the column, so it is absent rather than outside the viewport |
 | | `android_tap_element {testTag: "below_fold"}` | Refused as no match, pointing to `android_scroll_to_element`; nothing dispatched, *Last tap* unchanged |
 | | `android_find_ui_element {testTag: "half_visible"}`, then `android_get_ui_tree {}` | One match, "partly in the viewport, cut at its scroll container's edge; how much is out of view is unknown". The tree marks it `[partly in viewport, clipped by scroll container]` and its text `[may be clipped by scroll container]`; nothing else in the card is marked |
@@ -236,10 +338,15 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | | In the assistant: the same call, and **Stop** within a second, before the tap | CANCELLED while finding the target; nothing dispatched, counts unchanged |
 | 19. Ambiguous assertion (Taps, fixture 1) | `android_assert_enabled {text: "Save"}` | FAIL, not PASS: ambiguous, listing both `Save` candidates. Nothing is tapped |
 
+Where each row stands: 7, 8 and 15–19 have been run on an API 34 emulator through the plugin's tool
+classes; 1–5 were resolved against a dump from that emulator; 6 and 9–14 have not been run. Row 8's
+third check has not been re-run since Stage 5 changed its answer. No row has been run through a real
+MCP transport or on a physical device. The notes below are the record of each run, oldest first.
+
 Rows 1–5 were resolved offline with the plugin's selector against a `uiautomator` dump of the
 Taps tab from an API 34 emulator, and matched the table. Nothing was dispatched through MCP.
 
-Rows 7, 8 and 15 were run on an API 34 emulator (1080x2636, 480 dpi) with the plugin's own tool
+**Stage 3.** Rows 7, 8 and 15 were run on an API 34 emulator (1080x2636, 480 dpi) with the plugin's own tool
 classes — the audit, tree, find, assert, tap and scroll tools — sending every command to the
 emulator through `adb shell`. Only the MCP transport and ddmlib were left out. Each result matched
 the table, and each tap was confirmed by the *Last tap* line. Rows 6 and 9–14 have not been run on
@@ -272,44 +379,38 @@ a device yet. What the emulator showed:
 - **A zero-size node is absent too.** A tagged `Modifier.size(0.dp)` box never appeared in the
   dump, so the sample has no zero-area fixture: `ZERO_AREA` is covered by unit tests only.
 
-Stage 3 validation: `./gradlew test` ran 1008 tests with 9 skipped and no failures; `detekt`,
-`buildPlugin` and the sample's `assembleDebug` passed. `verifyPlugin` still stops on the broken
-cached IntelliJ IDEA 2025.1 install. The Plugin Verifier CLI was therefore run directly against the
-other four targets (Android Studio 2023.2.1.25, 2024.2.1.12 and 2025.1.1.14, IntelliJ IDEA
-Community 2023.2.8), and all four reported Compatible, with only the deprecated usages already
-known.
-
-Stage 4 rows — row 8's waits, 16 and 17 — were run on the same API 34 emulator with the plugin's
+**Stage 4.** Row 8's waits, 16 and 17 were run on the same API 34 emulator with the plugin's
 tap and wait tool classes, every command sent through `adb shell` by a temporary harness. ddmlib and
 the MCP transports were left out. Every dump took 2.3–6.7 s, and `uiautomator` waits for the UI to
 settle before it dumps. What the emulator showed:
 
 - **Row 16:** `visible`, 10 s: PASS after 1 observation, in 4.6 and 5.0 s on two runs; the 3 s timer
   fired during the first dump. With 1 s: FAIL, timed out after 1.0–1.1 s with no observation, since
-  the capture did not finish within 1 s. `gone`: PASS after 1 observation, 4.4 s. Never there: PASS
+  the capture did not finish within 1 s — the behaviour Stage 5 replaced; see below. `gone`: PASS after 1 observation, 4.4 s. Never there: PASS
   after 1 observation, 2.8 s.
 - **Row 17:** `enabled`: PASS after 2 observations, 5.5 s. `checked`: PASS after 1 observation, 4.5 s.
 - **Row 8, the busy ticker and a wait:** they work together when the wait is long enough. With 45 s,
   PASS after 3 observations in 33.1 s: the first 2 captures were refused, about 13 s each, and
-  retried, and the third found the switch off. With 10 s the wait fails as timed out after 10.1 s
-  with no observation. Each capture gets what is left of the wait, and 10 s is less than the 13 s
-  `uiautomator` takes to give up, so on a screen that never settles a wait under about 13 s ends on
-  a capture out of time rather than a refusal.
+  retried, and the third found the switch off. With 10 s the wait failed as timed out after 10.1 s
+  with no observation: each capture then got only what was left of the wait, and 10 s is less than
+  the 13 s `uiautomator` takes to give up. Since Stage 5 the first capture gets its full time, so
+  this now ends on the refusal after about 13 s; the table has the answer expected now.
 - **Cancelling:** a 60 s wait for an element that never appears was stopped 3.5 s in, during its
   first capture. By interrupt, the stdio path, it answered `CANCELLED` 13 ms later; by the
   assistant's flag through `CancellableToolContext`, 18 ms later. Both latencies come from the
   harness polling its shell command every 20 ms, which stands in for ddmlib. How quickly ddmlib
   itself stops is not verified.
 - **The smoke test's query** (an absent `text`, `until: "visible"`) with 10 s: FAIL, timed out after
-  3 observations, 10.1 s, "Last: nothing matched". With the 1 s first planned it failed on the
-  capture timeout instead, which is the wrong path to smoke-test, so `McpSmokeTest` uses 10 s.
+  3 observations, 10.1 s, "Last: nothing matched". With the 1 s first planned it failed, before
+  Stage 5, on the capture timeout instead, which is the wrong path to smoke-test, so `McpSmokeTest`
+  uses 10 s.
 - **No Wait tab.** An eighth tab made every tab 45dp wide, and fixture 7's audit reported all eight
   below 48dp: nine findings instead of two. So the wait fixtures are two cards on the Busy tab, whose
   column does not scroll, and the audit is back to exactly two findings.
 - One run of the 45 s busy wait was spoiled by touches from outside the harness, which switched tabs
   part-way (visible in logcat as input at fractional coordinates). It was repeated untouched.
 
-The first-observation rule and Stage 5 were run on the same API 34 emulator (1080x2636, 480 dpi) with
+**Stage 5.** The first-observation rule and actions with an expected result were run on the same API 34 emulator (1080x2636, 480 dpi) with
 the plugin's tap, assertion, find, audit and wait tool classes, every command sent through `adb shell`
 by a temporary harness that polled each shell call every 20 ms and stood in for ddmlib. The assistant's
 Stop was the real `CancellableToolContext` with its flag set from a second thread. The MCP transports,
@@ -335,13 +436,3 @@ the assistant UI and ddmlib itself were not exercised. Every dump took 2.4–4.1
   attribute and bound, in a dump taken after; the 15 new nodes are the card. Its audit reports no
   issues. An uncertain dispatch cannot be provoked on a healthy emulator, so it, and text input with
   an expectation, are covered by unit tests only.
-
-Stage 5 validation: `./gradlew test` ran 1083 tests with 9 skipped and no failures; `detekt`,
-`buildPlugin` and the sample's `assembleDebug` passed. `verifyPlugin` still stops on the broken cached
-IntelliJ IDEA 2025.1 install; the Plugin Verifier CLI, run directly against the other four targets,
-reported all four Compatible, with only the deprecated usages already known.
-
-Stage 4 validation: `./gradlew test` ran 1040 tests with 9 skipped and no failures; `detekt`,
-`buildPlugin` and the sample's `assembleDebug` passed. `verifyPlugin` still stops on the broken
-cached IntelliJ IDEA 2025.1 install. The Plugin Verifier CLI, run directly against the other four
-targets, reported all four Compatible, with only the deprecated usages already known.

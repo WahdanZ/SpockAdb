@@ -167,7 +167,11 @@ Supports:
 
 **Android Views · Jetpack Compose · Hybrid screens**
 
-Inspect text, content descriptions, bounds, test tags, interaction state, and other semantics.
+Inspect text, content descriptions, bounds, test tags, interaction state, and other semantics — with sizes in dp, whether each element is actually in view, and which device, window and moment the capture came from.
+
+Select an element to copy a selector for it — MCP arguments, a Compose test finder, or a UI Automator selector — checked against the captured screen, so one that would match several elements says so before you paste it.
+
+**Jump to Source** opens the code that drew the selected element, found in the open project by its test tag, resource id, text, or View class.
 
 Spock ADB can also detect common accessibility problems such as:
 
@@ -212,6 +216,8 @@ Agents can inspect things such as:
 and perform actions such as:
 
 **Launch · Tap · Input text · Deep links · App lifecycle operations**
+
+Element actions refuse to guess between look-alike targets, can wait for the screen to change instead of sleeping, and can check that a tap had the effect it should — without ever sending it twice.
 
 Sensitive or destructive operations can require approval, and MCP activity remains visible inside the IDE.
 
