@@ -239,6 +239,8 @@ Sensitive or destructive operations can require approval, and MCP activity remai
 
 See [MCP documentation](docs/MCP.md) for setup, the complete tool list, and safety details.
 
+To teach an agent *which* tools to call and in what order, install the [Spock ADB Agent Skill](skills/spock-adb/README.md): debugging playbooks for UI bugs, state bugs, crashes and ANRs, process death, background work, deep links and accessibility.
+
 ---
 
 # Why use Spock ADB?

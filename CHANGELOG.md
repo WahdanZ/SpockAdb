@@ -4,6 +4,13 @@
 
 ### Added
 
+- **An Agent Skill for debugging with Spock ADB.** `skills/spock-adb/SKILL.md` tells an agent
+  which MCP tools to call and in what order: start from `android_get_debug_context`, narrow to the
+  app, prefer safe actions to destructive ones and explain the destructive ones first, and re-read
+  after every change. Seven playbooks — UI bugs, state bugs, crashes and ANRs, process death,
+  background work, deep links and accessibility — each with a matching screen in the sample app,
+  and a setup guide for Claude Code. A test fails the build if the skill, the README or
+  `docs/MCP.md` names a tool the registry does not have, or if the skill's destructive list drifts.
 - **A redesigned UI Inspector, and a selector for any element in one click.** The tree is drawn
   with the IDE's own renderer, so rows follow the theme instead of sitting on mismatched grey
   blocks, and each row reads as the class, then the test tag, the text and the content
