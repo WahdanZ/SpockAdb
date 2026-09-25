@@ -244,7 +244,7 @@ class SpockAdbShell(
         controller.selectedApp = packageName
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
-        diagnose.setApp()
+        diagnose.setApp(packageName)
         devices.setApp()
     }
 

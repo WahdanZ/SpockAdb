@@ -9,6 +9,7 @@ import spock.adb.command.StandbyBucket
 import spock.adb.command.deviceConditions
 import spock.adb.command.pendingAlarms
 import spock.adb.command.scheduledJobs
+import spock.adb.device.ops.AppNotInstalledException
 import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.diagnostics.LikelyProblem.Severity
@@ -376,6 +377,10 @@ object PermissionsSection : DiagnosticSection {
         val app = probe.packageName ?: error("No app is known, so there are no permissions to read.")
         ShellQuote.requireValidComponent(app, "Package name")
         val dump = DiagnosticShell.run(probe.device, "dumpsys package ${ShellQuote.quote(app)}")
+        // Without this, an app that is not installed has no permission block to parse and read
+        // as "no runtime permissions" — an answer, where nothing was read at all. Checked in the
+        // dump already fetched, so it costs no extra round trip.
+        if ("Package [$app]" !in dump) throw AppNotInstalledException(app)
         return summarise(GetApplicationPermission.parse(dump))
     }
 

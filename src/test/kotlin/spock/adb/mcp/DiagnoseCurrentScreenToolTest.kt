@@ -42,7 +42,10 @@ class DiagnoseCurrentScreenToolTest {
                 android.permission.POST_NOTIFICATIONS: granted=true, flags=[ USER_SET ]
     """.trimIndent()
 
-    private fun routedDevice(screencapReply: String = Base64.getEncoder().encodeToString(pngBytes)): ConnectedDevice {
+    private fun routedDevice(
+        screencapReply: String = Base64.getEncoder().encodeToString(pngBytes),
+        packageReply: String = packageDump,
+    ): ConnectedDevice {
         val device = mockk<IDevice>(relaxed = true)
         val command = slot<String>()
         val receiver = slot<IShellOutputReceiver>()
@@ -56,7 +59,7 @@ class DiagnoseCurrentScreenToolTest {
                 issued.startsWith("pidof") -> "1234"
                 issued.startsWith("dumpsys activity activities") ->
                     "  mResumedActivity: ActivityRecord{9f1c u0 com.example.app/.CheckoutActivity t12}"
-                issued.startsWith("dumpsys package") -> packageDump
+                issued.startsWith("dumpsys package") -> packageReply
                 issued.startsWith("logcat") -> "01-01 00:00:00.000  1234  1234 E MyApp: boom"
                 issued.startsWith("screencap") -> screencapReply
                 else -> ""
@@ -124,5 +127,13 @@ class DiagnoseCurrentScreenToolTest {
         assertTrue(report.has("screen"))
         assertTrue(report["screenshot"].asString.isNotBlank())
         assertTrue(result.content.filterIsInstance<ToolContent.Image>().isEmpty())
+    }
+
+    @Test
+    fun `an app that is not installed is a section error, not an app with no permissions`() {
+        val report = reportOf(run(device = routedDevice(packageReply = "Unable to find package: com.example.app")))
+
+        assertFalse(report.has("permissions"), "nothing was read, so nothing may be reported: $report")
+        assertTrue(report["sectionErrors"].asJsonObject["permissions"].asString.contains("not installed"))
     }
 }

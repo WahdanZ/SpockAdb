@@ -92,6 +92,13 @@ class DiagnosePanel(
      * than answering "no device" for a device that is plugged in.
      */
     private var pending = false
+
+    /**
+     * The app the shown, or running, diagnosis is about. The header re-announces its app after
+     * every device selection — usually the same one — and clearing on each announcement threw
+     * away the diagnosis the Diagnose action had just started.
+     */
+    private var diagnosedApp: String? = null
     private val reads = LatestRequest()
 
     init {
@@ -109,8 +116,10 @@ class DiagnosePanel(
         if (pending && connected != null) diagnose()
     }
 
-    /** The app chosen in the header. A diagnosis of the previous one no longer answers anything. */
-    fun setApp() = clear()
+    /** The app chosen in the header. A diagnosis of a different one no longer answers anything. */
+    fun setApp(packageName: String) {
+        if (packageName != diagnosedApp) clear()
+    }
 
     override fun dispose() {
         disposed = true
@@ -199,12 +208,16 @@ class DiagnosePanel(
         }
         pending = false
         val request = reads.begin()
+        // Resolved here rather than on the pooled thread, so setApp can compare against it while
+        // the read is still running. A project-model lookup, not an ADB call.
+        val app = resolveApp()
+        diagnosedApp = app
         busy = true
         status("Diagnosing the current screen on ${target.info.displayName}…")
 
         // A dozen shell round trips, a UI dump and a screenshot; never on the EDT.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching { collect(target) }
+            val result = runCatching { collect(target, app) }
             ApplicationManager.getApplication().invokeLater({
                 if (!reads.isLatest(request)) return@invokeLater
                 busy = false
@@ -219,12 +232,12 @@ class DiagnosePanel(
      * The screenshot first: it is the one read that has to match what the developer was looking
      * at when they pressed Diagnose, and every other read takes a moment.
      */
-    private fun collect(target: ConnectedDevice): Pair<JsonObject, ByteArray?> {
+    private fun collect(target: ConnectedDevice, app: String?): Pair<JsonObject, ByteArray?> {
         val shot = runCatching { ScreenshotOperations(target.device).capture() }
         val probe = DiagnosticProbe(
             device = target.device,
             serialNumber = target.serialNumber,
-            packageName = resolveApp(),
+            packageName = app,
         )
         val preamble = JsonObject().apply {
             add(
@@ -284,6 +297,7 @@ class DiagnosePanel(
     private fun clear() {
         reads.begin()
         busy = false
+        diagnosedApp = null
         diagnosis = null
         summary.text = ""
         rawReport.text = ""
