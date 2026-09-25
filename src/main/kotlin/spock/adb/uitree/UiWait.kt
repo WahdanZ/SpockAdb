@@ -139,6 +139,12 @@ sealed class WaitOutcome {
     abstract val elapsedMs: Long
     abstract val captures: Int
 
+    /**
+     * How long the first capture took, whether it worked or was refused; null when none ended.
+     * It is always given its full time, so it is what tells a caller the wait ran past its limit.
+     */
+    abstract val firstCaptureMs: Long?
+
     data class Satisfied(
         val observation: UiObservation,
         /** What was seen that met the condition. */
@@ -147,6 +153,7 @@ sealed class WaitOutcome {
         override val captures: Int,
         /** Captures `uiautomator` refused or left empty before this one worked. */
         val refusedCaptures: Int = 0,
+        override val firstCaptureMs: Long? = null,
     ) : WaitOutcome()
 
     data class TimedOut(
@@ -156,15 +163,21 @@ sealed class WaitOutcome {
         override val elapsedMs: Long,
         override val captures: Int,
         val refusedCaptures: Int,
+        override val firstCaptureMs: Long? = null,
     ) : WaitOutcome()
 
     /** The caller asked to stop. Nothing is wrong with the device. */
-    data class Cancelled(override val elapsedMs: Long, override val captures: Int) : WaitOutcome()
+    data class Cancelled(
+        override val elapsedMs: Long,
+        override val captures: Int,
+        override val firstCaptureMs: Long? = null,
+    ) : WaitOutcome()
 
     /**
      * A capture failed in a way another capture would not fix: a lost device, or one out of time.
-     * A capture is only ever given what is left of the wait, so one out of time also means the
-     * wait is; [lastReason] is what the last capture that worked showed.
+     * A later capture is only ever given what is left of the wait, so one out of time also means
+     * the wait is; the first is given its full time, so one out of time there is a dump that
+     * never finished. [lastReason] is what the last capture that worked showed.
      */
     data class CaptureFailed(
         val kind: UiCaptureException.Kind,
@@ -174,25 +187,34 @@ sealed class WaitOutcome {
         override val elapsedMs: Long,
         val lastReason: String,
         val refusedCaptures: Int = 0,
+        override val firstCaptureMs: Long? = null,
     ) : WaitOutcome()
 }
 
 /**
  * Captures the screen until a [UiCondition] holds, the time runs out, or the caller cancels.
  *
- * Each capture is given what is left of the wait, rounded up to whole seconds (at least one,
- * at most [MAX_CAPTURE_SECONDS]), so a slow dump cannot run far past the limit. Rounding up
- * means the wait may overrun its limit by under a second, plus the time to read back a dump
- * that finished just before its own limit. A limit of zero is exactly one capture.
+ * The first capture always runs to completion, with a capture's full time
+ * ([MAX_CAPTURE_SECONDS]), even when that takes it past the limit: a dump takes seconds on many
+ * devices, and a wait that ended before one finished would have looked at nothing. So every wait
+ * sees the screen at least once, a limit of zero is exactly one look, and the outcome's
+ * [WaitOutcome.firstCaptureMs] tells the caller when that look ran past the limit.
+ *
+ * Each later capture is given what is left of the wait, rounded up to whole seconds (at least
+ * one, at most [MAX_CAPTURE_SECONDS]), so a slow dump cannot run far past the limit. Rounding up
+ * means such a capture may overrun it by under a second, plus the time to read back a dump that
+ * finished just before its own limit.
  *
  * Cancellation is polled, never forced: [signal] is checked before each capture, handed to
  * the capture itself, and checked between slices of each pause. An interrupt during a pause
- * ends the wait as cancelled, with the interrupt flag set again for the thread's owner.
+ * ends the wait as cancelled, with the interrupt flag set again for the thread's owner. The
+ * first capture's full time does not delay a cancel: the capture is handed the signal too.
  *
  * A refused or empty dump — a UI still animating — is counted and retried. A lost device
  * ends the wait, and so does a capture out of time: it already had all that was left.
  *
- * Blocks for up to the limit, so it must never run on the EDT.
+ * Blocks for up to the limit, or one capture's time when that is longer, so it must never run
+ * on the EDT.
  */
 class UiWaiter(
     private val capture: (timeoutSeconds: Long) -> UiObservation,
@@ -239,6 +261,7 @@ class UiWaiter(
         private val deadlineNanos = startNanos + timeoutMs * NANOS_PER_MILLI
         private var captures = 0
         private var refused = 0
+        private var firstCaptureMs: Long? = null
         private var last: UiObservation? = null
         private var lastReason = "no capture completed"
 
@@ -249,20 +272,29 @@ class UiWaiter(
         /** The outcome when this capture ends the wait; null to go on. */
         fun attempt(condition: UiCondition): WaitOutcome? {
             captures++
+            val first = captures == 1
+            val startedNanos = clockNanos()
             val observation = try {
-                capture(captureSeconds(remainingMs()))
+                // The first look gets a capture's full time, so the wait sees the screen at least once.
+                capture(if (first) MAX_CAPTURE_SECONDS else captureSeconds(remainingMs()))
             } catch (e: UiCaptureException) {
+                if (first && e.kind != UiCaptureException.Kind.CANCELLED) firstCaptureMs = sinceMs(startedNanos)
                 return failed(e)
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return cancelled()
             }
+            if (first) firstCaptureMs = sinceMs(startedNanos)
             last = observation
             val check = condition.evaluate(observation)
-            if (check.satisfied) return WaitOutcome.Satisfied(observation, check.reason, elapsedMs(), captures, refused)
+            if (check.satisfied) {
+                return WaitOutcome.Satisfied(observation, check.reason, elapsedMs(), captures, refused, firstCaptureMs)
+            }
             lastReason = check.reason
             return null
         }
+
+        private fun sinceMs(startedNanos: Long): Long = (clockNanos() - startedNanos) / NANOS_PER_MILLI
 
         private fun failed(e: UiCaptureException): WaitOutcome? = when {
             e.kind == UiCaptureException.Kind.CANCELLED -> cancelled()
@@ -279,16 +311,20 @@ class UiWaiter(
                 elapsedMs(),
                 lastReason,
                 refused,
+                firstCaptureMs,
             )
         }
 
-        fun timedOut() = WaitOutcome.TimedOut(last, lastReason, elapsedMs(), captures, refused)
+        fun timedOut() = WaitOutcome.TimedOut(last, lastReason, elapsedMs(), captures, refused, firstCaptureMs)
 
-        fun cancelled() = WaitOutcome.Cancelled(elapsedMs(), captures)
+        fun cancelled() = WaitOutcome.Cancelled(elapsedMs(), captures, firstCaptureMs)
     }
 
     companion object {
-        /** A capture's own limit: what [UiTreeOperations][spock.adb.device.ops.UiTreeOperations] allows a dump. */
+        /**
+         * A capture's own limit: what [UiTreeOperations][spock.adb.device.ops.UiTreeOperations] allows a
+         * dump. The first capture of a wait always gets all of it.
+         */
         const val MAX_CAPTURE_SECONDS = 30L
         private const val PAUSE_SLICE_MS = 100L
         private const val NANOS_PER_MILLI = 1_000_000L

@@ -121,7 +121,9 @@ First increment, 23 September 2026:
 - [x] Viewport-aware visibility (`ViewportVisibility`): every node is in the viewport, partly in it (with its share and the part in view), outside it, of zero area, or unclassified when the capture has no viewport. The viewport is narrowed by each scroll container above a node, and by nothing else. Nothing is described as fully visible or unobscured. `Bounds.isVisible` is now `hasArea`, which is all it ever checked. Element actions refuse a target out of view and point to `android_scroll_to_element`, and press a partly visible target at the centre of its part in view. `assert_visible` and `assert_text` pass only for a match in view, and are inconclusive without a viewport. `scroll_to_element` stops only at a match in view. `find_ui_element`, `get_ui_tree` and the Inspector say where each node is. A node whose bounds reach a scroll container's edge is flagged as possibly cut: its size is unknown, and the audit leaves it out of the size and label checks and counts it in the coverage note.
 - [x] Bounded waits (`UiWaiter`, `android_wait_for_element`): for an element to be visible, present,
   gone or hidden, or for exactly one match to be enabled, disabled, checked, unchecked, selected,
-  unselected or focused. Each capture gets what is left of the wait, rounded up to whole seconds;
+  unselected or focused. The first capture always runs to completion, with a capture's full time,
+  so every wait sees the screen at least once and `timeoutMs: 0` looks once; a result reached past
+  the limit says so. Each later capture gets what is left of the wait, rounded up to whole seconds;
   refused and empty dumps are counted and retried; a lost device or a capture out of time ends the
   wait. Cancellation is polled during each capture and between captures: an interrupt over stdio,
   and a flag from the assistant's Stop (`CancellableToolContext`). HTTP has no cancellation, so a
@@ -179,7 +181,7 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | | `android_tap_element {testTag: "half_visible"}` | Tapped at the centre of its part in view, not of its bounds; *Last tap* names the half-visible row |
 | | `android_scroll_to_element {testTag: "below_fold"}`, `android_assert_visible {testTag: "below_fold"}`, `android_tap_element {testTag: "below_fold"}`; afterwards switch tabs and back to scroll the column to the top | Found after about 5 swipes; PASS, ending "(occlusion not checked)"; *Last tap* names the row below the fold |
 | 16. Something arrives, something leaves (Busy) | `android_tap_element {testTag: "start_arrival"}`, then `android_wait_for_element {testTag: "wait_appears", until: "visible", timeoutMs: 10000}` | PASS: visible, within the viewport, after 1 observation on an API 34 emulator (the 3 s timer fires during the first dump) |
-| | `android_tap_element {testTag: "start_arrival"}`, then the same wait with `timeoutMs: 1000` | FAIL: timed out. No dump finishes in 1 s on an API 34 emulator, so it says its capture did not finish in the time left |
+| | `android_tap_element {testTag: "start_arrival"}`, then the same wait with `timeoutMs: 1000` | A verdict from 1 observation, which always completes: PASS if the 3 s timer fired during the dump, else FAIL: timed out, "Last: nothing matched". Either way it says the first observation took several seconds, past the 1.0 s limit |
 | | `android_tap_element {testTag: "start_departure"}`, then `android_wait_for_element {testTag: "wait_disappears", until: "gone"}` | PASS: gone, nothing in the tree matches |
 | | `android_wait_for_element {testTag: "wait_never_there", until: "gone"}` | PASS on the first observation: `gone` is met at once by something that was never there |
 | 17. A button and a switch that change (Busy) | `android_tap_element {testTag: "start_enable"}`, then `android_wait_for_element {testTag: "wait_enable_target", until: "enabled"}` | PASS: enabled, after 1 or 2 observations |

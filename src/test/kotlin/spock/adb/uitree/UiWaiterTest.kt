@@ -95,12 +95,60 @@ class UiWaiterTest {
     }
 
     @Test
-    fun `each capture is given what is left, rounded up to whole seconds, at least one`() {
+    fun `the first capture gets its full time, and each later one what is left, rounded up, at least one`() {
         waiter(listOf { screen() })
             .await(UiCondition.Visible(tag("save")), timeoutMs = 2_500, pollIntervalMs = 1_000)
 
-        // 2.5 s left, then 1.5, then 0.5, then nothing: the last look still gets a second.
-        assertEquals(listOf(3L, 2L, 1L, 1L), captureTimeouts)
+        // The first look is always completed. Then 1.5 s left, then 0.5, then nothing: the last look
+        // still gets a second.
+        assertEquals(listOf(UiWaiter.MAX_CAPTURE_SECONDS, 2L, 1L, 1L), captureTimeouts)
+    }
+
+    @Test
+    fun `a first capture slower than the whole wait still completes, and its verdict counts`() {
+        // A 4.6 s dump against a 1 s limit: the wait sees the screen once instead of never.
+        val outcome = waiter(listOf { screen(button("save")) }, captureMs = 4_600)
+            .await(UiCondition.Visible(tag("save")), timeoutMs = 1_000, pollIntervalMs = 500)
+
+        val satisfied = assertInstanceOf(WaitOutcome.Satisfied::class.java, outcome)
+        assertEquals(1, satisfied.captures)
+        assertEquals(4_600L, satisfied.firstCaptureMs)
+        assertEquals(listOf(UiWaiter.MAX_CAPTURE_SECONDS), captureTimeouts)
+    }
+
+    @Test
+    fun `a first capture past the limit that does not meet the condition times out without a second look`() {
+        val outcome = waiter(listOf { screen() }, captureMs = 4_600)
+            .await(UiCondition.Visible(tag("save")), timeoutMs = 1_000, pollIntervalMs = 500)
+
+        val timedOut = assertInstanceOf(WaitOutcome.TimedOut::class.java, outcome)
+        assertEquals(1, timedOut.captures)
+        assertEquals(4_600L, timedOut.firstCaptureMs)
+        assertTrue(timedOut.lastObservation != null, "the one look is kept")
+        assertTrue(timedOut.lastReason.contains("nothing matched"), timedOut.lastReason)
+        assertTrue(sleeps.isEmpty(), sleeps.toString())
+    }
+
+    @Test
+    fun `a refused first capture is timed too, and a slow one ends a short wait`() {
+        val outcome = waiter(
+            listOf { throw UiCaptureException(Kind.DUMP_REFUSED, "could not get idle state") },
+            captureMs = 13_000,
+        ).await(UiCondition.Visible(tag("save")), timeoutMs = 1_000, pollIntervalMs = 500)
+
+        val timedOut = assertInstanceOf(WaitOutcome.TimedOut::class.java, outcome)
+        assertEquals(1, timedOut.refusedCaptures)
+        assertEquals(13_000L, timedOut.firstCaptureMs)
+    }
+
+    @Test
+    fun `later captures do not get the first one's allowance`() {
+        // The first look took 0.3 s of a 2 s wait, so the second is given what is left, not 30 s.
+        waiter(listOf { screen() }, captureMs = 300)
+            .await(UiCondition.Visible(tag("save")), timeoutMs = 2_000, pollIntervalMs = 700)
+
+        assertEquals(UiWaiter.MAX_CAPTURE_SECONDS, captureTimeouts.first())
+        assertTrue(captureTimeouts.drop(1).all { it <= 2L }, captureTimeouts.toString())
     }
 
     @Test
@@ -112,13 +160,22 @@ class UiWaiterTest {
     }
 
     @Test
-    fun `a zero timeout is exactly one capture`() {
-        val outcome = waiter(listOf { screen() })
+    fun `a zero timeout is exactly one capture, given its full time`() {
+        val outcome = waiter(listOf { screen() }, captureMs = 2_000)
             .await(UiCondition.Visible(tag("save")), timeoutMs = 0, pollIntervalMs = 500)
 
         assertInstanceOf(WaitOutcome.TimedOut::class.java, outcome)
         assertEquals(1, outcome.captures)
+        assertEquals(listOf(UiWaiter.MAX_CAPTURE_SECONDS), captureTimeouts)
         assertTrue(sleeps.isEmpty())
+    }
+
+    @Test
+    fun `a zero timeout that meets the condition on its one look passes`() {
+        val outcome = waiter(listOf { screen(button("save")) }, captureMs = 2_000)
+            .await(UiCondition.Visible(tag("save")), timeoutMs = 0, pollIntervalMs = 500)
+
+        assertInstanceOf(WaitOutcome.Satisfied::class.java, outcome)
     }
 
     @Test
@@ -155,6 +212,30 @@ class UiWaiterTest {
 
         assertInstanceOf(WaitOutcome.Cancelled::class.java, outcome)
         assertTrue(Thread.currentThread().isInterrupted)
+    }
+
+    @Test
+    fun `a first capture cancelled part-way ends the wait at once, its full time notwithstanding`() {
+        var cancelled = false
+        var next = 0
+        val outcome = UiWaiter(
+            capture = { seconds ->
+                captureTimeouts += seconds
+                // The capture sees the signal after 0.5 s of its 30 s and stops, as a real one does.
+                nowNanos += 500 * NANOS
+                cancelled = true
+                next++
+                throw UiCaptureException(Kind.CANCELLED, "UI capture cancelled")
+            },
+            signal = { cancelled },
+            clockNanos = { nowNanos },
+            sleep = { sleeps += it },
+        ).await(UiCondition.Visible(tag("save")), timeoutMs = 60_000, pollIntervalMs = 500)
+
+        assertInstanceOf(WaitOutcome.Cancelled::class.java, outcome)
+        assertEquals(1, next)
+        assertEquals(500L, outcome.elapsedMs)
+        assertTrue(sleeps.isEmpty(), sleeps.toString())
     }
 
     @Test

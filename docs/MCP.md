@@ -520,13 +520,22 @@ HTTP — see below) runs out. It is read-only: it sends nothing to the device bu
 - The result says how many captures the wait took and how long, and how many `uiautomator` refused
   or left empty, usually a UI still animating. Those are retried.
 
-**Timing.** Each capture is given what is left of the wait, rounded up to whole seconds, at least one
-and at most 30. So a wait can overrun its limit by under a second, plus the time to read back a dump
-that finished just in time. A capture that runs out of time ends the wait, since it had all that was
-left, and the result says so along with what the last completed capture showed. A dump is not quick:
-2 to 7 s on an API 34 emulator, and about 13 s before `uiautomator` gives up on a UI that never
-settles. A `timeoutMs` shorter than one dump can end without a single observation, so `timeoutMs: 0`
-is a "look once" only on a device that dumps within a second.
+**Timing.** A dump is not quick: 2 to 7 s on an API 34 emulator, and about 13 s before `uiautomator`
+gives up on a UI that never settles. So **the first capture of every wait runs to completion**, with a
+capture's full 30 s, even when that takes it past `timeoutMs`: a wait shorter than one dump would
+otherwise end having seen nothing. Every wait therefore looks at the screen at least once and answers
+from what it saw, and `timeoutMs: 0` means "look once". When that first look took longer than the whole
+limit, the result says so — "The first observation took 4.6 s, past the 1.0 s limit" — so a verdict
+reached late is not mistaken for one reached in time. A limit of 0 is never called late, since one look
+is what it asked for.
+
+Each later capture is given only what is left of the wait, rounded up to whole seconds, at least one.
+So after the first look a wait overruns its limit by under a second, plus the time to read back a dump
+that finished just in time. A later capture that runs out of time ends the wait, since it had all that
+was left, and the result says so along with what the last completed capture showed. A first capture
+that runs out of its full 30 s is a dump that never finished, and the result says the device may be
+badly loaded. Cancelling does not wait for the first capture to finish: it stops at adb's next check,
+as any capture does.
 
 **Cancellation** depends on who is asking:
 
@@ -534,7 +543,7 @@ is a "look once" only on a device that dumps within a second.
 |---|---|
 | A stdio client, with `notifications/cancelled` | The worker running the request is interrupted. A capture in progress stops at ddmlib's next check, and a pause between captures ends at once |
 | The in-IDE assistant's **Stop** | A flag, checked during each capture and every 100 ms of a pause. No thread is interrupted, since that would drop the model's HTTP connection too |
-| An HTTP client | Nothing. The call runs to its limit — at most 15 s over HTTP, plus the overrun above — and holds one of the HTTP server's four worker threads while it does |
+| An HTTP client | Nothing. The call runs to its limit — at most 15 s over HTTP, or one first capture when that takes longer, plus the overrun above — and holds one of the HTTP server's four worker threads while it does |
 
 A cancelled wait answers `CANCELLED …; nothing was changed on the device`. Over stdio that answer is
 discarded, as the spec requires.

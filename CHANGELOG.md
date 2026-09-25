@@ -46,8 +46,8 @@
   each time. The answer says how many
   looks it took and how long, and counts the looks `uiautomator` refused while the UI was still
   animating, which it retries. A lost device stops the wait at once rather than letting it run
-  out. Each look is given only what is left of the wait, so the wait ends within about a second of
-  its limit. A state is only reported for exactly one match: a selector that matches two switches
+  out. The first look always finishes, and each later one is given only what is left of the wait,
+  so after the first look the wait ends within about a second of its limit. A state is only reported for exactly one match: a selector that matches two switches
   times out saying so rather than answering for one of them.
 - **Stop in the assistant ends a running wait, even in the middle of a screen capture.** Stop only
   took effect between tool calls, so a wait would have run for up to a minute after it was pressed.
@@ -76,6 +76,13 @@
   `android_get_ui_tree` marks the nodes that are not in view, such as `[outside viewport]`. The
   UI Inspector marks those rows too, and shows a **Viewport** line under the selected element's
   geometry.
+- **A wait always looks at the screen at least once.** A screen capture takes 2 to 7 s on an
+  emulator, and a wait gave its first capture only the time it had, so a one-second
+  `android_wait_for_element` ended without having seen anything and could only report that it
+  timed out. The first capture of a wait now always runs to completion, even past the limit, and
+  the answer comes from what it saw; when that took longer than the whole wait was given, the
+  answer says so. `timeoutMs: 0` now reliably means "look once". Stop and MCP cancellation still
+  end that first capture at once.
 
 ### Fixed
 

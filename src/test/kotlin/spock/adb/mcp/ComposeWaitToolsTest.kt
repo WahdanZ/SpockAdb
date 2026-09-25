@@ -14,6 +14,7 @@ import spock.adb.mcp.tools.CancellableToolContext
 import spock.adb.mcp.tools.ToolResult
 import spock.adb.mcp.tools.UncancellableToolContext
 import spock.adb.mcp.tools.WaitForElementTool
+import spock.adb.uitree.UiWaiter
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -97,6 +98,48 @@ class ComposeWaitToolsTest {
             result.text(),
         )
         assertTrue(result.text().contains("Last: nothing matched testTag='wait_appears'"), result.text())
+    }
+
+    @Test
+    fun `a dump slower than the whole wait still gives a verdict, saying it ran past the limit`() {
+        val timeouts = Collections.synchronizedList(mutableListOf<Long>())
+        val device = mockk<IDevice>(relaxed = true).also {
+            every { it.executeShellCommand(any(), any(), any(), any<TimeUnit>()) } answers {
+                val command = firstArg<String>()
+                if (command.startsWith("uiautomator")) {
+                    timeouts += thirdArg<Long>()
+                    Thread.sleep(SLOW_DUMP_MS)
+                }
+                val output = when {
+                    command.startsWith("cat ") -> screen(button("wait_appears"))
+                    command == "wm size" -> "Physical size: 1080x2400"
+                    command == "wm density" -> "Physical density: 420"
+                    else -> ""
+                }.toByteArray()
+                secondArg<IShellOutputReceiver>().addOutput(output, 0, output.size)
+            }
+        }
+        val context = FakeToolContext(available = listOf(FakeToolContext.device("emulator-5554").copy(device = device)))
+
+        val result = WaitForElementTool().execute(args("testTag" to "wait_appears", "timeoutMs" to 1_000), context)
+
+        assertFalse(result.isError, result.text())
+        val text = result.text()
+        assertTrue(text.contains("PASS: testTag='wait_appears' is visible after 1 observation(s)"), text)
+        assertTrue(text.contains("past the 1.0 s limit"), text)
+        // The one dump was given a capture's full time, not the second the wait had.
+        assertEquals(listOf(UiWaiter.MAX_CAPTURE_SECONDS), timeouts)
+    }
+
+    @Test
+    fun `a zero timeout looks once and is not called late for it`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+
+        val result = WaitForElementTool().execute(args("testTag" to "wait_appears", "timeoutMs" to 0), device.context)
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("after 1 observation(s)"), result.text())
+        assertFalse(result.text().contains("past the"), result.text())
     }
 
     @Test
@@ -292,5 +335,6 @@ class ComposeWaitToolsTest {
 
     private companion object {
         const val POLL_NANOS = 5_000_000L
+        const val SLOW_DUMP_MS = 1_300L
     }
 }
