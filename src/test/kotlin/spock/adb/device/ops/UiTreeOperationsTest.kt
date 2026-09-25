@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import spock.adb.uitree.DisplayMetrics
+import spock.adb.uitree.DisplayMetricsReader
 import spock.adb.uitree.UiCaptureException
 import spock.adb.uitree.UiCaptureException.Kind
 import spock.adb.uitree.UiNode
@@ -193,6 +194,89 @@ class UiTreeOperationsTest {
     }
 
     @Test
+    fun `an interrupt adblib turned into an IOException is a cancel, and the interrupt survives`() {
+        // Android Studio 2025.1's adblib wrapper: runBlocking has cleared the flag by the time
+        // it wraps the InterruptedException, so only the cause chain says what happened.
+        val (device, commands) = scriptedDevice {
+            // Interrupted, then cleared, as runBlocking leaves it.
+            Thread.currentThread().interrupt()
+            Thread.interrupted()
+            throw IOException("Operation interrupted", InterruptedException())
+        }
+
+        try {
+            val thrown = assertThrows<UiCaptureException> { UiTreeOperations(device, serial = SERIAL).observe() }
+
+            assertEquals(Kind.CANCELLED, thrown.kind)
+            assertFalse(thrown.message!!.contains("no longer available"), thrown.message)
+            assertTrue(Thread.currentThread().isInterrupted, "the interrupt adblib cleared is set again")
+            assertEquals(listOf("uiautomator dump ${UiTreeOperations.DUMP_PATH}"), commands)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
+    fun `an adblib interrupt during the best-effort cleanup still cancels the capture`() {
+        // The rm is allowed to fail. A cancel arriving through it is not a failure to shrug off.
+        val (device, commands) = scriptedDevice { command ->
+            if (command.startsWith("rm")) throw IOException("Operation interrupted", InterruptedException())
+            measuredScreen(command)
+        }
+
+        try {
+            val thrown = assertThrows<UiCaptureException> { UiTreeOperations(device).observe() }
+
+            assertEquals(Kind.CANCELLED, thrown.kind)
+            assertTrue(Thread.currentThread().isInterrupted)
+            assertTrue(commands.none { it.startsWith("wm ") }, "the display was measured after a cancel: $commands")
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
+    fun `a cancel during the cleanup is not swallowed even when the signal is not the thread`() {
+        val (device, commands) = scriptedDevice { command ->
+            if (command.startsWith("rm")) throw IOException("Operation interrupted", InterruptedException())
+            measuredScreen(command)
+        }
+
+        try {
+            val thrown = assertThrows<UiCaptureException> {
+                UiTreeOperations(device, cancellation = { false }).observe()
+            }
+
+            assertEquals(Kind.CANCELLED, thrown.kind)
+            assertEquals(DUMP_COMMANDS, commands)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
+    fun `the display is measured within the capture's own timeout when that is shorter`() {
+        val (device, timeouts) = timedDevice()
+
+        UiTreeOperations(device, timeoutSeconds = 1).observe()
+
+        assertEquals(1L, timeouts.getValue("wm size"))
+        assertEquals(1L, timeouts.getValue("wm density"))
+    }
+
+    @Test
+    fun `the display is measured within its own short timeout when the capture's is longer`() {
+        val (device, timeouts) = timedDevice()
+
+        UiTreeOperations(device).observe()
+
+        val dump = "uiautomator dump ${UiTreeOperations.DUMP_PATH}"
+        assertEquals(UiTreeOperations.DUMP_TIMEOUT_SECONDS, timeouts.getValue(dump))
+        assertEquals(DisplayMetricsReader.READ_TIMEOUT_SECONDS, timeouts.getValue("wm size"))
+        assertEquals(DisplayMetricsReader.READ_TIMEOUT_SECONDS, timeouts.getValue("wm density"))
+    }
+
+    @Test
     fun `adb refusing the device names it without advice meant for only one kind of caller`() {
         // The next step differs by reader: an agent calls android_list_devices, a person in the
         // Inspector reconnects. Each adds its own (UiTreeReader, captureFailureText); the shared
@@ -336,6 +420,19 @@ class UiTreeOperationsTest {
             setOf(Kind.DUMP_REFUSED, Kind.EMPTY_DUMP),
             Kind.entries.filter { it.retryable }.toSet(),
         )
+    }
+
+    /** A healthy measurable device that records the timeout, in seconds, each command was sent with. */
+    private fun timedDevice(): Pair<IDevice, Map<String, Long>> {
+        val device = mockk<IDevice>(relaxed = true)
+        val timeouts = mutableMapOf<String, Long>()
+        every { device.executeShellCommand(any(), any(), any(), any<TimeUnit>()) } answers {
+            val command = firstArg<String>()
+            timeouts[command] = arg<TimeUnit>(3).toSeconds(thirdArg<Long>())
+            val bytes = measuredScreen(command).toByteArray()
+            secondArg<IShellOutputReceiver>().addOutput(bytes, 0, bytes.size)
+        }
+        return device to timeouts
     }
 
     /** A healthy device showing one line of text on a measurable display. */

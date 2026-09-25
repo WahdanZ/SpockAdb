@@ -36,7 +36,7 @@ import spock.adb.uitree.UiTreeParser
  */
 class UiTreeOperations(
     private val device: IDevice,
-    timeoutSeconds: Long = DUMP_TIMEOUT_SECONDS,
+    private val timeoutSeconds: Long = DUMP_TIMEOUT_SECONDS,
     /** Named in errors. Read once, here, rather than from a device that may be gone by then. */
     private val serial: String = device.serialNumber,
     private val cancellation: CancellationSignal = CancellationSignal.currentThread(),
@@ -61,7 +61,14 @@ class UiTreeOperations(
         val startedAt = System.currentTimeMillis()
         val tree = read()
         val completedAt = System.currentTimeMillis()
-        val measured = metrics ?: DisplayMetricsReader.read(device, cancellation, serial)
+        // Never longer than the capture was given: a wait with a short budget passes a short
+        // timeout, and a hanging `wm` must not stretch its first capture past it.
+        val measured = metrics ?: DisplayMetricsReader.read(
+            device,
+            cancellation,
+            serial,
+            minOf(DisplayMetricsReader.READ_TIMEOUT_SECONDS, timeoutSeconds),
+        )
         return UiObservation(
             tree = tree.copy(densityDpi = measured.densityDpi),
             deviceSerial = serial,
@@ -92,13 +99,21 @@ class UiTreeOperations(
         }
 
         val xml = shell.run("cat ${ShellQuote.quote(DUMP_PATH)}")
-        // Best effort: a dump left behind is untidy, not a failure of the capture. A cancel is
-        // still a cancel, though, so it is asked about again rather than swallowed with the rest.
-        runCatching { shell.run("rm -f ${ShellQuote.quote(DUMP_PATH)}") }
-        shell.throwIfCancelled("rm -f $DUMP_PATH")
+        removeDump()
 
         if (xml.isBlank()) throw UiCaptureException(Kind.EMPTY_DUMP, "uiautomator produced an empty dump.")
         return UiTreeParser.parse(xml)
+    }
+
+    /**
+     * Best effort: a dump left behind is untidy, not a failure of the capture. A cancel is still a
+     * cancel, though, so it is passed on rather than swallowed with the rest — and asked about
+     * again, for one that landed after the command returned.
+     */
+    private fun removeDump() {
+        runCatching { shell.run("rm -f ${ShellQuote.quote(DUMP_PATH)}") }
+            .onFailure { if (it is UiCaptureException && it.kind == Kind.CANCELLED) throw it }
+        shell.throwIfCancelled("rm -f $DUMP_PATH")
     }
 
     companion object {

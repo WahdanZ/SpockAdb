@@ -106,9 +106,11 @@
   cancelled, device unreachable (naming the device), a command that timed out (naming the command
   and how long it was given), or `uiautomator` refusing or writing an empty dump. Before, a lost
   device or a timeout came back as whatever adb's exception said, sometimes nothing more than a
-  class name. A cancel that adb reports as a closed connection or a timeout is still reported as a
-  cancel. A lost device is followed by the next step for whoever is reading: an agent is pointed
-  to `android_list_devices`, and the UI Inspector tells you to reconnect or pick another device
+  class name. A cancel that adb reports as a closed connection, a timeout, or — in Android Studio
+  2025.1, which sends shell commands through adblib — an I/O error is still reported as a cancel,
+  not as a lost device, and a cancel during the clean-up after a dump is not ignored. A lost
+  device is followed by the next step for whoever is reading: an agent is pointed to
+  `android_list_devices`, and the UI Inspector tells you to reconnect or pick another device
   rather than naming a tool you cannot call.
 - **Every UI tool result says which screen it read.** A tree, a match or a PASS used to arrive
   with nothing to say which device, which window or which moment it came from, or what the

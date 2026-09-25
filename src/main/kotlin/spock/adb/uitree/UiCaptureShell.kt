@@ -8,6 +8,7 @@ import spock.adb.CancellationSignal
 import spock.adb.InterruptibleShellReceiver
 import spock.adb.uitree.UiCaptureException.Kind
 import java.io.IOException
+import java.nio.channels.ClosedByInterruptException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -57,10 +58,21 @@ internal class UiCaptureShell(
      * [TimeoutException] "interrupted with immediate timeout" — either would otherwise report
      * a cancel as a lost device or a slow one.
      *
+     * The signal alone cannot be trusted to have seen the interrupt. Android Studio 2025.1 sends
+     * shell commands through adblib, which blocks in `runBlocking` and turns the
+     * [InterruptedException] into `IOException("Operation interrupted")` — with the interrupt
+     * flag already cleared, so the signal reads false. An interrupt anywhere in the cause chain
+     * is therefore a cancel too, and the flag is set again: the interrupt was delivered to this
+     * thread, and its owner is the one who clears it.
+     *
      * A lost device is described without saying what to do about it: what a person in the UI
      * Inspector can do differs from what an agent can, so each caller adds its own next step.
      */
     private fun failed(command: String, cause: Exception): Nothing = throw when {
+        causedByInterrupt(cause) -> {
+            Thread.currentThread().interrupt()
+            UiCaptureException(Kind.CANCELLED, "UI capture cancelled at `$command`.", cause)
+        }
         cancellation.isCancelled() ->
             UiCaptureException(Kind.CANCELLED, "UI capture cancelled at `$command`.", cause)
         cause is TimeoutException || cause is ShellCommandUnresponsiveException ->
@@ -77,5 +89,15 @@ internal class UiCaptureShell(
                     "disconnected or gone offline.",
                 cause,
             )
+    }
+
+    private fun causedByInterrupt(failure: Throwable): Boolean =
+        generateSequence(failure) { it.cause.takeIf { cause -> cause !== it } }
+            .take(MAX_CAUSE_DEPTH)
+            .any { it is InterruptedException || it is ClosedByInterruptException }
+
+    private companion object {
+        /** Far deeper than any real chain; only a guard against a cause that loops. */
+        const val MAX_CAUSE_DEPTH = 16
     }
 }

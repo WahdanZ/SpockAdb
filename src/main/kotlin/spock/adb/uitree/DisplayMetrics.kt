@@ -70,5 +70,5 @@ object DisplayMetricsReader {
     }
 
     /** `wm` answers from memory; a device slower than this is not going to be measured. */
-    private const val READ_TIMEOUT_SECONDS = 5L
+    const val READ_TIMEOUT_SECONDS = 5L
 }
