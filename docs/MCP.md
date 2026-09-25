@@ -498,8 +498,8 @@ What this cannot tell you:
 ### Waiting for the screen to change
 
 `android_wait_for_element` captures the screen every `pollIntervalMs` (default 500, 100 to 5000)
-until an element meets `until`, or `timeoutMs` (default 10000, 0 to 60000) runs out. It is
-read-only: it sends nothing to the device but captures.
+until an element meets `until`, or `timeoutMs` (default 10000, 0 to 60000; at most 15000 over
+HTTP — see below) runs out. It is read-only: it sends nothing to the device but captures.
 
 | `until` | Met when |
 |---|---|
@@ -534,10 +534,17 @@ is a "look once" only on a device that dumps within a second.
 |---|---|
 | A stdio client, with `notifications/cancelled` | The worker running the request is interrupted. A capture in progress stops at ddmlib's next check, and a pause between captures ends at once |
 | The in-IDE assistant's **Stop** | A flag, checked during each capture and every 100 ms of a pause. No thread is interrupted, since that would drop the model's HTTP connection too |
-| An HTTP client | Nothing. The call runs to its limit — at most 60 s, plus the overrun above — and holds one of the HTTP server's four worker threads while it does |
+| An HTTP client | Nothing. The call runs to its limit — at most 15 s over HTTP, plus the overrun above — and holds one of the HTTP server's four worker threads while it does |
 
 A cancelled wait answers `CANCELLED …; nothing was changed on the device`. Over stdio that answer is
 discarded, as the spec requires.
+
+**The HTTP cap.** The HTTP server has four worker threads and no way to cancel a call: a client that
+gives up closes its connection and the wait runs on regardless. Four abandoned 60-second waits would
+hold every thread for a minute, stalling every HTTP call behind them — `tools/list` included. So over
+HTTP a `timeoutMs` above 15000 is capped at 15000, and the result ends by saying it was capped and
+from what. An agent that needs longer calls the tool again, or uses the stdio transport, where a wait
+can be cancelled and so keeps its full 60 s.
 
 ## Triage, files and screen recording
 
@@ -722,7 +729,8 @@ Recorded honestly so the gaps are not mistaken for features:
   document are prose an agent cannot call.
 - **Cancellation over HTTP.** stdio honours `notifications/cancelled` by interrupting the
   request; the HTTP transport is stateless by design and has nothing to cancel against, so a
-  slow tool call there runs to its timeout. For `android_wait_for_element` that is up to 60 s.
+  slow tool call there runs to its timeout. For `android_wait_for_element` that is capped at 15 s
+  over HTTP, so abandoned waits cannot hold all four of the server's threads for long.
 
 ## Testing
 

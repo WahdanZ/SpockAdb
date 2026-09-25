@@ -9,6 +9,7 @@ import spock.adb.mcp.tools.ToolContent
 import spock.adb.mcp.tools.ToolContext
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolResult
+import spock.adb.mcp.tools.UncancellableToolContext
 
 /**
  * MCP over JSON-RPC 2.0.
@@ -32,13 +33,15 @@ class McpProtocol(
     /**
      * Handles one request.
      *
+     * @param cancellable false for a transport that cannot cancel a request — HTTP — so tools
+     *   are told, through [ToolContext.canCancel], that nothing will end their call early.
      * @return the JSON-RPC response, or null for a notification, which by spec gets no reply.
      */
     // The dispatcher's branch count is the JSON-RPC method list, and catching broadly is
     // required of a protocol boundary: an unexpected exception must become an error response,
     // not a dead connection that leaves the client waiting.
     @Suppress("CyclomaticComplexMethod", "TooGenericExceptionCaught")
-    fun handle(rawRequest: String): String? {
+    fun handle(rawRequest: String, cancellable: Boolean = true): String? {
         val request = try {
             JsonParser.parseString(rawRequest).asJsonObject
         } catch (e: Exception) {
@@ -62,7 +65,7 @@ class McpProtocol(
                 }
                 "ping" -> success(id, JsonObject())
                 "tools/list" -> success(id, toolsList())
-                "tools/call" -> success(id, toolsCall(request.getAsJsonObject("params")))
+                "tools/call" -> success(id, toolsCall(request.getAsJsonObject("params"), cancellable))
                 "resources/list" -> success(id, resourcesList())
                 "resources/read" -> success(id, resourcesRead(request.getAsJsonObject("params")))
                 "prompts/list" -> success(id, JsonObject().apply { add("prompts", JsonArray()) })
@@ -138,7 +141,7 @@ class McpProtocol(
         )
     }
 
-    private fun toolsCall(params: JsonObject?): JsonObject {
+    private fun toolsCall(params: JsonObject?, cancellable: Boolean): JsonObject {
         val name = params?.get("name")?.asString
             ?: throw IllegalArgumentException("Missing tool name")
         val arguments = params.getAsJsonObject("arguments") ?: JsonObject()
@@ -153,7 +156,7 @@ class McpProtocol(
         // any other tool error, so a blocked attempt is visible in the activity trail rather
         // than being the one kind of call that leaves no trace.
         val result = if (isToolEnabled(name)) {
-            run(tool, name, arguments)
+            run(tool, name, arguments, cancellable)
         } else {
             ToolResult.error(ToolGate.refusal(name))
         }
@@ -174,7 +177,7 @@ class McpProtocol(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun run(tool: AdbTool, name: String, arguments: JsonObject): ToolResult {
+    private fun run(tool: AdbTool, name: String, arguments: JsonObject, cancellable: Boolean): ToolResult {
         // Checked before the tool runs. A tool reads its arguments in whatever order suits
         // it, so one that resolves an element or talks to the device first will report that
         // step failing rather than the argument the caller left out — which is how a missing
@@ -190,7 +193,8 @@ class McpProtocol(
         }
 
         return try {
-            tool.execute(arguments, contextProvider())
+            val context = contextProvider()
+            tool.execute(arguments, if (cancellable) context else UncancellableToolContext(context))
         } catch (e: Exception) {
             // Surfaced as a tool error rather than a protocol error: the agent can read it,
             // explain it to the user and try something else, which a JSON-RPC error hides.

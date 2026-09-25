@@ -41,8 +41,9 @@
 - **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`
   (read-only) looks at the screen every half second, or as often as asked, until an element is
   visible, present, gone or hidden, or until it is enabled, disabled, checked, unchecked, selected,
-  unselected or focused, for up to 60 s. Before, an agent either slept a number of seconds it made
-  up, or asserted again and again, paying for a whole screen each time. The answer says how many
+  unselected or focused, for up to 60 s (15 s over HTTP — see below). Before, an agent either
+  slept a number of seconds it made up, or asserted again and again, paying for a whole screen
+  each time. The answer says how many
   looks it took and how long, and counts the looks `uiautomator` refused while the UI was still
   animating, which it retries. A lost device stops the wait at once rather than letting it run
   out. Each look is given only what is left of the wait, so the wait ends within about a second of
@@ -54,8 +55,10 @@
   that nothing was changed on the device. A tool call the model queued behind the wait — a tap on
   the element it was waiting for — is not run after Stop either: it is answered "Not run: the user
   pressed Stop." instead, so a stopped turn cannot still act on the device or ask to confirm a
-  destructive call. MCP clients on stdio cancel a wait the same way, by interrupting the request;
-  over HTTP a wait still runs to its limit.
+  destructive call. MCP clients on stdio cancel a wait the same way, by interrupting the request.
+  HTTP has no way to cancel a call, so a wait there is capped at 15 s and says so: the HTTP server
+  has four threads, and four abandoned 60-second waits would have stalled every HTTP call,
+  `tools/list` included, for a minute.
 
 ### Changed
 

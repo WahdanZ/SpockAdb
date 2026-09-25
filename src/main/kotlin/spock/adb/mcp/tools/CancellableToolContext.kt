@@ -22,4 +22,7 @@ class CancellableToolContext(
         val baseSignal = base.cancellationSignal()
         return CancellationSignal { flag() || baseSignal.isCancelled() }
     }
+
+    /** [flag] can end the call, whatever [base] can do. */
+    override val canCancel: Boolean get() = true
 }

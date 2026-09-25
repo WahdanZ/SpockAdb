@@ -83,7 +83,9 @@ class McpHttpServer(
             }
 
             val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
-            val response = protocol.handle(body)
+            // HTTP has no cancel: a client that gives up closes its connection, and the call
+            // runs on regardless. Tools are told, so a wait cannot hold a thread for long.
+            val response = protocol.handle(body, cancellable = false)
 
             if (response == null) {
                 // JSON-RPC notification: accepted, no body.

@@ -36,7 +36,8 @@ class WaitForElementTool : AdbTool {
         enumeration("until", "What to wait for. Defaults to visible.", UntilArgument.WORDS)
         integer(
             "timeoutMs",
-            "How long to wait, in milliseconds, 0 to $MAX_TIMEOUT_MS. Defaults to $DEFAULT_TIMEOUT_MS.",
+            "How long to wait, in milliseconds, 0 to $MAX_TIMEOUT_MS. Defaults to $DEFAULT_TIMEOUT_MS. Over " +
+                "HTTP, which cannot cancel a call, at most $UNCANCELLABLE_MAX_TIMEOUT_MS.",
         )
         integer(
             "pollIntervalMs",
@@ -54,7 +55,8 @@ class WaitForElementTool : AdbTool {
             ?: throw IllegalArgumentException(
                 "Unknown until '$until'. Use one of: ${UntilArgument.WORDS.joinToString()}.",
             )
-        val timeoutMs = arguments.optionalInt("timeoutMs", DEFAULT_TIMEOUT_MS).coerceIn(0, MAX_TIMEOUT_MS)
+        val requestedMs = arguments.optionalInt("timeoutMs", DEFAULT_TIMEOUT_MS).coerceIn(0, MAX_TIMEOUT_MS)
+        val timeoutMs = timeoutFor(requestedMs, context.canCancel)
         val pollMs = arguments.optionalInt("pollIntervalMs", DEFAULT_POLL_MS).coerceIn(MIN_POLL_MS, MAX_POLL_MS)
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
 
@@ -67,7 +69,8 @@ class WaitForElementTool : AdbTool {
             signal = signal,
         )
         val outcome = waiter.await(condition, timeoutMs.toLong(), pollMs.toLong())
-        return report(outcome, condition, device.serialNumber)
+        val result = report(outcome, condition, device.serialNumber)
+        return if (timeoutMs < requestedMs) result.withNote(cappedNote(requestedMs)) else result
     }
 
     private fun report(outcome: WaitOutcome, condition: UiCondition, serial: String): ToolResult {
@@ -105,6 +108,13 @@ class WaitForElementTool : AdbTool {
         }
     }
 
+    private fun cappedNote(requestedMs: Int): String =
+        " timeoutMs was capped at $UNCANCELLABLE_MAX_TIMEOUT_MS from $requestedMs: this transport cannot cancel " +
+            "a call, so a wait here is kept short. Wait again to wait longer, or use the stdio transport."
+
+    private fun ToolResult.withNote(note: String): ToolResult =
+        copy(content = content.map { if (it is ToolContent.Text) ToolContent.Text(it.text + note) else it })
+
     private fun refusedNote(refused: Int): String =
         if (refused == 0) {
             ""
@@ -114,13 +124,25 @@ class WaitForElementTool : AdbTool {
 
     private fun seconds(millis: Long): String = String.format(Locale.ROOT, "%.1f", millis / MILLIS_PER_SECOND)
 
-    private companion object {
-        const val DEFAULT_TIMEOUT_MS = 10_000
-        const val MAX_TIMEOUT_MS = 60_000
-        const val DEFAULT_POLL_MS = 500
-        const val MIN_POLL_MS = 100
-        const val MAX_POLL_MS = 5_000
-        const val MILLIS_PER_SECOND = 1_000.0
+    companion object {
+        private const val DEFAULT_TIMEOUT_MS = 10_000
+        private const val MAX_TIMEOUT_MS = 60_000
+
+        /**
+         * The longest wait over a transport that cannot cancel it — HTTP. An abandoned wait holds
+         * one of the HTTP server's four threads until it ends, so four abandoned 60-second waits
+         * would stall every HTTP call, `tools/list` included, for a minute.
+         */
+        const val UNCANCELLABLE_MAX_TIMEOUT_MS = 15_000
+
+        /** [requestedMs], capped at [UNCANCELLABLE_MAX_TIMEOUT_MS] when nothing can cancel the wait. */
+        fun timeoutFor(requestedMs: Int, canCancel: Boolean): Int =
+            if (canCancel) requestedMs else minOf(requestedMs, UNCANCELLABLE_MAX_TIMEOUT_MS)
+
+        private const val DEFAULT_POLL_MS = 500
+        private const val MIN_POLL_MS = 100
+        private const val MAX_POLL_MS = 5_000
+        private const val MILLIS_PER_SECOND = 1_000.0
     }
 }
 

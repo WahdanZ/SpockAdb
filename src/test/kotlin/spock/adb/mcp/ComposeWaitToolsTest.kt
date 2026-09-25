@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.mcp.tools.CancellableToolContext
 import spock.adb.mcp.tools.ToolResult
+import spock.adb.mcp.tools.UncancellableToolContext
 import spock.adb.mcp.tools.WaitForElementTool
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -218,6 +219,67 @@ class ComposeWaitToolsTest {
 
         assertFalse(result.isError, result.text())
         assertTrue(result.text().contains("is gone after 1 observation(s)"), result.text())
+    }
+
+    @Test
+    fun `a wait nothing can cancel is capped, and only then`() {
+        // HTTP has no cancel, and four abandoned 60 s waits would hold all four of its threads.
+        val cap = WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS
+        assertEquals(cap, WaitForElementTool.timeoutFor(60_000, canCancel = false))
+        assertEquals(1_000, WaitForElementTool.timeoutFor(1_000, canCancel = false))
+        assertEquals(60_000, WaitForElementTool.timeoutFor(60_000, canCancel = true))
+    }
+
+    @Test
+    fun `an uncancellable wait asked for longer than the cap says it was capped`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+
+        val result = WaitForElementTool().execute(
+            args("testTag" to "wait_appears", "timeoutMs" to 60_000),
+            UncancellableToolContext(device.context),
+        )
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("PASS: testTag='wait_appears' is visible"), result.text())
+        val cap = WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS
+        assertTrue(result.text().contains("timeoutMs was capped at $cap from 60000"), result.text())
+    }
+
+    @Test
+    fun `a wait that can be cancelled, or asks for no more than the cap, is not called capped`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+        val tool = WaitForElementTool()
+
+        val cancellable = tool.execute(args("testTag" to "wait_appears", "timeoutMs" to 60_000), device.context)
+        val short = tool.execute(
+            args("testTag" to "wait_appears", "timeoutMs" to 5_000),
+            UncancellableToolContext(device.context),
+        )
+
+        assertFalse(cancellable.text().contains("capped"), cancellable.text())
+        assertFalse(short.text().contains("capped"), short.text())
+    }
+
+    @Test
+    fun `the assistant's stop flag makes even an uncancellable context cancellable`() {
+        val context = CancellableToolContext(UncancellableToolContext(FakeToolContext())) { false }
+
+        assertTrue(context.canCancel)
+    }
+
+    @Test
+    fun `a wait over HTTP is capped, and one over stdio is not`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+        val protocol = McpProtocol(contextProvider = { device.context })
+        val request =
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"android_wait_for_element",""" +
+                """"arguments":{"testTag":"wait_appears","timeoutMs":60000}}}"""
+
+        val overHttp = protocol.handle(request, cancellable = false)!!
+        val overStdio = protocol.handle(request)!!
+
+        assertTrue(overHttp.contains("timeoutMs was capped"), overHttp)
+        assertFalse(overStdio.contains("capped"), overStdio)
     }
 
     private fun button(tag: String, enabled: Boolean = true) =
