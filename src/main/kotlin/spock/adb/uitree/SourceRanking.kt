@@ -235,16 +235,15 @@ internal object SourceMatching {
      * The value of a string literal, from its source text including the quotes. Null for anything
      * that is not one whole constant: a Kotlin template with `$name` or `${…}` in it is only known
      * at run time, so it cannot equal what the device shows. [SourceTemplate.pattern] matches it instead.
+     * Kotlin is read by [SourceTemplate.constant], the same parser, so the two never disagree about
+     * what is a template — `${'$'}` is a dollar sign to both.
      */
     fun literalValue(source: String, kotlin: Boolean): String? {
+        if (kotlin) return SourceTemplate.constant(source)
         val raw = source.length >= RAW_QUOTES * 2 && source.startsWith(TRIPLE_QUOTE) && source.endsWith(TRIPLE_QUOTE)
         val quoted = source.length >= 2 && source.startsWith('"') && source.endsWith('"')
-        return when {
-            // A Kotlin raw string has no escapes; a Java text block strips indentation, which is not worth copying.
-            raw -> source.substring(RAW_QUOTES, source.length - RAW_QUOTES).takeIf { kotlin && !hasTemplate(it) }
-            quoted -> source.substring(1, source.length - 1).takeUnless { kotlin && hasTemplate(it) }?.let(::unescape)
-            else -> null
-        }
+        // A Java text block strips indentation, which is not worth copying.
+        return if (quoted && !raw) unescape(source.substring(1, source.length - 1)) else null
     }
 
     /**
@@ -267,19 +266,6 @@ internal object SourceMatching {
         val quoted = trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')
         val body = if (quoted) trimmed.substring(1, trimmed.length - 1) else trimmed.replace(Regex("""\s+"""), " ")
         return unescape(body)
-    }
-
-    /** An unescaped `$` followed by a name or `{`: Kotlin fills it in at run time. */
-    private fun hasTemplate(body: String): Boolean {
-        var i = 0
-        while (i < body.length - 1) {
-            when {
-                body[i] == '\\' -> i++
-                body[i] == '$' && (body[i + 1] == '{' || Character.isJavaIdentifierStart(body[i + 1])) -> return true
-            }
-            i++
-        }
-        return false
     }
 
     private fun unescape(body: String): String = buildString {

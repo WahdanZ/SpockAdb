@@ -137,6 +137,15 @@ class SourceRankingTest {
     }
 
     @Test
+    fun `a dollar written as a template is a constant, as the template matcher reads it`() {
+        assertEquals("\$5 total", SourceMatching.literalValue("\"\${'$'}5 total\"", kotlin = true))
+        assertEquals("\$5 total", SourceMatching.literalValue("\"\"\"\${'$'}5 total\"\"\"", kotlin = true))
+        assertNull(SourceMatching.literalValue("\"\${'$'}\$amount total\"", kotlin = true))
+        // `$$` opens no template in Kotlin: a dollar needs a name or a brace after it.
+        assertEquals("\$\$", SourceMatching.literalValue("\"\$\$\"", kotlin = true))
+    }
+
+    @Test
     fun `a Kotlin raw string is taken as written, and a Java text block is not attempted`() {
         assertEquals("C:\\path\\n", SourceMatching.literalValue("\"\"\"C:\\path\\n\"\"\"", kotlin = true))
         assertNull(SourceMatching.literalValue("\"\"\"\n    block\n    \"\"\"", kotlin = false))

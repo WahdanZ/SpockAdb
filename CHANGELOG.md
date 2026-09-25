@@ -33,7 +33,8 @@
   too: a tag written as `testTag("form_${form}_button")` is found from the `form_a_button` the device
   reports, by reading the argument of every `testTag(...)` call, and so is text such as
   `Text("Feed row $row")` from "Feed row 1", or a `strings.xml` value with `%d` in it. A literal equal
-  to the value still ranks first, and the Source line names the template it matched through. Most
+  to the value still ranks first, and the Source line names the template it matched through; one
+  that writes a dollar sign as `${'$'}` is the constant it reads as, so "$5 total" finds it. Most
   Compose rows have nothing of their own to search for — a Button's label is a child Text, a Row or
   Column has neither tag nor text — so clicking a button used to open nothing while clicking its
   label worked. Such an element now borrows from its nearest identifiable relative, its label

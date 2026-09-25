@@ -56,6 +56,32 @@ class SourceLocatorPlatformTest : BasePlatformTestCase() {
         assertTrue(result.hits.isEmpty())
     }
 
+    fun testADollarWrittenAsATemplateIsFoundAsTheConstantItIs() {
+        // `${'$'}` is how a dollar sign is written in a raw string; the device shows "$5 total".
+        val file = kotlin(
+            "com/app/Price.kt",
+            "package com.app\n\n" +
+                "fun quoted() = Text(\"\${'\$'}5 total\")\n" +
+                "fun raw() = Text(\"\"\"\${'\$'}5 total\"\"\")\n" +
+                "fun template(amount: Int) = Text(\"\${'\$'}\$amount due\")\n",
+        )
+
+        val result = locate(SourceQuery(text = "\$5 total"))
+
+        assertEquals(SourceTier.TEXT, result.tier)
+        assertEquals(
+            listOf(file.text.indexOf("\"\${'\$'}5 total\""), file.text.indexOf("\"\"\"\${'\$'}5")),
+            result.hits.map { it.offset }.sorted(),
+        )
+        assertTrue(result.hits.all { it.pattern == null })
+
+        // A real template beside a written dollar is still a template.
+        val due = locate(SourceQuery(text = "\$7 due"))
+
+        assertEquals(listOf(file.text.indexOf("\"\${'\$'}\$amount")), due.hits.map { it.offset })
+        assertEquals("\${'\$'}\$amount due", due.best?.pattern)
+    }
+
     fun testJavaLiteralIsFoundByText() {
         val file = java(
             "com/app/Legacy.java",

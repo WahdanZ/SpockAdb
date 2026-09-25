@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import kotlin.random.Random
 
 /**
  * Matching a rendered value — what the device shows — against the Kotlin template or `strings.xml`
@@ -70,6 +71,96 @@ class SourceTemplateTest {
     }
 
     @Test
+    fun `a hole at either end stands for at least one character there`() {
+        assertTrue(matches("\"\${a}_row\"", "x_row"))
+        assertFalse(matches("\"\${a}_row\"", "_row"))
+        assertTrue(matches("\"row_\$a\"", "row_1"))
+        assertFalse(matches("\"row_\$a\"", "row_"))
+        assertTrue(matches("\"\${a}-mid-\${b}\"", "x-mid-y"))
+        assertFalse(matches("\"\${a}-mid-\${b}\"", "-mid-"))
+    }
+
+    @Test
+    fun `adjacent holes need a character each`() {
+        val source = "\"id_\${a}\${b}\${c}Z\""
+
+        assertTrue(matches(source, "id_123Z"))
+        assertTrue(matches(source, "id_12345Z"))
+        assertFalse(matches(source, "id_12Z"))
+        assertFalse(matches(source, "id_Z"))
+    }
+
+    @Test
+    fun `fixed text repeated in the value is placed where the rest still fits`() {
+        val source = "\"a_\${x}_b_\${y}_b\""
+
+        assertTrue(matches(source, "a_1_b_2_b"))
+        assertTrue(matches(source, "a_1_b_2_b_3_b"), "a hole may hold the fixed text itself")
+        assertTrue(matches(source, "a_b_b_b_b"))
+        assertFalse(matches(source, "a__b__b_b"), "no place for `_b_` leaves the second hole a character")
+        assertFalse(matches(source, "a_1_b__b"), "the second hole is empty")
+        assertFalse(matches(source, "a_1_b"), "the suffix may not overlap the middle")
+    }
+
+    @Test
+    fun `nothing matches an empty value, and a hole spans line breaks`() {
+        assertFalse(matches("\"row_\$a\"", ""))
+        assertFalse(matches("\"\${a}\${b}x\"", ""))
+        assertTrue(matches("\"a \$x b\"", "a 1\n2 b"))
+    }
+
+    @Test
+    fun `six adjacent holes do not stall on a long value that does not match`() {
+        val source = "\"id_\${year}\${month}\${day}\${hour}\${minute}\${second}Z\""
+        val pattern = checkNotNull(SourceTemplate.pattern(source))
+        val nearlyAtTheCap = "id_" + "1".repeat(SourceTemplate.MAX_MATCHED_LENGTH - 4)
+        val farPastIt = "id_" + "1".repeat(10_000)
+
+        val started = System.nanoTime()
+        repeat(100) {
+            assertFalse(pattern.matches(nearlyAtTheCap))
+            assertFalse(pattern.matches(farPastIt))
+        }
+        val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+        // The regular expression this replaced took over 10 s for one 120-character value.
+        assertTrue(elapsedMs < 1_000, "200 matches took $elapsedMs ms")
+        assertTrue(pattern.matches(nearlyAtTheCap + "Z"))
+    }
+
+    @Test
+    fun `a value longer than any label is not matched as a pattern`() {
+        val pattern = checkNotNull(SourceTemplate.pattern("\"Feed row \$row\""))
+
+        assertTrue(pattern.matches("Feed row " + "1".repeat(SourceTemplate.MAX_MATCHED_LENGTH - 9)))
+        assertFalse(pattern.matches("Feed row " + "1".repeat(SourceTemplate.MAX_MATCHED_LENGTH)))
+    }
+
+    /**
+     * The scan answers exactly as the anchored `.+` regular expression it replaced, over random
+     * templates and values short enough for that expression to backtrack harmlessly.
+     */
+    @Test
+    fun `the scan agrees with the regular expression it replaced`() {
+        val random = Random(SEED)
+        repeat(TRIALS) {
+            val pieces = List(random.nextInt(1, 6)) { if (random.nextInt(3) == 0) null else word(random, 1, 3) }
+                .let { if (it.none { piece -> piece == null }) it + null else it }
+                .let { if (it.none { piece -> piece.orEmpty().any(Char::isLetter) }) it + "a" else it }
+            val source = "\"" + pieces.joinToString("") { it ?: "\${h}" } + "\""
+            val regex = Regex(pieces.joinToString("") { it?.let(Regex::escape) ?: ".+" }, RegexOption.DOT_MATCHES_ALL)
+            val pattern = checkNotNull(SourceTemplate.pattern(source)) { "no pattern for $source" }
+            repeat(VALUES_PER_TRIAL) {
+                val value = word(random, 0, 12)
+                assertEquals(regex.matches(value), pattern.matches(value), "$source against '$value'")
+            }
+        }
+    }
+
+    private fun word(random: Random, min: Int, max: Int): String =
+        String(CharArray(random.nextInt(min, max + 1)) { ALPHABET[random.nextInt(ALPHABET.length)] })
+
+    @Test
     fun `a template with no fixed letter or digit is too loose to be a pattern`() {
         assertNull(SourceTemplate.pattern("\"\$label \$it\""))
         assertNull(SourceTemplate.pattern("\"\${a}\${b}\""))
@@ -83,6 +174,24 @@ class SourceTemplateTest {
         assertNull(SourceTemplate.pattern("\"\${oops\""))
         assertNull(SourceTemplate.pattern("name"))
         assertNull(SourceTemplate.pattern("\""))
+    }
+
+    @Test
+    fun `a literal with no real hole is a constant, a dollar written as a template included`() {
+        assertEquals("\$5 total", SourceTemplate.constant("\"\${'$'}5 total\""))
+        assertEquals("\$5 total", SourceTemplate.constant("\"\"\"\${'$'}5 total\"\"\""))
+        assertEquals("\$5 total", SourceTemplate.constant("\"\\\$5 total\""))
+        assertEquals("Costs \$ 5", SourceTemplate.constant("\"Costs \$ 5\""))
+        assertNull(SourceTemplate.pattern("\"\${'$'}5 total\""), "a constant is compared whole, not as a pattern")
+    }
+
+    @Test
+    fun `a real template is not a constant, even next to a written dollar`() {
+        assertNull(SourceTemplate.constant("\"\${'$'}\$amount total\""))
+        assertNull(SourceTemplate.constant("\"\"\"\${'$'}\${amount} total\"\"\""))
+        assertTrue(matches("\"\${'$'}\$amount total\"", "\$5 total"))
+        assertNull(SourceTemplate.constant("\"\${oops\""), "malformed")
+        assertNull(SourceTemplate.constant("name"), "not a string literal")
     }
 
     @Test
@@ -140,5 +249,14 @@ class SourceTemplateTest {
         assertNull(SourceTemplate.tagArgumentOffset("(tag: String) = this"))
         assertNull(SourceTemplate.tagArgumentOffset(" = \"x\""))
         assertNull(SourceTemplate.tagArgumentOffset(""))
+    }
+
+    private companion object {
+        const val SEED = 20_260_925
+        const val TRIALS = 2_000
+        const val VALUES_PER_TRIAL = 20
+
+        /** Few letters, so values often contain the fixed text, repeated, in odd places. */
+        const val ALPHABET = "ab_"
     }
 }

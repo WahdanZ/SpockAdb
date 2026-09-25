@@ -107,6 +107,7 @@ internal class SourceLocator(
             leavesWith(word).mapNotNull { literalAround(it) }
         }
         return literals.mapNotNull { literal ->
+            ProgressManager.checkCanceled()
             when {
                 literalValue(literal) == value ->
                     hit(literal, exactContext = tagCall && SourceMatching.isTestTagArgument(textBefore(literal)))
@@ -119,6 +120,7 @@ internal class SourceLocator(
 
     /** `testTag(...)` calls whose argument is [tag], or a template that renders to it. */
     private fun tagCallSites(tag: String): List<SourceHit> = tagArguments.mapNotNull { literal ->
+        ProgressManager.checkCanceled()
         when {
             literalValue(literal) == tag -> hit(literal, exactContext = true)
             rendersTo(literal, tag) -> hit(literal, exactContext = true, pattern = SourceTemplate.body(literal.text))
@@ -165,6 +167,7 @@ internal class SourceLocator(
         }
         // Each entry with the format it matched through, or null when its value is [value] itself.
         val entries = candidates.mapNotNull { entry ->
+            ProgressManager.checkCanceled()
             val shown = SourceMatching.androidStringValue(entry.value.text)
             when {
                 shown == value -> entry to null
