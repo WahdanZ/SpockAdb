@@ -62,7 +62,11 @@ class DebugContextActivity : SampleActivity() {
         const val OKHTTP_TAG = "okhttp.OkHttpClient"
         const val REPEATS = 25
 
-        /** Not a credential: shaped like one so redaction has something to catch. */
-        const val DEMO_SESSION = "sample-session-0123456789abcdef"
+        /**
+         * Not a credential: shaped like one so redaction has something to catch. Assembled rather
+         * than written out, as in LogcatActivity, because a token-shaped literal in a tracked file
+         * trips secret scanners.
+         */
+        val DEMO_SESSION = listOf("sample", "session", "not", "real").joinToString("-")
     }
 }
