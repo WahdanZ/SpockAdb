@@ -247,10 +247,10 @@ class AssistantPanel(
     /**
      * Prepends one `android_get_debug_context` result to the first question of a conversation.
      *
-     * The triage bundle in one call rather than four the model has to know to make: it starts
-     * with the activity, the UI semantics and recent logcat already in hand, which is most of
-     * what "why is this screen wrong" needs. Only the first message — repeating it every turn
-     * would resend a stale snapshot and pay for it each time.
+     * The triage summary in one call rather than four the model has to know to make: it starts
+     * with the likely problems, the screen and the app's state already in hand, which is most of
+     * what "why is this screen wrong" needs — bounded, so it is cheap to attach. Only the first
+     * message — repeating it every turn would resend a stale snapshot and pay for it each time.
      *
      * Run through [tools] rather than against `ToolRegistry` directly, so it is gated, audited
      * and reported exactly like a call the model asked for. Invoking the tool by hand made this
