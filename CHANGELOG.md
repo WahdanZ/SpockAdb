@@ -38,6 +38,19 @@
   action would give, before it is pasted anywhere. Audit findings are a list with severity icons;
   selecting one selects its element in the tree and shows its fix. Before the first capture, the
   empty tree offers a **Capture UI** link.
+- **Go from an element in the UI Inspector to the code that drew it.** With **Autoscroll to
+  Source** on in the Inspector's toolbar (it is by default), clicking an element opens its source
+  and leaves focus in the tree, so the arrow keys keep walking the screen with the editor
+  following. Double-click, Enter, the Edit Source shortcut, **Jump to Source** in the context menu
+  and the link in the details pane open it with focus. A screen capture carries no source locations
+  (Android Studio's Layout Inspector gets them from an agent on the device), so this is a search of
+  the open project, and it says which identifier matched: the test tag passed to `testTag(...)`,
+  then a View id's `android:id` in a layout or its `R.id` in code, then the text or content
+  description as a string literal, or as a `strings.xml` value followed to its `R.string` use, then
+  a custom View's class. A match by text says it may be one of several, and when more than one
+  place matched, Jump to Source lists them, best first. Nothing found says what was searched;
+  while the IDE is indexing it says so instead of searching, and each search is cancelled as soon
+  as the selection moves on.
 - **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`
   (read-only) looks at the screen every half second, or as often as asked, until an element is
   visible, present, gone or hidden, or until it is enabled, disabled, checked, unchecked, selected,

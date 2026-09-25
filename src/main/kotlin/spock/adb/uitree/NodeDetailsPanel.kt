@@ -19,18 +19,23 @@ import java.awt.Font
 import java.awt.datatransfer.StringSelection
 import java.awt.event.ActionListener
 import javax.swing.BoxLayout
+import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTable
 import javax.swing.table.AbstractTableModel
 
 /**
- * The selected node: a selector to find it by, then its properties.
+ * The selected node: a selector to find it by, where it most likely comes from, then its properties.
  *
  * A selector comes first because it is what a developer came for — something to paste into an
  * MCP call or a test — and it is checked against the captured screen, so one that would find
- * three nodes says so before it is pasted anywhere.
+ * three nodes says so before it is pasted anywhere. [source] is the "Source" line, which
+ * [SourceNavigator] fills in.
  */
-internal class NodeDetailsPanel(private val onNotice: (String) -> Unit) : JPanel(BorderLayout()) {
+internal class NodeDetailsPanel(
+    private val onNotice: (String) -> Unit,
+    source: JComponent,
+) : JPanel(BorderLayout()) {
 
     private val model = PropertiesModel()
     private val table = JBTable(model).apply {
@@ -71,6 +76,7 @@ internal class NodeDetailsPanel(private val onNotice: (String) -> Unit) : JPanel
                 add(copyCompose)
                 add(copyUiAutomator)
             },
+            source,
         ).forEach {
             it.alignmentX = Component.LEFT_ALIGNMENT
             selectorPanel.add(it)

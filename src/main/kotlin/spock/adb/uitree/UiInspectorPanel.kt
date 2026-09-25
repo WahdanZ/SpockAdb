@@ -13,6 +13,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
@@ -51,6 +52,7 @@ import javax.swing.tree.TreeSelectionModel
  *
  * This class lays the tab out and owns its state; what each part draws lives in its own
  * component: [InspectorHeader], [UiNodeRenderer], [NodeDetailsPanel] and [AuditFindingsPanel].
+ * [SourceNavigator] finds and opens the source a selected element most likely comes from.
  */
 class UiInspectorPanel(
     private val project: Project,
@@ -69,7 +71,8 @@ class UiInspectorPanel(
     private val matchCount = JBLabel().apply { foreground = JBColor.GRAY }
     private var interactiveOnly = false
 
-    private val details = NodeDetailsPanel(::notice)
+    private val source = SourceNavigator(project, ::notice)
+    private val details = NodeDetailsPanel(::notice, source.line)
     private val findings = AuditFindingsPanel(::select)
     private val detailTabs = JBTabbedPane()
 
@@ -95,6 +98,8 @@ class UiInspectorPanel(
         // Typing in the tree jumps to a row, as in any IDE tree; the search field filters instead.
         TreeSpeedSearch.installOn(tree, true, Function { path: TreePath -> path.uiNode?.describe().orEmpty() })
         PopupHandler.installFollowingSelectionTreePopup(tree, copyActions(), TREE_POPUP_PLACE)
+        source.install(tree)
+        Disposer.register(this, source)
 
         setToolbar(top())
         setContent(body())
@@ -139,6 +144,8 @@ class UiInspectorPanel(
                     copyTree()
                 },
             )
+            addSeparator()
+            add(source.autoscrollAction)
         }
         val toolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.TOOLWINDOW_CONTENT, actions, true)
         toolbar.targetComponent = this
@@ -217,8 +224,10 @@ class UiInspectorPanel(
         override fun actionPerformed(e: AnActionEvent) = run()
     }
 
-    /** The tree's right-click menu: a selector for the element under the pointer, in each form. */
+    /** The tree's right-click menu: its source, then a selector for the element under the pointer, in each form. */
     private fun copyActions() = DefaultActionGroup().apply {
+        add(source.jumpAction)
+        addSeparator()
         val forms: List<Triple<String, String, (SelectorSuggestion) -> String?>> = listOf(
             Triple("Copy MCP Selector", "Copy JSON arguments for the MCP element tools", { it.mcpJson }),
             Triple("Copy Compose Test Finder", "Copy a composeTestRule finder", { it.composeTest }),
@@ -358,6 +367,7 @@ class UiInspectorPanel(
     private fun showDetails() {
         val node = selectedNode()
         details.show(node, captured, capturedTree, node?.let { visibility[it] })
+        source.select(node, captured)
         pendingNotice = null
         refresh()
     }
