@@ -89,6 +89,7 @@ class UiInspectorPanel(
     private var capturedFrom: DeviceLabel? = null
     private var capturing = false
     private var failure: Throwable? = null
+    private var disposed = false
 
     /** A one-off message — "Copied …" — shown until the next change of state. */
     private var pendingNotice: String? = null
@@ -102,7 +103,7 @@ class UiInspectorPanel(
         // Typing in the tree jumps to a row, as in any IDE tree; the search field filters instead.
         TreeSpeedSearch.installOn(tree, true, Function { path: TreePath -> path.uiNode?.describe().orEmpty() })
         PopupHandler.installFollowingSelectionTreePopup(tree, copyActions(), TREE_POPUP_PLACE)
-        source.install(tree)
+        source.install(tree, focusScope = this)
         Disposer.register(this, source)
 
         setToolbar(top())
@@ -271,18 +272,27 @@ class UiInspectorPanel(
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching {
                 val observation = observe(target)
-                Triple(observation, ViewportVisibility.classifyAll(observation), resumedActivity(target))
+                observation to ViewportVisibility.classifyAll(observation)
             }
 
             ApplicationManager.getApplication().invokeLater({
                 capturing = false
                 result
-                    .onSuccess { (observation, classified, activity) ->
-                        onCaptured(observation, classified, activity, from)
-                    }
+                    .onSuccess { (observation, classified) -> onCaptured(observation, classified, from) }
                     .onFailure { failure = it }
                 refresh()
-            }) { project.isDisposed }
+            }) { project.isDisposed || disposed }
+
+            // Read once the tree is up: it is a last resort for Jump to Source, and on Android 13+ two
+            // more `dumpsys` round trips that no capture should wait for.
+            val observation = result.getOrNull()?.first ?: return@executeOnPooledThread
+            val activity = resumedActivity(target) ?: return@executeOnPooledThread
+            ApplicationManager.getApplication().invokeLater({
+                // A newer capture has its own Activity to read.
+                if (captured !== observation) return@invokeLater
+                capturedActivity = activity
+                source.activityRead(activity)
+            }) { project.isDisposed || disposed }
         }
     }
 
@@ -291,20 +301,17 @@ class UiInspectorPanel(
         UiTreeOperations(target.device, serial = target.serialNumber).observe()
 
     /**
-     * The Activity on screen, read after the dump with the same code as Current Activity. Null when
-     * it cannot be read: it is only a last resort for Jump to Source, never a reason to fail a capture.
+     * The Activity on screen, read after the tree is shown with the same code as Current Activity.
+     * Null when it cannot be read: it is only a last resort for Jump to Source, never a reason to fail
+     * or delay a capture.
      */
     private fun resumedActivity(target: ConnectedDevice): String? =
         runCatching { InspectionOperations(target.device).currentActivity() }.getOrNull()
 
-    private fun onCaptured(
-        observation: UiObservation,
-        classified: Map<UiNode, NodeVisibility>,
-        activity: String?,
-        from: DeviceLabel,
-    ) {
+    private fun onCaptured(observation: UiObservation, classified: Map<UiNode, NodeVisibility>, from: DeviceLabel) {
         captured = observation
-        capturedActivity = activity
+        // Filled in by the read that follows the capture; the last capture's is not this screen's.
+        capturedActivity = null
         visibility = classified
         capturedFrom = from
         header.show(observation, from)
@@ -447,7 +454,9 @@ class UiInspectorPanel(
         }
     }
 
-    override fun dispose() = Unit
+    override fun dispose() {
+        disposed = true
+    }
 
     private companion object {
         const val GAP = 4

@@ -22,7 +22,9 @@
 - **Go from an element in the UI Inspector to the code that drew it.** With **Autoscroll to
   Source** on in the Inspector's toolbar (it is by default), clicking an element opens its source
   and leaves focus in the tree, so the arrow keys keep walking the screen with the editor
-  following. Double-click, Enter, the Edit Source shortcut, **Jump to Source** in the context menu
+  following. A slow search that answers after you have moved on to an editor, or hidden the tool
+  window, fills in the Source line but does not switch the editor under you. Double-click, Enter,
+  the Edit Source shortcut, **Jump to Source** in the context menu
   and the link in the details pane open it with focus. A screen capture carries no source locations
   (Android Studio's Layout Inspector gets them from an agent on the device), so this is a search of
   the open project, and it says which identifier matched: the test tag passed to `testTag(...)`,
@@ -40,10 +42,10 @@
   label worked. Such an element now borrows from its nearest identifiable relative, its label
   first, then what is inside it, then what encloses it, and says so: "via its label 'Save'", "via
   enclosing 'feed_section'". When nothing at all is found, it opens the Activity that was on screen
-  when the UI was captured, and says that is what it did. Nothing found says what was searched,
-  and a search that breaks says so on the Source line rather than as an IDE error; while the IDE
-  is indexing it says so instead of searching, and each search is cancelled as soon as the
-  selection moves on.
+  when the UI was captured, and says that is what it did; that Activity is read after the tree is
+  shown, so a capture never waits for it. Nothing found says what was searched, and a search that
+  breaks says so on the Source line rather than as an IDE error; while the IDE is indexing it says
+  so instead of searching, and each search is cancelled as soon as the selection moves on.
 - **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`
   (read-only) looks at the screen every half second, or as often as asked, until an element is
   visible, present, gone or hidden, or until exactly one match is enabled, disabled, checked,

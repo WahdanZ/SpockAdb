@@ -2,16 +2,47 @@ package spock.adb.uitree
 
 import com.intellij.openapi.progress.ProcessCanceledException
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.concurrent.CancellationException
+import javax.swing.JList
+import javax.swing.JPanel
+import javax.swing.JTextField
+import javax.swing.JTree
 
 /**
- * What [SourceNavigator] decides without the IDE: what a search that breaks turns into.
+ * What [SourceNavigator] decides without the IDE: whether a late answer may still be opened, and
+ * what a search that breaks turns into.
  */
 class SourceNavigatorTest {
+
+    private val tree = JTree()
+    private val findings = JList<String>()
+    private val inspector = JPanel().apply {
+        add(tree)
+        add(findings)
+    }
+    private val editor = JTextField()
+
+    // ---------------------------------------------------------------- autoscroll
+
+    @Test
+    fun `an answer is opened while the developer is still in the Inspector`() {
+        assertTrue(autoscrollFollows(inspector, showing = true, focusOwner = tree))
+        assertTrue(autoscrollFollows(inspector, showing = true, focusOwner = findings), "a finding selects rows too")
+        assertTrue(autoscrollFollows(tree, showing = true, focusOwner = tree))
+    }
+
+    @Test
+    fun `an answer that arrives after the developer left is not opened`() {
+        assertFalse(autoscrollFollows(inspector, showing = true, focusOwner = editor), "typing in an editor")
+        assertFalse(autoscrollFollows(inspector, showing = true, focusOwner = null), "another window has focus")
+        assertFalse(autoscrollFollows(inspector, showing = false, focusOwner = tree), "the tool window was hidden")
+        assertFalse(autoscrollFollows(tree, showing = true, focusOwner = findings), "outside a narrower scope")
+    }
 
     // ---------------------------------------------------------------- a search that breaks
 

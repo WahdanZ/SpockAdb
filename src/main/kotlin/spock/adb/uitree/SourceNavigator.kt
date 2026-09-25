@@ -21,11 +21,13 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.DoubleClickListener
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.concurrency.AppExecutorUtil
 import org.jetbrains.concurrency.CancellablePromise
+import java.awt.Component
 import java.awt.Point
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
@@ -33,6 +35,7 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.util.concurrent.Callable
 import java.util.concurrent.CancellationException
+import javax.swing.JComponent
 import javax.swing.JTree
 import javax.swing.SwingUtilities
 
@@ -42,12 +45,13 @@ import javax.swing.SwingUtilities
  * Every selection starts a search ([SourceLocator]) in a non-blocking read action off the EDT, and
  * the one before it is cancelled, so holding an arrow key down does not queue a search per row. The
  * answer fills the details pane's [line]; with **Autoscroll to Source** on it is also opened, without
- * taking focus from the tree, so the arrow keys keep working. Double-click, Enter, the Edit Source
+ * taking focus from the tree, so the arrow keys keep working — if the developer is still in the
+ * Inspector when it arrives ([autoscrollFollows]). Double-click, Enter, the Edit Source
  * shortcut, the context menu and the details link always open it with focus, and offer a list when
  * several places matched.
  *
  * An element with nothing of its own to find borrows from its relatives, and when nothing at all
- * is found the screen's Activity — read with the capture — is the answer, said as such.
+ * is found the screen's Activity — read just after the capture — is the answer, said as such.
  *
  * While the IDE is indexing the word index cannot be read, so it says so rather than searching, and
  * fills the line in once indexing ends.
@@ -60,6 +64,9 @@ internal class SourceNavigator(
     val line = SourceLine { link -> jump { it.showUnderneathOf(link) } }
 
     private var tree: JTree? = null
+
+    /** Where focus must be for Autoscroll to open an answer: see [autoscrollFollows]. */
+    private var focusScope: JComponent? = null
     private var selection: Selection? = null
     private var resolved: SourceResult? = null
     private var pending: CancellablePromise<SourceResult>? = null
@@ -67,6 +74,9 @@ internal class SourceNavigator(
     /** Bumped by every new request, so an answer that arrives late is dropped. */
     private var generation = 0
     private var disposed = false
+
+    /** A `runWhenSmart` is registered: see [searchAfterIndexing]. */
+    private var awaitingSmart = false
 
     private var autoscroll: Boolean
         get() = PropertiesComponent.getInstance().getBoolean(AUTOSCROLL_KEY, true)
@@ -113,9 +123,12 @@ internal class SourceNavigator(
      * Double-click and Enter jump; so does the IDE's Edit Source shortcut, which the context menu
      * shows. Double-click no longer expands a row — nearly every row that matters, a button with
      * its label inside, has children — so rows expand from their handles and the arrow keys.
+     * [focusScope] is what the developer is still using the tree from when focus is anywhere in it —
+     * the Inspector, whose findings list selects rows too.
      */
-    fun install(tree: JTree) {
+    fun install(tree: JTree, focusScope: JComponent = tree) {
         this.tree = tree
+        this.focusScope = focusScope
         tree.toggleClickCount = 0
         object : DoubleClickListener() {
             override fun onDoubleClick(event: MouseEvent): Boolean {
@@ -166,14 +179,41 @@ internal class SourceNavigator(
                 activity,
             )
         }
+        start()
+    }
+
+    /**
+     * The screen's Activity, read after the tree was shown so a capture never waits for it. The
+     * selection takes it if it had none; a search it could change — one under way, or one that
+     * found nothing — starts again with it.
+     */
+    fun activityRead(activity: String) {
+        val current = selection ?: return
+        if (current.activity != null) return
+        selection = current.copy(activity = activity)
+        val known = resolved
+        val couldChange = pending != null || !current.searchable || (known != null && known.hits.isEmpty())
+        if (!couldChange) return
+        cancelPending()
+        generation++
+        resolved = null
+        start()
+    }
+
+    /** Searches for the selection, opening the answer when it arrives if [autoscrollFollows] then. */
+    private fun start() {
         val current = selection
         when {
             current == null -> line.clear()
             !current.searchable -> line.say(SourceStatus.NOTHING_TO_SEARCH)
             DumbService.isDumb(project) -> searchAfterIndexing()
-            else -> {
-                val opens = autoscroll
-                search(opens) { result -> if (opens) result.best?.let { open(it, requestFocus = false) } }
+            else -> search { result ->
+                val focusOwner = IdeFocusManager.getInstance(project).focusOwner
+                val opens = autoscroll && tree?.let { tree ->
+                    autoscrollFollows(focusScope ?: tree, tree.isShowing, focusOwner)
+                } == true
+                if (opens) result.best?.let { open(it, requestFocus = false) }
+                opens
             }
         }
     }
@@ -202,7 +242,10 @@ internal class SourceNavigator(
                 // A search for this selection may be under way; its answer is wanted now, with focus.
                 cancelPending()
                 generation++
-                search(opens = true) { present(it, showPopup) }
+                search { result ->
+                    present(result, showPopup)
+                    true
+                }
             }
         }
     }
@@ -222,10 +265,10 @@ internal class SourceNavigator(
     }
 
     /**
-     * [opens] says whether [then] opens the answer, for the Source line to say so. An answer that
-     * failed is shown but not kept, so the next jump searches again.
+     * [then] is handed the answer and says whether it opened it, for the Source line to say so. An
+     * answer that failed is shown but not kept, so the next jump searches again.
      */
-    private fun search(opens: Boolean, then: (SourceResult) -> Unit) {
+    private fun search(then: (SourceResult) -> Boolean) {
         val current = selection ?: return
         val request = generation
         line.searching()
@@ -242,8 +285,7 @@ internal class SourceNavigator(
                 if (request != generation) return@finishOnUiThread
                 pending = null
                 resolved = result.takeIf { it.failure == null }
-                line.show(result, opened = opens)
-                then(result)
+                line.show(result, opened = then(result))
             }
             .submit(AppExecutorUtil.getAppExecutorService())
             .also { promise ->
@@ -257,12 +299,19 @@ internal class SourceNavigator(
             }
     }
 
-    /** Says why there is no answer yet, and finds one — without opening it — once indexing ends. */
+    /**
+     * Says why there is no answer yet, and finds one — without opening it — once indexing ends: for
+     * whatever is selected then. One wait at a time, however many rows are clicked while indexing,
+     * and none once the Inspector is gone.
+     */
     private fun searchAfterIndexing() {
         line.say(SourceStatus.INDEXING)
-        val request = generation
+        if (awaitingSmart || disposed) return
+        awaitingSmart = true
         DumbService.getInstance(project).runWhenSmart {
-            if (!disposed && request == generation) search(opens = false) { }
+            awaitingSmart = false
+            val waiting = selection?.searchable == true && resolved == null && pending == null
+            if (!disposed && waiting) search { false }
         }
     }
 
@@ -286,3 +335,12 @@ internal class SourceNavigator(
         const val AUTOSCROLL_KEY = "spock.adb.uiInspector.autoscrollToSource"
     }
 }
+
+/**
+ * Whether Autoscroll may still open an answer that arrived just now: only while the tree is
+ * [showing] and focus is within [scope]. A search can take seconds; by then the developer may be
+ * typing in an editor, or have closed the tool window, and switching the editor under them is worse
+ * than not following. The answer still fills the Source line, and an explicit jump still opens it.
+ */
+internal fun autoscrollFollows(scope: Component, showing: Boolean, focusOwner: Component?): Boolean =
+    showing && focusOwner != null && SwingUtilities.isDescendingFrom(focusOwner, scope)
