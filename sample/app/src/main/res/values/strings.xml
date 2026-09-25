@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Spock Sample</string>
+    <!-- Shown by the Compose inspector screen through stringResource, for Jump to Source's strings.xml tier. -->
+    <string name="source_from_resources">Kept in a resource file</string>
 </resources>

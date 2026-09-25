@@ -41,9 +41,11 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
+import spock.adb.sample.R
 
 /**
  * A Compose screen for the UI Inspector and the element-addressed MCP tools (tap_element,
@@ -55,6 +57,10 @@ import androidx.compose.ui.unit.dp
  *
  * The app bar is Compose too, so the screen stays pure Compose. New text here must not contain
  * any fixture's text, and the tiny target's is a single "x": no word with that letter in it.
+ *
+ * The "Jump to Source" card gives the Inspector's source search one target per way it finds a
+ * Compose element: by test tag, by a text kept in strings.xml, and by a text written twice, which
+ * offers a choice. The checks are in docs/COMPOSE-SUPPORT-PLAN.md, *Source navigation checks*.
  */
 class ComposeInspectorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -132,6 +138,19 @@ private fun InspectorScreen(onBack: () -> Unit) {
                         Box(Modifier.size(16.dp).background(Color(0xFFE57373)).clickable { taps++ }.testTag("tiny_target")) {
                             Text("x")
                         }
+                    }
+                }
+            }
+
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Jump to Source targets:", style = MaterialTheme.typography.labelLarge)
+                    // The tag is found before the text: the testTag argument is the answer.
+                    Text("Found by its tag", modifier = Modifier.testTag("source_by_tag"))
+                    Text(stringResource(R.string.source_from_resources))
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text("Said twice")
+                        Text("Said twice")
                     }
                 }
             }

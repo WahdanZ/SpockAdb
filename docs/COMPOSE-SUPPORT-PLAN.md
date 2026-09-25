@@ -149,6 +149,34 @@ invalid cached IntelliJ IDEA 2025.1 installation (missing core plugin), so compa
 yet verified. Real-device smoke tests require an active test setup and are not claimed as passed.
 The branch `feature/compose-reliability` is pushed; no pull request has been created.
 
+### Source navigation checks
+
+Jump to Source in the UI Inspector searches the **open project**, so these need the sample open
+as the IDE's project: `./gradlew runIde`, open `sample/` in the sandbox IDE, and let Gradle sync
+and indexing finish. Install the app from there, or with `./gradlew -p sample :app:installDebug`.
+Capture each screen with **Capture UI**. *Autoscroll to Source* (Inspector toolbar) is on unless
+a row says otherwise: a single click opens the file and leaves focus in the tree. Double-click,
+Enter, the Edit Source shortcut, the context menu and the details pane's link open it with focus.
+The details pane's *Source* line shows what should open and how it was found.
+
+| Row | Screen, element | Do | Expected |
+|---|---|---|---|
+| N1 | *UI Inspector — Compose screen*, `Text #source_by_tag "Found by its tag"` | Click the row | `ComposeInspectorActivity.kt:149` opens, tree keeps focus. Source line: `ComposeInspectorActivity.kt:149 · found by test tag` |
+| N2 | Same screen, after switching **Expose test tags** off and capturing again; the same text | Click | Same line, now `· found by text — may be one of several`: with the tag hidden, the text is the next thing to search |
+| N3 | Compose screen, `"Kept in a resource file"` | Click | `ComposeInspectorActivity.kt:150`, the `stringResource(R.string.source_from_resources)` call, not `strings.xml`. Source line ends `· found by text in strings.xml — may be one of several` |
+| N4 | Compose screen, either `"Said twice"` | Click, then double-click | Click opens `:152`. Source line ends `· best of 2` and its link reads *Choose from 2…*. Double-click shows a popup listing `ComposeInspectorActivity.kt:152 — Text("Said twice")` and `:153`, best first; choosing one opens it with focus |
+| N5 | Compose screen, the **Submit** button (`#submit_button`) | Press Enter | `ComposeInspectorActivity.kt:123` opens with focus, `· found by test tag` |
+| N6 | *UI Inspector — Views screen*, the **Submit** button (no id) | Click, then open the context menu | `ViewsInspectorActivity.kt:28` opens: `"Submit"` is also in `ComposeInspectorActivity.kt:124`, and the Views file wins because it quotes more of the captured screen. The context menu's first item is *Jump to Source*, showing the Edit Source shortcut, and it offers both files |
+| N7 | Views screen, the text field (`#views_name_field`) | Click | `ViewsInspectorActivity.kt:25`, the `R.id.views_name_field` use (the id is declared in `ids.xml`, not a layout). `· found by resource id` |
+| N8 | Views screen, `"Inflated from a layout file"` (`#views_source_label`) | Click | `res/layout/views_source_row.xml:4`, its `android:id`. `· found by resource id` |
+| N9 | Views screen, `"Drawn by SourceBadgeView"` | Click | `ViewsInspectorActivity.kt:45`, the `SourceBadgeView` declaration rather than the top of the file. `· found by class`. Its tree row's class reads `SourceBadgeView`; if it reads `TextView`, the device ignored `getAccessibilityClassName` and the row says nothing was found |
+| N10 | *Fragments*, the `FrameLayout #nav_host` | Double-click | Popup: `activity_navigation.xml:4` (its `android:id`) first, then `NavigationActivity.kt:29` (`R.id.nav_host`) |
+| N11 | Compose screen, `"Item 3"` in the list | Click, then press Enter | Nothing opens. Source line and status line: `No source found for tag 'item_3', text 'Item 3' in this project.` Both come from templates (`"item_$index"`), which a search cannot match. If the device reports tags as `pkg:id/tag`, the message names `id 'item_3'` too |
+| N12 | Any captured screen | Turn *Autoscroll to Source* off, click rows, then hold the down arrow with it on | Off: the Source line updates, no editor opens; double-click still opens with focus. On: the editor follows the selection without taking focus, and holding the arrow key does not lag or queue openings |
+| N13 | Any captured screen, during indexing (*File > Invalidate Caches…* and restart, or edit `build.gradle.kts` and sync) | Select a row | Source line: `Available after indexing finishes`; Jump to Source says the same in the status line. When indexing ends the line fills in without opening anything |
+
+None of these rows has been run yet.
+
 ### Device checks
 
 Run against the sample app (`./gradlew -p sample :app:installDebug`), screen **UI Inspector —
