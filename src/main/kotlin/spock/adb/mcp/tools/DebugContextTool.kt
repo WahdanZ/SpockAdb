@@ -5,6 +5,7 @@ import spock.adb.diagnostics.DiagnosticCollector
 import spock.adb.diagnostics.DiagnosticProbe
 import spock.adb.diagnostics.DiagnosticSection
 import spock.adb.diagnostics.DiagnosticSections
+import spock.adb.diagnostics.DiagnosticShell
 
 /**
  * `android_get_debug_context` — the whole triage bundle in one call.
@@ -123,7 +124,13 @@ class DebugContextTool : AdbTool {
             val image = shot?.content?.filterIsInstance<ToolContent.Image>()?.firstOrNull()
             report.addProperty(
                 "screenshot",
-                if (image != null) "attached" else shot?.let { textOf(it) } ?: "could not be captured",
+                // Added after the collector's size cut, so clipped here: a failed capture's message
+                // can carry tens of kilobytes of raw device output.
+                if (image != null) {
+                    "attached"
+                } else {
+                    shot?.let { DiagnosticShell.clip(textOf(it), MAX_SCREENSHOT_NOTE_CHARS) } ?: "could not be captured"
+                },
             )
             image?.let { content += it }
         }
@@ -265,6 +272,7 @@ class DebugContextTool : AdbTool {
 
         const val FORMAT_SUMMARY = "summary"
         const val FORMAT_FULL = "full"
+        const val MAX_SCREENSHOT_NOTE_CHARS = 300
 
         const val DEFAULT_LOGCAT_LINES = 200
         const val MAX_LOGCAT_LINES = 2_000
