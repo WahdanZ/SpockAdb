@@ -3,6 +3,7 @@ package spock.adb.mcp.tools
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import spock.adb.command.openDeepLinkWithAmStart
+import spock.adb.device.ops.ScreenshotOperations
 import java.util.Base64
 
 /** `android_take_screenshot` — the screen, as MCP image content. */
@@ -15,35 +16,17 @@ class TakeScreenshotTool : AdbTool {
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
-    // Capture goes through the shell rather than IDevice.getScreenshot(), which Android Studio
-    // ships as a stub that fails with "This method is not used in Android Studio".
+    // The capture itself — and why it goes through the shell — is in ScreenshotOperations,
+    // which the Diagnose tab shares.
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
         val png = try {
-            McpShell.runBinary(device, "screencap -p", SCREENSHOT_TIMEOUT_SECONDS)
+            ScreenshotOperations(device).capture()
         } catch (e: IllegalStateException) {
             return ToolResult.error(e.message ?: "The screenshot could not be captured.")
         }
-
-        if (!png.looksLikePng()) {
-            return ToolResult.error(
-                "The device returned ${png.size} bytes that are not a PNG. The screen may be " +
-                    "protected by FLAG_SECURE, which blocks capture.",
-            )
-        }
         return ToolResult.image(Base64.getEncoder().encodeToString(png))
-    }
-
-    private fun ByteArray.looksLikePng() =
-        size > PNG_SIGNATURE.size && PNG_SIGNATURE.indices.all { this[it] == PNG_SIGNATURE[it] }
-
-    private companion object {
-        const val SCREENSHOT_TIMEOUT_SECONDS = 15L
-
-        /** The eight bytes every PNG starts with. */
-        val PNG_SIGNATURE =
-            byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
     }
 }
 

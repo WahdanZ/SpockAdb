@@ -102,6 +102,9 @@ class UiInspectorPanel(
         updateStatus()
     }
 
+    /** Captures the screen now, for the Diagnose tab's "Inspect UI". */
+    fun captureNow() = capture()
+
     // ---------------------------------------------------------------- layout
 
     private fun header(): JComponent {

@@ -14,6 +14,7 @@ import spock.adb.assistant.AssistantPrefill
 import spock.adb.backgroundwork.BackgroundWorkPanel
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.device.ConnectedDevice
+import spock.adb.diagnostics.DiagnosePanel
 import spock.adb.logcat.LogcatPanel
 import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerPanel
@@ -64,6 +65,19 @@ class SpockAdbShell(
     private val backgroundWork = BackgroundWorkPanel(project)
     private val mcp = McpServerPanel(project)
 
+    /** Its quick actions lead into the other tabs, so it is handed the way there. */
+    private val diagnose = DiagnosePanel(
+        project,
+        inspectUi = {
+            tabs.select(UI_INSPECTOR_TAB)
+            uiInspector.captureNow()
+        },
+        viewRelatedLogs = {
+            tabs.select(LOGCAT_TAB)
+            logcat.showRelatedErrors()
+        },
+    )
+
     /**
      * Built only when the tab is shown.
      *
@@ -88,7 +102,7 @@ class SpockAdbShell(
     }
 
     init {
-        listOfNotNull(storage, logcat, commands, uiInspector, backgroundWork, mcp, assistant)
+        listOfNotNull(diagnose, storage, logcat, commands, uiInspector, backgroundWork, mcp, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
 
@@ -103,10 +117,11 @@ class SpockAdbShell(
         }
 
         tabs.addTab("Device", devices)
+        tabs.addTab(DIAGNOSE_TAB, diagnose)
         tabs.addTab(STORAGE_TAB, storage)
-        tabs.addTab("Logcat", logcat)
+        tabs.addTab(LOGCAT_TAB, logcat)
         tabs.addTab("Commands", commands)
-        tabs.addTab("UI Inspector", uiInspector)
+        tabs.addTab(UI_INSPECTOR_TAB, uiInspector)
         tabs.addTab(BACKGROUND_WORK_TAB, backgroundWork)
         tabs.addTab("MCP Server", mcp)
         assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
@@ -210,6 +225,7 @@ class SpockAdbShell(
         if (device != null || listChanged) header.setDevice(device, sameDevice = sameDevice)
 
         devices.setDevice(device)
+        diagnose.setDevice(device)
         storage.setDevice(device)
         logcat.setDevice(device)
         commands.setDevice(device)
@@ -228,6 +244,7 @@ class SpockAdbShell(
         controller.selectedApp = packageName
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
+        diagnose.setApp()
         devices.setApp()
     }
 
@@ -241,6 +258,12 @@ class SpockAdbShell(
         if (current.selectedDevice != serial) {
             service.loadState(current.copy(selectedDevice = serial))
         }
+    }
+
+    /** Brings the Diagnose tab forward and runs it: the Diagnose Current Screen action. */
+    fun diagnoseCurrentScreen() {
+        tabs.select(DIAGNOSE_TAB)
+        diagnose.diagnose()
     }
 
     // ---------------------------------------------------------------- agents
@@ -284,11 +307,23 @@ class SpockAdbShell(
             )
     }
 
-    private companion object {
-        const val TOOL_WINDOW_ID = "Spock ADB"
-        const val NO_DEVICES = "No devices connected"
-        const val ASSISTANT_TAB = "Assistant"
-        const val BACKGROUND_WORK_TAB = "Background Work"
-        const val STORAGE_TAB = "Storage"
+    companion object {
+        /**
+         * The shell in [project]'s tool window, once the window has been built. The window has
+         * one content — this — and the tabs are inside it, so a tab cannot be found as content.
+         */
+        fun find(project: Project): SpockAdbShell? =
+            ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)
+                ?.contentManager?.contents
+                ?.firstNotNullOfOrNull { it.component as? SpockAdbShell }
+
+        private const val TOOL_WINDOW_ID = "Spock ADB"
+        private const val NO_DEVICES = "No devices connected"
+        private const val ASSISTANT_TAB = "Assistant"
+        private const val BACKGROUND_WORK_TAB = "Background Work"
+        private const val STORAGE_TAB = "Storage"
+        private const val DIAGNOSE_TAB = "Diagnose"
+        private const val LOGCAT_TAB = "Logcat"
+        private const val UI_INSPECTOR_TAB = "UI Inspector"
     }
 }

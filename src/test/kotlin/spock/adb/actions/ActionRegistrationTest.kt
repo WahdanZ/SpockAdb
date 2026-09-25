@@ -77,6 +77,7 @@ class ActionRegistrationTest {
             "spock.adb.actions.UninstallAppAction",
             "spock.adb.actions.GetCurrentActivityAction",
             "spock.adb.actions.GetCurrentFragmentAction",
+            "spock.adb.actions.DiagnoseCurrentScreenAction",
             "spock.adb.actions.OpenLogcatAction",
             "spock.adb.actions.OpenCommandCenterAction",
             "spock.adb.actions.OpenMcpPanelAction",

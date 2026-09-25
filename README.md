@@ -15,7 +15,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 61 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 62 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -39,6 +39,7 @@ Spock ADB brings ADB workflows into one shared tool window that keeps a selected
   - [🗂 App Storage](#app-storage)
   - [📜 Logcat, without the noise](#logcat)
   - [⌨️ ADB Command Center](#adb-command-center)
+  - [🩺 Diagnose Current Screen](#diagnose)
   - [🔍 UI Inspector](#ui-inspector)
   - [🛠 Background Work](#background-work)
   - [🤖 Android debugging for AI agents](#ai-agents)
@@ -155,6 +156,17 @@ You keep the power of ADB without constantly opening another terminal.
 <p align="center">
   <img src="images/command-center.png" alt="ADB Command Center" width="88%">
 </p>
+
+---
+
+<a id="diagnose"></a>
+### 🩺 Diagnose Current Screen
+
+One press reads everything about the screen in front of you, for the selected device and app:
+
+**Current activity, activity stack and fragments · Screenshot · Likely problems from Logcat · UI and accessibility summary · Process state · Runtime permissions · Jobs and alarms · Doze, standby bucket, battery and charger**
+
+Problems come first, ranked; a part that cannot be read is reported in place and never costs you the rest. From the summary go straight to **Open Activity**, **Open Fragment**, **Inspect UI** or **View Related Logs**, or **Copy for AI**. Agents get the same report from `android_diagnose_current_screen`.
 
 ---
 
