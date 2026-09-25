@@ -2,29 +2,8 @@
 
 ## [Unreleased]
 
-## [4.0.6] - 2026-09-22
-
 ### Added
 
-- **Simulate a battery level in one click.** The Background Work tab's device conditions now have
-  **5%**, **20%**, **50%** and **100%** presets, so the battery an app sees can be put either side
-  of the 15% Battery Saver threshold without hunting for the right `dumpsys` incantation. Each
-  preset reports the battery as unplugged before setting the level, because a device reporting 5%
-  while plugged in behaves like a full one: Battery Saver, the low-battery warning and the job
-  scheduler's charging constraints all key off a device that is discharging. The level is read
-  back, so a vendor ROM that ignores the override says so rather than passing silently. A new
-  **Reset battery** button hands the battery back to the real hardware on its own, leaving forced
-  Doze and standby buckets alone — and, because plugging the charger back in ends Doze on a real
-  device, it re-reads the conditions afterwards so the banner cannot keep claiming a Doze that is
-  already over. Agents get the same through `android_set_battery_level` and `android_reset_battery`
-  (both safe actions), and both changes are tracked and reset like every other device condition.
-- **Set any battery level, and switch each charger on its own.** Next to the presets, a slider
-  reports any level for the threshold a bug actually shows at; it applies when you let go rather
-  than on every tick, because each change is two round trips to the device. Separate **AC**,
-  **USB** and **Wireless** toggles replace the all-or-nothing unplug for the case it could not
-  express: AC off with USB left on is a device that is discharging while still plugged into the
-  machine, which is how most people debug one. Each toggle is read back, and the row shows what
-  the device actually reports. Agents get `android_set_charger` (safe action).
 - **A redesigned UI Inspector, and a selector for any element in one click.** The tree is drawn
   with the IDE's own renderer, so rows follow the theme instead of sitting on mismatched grey
   blocks, and each row reads as the class, then the test tag, the text and the content
@@ -145,22 +124,6 @@
 
 ### Fixed
 
-- **Uninstall reports a device that refuses instead of claiming the app is gone.** The tool
-  window threw away what ADB answered, so uninstalling a device-owner app, a system package, or
-  one another user on the device still has, showed "application uninstalled" while the app stayed
-  on screen. It now says what ADB said. An agent calling `android_uninstall_app` already got the
-  refusal — the button did not.
-- **Agents no longer force-stop a package that is not installed.** `android_stop_app` sent
-  `am force-stop` at whatever name it was given and reported it stopped, while the tool window's
-  Force Kill checked first. Both check now, and both answer a missing app, a missing launcher
-  activity, or a refused uninstall with the same sentence — the two paths run the same code for
-  launch, stop, restart, clear data, clear cache and uninstall, so a fix to one is a fix to both.
-- **A busy screen no longer reaches an agent cut in half.** The UI Inspector tab and the
-  `android_get_ui_tree` tools each captured the screen their own way, to a different file on the
-  device and with a different explanation when `uiautomator` refused. The agent's copy also read
-  the dump through the 400,000-character cap meant for text an agent is charged for, so a screen
-  larger than that arrived at the parser cut off mid-element. Both now run one capture, which is
-  parsed rather than shown raw and so has nothing to cap.
 - **Stop pressed while the model was still asking for tools no longer breaks the next message.**
   The tools were rightly not run, but the model's request for them was left in the conversation
   with no answer, and a provider can reject a conversation holding a tool call with no result — so
@@ -211,6 +174,49 @@
   the node count while the same device stays selected, and when another device is selected it
   keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
   rather than hiding what was captured.
+
+## [4.0.6] - 2026-09-22
+
+### Added
+
+- **Simulate a battery level in one click.** The Background Work tab's device conditions now have
+  **5%**, **20%**, **50%** and **100%** presets, so the battery an app sees can be put either side
+  of the 15% Battery Saver threshold without hunting for the right `dumpsys` incantation. Each
+  preset reports the battery as unplugged before setting the level, because a device reporting 5%
+  while plugged in behaves like a full one: Battery Saver, the low-battery warning and the job
+  scheduler's charging constraints all key off a device that is discharging. The level is read
+  back, so a vendor ROM that ignores the override says so rather than passing silently. A new
+  **Reset battery** button hands the battery back to the real hardware on its own, leaving forced
+  Doze and standby buckets alone — and, because plugging the charger back in ends Doze on a real
+  device, it re-reads the conditions afterwards so the banner cannot keep claiming a Doze that is
+  already over. Agents get the same through `android_set_battery_level` and `android_reset_battery`
+  (both safe actions), and both changes are tracked and reset like every other device condition.
+- **Set any battery level, and switch each charger on its own.** Next to the presets, a slider
+  reports any level for the threshold a bug actually shows at; it applies when you let go rather
+  than on every tick, because each change is two round trips to the device. Separate **AC**,
+  **USB** and **Wireless** toggles replace the all-or-nothing unplug for the case it could not
+  express: AC off with USB left on is a device that is discharging while still plugged into the
+  machine, which is how most people debug one. Each toggle is read back, and the row shows what
+  the device actually reports. Agents get `android_set_charger` (safe action).
+
+### Fixed
+
+- **Uninstall reports a device that refuses instead of claiming the app is gone.** The tool
+  window threw away what ADB answered, so uninstalling a device-owner app, a system package, or
+  one another user on the device still has, showed "application uninstalled" while the app stayed
+  on screen. It now says what ADB said. An agent calling `android_uninstall_app` already got the
+  refusal — the button did not.
+- **Agents no longer force-stop a package that is not installed.** `android_stop_app` sent
+  `am force-stop` at whatever name it was given and reported it stopped, while the tool window's
+  Force Kill checked first. Both check now, and both answer a missing app, a missing launcher
+  activity, or a refused uninstall with the same sentence — the two paths run the same code for
+  launch, stop, restart, clear data, clear cache and uninstall, so a fix to one is a fix to both.
+- **A busy screen no longer reaches an agent cut in half.** The UI Inspector tab and the
+  `android_get_ui_tree` tools each captured the screen their own way, to a different file on the
+  device and with a different explanation when `uiautomator` refused. The agent's copy also read
+  the dump through the 400,000-character cap meant for text an agent is charged for, so a screen
+  larger than that arrived at the parser cut off mid-element. Both now run one capture, which is
+  parsed rather than shown raw and so has nothing to cap.
 
 [Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...HEAD
 ## [4.0.5] - 2026-09-22
