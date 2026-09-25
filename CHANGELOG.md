@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [4.0.6] - 2026-09-22
+
 ### Added
 
 - **Simulate a battery level in one click.** The Background Work tab's device conditions now have
@@ -210,6 +212,7 @@
   keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
   rather than hiding what was captured.
 
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...HEAD
 ## [4.0.5] - 2026-09-22
 
 ### Added
@@ -273,7 +276,6 @@
   decide any of this, never the URI it echoes back, so opening `myapp://help/SecurityException`
   no longer reports a refusal that never happened
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.4...HEAD
 ## [4.0.4] - 2026-09-20
 
 ### Added
@@ -1067,7 +1069,8 @@
 - Enable and Disable Permissions of your application
 - Kill or Restart Application
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...HEAD
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.6...HEAD
+[4.0.6]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...v4.0.6
 [4.0.5]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.4...v4.0.5
 [4.0.4]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...v4.0.4
 [4.0.3]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.2...v4.0.3
