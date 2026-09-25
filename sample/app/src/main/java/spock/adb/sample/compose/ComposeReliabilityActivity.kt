@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ThumbUp
@@ -54,6 +55,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -70,12 +72,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -86,9 +91,10 @@ import spock.adb.sample.SampleActivity
 
 /**
  * Fixtures for the element tools' refusals, scroll-container resolution, the accessibility
- * audit, capture failures, hybrid tag detection and the capture summary — one tab each, so a capture of one tab is
- * not muddied by another's fixtures. The calls to run and what each should answer are in
- * docs/COMPOSE-SUPPORT-PLAN.md, "Device checks", and behind each card's info button.
+ * audit, capture failures, hybrid tag detection, the capture summary and what is in view — one
+ * tab each, so a capture of one tab is not muddied by another's fixtures. The calls to run and
+ * what each should answer are in docs/COMPOSE-SUPPORT-PLAN.md, "Device checks", and behind each
+ * card's info button.
  *
  * Headings describe what to try without repeating a fixture's own text: element tools match
  * text by substring, so a heading that quoted it would become one more candidate.
@@ -111,6 +117,7 @@ private enum class FixtureTab(val title: String, val tag: String, val icon: Imag
     BUSY("Busy", "tab_busy", Icons.Filled.Refresh),
     HYBRID("Hybrid", "tab_hybrid", Icons.Filled.Build),
     WINDOW("Window", "tab_window", Icons.Filled.AccountBox),
+    FOLD("Fold", "tab_fold", Icons.Filled.KeyboardArrowDown),
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -155,6 +162,7 @@ private fun ReliabilityScreen() {
                 FixtureTab.BUSY -> BusyTab(showInfo)
                 FixtureTab.HYBRID -> HybridTab(exposeTags, showInfo) { exposeTags = it }
                 FixtureTab.WINDOW -> WindowTab(showInfo)
+                FixtureTab.FOLD -> FoldTab(showInfo) { lastEvent = it }
             }
         }
     }
@@ -332,7 +340,10 @@ private fun Carousel(row: Int) {
     }
 }
 
-/** Exactly two findings expected: the unlabelled box and the small target. The list is clean. */
+/**
+ * Exactly two findings expected: the unlabelled box and the small target. The list is clean; its
+ * fifth row is always cut in half by the list's edge, which the audit skips rather than reports.
+ */
 @Composable
 private fun AuditTab(onInfo: (Fixture) -> Unit) {
     var taps by remember { mutableIntStateOf(0) }
@@ -342,13 +353,18 @@ private fun AuditTab(onInfo: (Fixture) -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(48.dp).background(Color(0xFF7986CB)).clickable { taps++ }.testTag("audit_unlabelled"))
-                    Box(
-                        Modifier.size(24.dp)
-                            .background(Color(0xFFE57373))
-                            .clickable { taps++ }
-                            .semantics { contentDescription = "Dismiss" }
-                            .testTag("audit_small_target"),
-                    )
+                    // Compose widens a clickable's reported bounds to the ViewConfiguration's minimum touch
+                    // target, 48dp, so a plain 24dp box was dumped at 48dp and never flagged. Without the
+                    // widening the dump shows what a finger actually has to hit.
+                    CompositionLocalProvider(LocalViewConfiguration provides unwidened(LocalViewConfiguration.current)) {
+                        Box(
+                            Modifier.size(24.dp)
+                                .background(Color(0xFFE57373))
+                                .clickable { taps++ }
+                                .semantics { contentDescription = "Dismiss" }
+                                .testTag("audit_small_target"),
+                        )
+                    }
                     Text("Tapped $taps time(s)")
                 }
                 LazyColumn(Modifier.fillMaxWidth().height(240.dp).testTag("audit_list")) {
@@ -364,9 +380,17 @@ private fun AuditTab(onInfo: (Fixture) -> Unit) {
     }
 }
 
+/** [base] without the minimum touch target, so a small control's reported bounds are its own. */
+@Composable
+private fun unwidened(base: ViewConfiguration): ViewConfiguration = remember(base) {
+    object : ViewConfiguration by base {
+        override val minimumTouchTargetSize: DpSize get() = DpSize.Zero
+    }
+}
+
 /**
  * A UI that never goes idle. `uiautomator dump` waits for a quiet accessibility event stream
- * and gives up with "could not get idle state"; a ticking text sends a content-change event
+ * and gives up with "could not get idle state"; a ticking View sends a content-change event
  * on every update.
  */
 @Composable
@@ -401,6 +425,14 @@ private fun BusyTicker() {
     )
     Text("Ticking: ${(phase * 1_000).toInt()}", modifier = Modifier.testTag("busy_ticker"))
     LinearProgressIndicator(progress = { phase }, modifier = Modifier.fillMaxWidth())
+    // Compose sends accessibility events only once it sees an accessibility service, and the dump's
+    // own connection is not one, so the Compose ticker alone let captures through. A View sends
+    // a content-change event whenever accessibility is on at all, including during a dump.
+    AndroidView(
+        factory = { TextView(it) },
+        update = { it.text = "View ticker: ${(phase * 1_000).toInt()}" },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 /**
@@ -486,6 +518,40 @@ private fun WindowTab(onInfo: (Fixture) -> Unit) {
     }
 }
 
+/**
+ * In the tree, in the viewport, and in view are three different answers. A short scrolling column
+ * holds a row cut in half by its bottom edge and, further down, a row that starts out of view.
+ * The column has a fixed height, so both sit in the same place on any phone.
+ */
+@Composable
+private fun FoldTab(onInfo: (Fixture) -> Unit, onEvent: (String) -> Unit) {
+    CardColumn {
+        FixtureCard(Fixtures.BELOW_FOLD, onInfo) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .height(FOLD_HEIGHT_DP.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .verticalScroll(rememberScrollState())
+                    .testTag("fold_scroll"),
+            ) {
+                // Three 48dp rows, then a 48dp row starting 24dp above the column's 168dp bottom edge.
+                repeat(FOLD_ROWS_ABOVE) { FoldRow("Spacer row ${it + 1}") }
+                FoldRow("Cut by the edge", Modifier.testTag("half_visible").clickable { onEvent("half-visible row") })
+                repeat(FOLD_ROWS_BELOW) { FoldRow("Spacer row ${FOLD_ROWS_ABOVE + it + 1}") }
+                FoldRow("Last in the column", Modifier.testTag("below_fold").clickable { onEvent("row below the fold") })
+            }
+        }
+    }
+}
+
+@Composable
+private fun FoldRow(label: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
+        Text(label)
+    }
+}
+
 private const val NOTHING_TAPPED = "nothing yet"
 private const val FLASH_MILLIS = 1_200L
 private const val FEED_ROWS = 24
@@ -494,3 +560,6 @@ private const val CAROUSEL_CARDS = 10
 private const val SIDE_LIST_ROWS = 40
 private const val AUDIT_ROWS = 20
 private const val BUSY_MILLIS = 30_000L
+private const val FOLD_HEIGHT_DP = 168
+private const val FOLD_ROWS_ABOVE = 3
+private const val FOLD_ROWS_BELOW = 6

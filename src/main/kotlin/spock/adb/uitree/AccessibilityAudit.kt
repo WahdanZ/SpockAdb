@@ -31,13 +31,42 @@ object AccessibilityAudit {
         WARNING("!"),
     }
 
-    fun audit(tree: UiTree): List<Finding> {
-        val nodes = tree.nodes().filter { it.bounds.isVisible }.toList()
+    fun audit(observation: UiObservation): List<Finding> = audit(observation.tree, observation.viewport)
+
+    /**
+     * @param viewport what the capture covers; see [UiObservation.viewport]. Defaults to the
+     *   window's own bounds, which is what an observation falls back to without a display size.
+     */
+    fun audit(tree: UiTree, viewport: UiNode.Bounds? = tree.root?.bounds): List<Finding> {
+        val nodes = tree.nodes().filter { it.bounds.hasArea }.toList()
+        val complete = nodes.filterNot(clippedIn(tree, viewport))
         return buildList {
-            addAll(unlabelledInteractiveNodes(nodes))
-            addAll(tinyTouchTargets(nodes, tree.densityDpi))
+            addAll(unlabelledInteractiveNodes(complete))
+            addAll(tinyTouchTargets(complete, tree.densityDpi))
             addAll(duplicateLabels(nodes))
             addAll(unlabelledImages(nodes))
+        }
+    }
+
+    /**
+     * Controls partly scrolled out of their container, which the size and label checks leave out.
+     *
+     * `uiautomator` cuts such a node's bounds to the part in view and drops a text child that is
+     * out of view, so a half-visible list row looked both too small and unlabelled. A finding that
+     * comes from clipping is not a finding about the app. Off-screen controls with complete
+     * bounds are still checked: nothing about them was cut.
+     */
+    private fun clippedIn(tree: UiTree, viewport: UiNode.Bounds?): (UiNode) -> Boolean {
+        val visibility = ViewportVisibility.classifyAll(tree, viewport)
+        return { visibility[it]?.clippedByContainer == true }
+    }
+
+    /** How many controls [audit] left out because they were cut off, and would otherwise have been findings. */
+    private fun skippedAsClipped(tree: UiTree, viewport: UiNode.Bounds?): Int {
+        val clipped = tree.nodes().filter { it.bounds.hasArea }.filter(clippedIn(tree, viewport)).toList()
+        return clipped.count { node ->
+            unlabelledInteractiveNodes(listOf(node)).isNotEmpty() ||
+                tinyTouchTargets(listOf(node), tree.densityDpi).isNotEmpty()
         }
     }
 
@@ -81,13 +110,21 @@ object AccessibilityAudit {
             }
     }
 
-    fun coverageNote(tree: UiTree): String =
-        "Checks use accessibility data and do not prove full accessibility or effective touch regions." +
-            if (tree.densityDpi == null || tree.densityDpi <= 0) {
-                " Display density unavailable; touch-target size check skipped."
-            } else {
-                " Touch-target estimates use ${tree.densityDpi}dpi on the default display."
-            }
+    fun coverageNote(observation: UiObservation): String = coverageNote(observation.tree, observation.viewport)
+
+    fun coverageNote(tree: UiTree, viewport: UiNode.Bounds? = tree.root?.bounds): String = buildString {
+        append("Checks use accessibility data and do not prove full accessibility or effective touch regions.")
+        if (tree.densityDpi == null || tree.densityDpi <= 0) {
+            append(" Display density unavailable; touch-target size check skipped.")
+        } else {
+            append(" Touch-target estimates use ${tree.densityDpi}dpi on the default display.")
+        }
+        val skipped = skippedAsClipped(tree, viewport)
+        if (skipped > 0) {
+            append(" Skipped $skipped control(s) at a scroll container's edge, possibly partially scrolled out, ")
+            append("whose reported size or label may be cut off; they are checked when fully in view.")
+        }
+    }
 
     /** Two controls announcing the same thing are ambiguous to a reader and to an agent. */
     private fun duplicateLabels(nodes: List<UiNode>): List<Finding> =

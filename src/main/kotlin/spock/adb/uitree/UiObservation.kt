@@ -50,7 +50,7 @@ data class UiObservation(
         }
 
     /** The dumped window's own bounds, when it has any area. A dialog's is smaller than the display. */
-    val windowRect: UiNode.Bounds? get() = tree.root?.bounds?.takeIf { it.hasArea() }
+    val windowRect: UiNode.Bounds? get() = tree.root?.bounds?.takeIf { it.hasArea }
 
     /**
      * What of the screen this capture covers: the window clipped to the display when both are
@@ -125,15 +125,6 @@ data class UiObservation(
         const val ROTATION_180 = 2
         const val ROTATION_270 = 3
         const val MILLIS_PER_SECOND = 1_000.0
-
-        fun UiNode.Bounds.hasArea() = width > 0 && height > 0
-
-        fun UiNode.Bounds.intersect(other: UiNode.Bounds): UiNode.Bounds? = UiNode.Bounds(
-            maxOf(left, other.left),
-            maxOf(top, other.top),
-            minOf(right, other.right),
-            minOf(bottom, other.bottom),
-        ).takeIf { it.hasArea() }
 
         fun UiFramework.hasCompose() = this == UiFramework.COMPOSE || this == UiFramework.HYBRID
     }

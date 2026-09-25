@@ -31,17 +31,18 @@ internal fun renderTree(node: UiNode, depth: Int = 0): String = buildString {
 
 /** One styled piece of a tree row. */
 internal data class RowSegment(val text: String, val kind: Kind) {
-    enum class Kind { CLASS, TEST_TAG, TEXT, DESCRIPTION, FLAG }
+    enum class Kind { CLASS, TEST_TAG, TEXT, DESCRIPTION, FLAG, VIEWPORT }
 }
 
 /**
  * A node's tree row, as pieces the renderer styles one by one: the short class name, then the
- * test tag, the text and the content description, then what can be done with it.
+ * test tag, the text and the content description, then what can be done with it, then — only
+ * for a node not plainly in the viewport — where it is, such as "outside viewport".
  *
  * Text is cut to one short line. A paragraph of body copy drawn in full pushed every row after
  * it off the right edge; the whole value is in the details pane.
  */
-internal fun UiNode.rowSegments(): List<RowSegment> = buildList {
+internal fun UiNode.rowSegments(visibility: NodeVisibility? = null): List<RowSegment> = buildList {
     add(RowSegment(className.substringAfterLast('.'), RowSegment.Kind.CLASS))
     testTag?.let { add(RowSegment("#$it", RowSegment.Kind.TEST_TAG)) }
     text.takeIf { it.isNotBlank() }?.let { add(RowSegment("\"${it.clipped()}\"", RowSegment.Kind.TEXT)) }
@@ -49,6 +50,7 @@ internal fun UiNode.rowSegments(): List<RowSegment> = buildList {
         add(RowSegment("desc=\"${it.clipped()}\"", RowSegment.Kind.DESCRIPTION))
     }
     flags().forEach { add(RowSegment(it, RowSegment.Kind.FLAG)) }
+    visibility?.marker()?.let { add(RowSegment(it, RowSegment.Kind.VIEWPORT)) }
 }
 
 /** What an agent or a test can do with the node, and whether it currently can. */
@@ -75,7 +77,7 @@ private fun String.clipped(): String {
  */
 internal fun inspectorMatches(tree: UiTree, query: String, interactiveOnly: Boolean): List<UiNode> =
     tree.nodes()
-        .filter { it.bounds.isVisible }
+        .filter { it.bounds.hasArea }
         .filter { !interactiveOnly || it.isInteractive }
         .filter { node ->
             query.isBlank() ||
@@ -89,7 +91,10 @@ internal fun inspectorMatches(tree: UiTree, query: String, interactiveOnly: Bool
  * Draws a [UiNode] row with the IDE's own renderer, so selection, focus and the theme's
  * background are the tree's rather than a plain Swing label's grey block per row.
  */
-internal class UiNodeRenderer : ColoredTreeCellRenderer() {
+internal class UiNodeRenderer(
+    /** Where each node of the current capture is relative to its viewport; read on the EDT. */
+    private val visibilityOf: (UiNode) -> NodeVisibility? = { null },
+) : ColoredTreeCellRenderer() {
     @Suppress("LongParameterList")
     override fun customizeCellRenderer(
         tree: JTree,
@@ -106,7 +111,7 @@ internal class UiNodeRenderer : ColoredTreeCellRenderer() {
             return
         }
         // Device-supplied text, appended as fragments so it is never interpreted as markup.
-        node.rowSegments().forEachIndexed { index, segment ->
+        node.rowSegments(visibilityOf(node)).forEachIndexed { index, segment ->
             if (index > 0) append(if (segment.kind == RowSegment.Kind.FLAG) " " else "  ")
             append(segment.text, attributesFor(node, segment.kind))
         }
@@ -120,6 +125,7 @@ internal class UiNodeRenderer : ColoredTreeCellRenderer() {
             RowSegment.Kind.TEXT -> TEXT
             RowSegment.Kind.DESCRIPTION -> SimpleTextAttributes.GRAYED_ATTRIBUTES
             RowSegment.Kind.FLAG -> SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES
+            RowSegment.Kind.VIEWPORT -> VIEWPORT
         }
     }
 
@@ -127,5 +133,9 @@ internal class UiNodeRenderer : ColoredTreeCellRenderer() {
         val INTERACTIVE = SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, JBColor(0x2C5D92, 0x6EA8E0))
         val TAG = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x871094, 0xC77DBB))
         val TEXT = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor(0x067D17, 0x6AAB73))
+        val VIEWPORT = SimpleTextAttributes(
+            SimpleTextAttributes.STYLE_SMALLER or SimpleTextAttributes.STYLE_ITALIC,
+            JBColor.GRAY,
+        )
     }
 }

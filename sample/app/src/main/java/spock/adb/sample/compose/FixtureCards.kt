@@ -146,7 +146,8 @@ internal object Fixtures {
             Check(
                 listOf(call("android_accessibility_audit {}")),
                 "Two findings: audit_unlabelled (no accessible text, despite its tag) and audit_small_target " +
-                    "(below 48dp). Nothing for audit_list or its rows.",
+                    "(24dp, below 48dp). Nothing for audit_list or its rows. The coverage note says 1 control at " +
+                    "a scroll container's edge was skipped: the half-visible fifth row.",
             ),
         ),
     )
@@ -155,8 +156,8 @@ internal object Fixtures {
         listOf(
             Check(
                 listOf(call("""android_tap_element {testTag: "busy_switch"}"""), call("android_get_ui_tree {}")),
-                "Capture fails as DUMP_REFUSED (\"could not get idle state\"), or TIMED_OUT where uiautomator " +
-                    "waits past 30 s. The switch turns itself off after 30 s.",
+                "Capture fails as DUMP_REFUSED (\"could not get idle state\"), after about 12 s on an API 34 " +
+                    "emulator; TIMED_OUT where uiautomator waits past 30 s. The switch turns itself off after 30 s.",
             ),
         ),
     )
@@ -224,6 +225,40 @@ internal object Fixtures {
                     call("adb shell wm density reset"),
                 ),
                 "Summary says 320 dpi, and the coverage note says touch-target estimates use 320dpi.",
+            ),
+        ),
+    )
+    val BELOW_FOLD = Fixture(
+        "15", "In the tree, in view, or neither", "A short column with more below",
+        listOf(
+            Check(
+                listOf(call("""android_assert_visible {testTag: "below_fold"}""")),
+                "FAIL: nothing matched, pointing to android_scroll_to_element. The row is left out of the capture " +
+                    "while it is scrolled out of the column, so it is absent rather than outside the viewport.",
+            ),
+            Check(
+                listOf(call("""android_tap_element {testTag: "below_fold"}""")),
+                "Refused as no match, pointing to android_scroll_to_element; nothing dispatched, Last tap unchanged.",
+            ),
+            Check(
+                listOf(call("""android_find_ui_element {testTag: "half_visible"}"""), call("android_get_ui_tree {}")),
+                "One match, partly in the viewport, cut at its scroll container's edge; how much is out of view is " +
+                    "unknown. The tree marks it [partly in viewport, clipped by scroll container] and its text " +
+                    "[may be clipped by scroll container]; nothing else in the card is marked.",
+            ),
+            Check(
+                listOf(call("""android_tap_element {testTag: "half_visible"}""")),
+                "Tapped at the centre of its part in view, not of its bounds; Last tap names the half-visible row.",
+            ),
+            Check(
+                listOf(
+                    call("""android_scroll_to_element {testTag: "below_fold"}"""),
+                    call("""android_assert_visible {testTag: "below_fold"}"""),
+                    call("""android_tap_element {testTag: "below_fold"}"""),
+                    instruction("Afterwards, switch tabs and back to scroll the column to the top."),
+                ),
+                "Found after about 5 swipes; PASS, ending (occlusion not checked); Last tap names the row below " +
+                    "the fold.",
             ),
         ),
     )

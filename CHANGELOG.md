@@ -39,6 +39,23 @@
   selecting one selects its element in the tree and shows its fix. Before the first capture, the
   empty tree offers a **Capture UI** link.
 
+### Changed
+
+- **"Visible" now means in the viewport, not just in the tree.** `android_assert_visible` and
+  `android_assert_text` passed for any node in the capture, including a row laid out below the
+  edge of its list, where no one can see it and no tap reaches it. They now pass only when a
+  match has something inside the viewport and every scroll container above it, and say how many
+  matches did; they fail when every match is out of view, and are inconclusive — an error, so a
+  test stops — when the capture has no viewport. A pass says occlusion was not checked, because
+  bounds cannot show what is drawn on top. Taps, long presses and text entry refuse a target out
+  of view and point to `android_scroll_to_element` instead of pressing a point that is not on
+  screen, and a target partly scrolled out is pressed at the centre of its part in view rather
+  than at a centre that may lie under its list's edge. `android_scroll_to_element` keeps swiping
+  until a match is in view. `android_find_ui_element` says where each match is, and
+  `android_get_ui_tree` marks the nodes that are not in view, such as `[outside viewport]`. The
+  UI Inspector marks those rows too, and shows a **Viewport** line under the selected element's
+  geometry.
+
 ### Fixed
 
 - **Uninstall reports a device that refuses instead of claiming the app is gone.** The tool
@@ -96,6 +113,13 @@
   the node count while the same device stays selected, and when another device is selected it
   keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
   rather than hiding what was captured.
+- **The accessibility audit no longer blames an app for a half-scrolled list row.** `uiautomator`
+  reports a row partly scrolled out of its list with its bounds cut short and its out-of-view
+  text left out, so the audit reported the row as both smaller than 48dp and unlabelled — two
+  findings about the capture, not the app. A control whose bounds reach its scroll container's
+  edge is now left out of the size and label checks, and the coverage note says how many were
+  skipped so they can be checked when fully in view. A control out of view but with whole bounds
+  is still checked.
 
 ## [4.0.5] - 2026-09-22
 

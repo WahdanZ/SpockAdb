@@ -452,6 +452,48 @@ the result of an action rather than infer it from pixels.
 
 Screenshots are first-class MCP image content, so an agent can also look at the screen.
 
+### In the tree, in the viewport, and in view
+
+These are three different answers, and the tools keep them apart. Each node of a capture is
+classified against the capture's viewport — the dumped window clipped to the display — and
+against every **scroll container** above it: a list shows its content only within itself, so
+a row laid out below a list's edge is outside the viewport even when it lies inside the display.
+Other parents do not clip. A node is *in the viewport*, *partly in it* (with the share in view),
+*outside it*, of *zero area*, or — when neither the display size nor the window bounds could be
+read — *viewport unknown*.
+
+- **Taps, long presses and text entry** refuse a target outside the viewport or with zero area,
+  send nothing, and point the agent to `android_scroll_to_element`. A target partly in view is
+  pressed at the centre of its part in view, not of its bounds. Without a viewport the press goes
+  to the centre of the bounds, and the result says the viewport was unknown. Ambiguity is still
+  decided over the whole tree: an off-screen duplicate makes a selector ambiguous.
+- **`android_assert_visible` and `android_assert_text`** pass when at least one match has
+  something in the viewport, and say how many of the matches do. They fail when every match is
+  outside it, fail when nothing matched, and are **inconclusive** — an error result, so a test
+  workflow stops — when the viewport is unknown.
+- **`android_scroll_to_element`** stops at a match in the viewport, not at a match that is only
+  in the tree. Without a viewport it keeps the old rule, any match, and says so. It still does
+  not look again after its last swipe.
+- **`android_find_ui_element`** describes where each match is, and **`android_get_ui_tree`**
+  marks only the nodes that are not plainly in view — `[outside viewport]`, `[62% in viewport]`,
+  `[partly in viewport, clipped by scroll container]` — so a screen that is all in view costs no
+  extra tokens.
+
+What this cannot tell you:
+
+- **Nothing is ever called unobscured.** Bounds cannot show a dialog, a sheet or a sibling drawn
+  on top, so every "in the viewport" says *occlusion not checked*.
+- **A node scrolled wholly out of view is usually absent, not "outside".** On an API 34 emulator,
+  a Compose node scrolled out of its column is left out of the dump entirely, so it comes back as
+  *nothing matched* — the refusal still points to `android_scroll_to_element`.
+- **A node cut by its container's edge has an unknown size.** `uiautomator` reports a row partly
+  scrolled out with bounds already cut short and its out-of-view text missing, sometimes still
+  reaching past the container's edge. A node whose bounds reach a scroll container's edge is
+  therefore flagged *clipped by scroll container*: its share in view is unknown, and the
+  accessibility audit leaves it out of the size and label checks rather than report the clipping
+  as a fault, counting what it skipped in its coverage note. The first row of a list at scroll
+  offset zero looks the same, so the flag means *may be* cut.
+
 ## Triage, files and screen recording
 
 ### `android_get_debug_context`

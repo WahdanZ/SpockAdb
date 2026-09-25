@@ -57,12 +57,12 @@ internal class AuditFindingsPanel(private val onSelectNode: (UiNode) -> Unit) : 
         coverage.isVisible = false
     }
 
-    fun show(findings: List<AccessibilityAudit.Finding>, tree: UiTree) {
-        framework = tree.framework
+    fun show(findings: List<AccessibilityAudit.Finding>, observation: UiObservation) {
+        framework = observation.tree.framework
         model.replaceAll(findings)
         list.emptyText.text = "No issues detected by these checks."
         fix.isVisible = false
-        coverage.text = AccessibilityAudit.coverageNote(tree)
+        coverage.text = AccessibilityAudit.coverageNote(observation)
         coverage.isVisible = true
     }
 

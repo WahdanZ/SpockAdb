@@ -83,8 +83,19 @@ data class UiNode(
         val width: Int get() = right - left
         val height: Int get() = bottom - top
 
-        /** A zero-area node cannot be tapped and is almost always a layout wrapper. */
-        val isVisible: Boolean get() = width > 0 && height > 0
+        /**
+         * Positive area; says nothing about the viewport. A zero-area node cannot be tapped and is
+         * almost always a layout wrapper. Whether a node is on screen is [ViewportVisibility]'s call.
+         */
+        val hasArea: Boolean get() = width > 0 && height > 0
+
+        /** The overlap of the two, or null when they do not overlap with any area. */
+        fun intersect(other: Bounds): Bounds? = Bounds(
+            maxOf(left, other.left),
+            maxOf(top, other.top),
+            minOf(right, other.right),
+            minOf(bottom, other.bottom),
+        ).takeIf { it.hasArea }
 
         override fun toString() = "[$left,$top][$right,$bottom]"
     }

@@ -71,6 +71,19 @@ class UiNodeRowsTest {
     }
 
     @Test
+    fun `a row says where a node is only when it is not plainly in the viewport`() {
+        val node = node(text = "Row 9")
+        fun last(visibility: NodeVisibility?) = node.rowSegments(visibility).last()
+
+        val outside = NodeVisibility(Presence.OUTSIDE_VIEWPORT, null, 0.0)
+        assertEquals(RowSegment("outside viewport", Kind.VIEWPORT), last(outside))
+        val partial = NodeVisibility(Presence.PARTIALLY_IN_VIEWPORT, UiNode.Bounds(0, 0, 100, 62), 0.62)
+        assertEquals(RowSegment("62% in viewport", Kind.VIEWPORT), last(partial))
+        val inView = NodeVisibility(Presence.IN_VIEWPORT, node.bounds, 1.0)
+        assertEquals(node.rowSegments(), node.rowSegments(inView), "a node in view looks as it always did")
+    }
+
+    @Test
     fun `search matches tag, text or description, visible nodes only`() {
         assertEquals(listOf("checkout_continue"), inspectorMatches(tree, "CHECKOUT_", false).map { it.testTag })
         val untagged = inspectorMatches(tree, "contin", false).filter { it.testTag == null }

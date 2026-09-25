@@ -118,7 +118,8 @@ First increment, 23 September 2026:
 - [x] Correct hybrid tag detection for View IDs outside Compose, and missing-tag guidance. Known gap: View IDs from `AndroidView` interop *inside* a Compose host still count as exposed tags. The parser has no confirmed interop-boundary signal, and a device capture is needed to find one (see `UiTreeParser.composeNodes`).
 - [x] Add selector, action-dispatch, density, parser, and accessibility regression tests, including nested and sibling scroll containers, target de-duplication, ambiguity messages, and scroll-container audit exemption.
 - [x] Shared observation model (`UiObservation`): device serial, the package owning the dumped window (not claimed to be the foreground app), host-clock start and duration, display rotation, viewport (window clipped to the display), effective density, data source, and the capture's limits. Every MCP UI tool opens with its one-line summary and, where it makes a claim about the screen, one line of limits; the Inspector's status line shows viewport and density. Display size and density are best effort: a failed `wm` read leaves them unknown and says so.
-- [ ] Finish Phase 1 viewport-aware visibility, bounded waits, and outcome assertions.
+- [x] Viewport-aware visibility (`ViewportVisibility`): every node is in the viewport, partly in it (with its share and the part in view), outside it, of zero area, or unclassified when the capture has no viewport. The viewport is narrowed by each scroll container above a node, and by nothing else. Nothing is described as fully visible or unobscured. `Bounds.isVisible` is now `hasArea`, which is all it ever checked. Element actions refuse a target out of view and point to `android_scroll_to_element`, and press a partly visible target at the centre of its part in view. `assert_visible` and `assert_text` pass only for a match in view, and are inconclusive without a viewport. `scroll_to_element` stops only at a match in view. `find_ui_element`, `get_ui_tree` and the Inspector say where each node is. A node whose bounds reach a scroll container's edge is flagged as possibly cut: its size is unknown, and the audit leaves it out of the size and label checks and counts it in the coverage note.
+- [ ] Finish Phase 1 bounded waits and outcome assertions.
 - [ ] Complete Phase 2 scrolling, input capability handling, lifecycle scenarios, and configuration recovery.
 - [ ] Complete Phase 3 scenario export and Phase 4 feasibility work.
 
@@ -154,8 +155,8 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | | `{testTag: "feed_end", containerTag: "feed_section", maxSwipes: 20}` | Found; the feed wins over the carousels inside it |
 | 6b. Sibling lists (Scroll) | `android_scroll_to_element {text: "Right 35"}` | Refused: several scrollable containers |
 | | `{text: "Right 35", containerTag: "list_right"}` | Found |
-| 7. Audit (Audit) | `android_accessibility_audit {}` | Two findings: `audit_unlabelled` (no accessible text, despite its tag) and `audit_small_target` (below 48dp). Nothing for `audit_list` or its rows |
-| 8. Never idle (Busy) | `android_tap_element {testTag: "busy_switch"}`, then `android_get_ui_tree {}` | Capture fails as `DUMP_REFUSED` ("could not get idle state"), or `TIMED_OUT` where `uiautomator` waits past 30 s. The switch turns itself off after 30 s |
+| 7. Audit (Audit) | `android_accessibility_audit {}` | Two findings: `audit_unlabelled` (no accessible text, despite its tag) and `audit_small_target` (24dp, below 48dp). Nothing for `audit_list` or its rows. The coverage note says 1 control at a scroll container's edge was skipped: the half-visible fifth row |
+| 8. Never idle (Busy) | `android_tap_element {testTag: "busy_switch"}`, then `android_get_ui_tree {}` | Capture fails as `DUMP_REFUSED` ("could not get idle state"), after about 12 s on an API 34 emulator; `TIMED_OUT` where `uiautomator` waits past 30 s. The switch turns itself off after 30 s |
 | 9. Hybrid, tags off (Hybrid) | `android_tap_element {testTag: "expose_tags_switch"}`, then `android_get_ui_tree {}` | Hybrid screen, no exposed Compose tags observed: the toolbar's View IDs do not count. `{text: "Expose test tags"}` turns them back on |
 | 10. Known gap (Hybrid, tags off) | `android_tap_element {text: "Show a View inside Compose"}`, then `android_get_ui_tree {}` | Still reports Compose tags as visible, because of the `AndroidView` ID. Expected until the gap is closed |
 | 11. A second window (Window) | `android_get_ui_tree {}` with the dialog closed | First line `Observed on <serial>, window spock.adb.sample, <ISO-8601 instant> (host clock, <n> s capture), viewport <W>x<H> rot 0, <dpi> dpi, source: uiautomator accessibility dump of the active window.` Second line starts `Limits:` and, tags being exposed, names the `AndroidView` gap. Rotation and dpi match the tab's own *This app sees* line |
@@ -163,7 +164,51 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | 12. Rotation (Window) | Rotate the device, then `android_get_ui_tree {}` | `rot` equals the rotation the tab shows (1 or 3 for landscape); the viewport's width and height swap |
 | 13. Density (Window) | `adb shell wm density 320`, then `android_accessibility_audit {}`; afterwards `adb shell wm density reset` | Summary says `320 dpi`, and the coverage note says touch-target estimates use 320dpi |
 | 14. Lost device (any) | Disconnect the device (`adb disconnect`, or unplug) and call `android_get_ui_tree {}`; then press **Capture UI** in the Inspector | MCP: `DEVICE_UNAVAILABLE` naming the serial and pointing to `android_list_devices`. Inspector: the same failure, telling the person to reconnect or choose another device, with no tool name. Its status line after a good capture ends `· viewport <W>x<H> rot <r> · <dpi> dpi` |
+| 15. In the tree, in view, or neither (Fold) | `android_assert_visible {testTag: "below_fold"}` | FAIL: nothing matched, pointing to `android_scroll_to_element`. The row is left out of the capture while it is scrolled out of the column, so it is absent rather than outside the viewport |
+| | `android_tap_element {testTag: "below_fold"}` | Refused as no match, pointing to `android_scroll_to_element`; nothing dispatched, *Last tap* unchanged |
+| | `android_find_ui_element {testTag: "half_visible"}`, then `android_get_ui_tree {}` | One match, "partly in the viewport, cut at its scroll container's edge; how much is out of view is unknown". The tree marks it `[partly in viewport, clipped by scroll container]` and its text `[may be clipped by scroll container]`; nothing else in the card is marked |
+| | `android_tap_element {testTag: "half_visible"}` | Tapped at the centre of its part in view, not of its bounds; *Last tap* names the half-visible row |
+| | `android_scroll_to_element {testTag: "below_fold"}`, `android_assert_visible {testTag: "below_fold"}`, `android_tap_element {testTag: "below_fold"}`; afterwards switch tabs and back to scroll the column to the top | Found after about 5 swipes; PASS, ending "(occlusion not checked)"; *Last tap* names the row below the fold |
 
 Rows 1–5 were resolved offline with the plugin's selector against a `uiautomator` dump of the
-Taps tab from an API 34 emulator, and matched the table. Nothing was dispatched through MCP, and
-rows 6–14 have not been run on a device yet.
+Taps tab from an API 34 emulator, and matched the table. Nothing was dispatched through MCP.
+
+Rows 7, 8 and 15 were run on an API 34 emulator (1080x2636, 480 dpi) with the plugin's own tool
+classes — the audit, tree, find, assert, tap and scroll tools — sending every command to the
+emulator through `adb shell`. Only the MCP transport and ddmlib were left out. Each result matched
+the table, and each tap was confirmed by the *Last tap* line. Rows 6 and 9–14 have not been run on
+a device yet. What the emulator showed:
+
+- **Row 7 was a false pass.** Compose widens a clickable's reported bounds to the
+  `ViewConfiguration` minimum touch target, so the 24dp `audit_small_target` box was dumped at
+  48dp and never flagged. The sample now removes that widening around the box alone, and the dump
+  reports it at 72px, 24dp. The list's fifth row is always half cut by the list's 240dp height. It
+  was dumped as `[72,1542][1008,1662]`, reaching past the list's bottom edge (1590) yet still
+  short of its real 56dp, and without its "Option 5" text. Stage 3's audit skips it and says so.
+- **Row 8 did not reproduce as written.** With only the Compose ticker, dumps succeeded in 3.5–4.9 s
+  while it ran: Compose sends accessibility events only once it sees an enabled accessibility
+  service, and the dump's own connection does not count as one. A View ticker was added
+  (`AndroidView` around a `TextView`), and since then every dump fails with "ERROR: could not get
+  idle state." after 11.7–13.4 s, which the plugin reports as `DUMP_REFUSED`.
+- **How Compose reports `below_fold`: absent.** A row scrolled wholly out of its `verticalScroll`
+  column is not in the dump at all, and neither is any other row below the column's edge. So an
+  off-screen Compose element comes back as *nothing matched*, not *outside the viewport*. The
+  refusal and the failure both point to `android_scroll_to_element` for that reason. The
+  outside-viewport answer still covers bounds laid out beyond a container, as a View dump or a
+  future data source may report them.
+- **How Compose reports a row cut by its container: whole, or cut by what is drawn over it.**
+  `half_visible` (48dp, 24dp in view) was dumped at its full `[72,1146][1008,1290]` while its text
+  child was cut to the column's edge at 1218. With another card directly below the column, the
+  same row was dumped as `[72,1146][1008,1278]`, cut where that card begins. Its bounds are
+  therefore not a reliable size, which is why a node reaching or crossing a scroll container's
+  edge is flagged with an unknown share. After scrolling, `below_fold` sat exactly on the column's
+  bottom edge at full size, and is flagged *may be clipped* for the same reason.
+- **A zero-size node is absent too.** A tagged `Modifier.size(0.dp)` box never appeared in the
+  dump, so the sample has no zero-area fixture: `ZERO_AREA` is covered by unit tests only.
+
+Stage 3 validation: `./gradlew test` ran 1008 tests with 9 skipped and no failures; `detekt`,
+`buildPlugin` and the sample's `assembleDebug` passed. `verifyPlugin` still stops on the broken
+cached IntelliJ IDEA 2025.1 install. The Plugin Verifier CLI was therefore run directly against the
+other four targets (Android Studio 2023.2.1.25, 2024.2.1.12 and 2025.1.1.14, IntelliJ IDEA
+Community 2023.2.8), and all four reported Compatible, with only the deprecated usages already
+known.

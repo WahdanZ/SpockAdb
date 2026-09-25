@@ -40,7 +40,7 @@ internal object InspectorStatus {
 
     private fun captured(tree: UiTree): String {
         val total = tree.nodes().count()
-        val interactive = tree.nodes().count { it.isInteractive && it.bounds.isVisible }
+        val interactive = tree.nodes().count { it.isInteractive && it.bounds.hasArea }
         return "$total nodes · $interactive interactive"
     }
 }

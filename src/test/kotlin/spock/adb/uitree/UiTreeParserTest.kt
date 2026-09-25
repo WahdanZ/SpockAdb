@@ -65,7 +65,7 @@ class UiTreeParserTest {
 
         val fab = viewsTree.nodes().first { it.resourceId.endsWith("/fab") }
         assertTrue(fab.clickable)
-        assertTrue(fab.bounds.isVisible)
+        assertTrue(fab.bounds.hasArea)
     }
 
     @Test
@@ -109,14 +109,14 @@ class UiTreeParserTest {
         assertEquals(1032, bounds.bottom)
         assertEquals(540, bounds.centerX)
         assertEquals(966, bounds.centerY)
-        assertTrue(bounds.isVisible)
+        assertTrue(bounds.hasArea)
     }
 
     @Test
     fun `malformed bounds degrade instead of throwing`() {
         val bounds = UiTreeParser.parseBounds("nonsense")
         assertEquals(0, bounds.width)
-        assertTrue(!bounds.isVisible)
+        assertTrue(!bounds.hasArea)
     }
 
     @Test

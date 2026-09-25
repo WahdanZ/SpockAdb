@@ -55,4 +55,25 @@ class NodePropertiesTest {
         assertEquals("yes, not focused", values["Focusable"])
         assertEquals("no", values["Checkable"])
     }
+
+    @Test
+    fun `geometry says where the node is relative to the viewport, when that is known`() {
+        val tree = UiTreeParser.parse(
+            checkNotNull(javaClass.getResourceAsStream("/uidumps/compose-material3.xml")).bufferedReader().readText(),
+        )
+        val button = tree.nodes().first { it.testTag == "checkout_continue" }
+        fun viewport(visibility: NodeVisibility?) =
+            NodeProperties.of(button, 420, visibility).single { it.title == "Geometry" }.rows
+                .singleOrNull { it.name == "Viewport" }?.value
+
+        assertEquals(null, viewport(null))
+        assertEquals(
+            "Within the viewport (occlusion not checked)",
+            viewport(NodeVisibility(Presence.IN_VIEWPORT, button.bounds, 1.0)),
+        )
+        assertEquals(
+            "In the tree but outside the viewport or its scroll container",
+            viewport(NodeVisibility(Presence.OUTSIDE_VIEWPORT, null, 0.0)),
+        )
+    }
 }

@@ -139,6 +139,28 @@ class ComposeUiObservationToolsTest {
     }
 
     @Test
+    fun `the tree marks only what is not plainly in the viewport`() {
+        val text = Screen(xml = LIST).run(GetUiTreeTool())
+        val lines = text.lines()
+
+        assertTrue(lines.single { "Row 1" in it }.endsWith("[0,100][1080,300]"), "in view: no marker: $text")
+        assertTrue(lines.single { "Row 5" in it }.endsWith("[partly in viewport, clipped by scroll container]"), text)
+        assertTrue(lines.single { "Row 9" in it }.endsWith("[outside viewport]"), text)
+        val markers = lines.count { it.endsWith("viewport]") || it.endsWith("container]") }
+        assertEquals(2, markers, "two markers, one per node that needs one: $text")
+    }
+
+    @Test
+    fun `each found element says where it is relative to the viewport`() {
+        val text = Screen(xml = LIST).run(FindUiElementTool(), JsonObject().apply { addProperty("text", "Row") })
+
+        assertTrue(text.contains("3 match(es)"), text)
+        assertTrue(text.contains("visibility: within the viewport (occlusion not checked)"), text)
+        assertTrue(text.contains("visibility: in the tree but outside the viewport or its scroll container"), text)
+        assertFalse(text.contains("fully visible"), text)
+    }
+
+    @Test
     fun `a lost device points an agent at android_list_devices`() {
         val screen = Screen(failure = AdbCommandRejectedException("device offline"))
 
@@ -162,6 +184,20 @@ class ComposeUiObservationToolsTest {
                         clickable="true" enabled="true" bounds="[0,0][300,200]" />
                   <node class="android.view.View" content-desc="Close" resource-id="close" package="p"
                         clickable="true" enabled="true" bounds="[400,0][460,60]" />
+                </node>
+              </node>
+            </hierarchy>
+        """.trimIndent()
+
+        /** A list ending at y=1000: row 1 clear of its edges, row 5 cut at one, row 9 laid out below it. */
+        val LIST = """
+            <hierarchy rotation="0">
+              <node class="android.widget.FrameLayout" package="p" bounds="[0,0][1080,2400]">
+                <node class="android.widget.ScrollView" resource-id="list" package="p"
+                      scrollable="true" enabled="true" bounds="[0,0][1080,1000]">
+                  <node class="android.widget.TextView" text="Row 1" package="p" bounds="[0,100][1080,300]" />
+                  <node class="android.widget.TextView" text="Row 5" package="p" bounds="[0,900][1080,1100]" />
+                  <node class="android.widget.TextView" text="Row 9" package="p" bounds="[0,1700][1080,1900]" />
                 </node>
               </node>
             </hierarchy>

@@ -87,9 +87,12 @@ internal class NodeDetailsPanel(private val onNotice: (String) -> Unit) : JPanel
         show(null, null, null)
     }
 
-    /** [node] from [observation]'s tree, or nothing selected. [tree] is where selectors are checked. */
-    fun show(node: UiNode?, observation: UiObservation?, tree: UiTree?) {
-        model.show(node?.let { NodeProperties.of(it, observation?.densityDpi) }.orEmpty())
+    /**
+     * [node] from [observation]'s tree, or nothing selected. [tree] is where selectors are checked;
+     * [visibility] is where [node] is relative to the capture's viewport.
+     */
+    fun show(node: UiNode?, observation: UiObservation?, tree: UiTree?, visibility: NodeVisibility? = null) {
+        model.show(node?.let { NodeProperties.of(it, observation?.densityDpi, visibility) }.orEmpty())
         hint.isVisible = node != null && !node.isInteractive
 
         val framework = tree?.framework ?: UiFramework.UNKNOWN

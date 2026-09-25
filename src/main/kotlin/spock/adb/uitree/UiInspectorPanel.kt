@@ -76,6 +76,9 @@ class UiInspectorPanel(
     private var connected: ConnectedDevice? = null
     private val device: DeviceLabel? get() = connected?.let { DeviceLabel(it.serialNumber, it.info.displayName) }
     private var captured: UiObservation? = null
+
+    /** Each captured node's place in the viewport, worked out with the capture on the pooled thread. */
+    private var visibility: Map<UiNode, NodeVisibility> = emptyMap()
     private var capturedFrom: DeviceLabel? = null
     private var capturing = false
     private var failure: Throwable? = null
@@ -87,7 +90,7 @@ class UiInspectorPanel(
 
     init {
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
-        tree.cellRenderer = UiNodeRenderer()
+        tree.cellRenderer = UiNodeRenderer { visibility[it] }
         tree.addTreeSelectionListener { showDetails() }
         // Typing in the tree jumps to a row, as in any IDE tree; the search field filters instead.
         TreeSpeedSearch.installOn(tree, true, Function { path: TreePath -> path.uiNode?.describe().orEmpty() })
@@ -253,12 +256,12 @@ class UiInspectorPanel(
 
         // The dump is a blocking ADB round trip plus a file read; never on the EDT.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching { observe(target) }
+            val result = runCatching { observe(target).let { it to ViewportVisibility.classifyAll(it) } }
 
             ApplicationManager.getApplication().invokeLater({
                 capturing = false
                 result
-                    .onSuccess { onCaptured(it, from) }
+                    .onSuccess { (observation, classified) -> onCaptured(observation, classified, from) }
                     .onFailure { failure = it }
                 refresh()
             }) { project.isDisposed }
@@ -269,8 +272,9 @@ class UiInspectorPanel(
     private fun observe(target: ConnectedDevice): UiObservation =
         UiTreeOperations(target.device, serial = target.serialNumber).observe()
 
-    private fun onCaptured(observation: UiObservation, from: DeviceLabel) {
+    private fun onCaptured(observation: UiObservation, classified: Map<UiNode, NodeVisibility>, from: DeviceLabel) {
         captured = observation
+        visibility = classified
         capturedFrom = from
         header.show(observation, from)
         findings.clear()
@@ -352,15 +356,16 @@ class UiInspectorPanel(
     }
 
     private fun showDetails() {
-        details.show(selectedNode(), captured, capturedTree)
+        val node = selectedNode()
+        details.show(node, captured, capturedTree, node?.let { visibility[it] })
         pendingNotice = null
         refresh()
     }
 
     private fun runAudit() {
-        val uiTree = capturedTree ?: return
-        val found = AccessibilityAudit.audit(uiTree)
-        findings.show(found, uiTree)
+        val observation = captured ?: return
+        val found = AccessibilityAudit.audit(observation)
+        findings.show(found, observation)
         detailTabs.setTitleAt(AUDIT_TAB_INDEX, "$AUDIT_TAB (${found.size})")
         detailTabs.selectedIndex = AUDIT_TAB_INDEX
         notice(if (found.size == 1) "1 accessibility finding." else "${found.size} accessibility findings.")

@@ -23,7 +23,8 @@ internal object NodeProperties {
     private const val NONE = "—"
     private const val BASELINE_DPI = 160.0
 
-    fun of(node: UiNode, densityDpi: Int?): List<PropertySection> = listOf(
+    /** @param visibility where [node] is relative to the capture's viewport, when that was worked out. */
+    fun of(node: UiNode, densityDpi: Int?, visibility: NodeVisibility? = null): List<PropertySection> = listOf(
         PropertySection(
             "Identity",
             listOf(
@@ -42,7 +43,7 @@ internal object NodeProperties {
                 row("Size", "${node.bounds.width} × ${node.bounds.height} px"),
                 row("Size in dp", dpSize(node.bounds.width, node.bounds.height, densityDpi)),
                 row("Centre", "${node.bounds.centerX}, ${node.bounds.centerY}"),
-            ),
+            ) + listOfNotNull(visibility?.let { row("Viewport", viewport(it)) }),
         ),
         PropertySection(
             "State",
@@ -71,6 +72,10 @@ internal object NodeProperties {
 
     /** One decimal place, without a trailing `.0`: `48`, `50.3`. */
     fun formatDp(dp: Double): String = String.format(Locale.ROOT, "%.1f", dp).removeSuffix(".0")
+
+    /** The description, starting with a capital as the other values in the table do. */
+    private fun viewport(visibility: NodeVisibility): String =
+        visibility.describe().replaceFirstChar { it.uppercaseChar() }
 
     private fun row(name: String, value: String) = PropertySection.Property(name, value.ifBlank { NONE })
 

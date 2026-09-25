@@ -35,7 +35,7 @@ data class UiSelector(
     fun matches(node: UiNode): Boolean {
         if (isEmpty || !inScope(node)) return false
         if (interactiveOnly && !node.isInteractive) return false
-        if (!node.bounds.isVisible) return false
+        if (!node.bounds.hasArea) return false
         return tagMatches(node) && textMatches(node)
     }
 
@@ -145,7 +145,7 @@ object UiTreeSearch {
     fun scrollTarget(tree: UiTree, selector: UiSelector): UiNode? {
         val scope = searchRoot(tree, selector)
         val candidates = scope.filter {
-            it.scrollable && it.enabled && it.bounds.isVisible &&
+            it.scrollable && it.enabled && it.bounds.hasArea &&
                 (selector.packageName == null || it.packageName == selector.packageName)
         }
         if (selector.containerTag != null && candidates.any { it === scope.first() }) return scope.first()
@@ -166,7 +166,7 @@ object UiTreeSearch {
     /** The nearest ancestor-or-self that [action] can land on, before any policy checks. */
     private fun eligibleTarget(tree: UiTree, node: UiNode, action: Action): UiNode? =
         (listOf(node) + ancestorsOf(tree, node)).firstOrNull {
-            it.bounds.isVisible && when (action) {
+            it.bounds.hasArea && when (action) {
                 Action.TAP -> it.clickable
                 Action.LONG_PRESS -> it.longClickable
                 Action.TEXT_INPUT -> it.focusable && it.className.endsWith("EditText")
