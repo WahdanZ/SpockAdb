@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Inflated by ViewsInspectorActivity, so Jump to Source finds a View by its android:id in XML. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/views_source_label"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:paddingVertical="4dp"
+    android:text="Inflated from a layout file" />

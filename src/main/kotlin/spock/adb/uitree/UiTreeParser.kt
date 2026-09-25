@@ -59,13 +59,15 @@ object UiTreeParser {
         }.getOrNull() ?: return UiTree(null, UiFramework.UNKNOWN, UiTree.TestTagSupport.NOT_APPLICABLE)
 
         val hierarchy = document.documentElement ?: return empty()
-        val root = hierarchy.childElements().firstOrNull()?.toNode() ?: return empty()
+        val rotation = hierarchy.getAttribute("rotation").toIntOrNull()?.takeIf { it in 0..MAX_ROTATION }
+        val root = hierarchy.childElements().firstOrNull()?.toNode() ?: return empty(rotation)
 
         val framework = detectFramework(root)
-        return UiTree(root, framework, detectTestTagSupport(framework, root.asSequence().toList()))
+        return UiTree(root, framework, detectTestTagSupport(framework, composeNodes(root)), rotation = rotation)
     }
 
-    private fun empty() = UiTree(null, UiFramework.UNKNOWN, UiTree.TestTagSupport.NOT_APPLICABLE)
+    private fun empty(rotation: Int? = null) =
+        UiTree(null, UiFramework.UNKNOWN, UiTree.TestTagSupport.NOT_APPLICABLE, rotation = rotation)
 
     /**
      * Compose hosts itself inside a `ComposeView` / `AndroidComposeView`, which does appear
@@ -103,6 +105,28 @@ object UiTreeParser {
 
     private fun UiNode.isComposeHost(): Boolean =
         className == COMPOSE_VIEW_MARKER || className == COMPOSE_LEGACY_MARKER
+
+    /**
+     * View resource IDs outside Compose cannot prove that Compose tags are exposed.
+     *
+     * Known gap: Views embedded through `AndroidView` interop sit *inside* the Compose host, so
+     * their View IDs still count here and can report AVAILABLE for a screen whose Compose tags
+     * are hidden. Excluding them needs a signal the parser does not have: no marker for the
+     * interop boundary has been confirmed in uiautomator output, and the ID format cannot stand
+     * in for one, because compose-material3.xml asserts exposed tags as `package:id/tag`, the
+     * same shape as a View ID. Close this with a real-device dump of an `AndroidView` inside
+     * Compose, captured with and without exposed tags.
+     */
+    private fun composeNodes(root: UiNode): List<UiNode> {
+        val result = mutableListOf<UiNode>()
+        fun collect(node: UiNode, insideCompose: Boolean) {
+            val withinCompose = insideCompose || node.isComposeHost()
+            if (withinCompose && !node.isComposeHost()) result += node
+            node.children.forEach { collect(it, withinCompose) }
+        }
+        collect(root, false)
+        return result
+    }
 
     private fun detectTestTagSupport(framework: UiFramework, nodes: List<UiNode>): UiTree.TestTagSupport =
         when (framework) {
@@ -152,6 +176,9 @@ object UiTreeParser {
             UiNode.Bounds(0, 0, 0, 0)
         }
     }
+
+    /** `Surface.ROTATION_270`, the last of the four quarter turns `uiautomator` reports. */
+    private const val MAX_ROTATION = 3
 
     private const val BOUNDS_VALUES = 4
     private const val B_LEFT = 0

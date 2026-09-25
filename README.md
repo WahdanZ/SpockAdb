@@ -15,7 +15,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 62 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 63 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -179,7 +179,11 @@ Supports:
 
 **Android Views · Jetpack Compose · Hybrid screens**
 
-Inspect text, content descriptions, bounds, test tags, interaction state, and other semantics.
+Inspect text, content descriptions, bounds, test tags, interaction state, and other semantics — with sizes in dp, whether each element is actually in view, and which device, window and moment the capture came from.
+
+Select an element to copy a selector for it — MCP arguments, a Compose test finder, or a UI Automator selector — checked against the captured screen, so one that would match several elements says so before you paste it.
+
+**Jump to Source** opens the code that drew the selected element, found in the open project by its test tag, resource id, text, or View class.
 
 Spock ADB can also detect common accessibility problems such as:
 
@@ -215,7 +219,7 @@ Run a supported job on demand instead of waiting for the system to trigger it, a
 
 Spock ADB includes a built-in **MCP server** for tools such as Claude Code, Claude Desktop, Cursor, and other MCP clients.
 
-Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **61 structured Android debugging tools**.
+Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **63 structured Android debugging tools**.
 
 Agents can inspect things such as:
 
@@ -224,6 +228,8 @@ Agents can inspect things such as:
 and perform actions such as:
 
 **Launch · Tap · Input text · Deep links · App lifecycle operations**
+
+Element actions refuse to guess between look-alike targets, can wait for the screen to change instead of sleeping, and can check that a tap had the effect it should — without ever sending it twice.
 
 Sensitive or destructive operations can require approval, and MCP activity remains visible inside the IDE.
 

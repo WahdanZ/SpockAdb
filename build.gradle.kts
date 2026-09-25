@@ -59,6 +59,8 @@ dependencies {
         // the jar happens to already be in the Gradle cache, so it passes locally and on a
         // warm CI runner, then fails on a cold one with "executable not found".
         pluginVerifier()
+
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 
     implementation("org.jooq:joor:0.9.15")
@@ -66,7 +68,15 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine")
+    testImplementation("io.mockk:mockk:1.13.9") {
+        // The IDE ships its own fork of kotlinx-coroutines, and the platform test framework needs
+        // that one: mockk's stock copy ahead of it on the classpath fails every platform test with
+        // NoSuchMethodError in DebugProbesImpl. No test here uses coroutine mocking.
+        exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core")
+        exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-core-jvm")
+    }
 
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.23.8")
 }

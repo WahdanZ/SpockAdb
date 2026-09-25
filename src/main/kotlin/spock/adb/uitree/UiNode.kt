@@ -49,6 +49,13 @@ data class UiNode(
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
 
+    /** Text exposed for announcement; automation identifiers are deliberately excluded. */
+    val accessibleLabel: String
+        get() = contentDescription.takeIf { it.isNotBlank() }
+            ?: text.takeIf { it.isNotBlank() }
+            ?: children.filterNot { it.isInteractive }.map { it.accessibleLabel }
+                .filter { it.isNotBlank() }.joinToString(" ")
+
     /** Interactive in the sense an agent cares about: something it can act on. */
     val isInteractive: Boolean get() = clickable || longClickable || scrollable || checkable
 
@@ -76,8 +83,19 @@ data class UiNode(
         val width: Int get() = right - left
         val height: Int get() = bottom - top
 
-        /** A zero-area node cannot be tapped and is almost always a layout wrapper. */
-        val isVisible: Boolean get() = width > 0 && height > 0
+        /**
+         * Positive area; says nothing about the viewport. A zero-area node cannot be tapped and is
+         * almost always a layout wrapper. Whether a node is on screen is [ViewportVisibility]'s call.
+         */
+        val hasArea: Boolean get() = width > 0 && height > 0
+
+        /** The overlap of the two, or null when they do not overlap with any area. */
+        fun intersect(other: Bounds): Bounds? = Bounds(
+            maxOf(left, other.left),
+            maxOf(top, other.top),
+            minOf(right, other.right),
+            minOf(bottom, other.bottom),
+        ).takeIf { it.hasArea }
 
         override fun toString() = "[$left,$top][$right,$bottom]"
     }
@@ -90,6 +108,12 @@ data class UiTree(
     val root: UiNode?,
     val framework: UiFramework,
     val testTagSupport: TestTagSupport,
+    val densityDpi: Int? = null,
+    /**
+     * The display's rotation when the dump was taken, as `uiautomator` writes it on
+     * `<hierarchy>`: 0 to 3, in quarter turns. Null when the dump did not say.
+     */
+    val rotation: Int? = null,
 ) {
     fun nodes(): Sequence<UiNode> = root?.asSequence() ?: emptySequence()
 

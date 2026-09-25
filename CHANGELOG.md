@@ -4,6 +4,84 @@
 
 ### Added
 
+- **A redesigned UI Inspector, and a selector for any element in one click.** The tree is drawn
+  with the IDE's own renderer, so rows follow the theme instead of sitting on mismatched grey
+  blocks, and each row reads as the class, then the test tag, the text and the content
+  description in their own colours, then what the element can do. A header line gives a
+  Compose / Hybrid / Views badge and the capture in brief — device, window, time, viewport and
+  density — with the full description and its limits on hover. Search is the IDE's search field,
+  **Interactive only** is a toggle beside it, and typing in the tree jumps to a row. The details
+  pane is a properties table — identity, geometry with sizes in dp as well as px, and state —
+  under a **Selector** for the selected element: MCP arguments, a Compose test finder and a UI
+  Automator selector, each one click to copy (or right-click the tree). The selector is built from
+  the test tag, else the whole text, else the whole content description, and is checked against
+  the captured screen, so one that would find three elements says so, with the refusal an element
+  action would give, before it is pasted anywhere. Audit findings are a list with severity icons;
+  selecting one selects its element in the tree and shows its fix. Before the first capture, the
+  empty tree offers a **Capture UI** link.
+- **Go from an element in the UI Inspector to the code that drew it.** With **Autoscroll to
+  Source** on in the Inspector's toolbar (it is by default), clicking an element opens its source
+  and leaves focus in the tree, so the arrow keys keep walking the screen with the editor
+  following. A slow search that answers after you have moved on to an editor, or hidden the tool
+  window, fills in the Source line but does not switch the editor under you. Double-click, Enter,
+  the Edit Source shortcut, **Jump to Source** in the context menu
+  and the link in the details pane open it with focus. A screen capture carries no source locations
+  (Android Studio's Layout Inspector gets them from an agent on the device), so this is a search of
+  the open project, and it says which identifier matched: the test tag passed to `testTag(...)`,
+  then a View id's `android:id` in a layout or its `R.id` in code, then the text or content
+  description as a string literal, or as a `strings.xml` value followed to its `R.string` use, then
+  a custom View's class. A match by text says it may be one of several, and when more than one
+  place matched, Jump to Source lists them, best first. Values an app builds at run time are found
+  too: a tag written as `testTag("form_${form}_button")` is found from the `form_a_button` the device
+  reports, by reading the argument of every `testTag(...)` call, and so is text such as
+  `Text("Feed row $row")` from "Feed row 1", or a `strings.xml` value with `%d` in it. A literal equal
+  to the value still ranks first, and the Source line names the template it matched through; one
+  that writes a dollar sign as `${'$'}` is the constant it reads as, so "$5 total" finds it. Most
+  Compose rows have nothing of their own to search for — a Button's label is a child Text, a Row or
+  Column has neither tag nor text — so clicking a button used to open nothing while clicking its
+  label worked. Such an element now borrows from its nearest identifiable relative, its label
+  first, then what is inside it, then what encloses it, and says so: "via its label 'Save'", "via
+  enclosing 'feed_section'". When nothing at all is found, it opens the Activity that was on screen
+  when the UI was captured, and says that is what it did; that Activity is read after the tree is
+  shown, so a capture never waits for it. Nothing found says what was searched, and a search that
+  breaks says so on the Source line rather than as an IDE error; while the IDE is indexing it says
+  so instead of searching, and each search is cancelled as soon as the selection moves on.
+- **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`
+  (read-only) looks at the screen every half second, or as often as asked, until an element is
+  visible, present, gone or hidden, or until exactly one match is enabled, disabled, checked,
+  unchecked, selected, unselected or focused — for up to 60 s, or 15 s over HTTP (see below).
+  Before, an agent either slept a number of seconds it made up, or asserted again and again, paying
+  for a whole screen each time. A screen capture takes 2 to 7 s on an emulator, so the first look
+  always runs to completion, even past the limit, and the answer comes from what it saw: every wait
+  sees the screen at least once, `timeoutMs: 0` means "look once", and an answer reached after the
+  limit says so. Each later look is given only what is left of the wait, so after the first the
+  wait ends within about a second of its limit. The answer says how many looks it took and how
+  long, and counts the looks `uiautomator` refused while the UI was still animating, which it
+  retries. A lost device stops the wait at once rather than letting it run out. A selector that
+  matches two switches times out saying so rather than answering for one of them.
+- **Stop in the assistant ends a running wait, even in the middle of a screen capture.** Stop only
+  took effect between tool calls, so a wait would have run for up to a minute after it was pressed.
+  `android_wait_for_element` now sees Stop during each capture, the first one included, and between
+  captures, and reports that nothing was changed on the device. A tool call the model queued behind
+  the wait — a tap on the element it was waiting for — is not run after Stop either: it is answered
+  "Not run: the user pressed Stop." instead, so a stopped turn cannot still act on the device or ask
+  to confirm a destructive call. MCP clients on stdio cancel a wait the same way, by interrupting
+  the request. HTTP has no way to cancel a call, so a wait there is capped at 15 s and says so: the
+  HTTP server has four threads, and four abandoned 60-second waits would have stalled every HTTP
+  call, `tools/list` included, for a minute.
+- **An agent can say what a tap should do, and be told whether it happened.** `android_tap_element`,
+  `android_long_press_element` and `android_input_text_into_element` take an optional expected result
+  — `expectTestTag`, `expectText` or `expectContentDescription`, with `expectUntil` in
+  `android_wait_for_element`'s words and `expectTimeoutMs` (5 s by default, at most 15 s over HTTP).
+  After sending the input they look for it and answer **VERIFIED**, **NOT OBSERVED**, or
+  **INCONCLUSIVE** when the expected state was already there before the tap and so proves nothing;
+  only VERIFIED is a success. Before, an agent got "UI outcome not verified" and had to make a second
+  call to find out, and one that assumed the best moved on from a tap that did nothing. The input is
+  **sent once and never repeated**: when the check fails, and also when the shell call itself times
+  out or loses the device, which is now reported as *dispatch uncertain* — the tap may have landed,
+  and a second one could place a second order — with a pointer to look before retrying. Text is
+  never typed if the tap that focuses its field failed. Stop answers **CANCELLED**, saying how far
+  the action had got. Without an expectation the tools answer as before.
 - **Diagnose Current Screen.** "Why is this screen wrong" used to be a tour of the Device tab,
   Logcat, the UI Inspector, Background Work and the permissions dialog, each answering for a
   different moment. The new **Diagnose** tab — also **Tools › Spock ADB › Diagnose Current Screen**,
@@ -33,6 +111,99 @@
   thousand tokens instead of a dump. Clients that parse the old text bundle get it unchanged with
   `format: "full"`, and the old section names `activity` and `logcat` still work. Sections live
   in their own layer, apart from the tool window and MCP, so the next one is a class and a line.
+- **Element actions refuse to guess.** `android_tap_element`, `android_long_press_element` and
+  `android_input_text_into_element` acted on the first match, so with two **Save** buttons on screen
+  an agent pressed whichever came first. They now refuse an ambiguous target, a disabled one, or one
+  outside the selected container, and send nothing. A refusal names each candidate's label and class
+  and says which selector field can tell them apart — often `exact: true` — or that none can. Matches
+  that land on the same control count once, so an icon inside a button sharing its description is
+  not ambiguous. Optional `packageName` and `containerTag` scopes and `exactTag` matching narrow a
+  selector; substring matching stays the default. `android_scroll_to_element` swipes the outermost
+  of nested lists, such as a feed of carousels, and refuses only between unrelated lists. An action
+  result says the input was dispatched, not that the app changed, unless an expected result was
+  checked.
+- **"Visible" now means in the viewport, not just in the tree.** `android_assert_visible` and
+  `android_assert_text` passed for any node in the capture, including a row laid out below the
+  edge of its list, where no one can see it and no tap reaches it. They now pass only when a
+  match has something inside the viewport and every scroll container above it, and say how many
+  matches did; they fail when every match is out of view, and are inconclusive — an error, so a
+  test stops — when the capture has no viewport. A pass says occlusion was not checked, because
+  bounds cannot show what is drawn on top. Taps, long presses and text entry refuse a target out
+  of view and point to `android_scroll_to_element` instead of pressing a point that is not on
+  screen, and a target partly scrolled out is pressed at the centre of its part in view rather
+  than at a centre that may lie under its list's edge. `android_scroll_to_element` keeps swiping
+  until a match is in view. `android_find_ui_element` says where each match is, and
+  `android_get_ui_tree` marks the nodes that are not in view, such as `[outside viewport]`. The
+  UI Inspector marks those rows too, and shows a **Viewport** line under the selected element's
+  geometry.
+- **`android_assert_enabled` no longer answers for one of several matches.** It checked whichever
+  match came first, so with an enabled and a disabled **Save** on screen it could pass for the wrong
+  one. It now needs exactly one match, and with several it fails listing them, as a tap would.
+- **Every UI tool result says which screen it read.** A tree, a match or a PASS used to arrive
+  with nothing to say which device, which window or which moment it came from, or what the
+  capture cannot see — so a missing keyboard in the tree read the same as a keyboard that was not
+  there. Every `android_get_ui_tree`-family result, the element actions and assertions, the
+  accessibility audit and the debug-context UI section now open with one line: the device, the
+  package owning the dumped window, when it was captured by the host's clock and how long it
+  took, the viewport and rotation, the effective density, and the data source. Results that make
+  a claim about the screen add one line of limits: only the active window's accessibility tree,
+  no occlusion from bounds, and — when they apply — unobserved test tags, the `AndroidView` tag
+  gap, or a density or display size that could not be read. The UI Inspector shows the viewport
+  and density too. The audit now takes its density from the same capture instead of a separate
+  read that hid its failures.
+
+### Fixed
+
+- **Stop pressed while the model was still asking for tools no longer breaks the next message.**
+  The tools were rightly not run, but the model's request for them was left in the conversation
+  with no answer, and a provider can reject a conversation holding a tool call with no result — so
+  the next thing you typed could fail. Each call is now answered "Not run: the user pressed Stop.",
+  the same as a call skipped after a stopped wait.
+- **Cancelling a screen capture stops it, and a failed one says why.** Cancelling an
+  `android_get_ui_tree` request used to leave `uiautomator dump` running on the device until it
+  finished or hit its 30-second timeout, because the capture never told adb to stop. It now stops
+  at adb's next read and sends nothing further. A capture that fails says which way it failed:
+  cancelled, device unreachable (naming the device), a command that timed out (naming the command
+  and how long it was given), or `uiautomator` refusing or writing an empty dump. Before, a lost
+  device or a timeout came back as whatever adb's exception said, sometimes nothing more than a
+  class name. A cancel that adb reports as a closed connection, a timeout, or — in Android Studio
+  2025.1, which sends shell commands through adblib — an I/O error is still reported as a cancel,
+  not as a lost device, and a cancel during the clean-up after a dump is not ignored. A lost
+  device is followed by the next step for whoever is reading: an agent is pointed to
+  `android_list_devices`, and the UI Inspector tells you to reconnect or pick another device
+  rather than naming a tool you cannot call.
+- **Text in Arabic, Chinese, emoji and other non-Latin scripts no longer turns to `�` in a UI
+  capture at random.** adb delivers a dump in chunks cut by size, not by character, and each chunk
+  was decoded on its own, so a character that straddled two came back as replacement characters —
+  and a `text=` selector for it matched nothing, on one capture and not the next. A capture is now
+  decoded once, whole.
+- **The accessibility audit no longer counts a test tag as a spoken label, and measures touch
+  targets in dp.** A test tag is an automation identifier no screen reader announces, so a control
+  with only a tag is now reported as unlabelled, while a bare scroll container is not asked for a
+  label of its own. Touch targets were compared with 48 pixels, which is 16dp on a 480 dpi phone;
+  they are now estimated in dp at the display's effective density, and when the density cannot be
+  read the size check is skipped and the audit says so. A clean result reads "No issues detected
+  by these checks." rather than "No accessibility problems found.", because these checks cannot
+  certify a screen.
+- **The accessibility audit no longer blames an app for a half-scrolled list row.** `uiautomator`
+  reports a row partly scrolled out of its list with its bounds cut short and its out-of-view
+  text left out, so the audit reported the row as both smaller than 48dp and unlabelled — two
+  findings about the capture, not the app. A control whose bounds reach its scroll container's
+  edge is now left out of the size and label checks, and the coverage note says how many were
+  skipped so they can be checked when fully in view. A control out of view but with whole bounds
+  is still checked.
+- **A View id outside Compose no longer counts as an exposed Compose test tag.** On a hybrid
+  screen, the toolbar's resource ids made the tools report Compose tags as exposed when they were
+  not. And when no tags were seen, the tools said the app had not enabled `testTagsAsResourceId`;
+  they now say only that no exposed tags were observed, since the captured subtree may simply have
+  none. A View id inside an `AndroidView` still counts, so every capture that shows Compose tags says so
+  in its limits line.
+- **The UI Inspector no longer tells you to capture a screen it is showing.** The device list
+  refreshes on its own, and each refresh replaced the capture's status with "press Capture UI"
+  while the captured tree was still on screen. The status line now follows the capture: it keeps
+  the node count while the same device stays selected, and when another device is selected it
+  keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
+  rather than hiding what was captured.
 
 ## [4.0.6] - 2026-09-22
 

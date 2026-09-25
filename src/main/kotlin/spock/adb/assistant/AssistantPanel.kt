@@ -14,6 +14,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
 import spock.adb.mcp.McpServerService
+import spock.adb.mcp.tools.CancellableToolContext
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -227,7 +228,9 @@ class AssistantPanel(
     @Suppress("TooGenericExceptionCaught")
     private fun runTurn(question: String, attach: Boolean) {
         val outcome = try {
-            val context = McpServerService.getInstance().toolContext
+            // Stop sets a flag rather than interrupting (see AgentLoop). A tool that waits is handed
+            // the flag too, so a wait already running, capture included, ends when Stop is pressed.
+            val context = CancellableToolContext(McpServerService.getInstance().toolContext, cancelled::get)
             val tools = settings.newTools { context }
             val loop = settings.newLoop(tools)
             val message = if (attach && conversation.isEmpty()) withDebugContext(question, tools) else question

@@ -1,4 +1,5 @@
 <resources>
     <item name="views_name_field" type="id" />
     <item name="views_terms" type="id" />
+    <item name="compose_interop_view" type="id" />
 </resources>

@@ -143,6 +143,58 @@ class AgentLoopTest {
     }
 
     @Test
+    fun `stop pressed while the model asks for tools answers every call, so the next request is valid`() {
+        // A tool_use block with no tool_result after it is a request some providers reject.
+        val cancel = AtomicBoolean(false)
+        val tools = RecordingTools()
+        val asksThenStopped = ScriptedClient(
+            mutableListOf({
+                cancel.set(true)
+                LlmResponse("Tapping twice.", toolCalls = listOf(call("a", "android_tap_element"), call("b")))
+            }),
+        )
+
+        val outcome = run(asksThenStopped, tools, cancelled = { cancel.get() })
+
+        assertEquals(AgentOutcome.Cancelled("Tapping twice."), outcome)
+        assertTrue(tools.invoked.isEmpty(), tools.invoked.toString())
+        // user, assistant(+2 calls), user(2 results)
+        assertEquals(3, conversation.size)
+        assertEquals(listOf("a", "b"), conversation[1].toolCalls.map { it.id })
+        assertEquals(
+            listOf(
+                LlmToolResult("a", AgentLoop.NOT_RUN, isError = true),
+                LlmToolResult("b", AgentLoop.NOT_RUN, isError = true),
+            ),
+            conversation[2].toolResults,
+        )
+        assertEquals("Not run: the user pressed Stop.", AgentLoop.NOT_RUN)
+    }
+
+    @Test
+    fun `stop pressed during one call of a batch skips the rest, and every call still has a result`() {
+        // A wait ends when Stop is pressed; the tap the model queued behind it must not then run.
+        val cancel = AtomicBoolean(false)
+        val tools = RecordingTools { LlmToolResult(it.id, "Cancelled.", isError = true).also { cancel.set(true) } }
+        val waitThenTap = ScriptedClient(
+            mutableListOf({
+                LlmResponse(
+                    "Waiting, then tapping.",
+                    toolCalls = listOf(call("w", "android_wait_for_element"), call("t", "android_tap_element")),
+                )
+            }),
+        )
+
+        val outcome = run(waitThenTap, tools, cancelled = { cancel.get() })
+
+        assertEquals(AgentOutcome.Cancelled("Waiting, then tapping."), outcome)
+        assertEquals(listOf("android_wait_for_element"), tools.invoked)
+        val results = conversation.last().toolResults
+        assertEquals(listOf("w", "t"), results.map { it.id })
+        assertEquals(LlmToolResult("t", AgentLoop.NOT_RUN, isError = true), results[1])
+    }
+
+    @Test
     fun `a refusal ends the turn instead of burning iterations`() {
         val outcome = run(
             ScriptedClient(mutableListOf({ LlmResponse("", stopReason = "refusal") })),

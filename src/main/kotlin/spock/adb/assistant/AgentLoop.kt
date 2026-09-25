@@ -95,22 +95,30 @@ class AgentLoop(
 
             if (response.wasRefused) return AgentOutcome.Refused(response.text)
             if (response.toolCalls.isEmpty()) return AgentOutcome.Answered(response.text)
-            // Cancelled while the model was asking for tools: stop before running any of them.
-            // The alternative — clearing app data and then noticing Stop was pressed — is not
-            // a race worth having.
-            if (isCancelled()) return AgentOutcome.Cancelled(lastText)
 
-            // Every result for this turn goes back in one message, in the order asked for.
+            // Every result for this turn goes back in one message, in the order asked for. Each
+            // call checks Stop first, so none runs once it is pressed: not when it was pressed while
+            // the model was still asking for them — clearing app data and then noticing Stop is not
+            // a race worth having — and not after a wait that ended on it, since a tap queued behind
+            // a cancelled wait is not what the developer asked for. A skipped call still gets a
+            // result, because a provider may reject the next request if any tool call in the history
+            // is left unanswered.
             conversation += LlmMessage(
                 role = LlmMessage.Role.USER,
-                toolResults = response.toolCalls.map { tools.invoke(it) },
+                toolResults = response.toolCalls.map { call ->
+                    if (isCancelled()) LlmToolResult(call.id, NOT_RUN, isError = true) else tools.invoke(call)
+                },
             )
+            if (isCancelled()) return AgentOutcome.Cancelled(lastText)
         }
 
         return AgentOutcome.ReachedIterationCap(lastText, maxIterations)
     }
 
     companion object {
+        /** The result of a call skipped because Stop was pressed before it could run. */
+        const val NOT_RUN = "Not run: the user pressed Stop."
+
         /**
          * The only guard against a surprise bill in v1, so it is deliberately not generous.
          * A debugging task that genuinely needs more than this is one to drive by hand.

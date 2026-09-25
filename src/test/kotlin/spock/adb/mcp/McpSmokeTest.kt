@@ -267,6 +267,7 @@ class McpSmokeTest {
             "android_assert_visible" to """{"text":"$ABSENT"}""",
             "android_assert_enabled" to """{"text":"$ABSENT"}""",
             "android_assert_text" to """{"text":"$ABSENT"}""",
+            "android_wait_for_element" to """{"text":"$ABSENT","until":"visible","timeoutMs":10000}""",
             "android_read_app_storage" to """{"file":"shared_prefs/$ABSENT.xml"}""",
         )
     }

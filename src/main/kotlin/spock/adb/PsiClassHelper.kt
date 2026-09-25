@@ -5,6 +5,7 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiClass
+import com.intellij.psi.PsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiShortNamesCache
 
@@ -18,12 +19,18 @@ import com.intellij.psi.search.PsiShortNamesCache
  */
 fun PsiClass.openIn(project: Project) {
     val descriptor = ReadAction.compute<OpenFileDescriptor?, RuntimeException> {
-        val target = navigationElement
-        val file = target.containingFile?.virtualFile ?: containingFile?.virtualFile
-        file?.let { OpenFileDescriptor(project, it, target.textOffset) }
+        val target = declaration()
+        target.containingFile?.virtualFile?.let { OpenFileDescriptor(project, it, target.textOffset) }
     } ?: return
     descriptor.navigateInEditor(project, true)
 }
+
+/**
+ * Where [openIn] lands: the declaration in the file the user wrote, or the class itself when that
+ * has no file of its own. Needs a read action. The UI Inspector's source search lands here too.
+ */
+fun PsiClass.declaration(): PsiElement =
+    navigationElement.takeIf { it.containingFile?.virtualFile != null } ?: this
 
 fun String.psiClassByNameFromCache(project: Project): PsiClass? {
     return PsiShortNamesCache.getInstance(project).getClassesByName(

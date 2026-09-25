@@ -5,6 +5,7 @@ import android.os.Process
 import androidx.appcompat.app.AppCompatActivity
 import spock.adb.sample.background.BackgroundWorkActivity
 import spock.adb.sample.compose.ComposeInspectorActivity
+import spock.adb.sample.compose.ComposeReliabilityActivity
 import spock.adb.sample.fragments.NavigationActivity
 
 /** The hub: one entry per group of Spock ADB features. */
@@ -34,6 +35,7 @@ class MainActivity : AppCompatActivity() {
             open("Debug context — failures for android_get_debug_context", DebugContextActivity::class.java)
             open("Diagnose — Diagnose Current Screen, android_diagnose_current_screen", DiagnoseActivity::class.java)
             open("UI Inspector — Compose screen", ComposeInspectorActivity::class.java)
+            open("UI Inspector — Compose reliability fixtures", ComposeReliabilityActivity::class.java)
             open("UI Inspector — Views screen", ViewsInspectorActivity::class.java)
             open("Background Work — jobs, WorkManager, alarms", BackgroundWorkActivity::class.java)
         }

@@ -17,6 +17,42 @@ class UiTreeParserTest {
     private val composeTree by lazy { UiTreeParser.parse(dump("compose-material3.xml")) }
 
     @Test
+    fun `View resource IDs do not imply exposed Compose tags in a hybrid screen`() {
+        val tree = UiTreeParser.parse(
+            """
+            <hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][500,500]">
+              <node class="android.widget.Button" resource-id="p:id/save" bounds="[0,0][100,100]" />
+              <node class="androidx.compose.ui.platform.AndroidComposeView" bounds="[0,100][500,500]">
+                <node class="android.widget.TextView" text="Compose" bounds="[0,100][100,200]" />
+              </node>
+            </node></hierarchy>
+            """.trimIndent(),
+        )
+        assertEquals(UiFramework.HYBRID, tree.framework)
+        assertEquals(UiTree.TestTagSupport.UNAVAILABLE, tree.testTagSupport)
+    }
+
+    @Test
+    fun `reads the display rotation off the hierarchy element`() {
+        fun rotationOf(hierarchy: String) = UiTreeParser.parse(
+            "$hierarchy<node class=\"android.widget.FrameLayout\" bounds=\"[0,0][500,500]\" /></hierarchy>",
+        ).rotation
+
+        assertEquals(1, rotationOf("""<hierarchy rotation="1">"""))
+        assertEquals(3, rotationOf("""<hierarchy rotation="3">"""))
+        assertNull(rotationOf("<hierarchy>"), "an absent rotation is unknown, not 0")
+        assertNull(rotationOf("""<hierarchy rotation="sideways">"""))
+        assertNull(rotationOf("""<hierarchy rotation="4">"""))
+    }
+
+    @Test
+    fun `real device dumps report the rotation they were taken at`() {
+        listOf("views-navigation-fragment.xml", "compose-material3.xml", "compose-only-real.xml").forEach {
+            assertEquals(0, UiTreeParser.parse(dump(it)).rotation, it)
+        }
+    }
+
+    @Test
     fun `identifies a traditional View hierarchy`() {
         assertEquals(UiFramework.VIEWS, viewsTree.framework)
         assertEquals(UiTree.TestTagSupport.NOT_APPLICABLE, viewsTree.testTagSupport)
@@ -29,7 +65,7 @@ class UiTreeParserTest {
 
         val fab = viewsTree.nodes().first { it.resourceId.endsWith("/fab") }
         assertTrue(fab.clickable)
-        assertTrue(fab.bounds.isVisible)
+        assertTrue(fab.bounds.hasArea)
     }
 
     @Test
@@ -73,14 +109,14 @@ class UiTreeParserTest {
         assertEquals(1032, bounds.bottom)
         assertEquals(540, bounds.centerX)
         assertEquals(966, bounds.centerY)
-        assertTrue(bounds.isVisible)
+        assertTrue(bounds.hasArea)
     }
 
     @Test
     fun `malformed bounds degrade instead of throwing`() {
         val bounds = UiTreeParser.parseBounds("nonsense")
         assertEquals(0, bounds.width)
-        assertTrue(!bounds.isVisible)
+        assertTrue(!bounds.hasArea)
     }
 
     @Test

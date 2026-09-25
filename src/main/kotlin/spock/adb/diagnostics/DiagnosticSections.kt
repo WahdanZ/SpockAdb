@@ -200,7 +200,7 @@ object UiSection : DiagnosticSection {
     override fun collect(probe: DiagnosticProbe): SectionReport = summarise(UiTreeOperations(probe.device).read())
 
     fun summarise(tree: UiTree): SectionReport {
-        val nodes = tree.nodes().filter { it.bounds.isVisible }.toList()
+        val nodes = tree.nodes().filter { it.bounds.hasArea }.toList()
         val findings = AccessibilityAudit.audit(tree)
         val data = JsonObject().apply {
             addProperty("framework", tree.framework.description)

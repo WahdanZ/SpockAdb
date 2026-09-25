@@ -1,0 +1,340 @@
+package spock.adb.mcp
+
+import com.android.ddmlib.IDevice
+import com.android.ddmlib.IShellOutputReceiver
+import com.google.gson.JsonObject
+import io.mockk.every
+import io.mockk.mockk
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import spock.adb.mcp.tools.CancellableToolContext
+import spock.adb.mcp.tools.ToolResult
+import spock.adb.mcp.tools.UncancellableToolContext
+import spock.adb.mcp.tools.WaitForElementTool
+import spock.adb.uitree.UiWaiter
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.LockSupport
+
+class ComposeWaitToolsTest {
+
+    /**
+     * A device whose screen is the next of [dumps] at each `cat`, repeating the last. With [hang]
+     * a dump never finishes until ddmlib would stop reading, which is when the receiver says it is
+     * cancelled — how the real bridge behaves.
+     */
+    private class ScriptedDevice(private val dumps: List<String>, private val hang: Boolean = false) {
+        val commands: MutableList<String> = Collections.synchronizedList(mutableListOf())
+        val dumping = CountDownLatch(1)
+        private var reads = 0
+        val device = mockk<IDevice>(relaxed = true).also { device ->
+            every { device.executeShellCommand(any(), any(), any(), any<TimeUnit>()) } answers {
+                val command = firstArg<String>()
+                val receiver = secondArg<IShellOutputReceiver>()
+                commands += command
+                if (hang && command.startsWith("uiautomator")) {
+                    dumping.countDown()
+                    while (!receiver.isCancelled) LockSupport.parkNanos(POLL_NANOS)
+                }
+                val output = when {
+                    command.startsWith("cat ") -> dumps[minOf(reads++, dumps.lastIndex)]
+                    command == "wm size" -> "Physical size: 1080x2400"
+                    command == "wm density" -> "Physical density: 420"
+                    else -> ""
+                }.toByteArray()
+                receiver.addOutput(output, 0, output.size)
+            }
+        }
+        val context = FakeToolContext(available = listOf(FakeToolContext.device("emulator-5554").copy(device = device)))
+    }
+
+    private fun args(vararg pairs: Pair<String, Any>) = JsonObject().apply {
+        pairs.forEach { (key, value) ->
+            when (value) {
+                is Number -> addProperty(key, value)
+                else -> addProperty(key, value.toString())
+            }
+        }
+    }
+
+    @Test
+    fun `an element that appears on the third look passes, saying how many looks it took`() {
+        val device = ScriptedDevice(listOf(screen(), screen(), screen(button("wait_appears"))))
+
+        val result = WaitForElementTool().execute(
+            args("testTag" to "wait_appears", "timeoutMs" to 5_000, "pollIntervalMs" to 100),
+            device.context,
+        )
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().startsWith("Observed on emulator-5554"), result.text())
+        assertTrue(
+            result.text().contains("PASS: testTag='wait_appears' is visible after 3 observation(s)"),
+            result.text(),
+        )
+        // The display is measured once, not once per look.
+        assertEquals(1, device.commands.count { it == "wm size" }, device.commands.toString())
+        assertTrue(device.commands.none { it.startsWith("input ") }, device.commands.toString())
+    }
+
+    @Test
+    fun `a wait that runs out fails with the last reason`() {
+        val device = ScriptedDevice(listOf(screen()))
+
+        val result = WaitForElementTool().execute(
+            args("testTag" to "wait_appears", "timeoutMs" to 0),
+            device.context,
+        )
+
+        assertTrue(result.isError)
+        assertTrue(
+            result.text().contains("FAIL: timed out waiting for testTag='wait_appears' to be visible"),
+            result.text(),
+        )
+        assertTrue(result.text().contains("Last: nothing matched testTag='wait_appears'"), result.text())
+    }
+
+    @Test
+    fun `a dump slower than the whole wait still gives a verdict, saying it ran past the limit`() {
+        val timeouts = Collections.synchronizedList(mutableListOf<Long>())
+        val device = mockk<IDevice>(relaxed = true).also {
+            every { it.executeShellCommand(any(), any(), any(), any<TimeUnit>()) } answers {
+                val command = firstArg<String>()
+                if (command.startsWith("uiautomator")) {
+                    timeouts += thirdArg<Long>()
+                    Thread.sleep(SLOW_DUMP_MS)
+                }
+                val output = when {
+                    command.startsWith("cat ") -> screen(button("wait_appears"))
+                    command == "wm size" -> "Physical size: 1080x2400"
+                    command == "wm density" -> "Physical density: 420"
+                    else -> ""
+                }.toByteArray()
+                secondArg<IShellOutputReceiver>().addOutput(output, 0, output.size)
+            }
+        }
+        val context = FakeToolContext(available = listOf(FakeToolContext.device("emulator-5554").copy(device = device)))
+
+        val result = WaitForElementTool().execute(args("testTag" to "wait_appears", "timeoutMs" to 1_000), context)
+
+        assertFalse(result.isError, result.text())
+        val text = result.text()
+        assertTrue(text.contains("PASS: testTag='wait_appears' is visible after 1 observation(s)"), text)
+        assertTrue(text.contains("past the 1.0 s limit"), text)
+        // The one dump was given a capture's full time, not the second the wait had.
+        assertEquals(listOf(UiWaiter.MAX_CAPTURE_SECONDS), timeouts)
+    }
+
+    @Test
+    fun `a zero timeout looks once and is not called late for it`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+
+        val result = WaitForElementTool().execute(args("testTag" to "wait_appears", "timeoutMs" to 0), device.context)
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("after 1 observation(s)"), result.text())
+        assertFalse(result.text().contains("past the"), result.text())
+    }
+
+    @Test
+    fun `a state wait passes when the one match reaches it`() {
+        val device = ScriptedDevice(
+            listOf(screen(button("wait_enable_target", enabled = false)), screen(button("wait_enable_target"))),
+        )
+
+        val result = WaitForElementTool().execute(
+            args("testTag" to "wait_enable_target", "until" to "enabled", "pollIntervalMs" to 100),
+            device.context,
+        )
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("is enabled after 2 observation(s)"), result.text())
+    }
+
+    @Test
+    fun `an interrupted wait ends within two seconds as cancelled, having sent no input`() {
+        val device = ScriptedDevice(listOf(screen()), hang = true)
+        val result = AtomicReference<ToolResult>()
+        val worker = Thread {
+            val arguments = args("testTag" to "wait_appears", "timeoutMs" to 60_000)
+            result.set(WaitForElementTool().execute(arguments, device.context))
+        }
+
+        worker.start()
+        assertTrue(device.dumping.await(2, TimeUnit.SECONDS), "the dump never started")
+        worker.interrupt()
+        worker.join(2_000)
+
+        assertFalse(worker.isAlive, "the wait did not stop when its thread was interrupted")
+        assertTrue(result.get().isError)
+        assertTrue(result.get().text().startsWith("CANCELLED"), result.get().text())
+        assertTrue(result.get().text().contains("nothing was changed on the device"), result.get().text())
+        assertTrue(device.commands.none { it.startsWith("input ") }, device.commands.toString())
+    }
+
+    @Test
+    fun `the assistant's stop flag cancels a wait without an interrupt`() {
+        val device = ScriptedDevice(listOf(screen()), hang = true)
+        val stopped = AtomicBoolean(false)
+        val context = CancellableToolContext(device.context, stopped::get)
+        val result = AtomicReference<ToolResult>()
+        val worker = Thread {
+            result.set(WaitForElementTool().execute(args("testTag" to "wait_appears", "timeoutMs" to 60_000), context))
+        }
+
+        worker.start()
+        assertTrue(device.dumping.await(2, TimeUnit.SECONDS), "the dump never started")
+        stopped.set(true)
+        worker.join(2_000)
+
+        assertFalse(worker.isAlive, "the wait did not see the stop flag")
+        assertTrue(result.get().text().startsWith("CANCELLED"), result.get().text())
+        assertFalse(worker.isInterrupted)
+    }
+
+    @Test
+    fun `a lost device fails pointing to android_list_devices`() {
+        val device = mockk<IDevice>(relaxed = true).also {
+            every {
+                it.executeShellCommand(any(), any(), any(), any<TimeUnit>())
+            } throws java.io.IOException("device offline")
+        }
+        val context = FakeToolContext(available = listOf(FakeToolContext.device("emulator-5554").copy(device = device)))
+
+        val result = WaitForElementTool().execute(args("testTag" to "wait_appears"), context)
+
+        assertTrue(result.isError)
+        assertTrue(result.text().startsWith("FAIL: device emulator-5554 became unavailable"), result.text())
+        assertTrue(result.text().contains("android_list_devices"), result.text())
+    }
+
+    @Test
+    fun `a last capture out of time reads as the wait timing out, keeping what was seen before it`() {
+        var dumps = 0
+        val device = mockk<IDevice>(relaxed = true).also {
+            every { it.executeShellCommand(any(), any(), any(), any<TimeUnit>()) } answers {
+                val command = firstArg<String>()
+                if (command.startsWith("uiautomator") && ++dumps == 2) {
+                    throw com.android.ddmlib.TimeoutException("timed out")
+                }
+                val output = (if (command.startsWith("cat ")) screen() else "").toByteArray()
+                secondArg<IShellOutputReceiver>().addOutput(output, 0, output.size)
+            }
+        }
+        val context = FakeToolContext(available = listOf(FakeToolContext.device("emulator-5554").copy(device = device)))
+
+        val result = WaitForElementTool().execute(args("testTag" to "wait_appears", "pollIntervalMs" to 100), context)
+
+        assertTrue(result.isError)
+        val text = result.text()
+        assertTrue(
+            text.contains("FAIL: timed out waiting for testTag='wait_appears' to be visible; 2 observation(s)"),
+            text,
+        )
+        assertTrue(text.contains("did not finish within"), text)
+        assertTrue(text.contains("Before it: nothing matched testTag='wait_appears'"), text)
+    }
+
+    @Test
+    fun `an unknown until is an argument error, before the device is touched`() {
+        val device = ScriptedDevice(listOf(screen()))
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            WaitForElementTool().execute(args("testTag" to "wait_appears", "until" to "clickable"), device.context)
+        }
+
+        assertTrue(error.message!!.contains("Unknown until 'clickable'"), error.message)
+        assertTrue(device.commands.isEmpty(), device.commands.toString())
+    }
+
+    @Test
+    fun `gone passes at once for an element that was never there`() {
+        val device = ScriptedDevice(listOf(screen()))
+
+        val arguments = args("testTag" to "wait_disappears", "until" to "gone")
+        val result = WaitForElementTool().execute(arguments, device.context)
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("is gone after 1 observation(s)"), result.text())
+    }
+
+    @Test
+    fun `a wait nothing can cancel is capped, and only then`() {
+        // HTTP has no cancel, and four abandoned 60 s waits would hold all four of its threads.
+        val cap = WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS
+        assertEquals(cap, WaitForElementTool.timeoutFor(60_000, canCancel = false))
+        assertEquals(1_000, WaitForElementTool.timeoutFor(1_000, canCancel = false))
+        assertEquals(60_000, WaitForElementTool.timeoutFor(60_000, canCancel = true))
+    }
+
+    @Test
+    fun `an uncancellable wait asked for longer than the cap says it was capped`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+
+        val result = WaitForElementTool().execute(
+            args("testTag" to "wait_appears", "timeoutMs" to 60_000),
+            UncancellableToolContext(device.context),
+        )
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("PASS: testTag='wait_appears' is visible"), result.text())
+        val cap = WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS
+        assertTrue(result.text().contains("timeoutMs was capped at $cap from 60000"), result.text())
+    }
+
+    @Test
+    fun `a wait that can be cancelled, or asks for no more than the cap, is not called capped`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+        val tool = WaitForElementTool()
+
+        val cancellable = tool.execute(args("testTag" to "wait_appears", "timeoutMs" to 60_000), device.context)
+        val short = tool.execute(
+            args("testTag" to "wait_appears", "timeoutMs" to 5_000),
+            UncancellableToolContext(device.context),
+        )
+
+        assertFalse(cancellable.text().contains("capped"), cancellable.text())
+        assertFalse(short.text().contains("capped"), short.text())
+    }
+
+    @Test
+    fun `the assistant's stop flag makes even an uncancellable context cancellable`() {
+        val context = CancellableToolContext(UncancellableToolContext(FakeToolContext())) { false }
+
+        assertTrue(context.canCancel)
+    }
+
+    @Test
+    fun `a wait over HTTP is capped, and one over stdio is not`() {
+        val device = ScriptedDevice(listOf(screen(button("wait_appears"))))
+        val protocol = McpProtocol(contextProvider = { device.context })
+        val request =
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"android_wait_for_element",""" +
+                """"arguments":{"testTag":"wait_appears","timeoutMs":60000}}}"""
+
+        val overHttp = protocol.handle(request, cancellable = false)!!
+        val overStdio = protocol.handle(request)!!
+
+        assertTrue(overHttp.contains("timeoutMs was capped"), overHttp)
+        assertFalse(overStdio.contains("capped"), overStdio)
+    }
+
+    private fun button(tag: String, enabled: Boolean = true) =
+        """<node class="android.widget.Button" resource-id="$tag" package="p" clickable="true" enabled="$enabled"
+            bounds="[0,100][300,200]" />"""
+
+    private fun screen(children: String = "") =
+        """<hierarchy rotation="0"><node class="android.widget.FrameLayout" package="p"
+            bounds="[0,0][1080,2400]">$children</node></hierarchy>"""
+
+    private companion object {
+        const val POLL_NANOS = 5_000_000L
+        const val SLOW_DUMP_MS = 1_300L
+    }
+}
