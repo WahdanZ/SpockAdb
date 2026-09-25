@@ -40,9 +40,10 @@
   label worked. Such an element now borrows from its nearest identifiable relative, its label
   first, then what is inside it, then what encloses it, and says so: "via its label 'Save'", "via
   enclosing 'feed_section'". When nothing at all is found, it opens the Activity that was on screen
-  when the UI was captured, and says that is what it did. Nothing found says what was searched;
-  while the IDE is indexing it says so instead of searching, and each search is cancelled as soon
-  as the selection moves on.
+  when the UI was captured, and says that is what it did. Nothing found says what was searched,
+  and a search that breaks says so on the Source line rather than as an IDE error; while the IDE
+  is indexing it says so instead of searching, and each search is cancelled as soon as the
+  selection moves on.
 - **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`
   (read-only) looks at the screen every half second, or as often as asked, until an element is
   visible, present, gone or hidden, or until exactly one match is enabled, disabled, checked,

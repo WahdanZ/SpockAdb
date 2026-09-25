@@ -1,5 +1,7 @@
 package spock.adb.uitree
 
+import com.intellij.openapi.diagnostic.ControlFlowException
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
@@ -12,6 +14,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiLanguageInjectionHost
 import com.intellij.psi.PsiLiteralValue
+import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.PsiSearchHelper
 import com.intellij.psi.search.UsageSearchContext
@@ -21,6 +24,7 @@ import com.intellij.psi.xml.XmlAttributeValue
 import com.intellij.psi.xml.XmlFile
 import com.intellij.psi.xml.XmlTag
 import spock.adb.declaration
+import java.util.concurrent.CancellationException
 
 /**
  * Finds where in the open project a captured element most likely comes from.
@@ -36,8 +40,8 @@ import spock.adb.declaration
  * call's argument is read instead.
  *
  * Only the project's own content is searched, never libraries, and only through the word index —
- * [PsiSearchHelper.processElementsWithWord] finds every file holding a word without reading the
- * rest, and each hit is then checked against the whole value. Literals are recognised without the
+ * [PsiSearchHelper.processCandidateFilesForText] finds every file holding a word without reading
+ * the rest, and each hit is then checked against the whole value. Literals are recognised without the
  * Kotlin plugin's PSI, which this plugin does not depend on: a string literal is a
  * [PsiLanguageInjectionHost] whose text opens with a quote, read through [PsiLiteralValue] where
  * the language offers it (Java) and from its source text otherwise (Kotlin).
@@ -48,10 +52,13 @@ internal class SourceLocator(
     private val project: Project,
     /** The rest of the captured screen: [SourceRanking.screenValues]. */
     private val screen: Set<String> = emptySet(),
+    /** How many places a word is looked for in; lowered by tests to cross it cheaply. */
+    private val maxOccurrences: Int = MAX_OCCURRENCES,
 ) {
 
     private val scope = GlobalSearchScope.projectScope(project)
     private val words = PsiSearchHelper.getInstance(project)
+    private val psiManager = PsiManager.getInstance(project)
     private val screenAffinity = HashMap<String, Int>()
 
     fun locate(query: SourceQuery, windowPackage: String?): SourceResult {
@@ -199,26 +206,24 @@ internal class SourceLocator(
     /**
      * The leaf of each place in the project's files where [word] occurs as a whole word, once each.
      *
-     * The processor is handed the leaf first and then each of its parents, so only leaves are kept.
-     * It can be called from several threads at once — files are searched concurrently — hence the
-     * lock; the order it collects in does not matter, since [SourceRanking] sorts the result.
-     * Stops after [limit]: a word like "OK" is everywhere, and a popup of hundreds helps nobody.
+     * The index names the files holding [word], one at a time on this thread, and each is scanned
+     * for it. Stops after [limit]: a word like "OK" is everywhere, and a popup of hundreds helps
+     * nobody. Not [PsiSearchHelper.processElementsWithWord]: it searches files concurrently, and
+     * stopping it early aborts its sibling tasks with an internal exception that, on 2025.1, escapes
+     * as an IDE error instead of ending the search.
      */
-    private fun leavesWith(word: String, limit: Int = MAX_OCCURRENCES): Collection<PsiElement> {
+    private fun leavesWith(word: String, limit: Int = maxOccurrences): Collection<PsiElement> {
         val leaves = LinkedHashSet<PsiElement>()
-        words.processElementsWithWord(
-            { element, _ ->
-                val leaf = element.firstChild == null
-                synchronized(leaves) {
-                    if (leaf) leaves += element
-                    leaves.size < limit
-                }
-            },
-            scope,
-            word,
-            UsageSearchContext.ANY,
-            true,
-        )
+        words.processCandidateFilesForText(scope, UsageSearchContext.ANY, true, word) { file ->
+            ProgressManager.checkCanceled()
+            val psi = psiManager.findFile(file) ?: return@processCandidateFilesForText true
+            SourceMatching.wordOffsets(psi.viewProvider.contents, word).forEach { offset ->
+                val leaf = psi.findElementAt(offset)
+                if (leaf != null) leaves += leaf
+                if (leaves.size >= limit) return@processCandidateFilesForText false
+            }
+            true
+        }
         return leaves
     }
 
@@ -302,4 +307,28 @@ internal class SourceLocator(
         /** Enough for every `testTag(...)` call in a large app; each is one short read, not a search. */
         const val MAX_TAG_CALLS = 3000
     }
+}
+
+/** Running a [SourceLocator] search so that only cancellation escapes it. */
+internal object SourceSearch {
+
+    private val log = Logger.getInstance(SourceSearch::class.java)
+
+    /**
+     * [search]'s answer, or one that says it failed. Cancellation propagates, so the non-blocking
+     * read action it runs in restarts or stops as it should; anything else is a bug in the search or
+     * in the platform under it, and becomes a Source line saying so — never an IDE error report for
+     * something the developer only clicked on.
+     */
+    // A search is a convenience; no exception from it should reach the IDE's error reporter. The
+    // `is` checks are deliberate: ControlFlowException is an interface, which no catch block can name.
+    @Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
+    fun guarded(query: SourceQuery, search: () -> SourceResult): SourceResult =
+        try {
+            search()
+        } catch (e: RuntimeException) {
+            if (e is ControlFlowException || e is CancellationException) throw e
+            log.warn("Source search failed", e)
+            SourceResult(query, null, emptyList(), failure = e.message ?: e.javaClass.simpleName)
+        }
 }

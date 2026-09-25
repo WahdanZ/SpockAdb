@@ -146,6 +146,15 @@ class SourceRankingTest {
     }
 
     @Test
+    fun `a word is found whole, not inside a longer one`() {
+        assertEquals(listOf(0, 13), SourceMatching.wordOffsets("row = listOf(row, rows, _row, row2)", "row"))
+        assertEquals(listOf(9), SourceMatching.wordOffsets("R.id.foo.total_label", "total_label"))
+        assertEquals(listOf(6), SourceMatching.wordOffsets("\"one\\ntwo\"", "two"), "after an escape")
+        assertEquals(listOf(9), SourceMatching.wordOffsets("\"Tapped \$count\"", "count"))
+        assertEquals(emptyList<Int>(), SourceMatching.wordOffsets("anything", ""))
+    }
+
+    @Test
     fun `a Kotlin raw string is taken as written, and a Java text block is not attempted`() {
         assertEquals("C:\\path\\n", SourceMatching.literalValue("\"\"\"C:\\path\\n\"\"\"", kotlin = true))
         assertNull(SourceMatching.literalValue("\"\"\"\n    block\n    \"\"\"", kotlin = false))

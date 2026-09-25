@@ -138,6 +138,8 @@ internal data class SourceResult(
     val activity: String? = null,
     /** How many relatives were searched for, as well as the element, before this answer. */
     val relativesTried: Int = 0,
+    /** Why the search could not finish, when it could not: see [SourceSearch.guarded]. */
+    val failure: String? = null,
 ) {
     val best: SourceHit? get() = hits.firstOrNull()
 }
@@ -226,6 +228,27 @@ internal object SourceMatching {
         val match = Regex("""(?:^|[^\w.])((?:\w+\s*\.\s*)*)R\s*\.\s*$type\s*\.\s*$""").find(before) ?: return false
         return match.groupValues[1].replace(Regex("""\s"""), "") != "android."
     }
+
+    /**
+     * Where in [text] [word] occurs as a whole word: not inside a longer run of letters, digits and
+     * underscores — the characters [SourceTemplate.searchWords] builds words from. A letter right
+     * after a backslash is an escape, not part of the word it touches: `one\ntwo` holds `two`.
+     */
+    fun wordOffsets(text: CharSequence, word: String): List<Int> {
+        if (word.isEmpty()) return emptyList()
+        val found = ArrayList<Int>()
+        var at = text.indexOf(word)
+        while (at >= 0) {
+            val end = at + word.length
+            val opens = at == 0 || !isWordChar(text[at - 1]) || (at >= 2 && text[at - 2] == '\\')
+            val closes = end == text.length || !isWordChar(text[end])
+            if (opens && closes) found += at
+            at = text.indexOf(word, at + 1)
+        }
+        return found
+    }
+
+    private fun isWordChar(c: Char) = c.isLetterOrDigit() || c == '_'
 
     /** The id an `android:id` value declares or names: `@+id/name` or `@id/name`. */
     fun declaredIdName(attributeValue: String): String? =
@@ -360,6 +383,7 @@ internal object SourceStatus {
 
     /** [notFound], also counting the relatives that were searched for in the element's place. */
     fun notFound(result: SourceResult): String {
+        result.failure?.let { return "Source search failed: $it" }
         val searched = result.query.steps.joinToString(", ") { "${it.tier.noun} '${it.value.shortened()}'" }
         val relatives = when (result.relativesTried) {
             0 -> ""

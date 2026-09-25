@@ -221,14 +221,19 @@ internal class SourceNavigator(
         }
     }
 
-    /** [opens] says whether [then] opens the answer, for the Source line to say so. */
+    /**
+     * [opens] says whether [then] opens the answer, for the Source line to say so. An answer that
+     * failed is shown but not kept, so the next jump searches again.
+     */
     private fun search(opens: Boolean, then: (SourceResult) -> Unit) {
         val current = selection ?: return
         val request = generation
         line.searching()
         val locate = Callable {
-            SourceLocator(project, current.screen)
-                .locate(current.query, current.windowPackage, current.relatives, current.activity)
+            SourceSearch.guarded(current.query) {
+                SourceLocator(project, current.screen)
+                    .locate(current.query, current.windowPackage, current.relatives, current.activity)
+            }
         }
         pending = ReadAction.nonBlocking(locate)
             .inSmartMode(project)
@@ -236,7 +241,7 @@ internal class SourceNavigator(
             .finishOnUiThread(ModalityState.defaultModalityState()) { result ->
                 if (request != generation) return@finishOnUiThread
                 pending = null
-                resolved = result
+                resolved = result.takeIf { it.failure == null }
                 line.show(result, opened = opens)
                 then(result)
             }

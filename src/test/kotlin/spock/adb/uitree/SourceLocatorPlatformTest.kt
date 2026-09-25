@@ -82,6 +82,22 @@ class SourceLocatorPlatformTest : BasePlatformTestCase() {
         assertEquals("\${'\$'}\$amount due", due.best?.pattern)
     }
 
+    fun testACommonWordStopsAtTheCapWithoutFailing() {
+        val rows = (1..MANY).joinToString("\n") { "fun row$it() = Text(\"Row\")" }
+        kotlin("com/app/Rows.kt", "package com.app\n\n$rows\n")
+        kotlin("com/app/MoreRows.kt", "package com.app.more\n\n$rows\n")
+
+        val everything = locate(SourceQuery(text = "Row"))
+        val capped = ReadAction.compute<SourceResult, RuntimeException> {
+            SourceLocator(project, maxOccurrences = CAP).locate(SourceQuery(text = "Row"), "com.app")
+        }
+
+        assertEquals(MANY * 2, everything.hits.size)
+        assertEquals(SourceTier.TEXT, capped.tier)
+        assertNull(capped.failure)
+        assertEquals(CAP, capped.hits.size)
+    }
+
     fun testJavaLiteralIsFoundByText() {
         val file = java(
             "com/app/Legacy.java",
@@ -395,4 +411,10 @@ class SourceLocatorPlatformTest : BasePlatformTestCase() {
             password = false,
             children = children,
         )
+
+    private companion object {
+        /** More literals of one word than [CAP], over two files, so the cap falls inside the search. */
+        const val MANY = 12
+        const val CAP = 5
+    }
 }
