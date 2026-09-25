@@ -73,6 +73,7 @@
         <activity android:name=".DiagnoseActivity" android:exported="false" />
         <activity android:name=".compose.ComposeInspectorActivity" android:exported="false" />
         <activity android:name=".compose.ComposeReliabilityActivity" android:exported="false" />
+        <activity android:name=".compose.RecompositionActivity" android:exported="true" />
         <activity android:name=".ViewsInspectorActivity" android:exported="false" />
         <activity android:name=".background.BackgroundWorkActivity" android:exported="false" />
         <activity android:name=".ProcessDeathActivity" android:exported="false" />

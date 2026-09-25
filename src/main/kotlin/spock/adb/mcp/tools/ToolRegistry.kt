@@ -62,6 +62,8 @@ object ToolRegistry {
         GetUiTreeTool(),
         FindUiElementTool(),
         AccessibilityAuditTool(),
+        // Compose's own composition trace: how often each composable ran while recording
+        GetRecompositionCountsTool(),
         // Element-addressed interaction. Coordinates are the fallback, not the primary path.
         TapElementTool(),
         LongPressElementTool(),

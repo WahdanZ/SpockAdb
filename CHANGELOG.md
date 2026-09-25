@@ -4,6 +4,23 @@
 
 ### Added
 
+- **See how often each composable recomposes, in the UI Inspector and for agents.** The
+  Inspector's new **Recompositions** tab records the app for 5, 10 or 30 seconds and lists every
+  composable that composed or recomposed meanwhile, most frequent first, with its file and line;
+  double-click a row to open it. The new `android_get_recomposition_counts` MCP tool is the same
+  recording for an agent. The counts are Compose's own composition-tracing slices, recorded with
+  `perfetto` over ADB and counted per composable: nothing is estimated, so a composable that ran
+  95 times reports 95. It needs `androidx.compose.runtime:runtime-tracing` and
+  `androidx.tracing:tracing-perfetto-binary` in the app's debug build, and says which is missing
+  when one is. The counts are listed per function rather than on the tree's rows, because the
+  accessibility tree the Inspector reads has no composable names to pair them with
+  ([#119](https://github.com/WahdanZ/SpockAdb/issues/119),
+  [#120](https://github.com/WahdanZ/SpockAdb/issues/120)).
+- **Compose wording for the tree and search tools.** `android_get_ui_tree` now says it is the
+  composable tree as Compose publishes it, with `Modifier.testTag` values as `testTag`, and
+  `android_find_ui_element` says how to find a composable by its test tag, so an agent asked for
+  either reaches for the tools that already do it
+  ([#120](https://github.com/WahdanZ/SpockAdb/issues/120)).
 - **A redesigned UI Inspector, and a selector for any element in one click.** The tree is drawn
   with the IDE's own renderer, so rows follow the theme instead of sitting on mismatched grey
   blocks, and each row reads as the class, then the test tag, the text and the content
