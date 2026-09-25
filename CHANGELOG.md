@@ -118,6 +118,11 @@
   device is followed by the next step for whoever is reading: an agent is pointed to
   `android_list_devices`, and the UI Inspector tells you to reconnect or pick another device
   rather than naming a tool you cannot call.
+- **Text in Arabic, Chinese, emoji and other non-Latin scripts no longer turns to `�` in a UI
+  capture at random.** adb delivers a dump in chunks cut by size, not by character, and each chunk
+  was decoded on its own, so a character that straddled two came back as replacement characters —
+  and a `text=` selector for it matched nothing, on one capture and not the next. A capture is now
+  decoded once, whole.
 - **Every UI tool result says which screen it read.** A tree, a match or a PASS used to arrive
   with nothing to say which device, which window or which moment it came from, or what the
   capture cannot see — so a missing keyboard in the tree read the same as a keyboard that was not
