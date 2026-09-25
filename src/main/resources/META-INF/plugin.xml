@@ -95,6 +95,10 @@
             <action id="spock.adb.actions.ShowActivityStackAction"
                     class="spock.adb.actions.ShowActivityStackAction"
                     text="Show Activity Stack"/>
+            <action id="spock.adb.actions.DiagnoseCurrentScreenAction"
+                    class="spock.adb.actions.DiagnoseCurrentScreenAction"
+                    text="Diagnose Current Screen"
+                    description="Read the screen, app, logs, UI, permissions, background work and device conditions in one place"/>
 
             <separator/>
 

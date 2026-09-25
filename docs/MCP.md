@@ -281,11 +281,11 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-62 tools, in three levels.
+63 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (26) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
+| **Read-only** (27) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
 | **Safe action** (28) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
@@ -678,7 +678,7 @@ that returns its detail, so the agent fetches it only when the summary points th
 | `packageName` | yes | The app it is about, or `null` when none is known. |
 | `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then crashes, ANRs, a stopped process, network, exceptions; then how often. Each has `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
 | `moreProblems` | no | How many problems were ranked below the cut. |
-| `screen`, `app`, `logs`, `ui`, `backgroundWork`, `deviceConditions` | per `include` | One short summary per section. |
+| `screen`, `app`, `logs`, `ui`, `backgroundWork`, `deviceConditions`, `permissions` | per `include` | One short summary per section. `screen` also carries the app's `activityStack` (top first) and `fragments` when the app is in front. |
 | `sectionErrors` | no | `{section: reason}` for each section that failed. A failure never fails the call. |
 | `omittedForSize` | no | Sections dropped whole, least important first, to stay under 12,000 characters. |
 | `more` | yes | `{section: {tool, arguments}}`: the call that returns each section's raw data. |
@@ -691,10 +691,11 @@ network exceptions, other logged exceptions joined to the message that introduce
 other warnings and errors — each distinct one once, with a count. Query strings are stripped
 from URLs and credentials are redacted, as they are for the Assistant. From the rest: the app
 not running, another app in the foreground, accessibility faults, failing or blocked jobs, Doze,
-a rationed standby bucket, and device conditions Spock changed and has not reset.
+a rationed standby bucket, device conditions Spock changed and has not reset, and — as
+information, not a fault — runtime permissions the user denied.
 
-**Choosing sections.** `include` takes `screen`, `app`, `logs`, `ui`, `backgroundWork` and
-`deviceConditions`; all are on by default. `screenshot` is opt-in, attached as an image, because
+**Choosing sections.** `include` takes `screen`, `app`, `logs`, `ui`, `backgroundWork`,
+`deviceConditions` and `permissions`; all are on by default. `screenshot` is opt-in, attached as an image, because
 it is by far the most expensive part. `maxLogcatLines` sets how much log is scanned (1,500 by
 default, capped at 2,000).
 
@@ -708,6 +709,23 @@ and an unknown name is ignored rather than fatal, so a newer client cannot break
 it in `DiagnosticSections.ALL`. A section reads the device and returns data and problems; it
 knows nothing of the tool window or of MCP, so the tool, the Assistant and anything later share
 it as is.
+
+### `android_diagnose_current_screen`
+
+Everything about the screen in front of the user, in one call — the same report the IDE's
+**Diagnose** tab shows. It is `android_get_debug_context` with every section on and a screenshot
+of the same moment attached, so the two share one schema (above), one set of size caps and one
+redaction pass. Reach for `android_get_debug_context` for a cheap first look; reach for this when
+you need to see the screen as well as read about it.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `packageName` | the open project's app | The app the screen belongs to; `""` for the whole device. |
+| `screenshot` | `true` | Attach the screen as an image. Pass `false` for text only. |
+| `deviceSerial` | the selected device | Which device to diagnose. |
+
+A screenshot the device refuses — a `FLAG_SECURE` window — is reported in the `screenshot` field
+and the rest of the diagnosis still comes back.
 
 ### `android_push_file` and `android_pull_file`
 

@@ -149,6 +149,7 @@ class DiagnosticCollector(
             "screen",
             "deviceCondition",
             "backgroundWork",
+            "permission",
         )
 
         private val APP_SCOPED_DETAILS = setOf(
@@ -156,6 +157,7 @@ class DiagnosticCollector(
             LogsSection.id,
             BackgroundWorkSection.id,
             DeviceConditionsSection.id,
+            PermissionsSection.id,
         )
 
         private val GSON = GsonBuilder().serializeNulls().setPrettyPrinting().disableHtmlEscaping().create()

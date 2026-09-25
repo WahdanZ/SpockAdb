@@ -314,6 +314,17 @@ class LogcatPanel(
         updateStatus()
     }
 
+    /**
+     * The app's errors and what the system reported about it: where the Diagnose tab's
+     * "View Related Logs" lands. Related rather than App, because an app that crashed has no
+     * process left for App to match, and its crash and ANR are printed by the system anyway.
+     */
+    fun showRelatedErrors() {
+        scopeCombo.selectedItem = LogcatScope.RELATED
+        intentCombo.selectedItem = LogcatIntent.ERRORS
+        start()
+    }
+
     fun stop() {
         // Past this point nothing the old stream reports is about what the panel is showing.
         generation++

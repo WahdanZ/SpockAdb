@@ -82,6 +82,19 @@
   and a second one could place a second order — with a pointer to look before retrying. Text is
   never typed if the tap that focuses its field failed. Stop answers **CANCELLED**, saying how far
   the action had got. Without an expectation the tools answer as before.
+- **Diagnose Current Screen.** "Why is this screen wrong" used to be a tour of the Device tab,
+  Logcat, the UI Inspector, Background Work and the permissions dialog, each answering for a
+  different moment. The new **Diagnose** tab — also **Tools › Spock ADB › Diagnose Current Screen**,
+  which you can bind to a key — reads them all at once for the device and app in the header, off
+  the UI thread: likely problems first, then one line each for the screen (activity, the app's
+  activity stack, fragments), the process, the log, the UI and its accessibility faults, runtime
+  permissions, background work and device conditions, with a screenshot of the same moment and
+  the raw report folded underneath. A part that cannot be read says why and the rest still come
+  back. **Open Activity**, **Open Fragment**, **Inspect UI**, **View Related Logs** and
+  **Copy for AI** go from the summary to the detail. Agents get the same report, screenshot
+  included, from the new `android_diagnose_current_screen` MCP tool, and `android_get_debug_context`
+  gains the `permissions` section and the activity stack. The sample app's new *Diagnose* screen
+  has something for every line.
 
 ### Changed
 

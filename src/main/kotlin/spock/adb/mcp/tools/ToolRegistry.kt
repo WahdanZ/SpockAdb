@@ -55,6 +55,8 @@ object ToolRegistry {
         ResetDeviceConditionsTool(),
         // The triage bundle: one round-trip instead of four, all describing the same moment.
         DebugContextTool(),
+        // The same report with every section and a screenshot: the Diagnose tab, for agents.
+        DiagnoseCurrentScreenTool(),
         // UI inspection — semantics-first, so it covers Views, Compose and hybrid screens
         TakeScreenshotTool(),
         GetUiTreeTool(),
