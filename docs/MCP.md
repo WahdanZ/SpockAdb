@@ -281,11 +281,11 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-61 tools, in three levels.
+62 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (25) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
+| **Read-only** (26) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
 | **Safe action** (28) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
@@ -391,8 +391,8 @@ Reported bounds may differ from expanded touch regions, so these checks do not c
 
 `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`,
 `android_input_text_into_element`, `android_find_ui_element`, `android_assert_visible`,
-`android_assert_enabled` and `android_assert_text` all resolve elements by **testTag → content
-description → text**, and only then derive a tap point from the matched node's own bounds.
+`android_assert_enabled`, `android_assert_text` and `android_wait_for_element` all resolve elements
+by **testTag → content description → text**, and only then derive a tap point from the matched node's own bounds.
 
 A coordinate guessed from a screenshot breaks on a different screen size, density, font scale
 or after any layout change, and is the single biggest cause of flaky AI-driven UI automation.
@@ -448,7 +448,8 @@ point from the matched node themselves. `android_tap` remains the fallback for a
 offers no semantic identifier at all, and its own description says so.
 
 `android_assert_visible`, `android_assert_enabled` and `android_assert_text` let an agent verify
-the result of an action rather than infer it from pixels.
+the result of an action rather than infer it from pixels, and `android_wait_for_element` lets it wait
+for that result without guessing how long to sleep.
 
 Screenshots are first-class MCP image content, so an agent can also look at the screen.
 
@@ -493,6 +494,50 @@ What this cannot tell you:
   accessibility audit leaves it out of the size and label checks rather than report the clipping
   as a fault, counting what it skipped in its coverage note. The first row of a list at scroll
   offset zero looks the same, so the flag means *may be* cut.
+
+### Waiting for the screen to change
+
+`android_wait_for_element` captures the screen every `pollIntervalMs` (default 500, 100 to 5000)
+until an element meets `until`, or `timeoutMs` (default 10000, 0 to 60000) runs out. It is
+read-only: it sends nothing to the device but captures.
+
+| `until` | Met when |
+|---|---|
+| `visible` (default) | a match is in, or partly in, the viewport |
+| `present` | a match is in the tree, wherever it is |
+| `gone` | nothing in the tree matches |
+| `hidden` | no match is in the viewport |
+| `enabled`, `disabled`, `checked`, `unchecked`, `selected`, `unselected`, `focused` | exactly one element matches, and it is in that state |
+
+- A state needs exactly one match. With several, the wait keeps looking, and a timeout says the
+  selector was ambiguous and lists the candidates. `checked` and `unchecked` need an element that can
+  be checked, so a plain button never counts as unchecked.
+- `gone` is met at once by an element that was never there. And an element scrolled out of a
+  Compose list usually drops out of the tree on a device, so `gone` and `hidden` cannot tell
+  "removed" from "scrolled away".
+- Without a viewport, `visible` and `hidden` are never met while anything matches, and a timeout
+  says why.
+- The result says how many captures the wait took and how long, and how many `uiautomator` refused
+  or left empty, usually a UI still animating. Those are retried.
+
+**Timing.** Each capture is given what is left of the wait, rounded up to whole seconds, at least one
+and at most 30. So a wait can overrun its limit by under a second, plus the time to read back a dump
+that finished just in time. A capture that runs out of time ends the wait, since it had all that was
+left, and the result says so along with what the last completed capture showed. A dump is not quick:
+2 to 7 s on an API 34 emulator, and about 13 s before `uiautomator` gives up on a UI that never
+settles. A `timeoutMs` shorter than one dump can end without a single observation, so `timeoutMs: 0`
+is a "look once" only on a device that dumps within a second.
+
+**Cancellation** depends on who is asking:
+
+| Caller | What stops a wait |
+|---|---|
+| A stdio client, with `notifications/cancelled` | The worker running the request is interrupted. A capture in progress stops at ddmlib's next check, and a pause between captures ends at once |
+| The in-IDE assistant's **Stop** | A flag, checked during each capture and every 100 ms of a pause. No thread is interrupted, since that would drop the model's HTTP connection too |
+| An HTTP client | Nothing. The call runs to its limit — at most 60 s, plus the overrun above — and holds one of the HTTP server's four worker threads while it does |
+
+A cancelled wait answers `CANCELLED …; nothing was changed on the device`. Over stdio that answer is
+discarded, as the spec requires.
 
 ## Triage, files and screen recording
 
@@ -677,7 +722,7 @@ Recorded honestly so the gaps are not mistaken for features:
   document are prose an agent cannot call.
 - **Cancellation over HTTP.** stdio honours `notifications/cancelled` by interrupting the
   request; the HTTP transport is stateless by design and has nothing to cancel against, so a
-  slow tool call there runs to its timeout.
+  slow tool call there runs to its timeout. For `android_wait_for_element` that is up to 60 s.
 
 ## Testing
 

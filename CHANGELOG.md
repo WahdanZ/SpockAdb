@@ -38,6 +38,21 @@
   action would give, before it is pasted anywhere. Audit findings are a list with severity icons;
   selecting one selects its element in the tree and shows its fix. Before the first capture, the
   empty tree offers a **Capture UI** link.
+- **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`
+  (read-only) looks at the screen every half second, or as often as asked, until an element is
+  visible, present, gone or hidden, or until it is enabled, disabled, checked, unchecked, selected,
+  unselected or focused, for up to 60 s. Before, an agent either slept a number of seconds it made
+  up, or asserted again and again, paying for a whole screen each time. The answer says how many
+  looks it took and how long, and counts the looks `uiautomator` refused while the UI was still
+  animating, which it retries. A lost device stops the wait at once rather than letting it run
+  out. Each look is given only what is left of the wait, so the wait ends within about a second of
+  its limit. A state is only reported for exactly one match: a selector that matches two switches
+  times out saying so rather than answering for one of them.
+- **Stop in the assistant ends a running wait, even in the middle of a screen capture.** Stop only
+  took effect between tool calls, so a wait would have run for up to a minute after it was pressed.
+  `android_wait_for_element` now sees Stop during each capture and between captures, and reports
+  that nothing was changed on the device. MCP clients on stdio cancel a wait the same way, by
+  interrupting the request; over HTTP a wait still runs to its limit.
 
 ### Changed
 

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -91,8 +92,8 @@ import spock.adb.sample.SampleActivity
 
 /**
  * Fixtures for the element tools' refusals, scroll-container resolution, the accessibility
- * audit, capture failures, hybrid tag detection, the capture summary and what is in view — one
- * tab each, so a capture of one tab is not muddied by another's fixtures. The calls to run and
+ * audit, capture failures and bounded waits, hybrid tag detection, the capture summary and what is
+ * in view — one tab each, so a capture of one tab is not muddied by another's fixtures. The calls to run and
  * what each should answer are in docs/COMPOSE-SUPPORT-PLAN.md, "Device checks", and behind each
  * card's info button.
  *
@@ -159,7 +160,7 @@ private fun ReliabilityScreen() {
                 FixtureTab.TAPS -> TapsTab(showInfo) { lastEvent = it }
                 FixtureTab.SCROLL -> ScrollTab(showInfo)
                 FixtureTab.AUDIT -> AuditTab(showInfo)
-                FixtureTab.BUSY -> BusyTab(showInfo)
+                FixtureTab.BUSY -> BusyTab(showInfo) { lastEvent = it }
                 FixtureTab.HYBRID -> HybridTab(exposeTags, showInfo) { exposeTags = it }
                 FixtureTab.WINDOW -> WindowTab(showInfo)
                 FixtureTab.FOLD -> FoldTab(showInfo) { lastEvent = it }
@@ -392,9 +393,13 @@ private fun unwidened(base: ViewConfiguration): ViewConfiguration = remember(bas
  * A UI that never goes idle. `uiautomator dump` waits for a quiet accessibility event stream
  * and gives up with "could not get idle state"; a ticking View sends a content-change event
  * on every update.
+ *
+ * Below it, the wait fixtures: things that change on their own a few seconds after a button.
+ * They share this tab rather than having their own, because an eighth tab narrows every tab
+ * under 48dp and fixture 7's audit would report them all.
  */
 @Composable
-private fun BusyTab(onInfo: (Fixture) -> Unit) {
+private fun BusyTab(onInfo: (Fixture) -> Unit, onEvent: (String) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     LaunchedEffect(busy) {
         // While it runs no capture works, so no element tool can reach the switch to stop it.
@@ -411,6 +416,7 @@ private fun BusyTab(onInfo: (Fixture) -> Unit) {
                 if (busy) BusyTicker()
             }
         }
+        WaitCards(onInfo, onEvent)
     }
 }
 
@@ -552,6 +558,84 @@ private fun FoldRow(label: String, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Four things that change on their own [WAIT_MILLIS] after their button: one appears, one goes, a
+ * button becomes enabled and a switch turns on. Each button resets its target and starts its timer
+ * again, and switching tabs resets them all.
+ *
+ * The targets are tagged `wait_…`, and no other tag contains those, so each wait's selector has one
+ * candidate.
+ */
+@Composable
+private fun WaitCards(onInfo: (Fixture) -> Unit, onEvent: (String) -> Unit) {
+    FixtureCard(Fixtures.ARRIVES_AND_LEAVES, onInfo) {
+        DelayedChange("Show in 3 s", "start_arrival", onStart = { onEvent("arrival timer started") }) { changed ->
+            if (changed) WaitChip("Arrived", "wait_appears")
+        }
+        DelayedChange("Remove in 3 s", "start_departure", onStart = { onEvent("departure timer started") }) { changed ->
+            if (!changed) WaitChip("Leaving", "wait_disappears")
+        }
+    }
+    FixtureCard(Fixtures.CHANGES_STATE, onInfo) {
+        DelayedChange("Enable in 3 s", "start_enable", onStart = { onEvent("enable timer started") }) { changed ->
+            Button(
+                onClick = { onEvent("proceed button") },
+                enabled = changed,
+                modifier = Modifier.testTag("wait_enable_target"),
+            ) { Text("Proceed") }
+        }
+        DelayedChange("Flip in 3 s", "start_flip", onStart = { onEvent("flip timer started") }) { changed ->
+            // Also toggleable by hand; the timer only ever turns it on.
+            var checked by remember(changed) { mutableStateOf(changed) }
+            SwitchRow("Flips by itself", checked, "wait_toggle_target") { checked = it }
+        }
+    }
+}
+
+/**
+ * A start button beside [target], which is shown with `changed = false` until [WAIT_MILLIS] after
+ * the button was last pressed. Pressing it again puts the target back and restarts the timer.
+ */
+@Composable
+private fun DelayedChange(
+    label: String,
+    tag: String,
+    onStart: () -> Unit,
+    target: @Composable (changed: Boolean) -> Unit,
+) {
+    var run by remember { mutableIntStateOf(0) }
+    var changed by remember { mutableStateOf(false) }
+    LaunchedEffect(run) {
+        if (run > 0) {
+            delay(WAIT_MILLIS)
+            changed = true
+        }
+    }
+
+    Row(
+        Modifier.fillMaxWidth().height(56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        FilledTonalButton(
+            onClick = {
+                changed = false
+                run++
+                onStart()
+            },
+            modifier = Modifier.testTag(tag),
+        ) { Text(label) }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { target(changed) }
+    }
+}
+
+@Composable
+private fun WaitChip(text: String, tag: String) {
+    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.testTag(tag)) {
+        Text(text, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    }
+}
+
 private const val NOTHING_TAPPED = "nothing yet"
 private const val FLASH_MILLIS = 1_200L
 private const val FEED_ROWS = 24
@@ -563,3 +647,4 @@ private const val BUSY_MILLIS = 30_000L
 private const val FOLD_HEIGHT_DP = 168
 private const val FOLD_ROWS_ABOVE = 3
 private const val FOLD_ROWS_BELOW = 6
+private const val WAIT_MILLIS = 3_000L

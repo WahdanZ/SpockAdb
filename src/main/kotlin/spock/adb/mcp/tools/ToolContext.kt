@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
+import spock.adb.CancellationSignal
 import spock.adb.device.ConnectedDevice
 
 /**
@@ -67,6 +68,16 @@ interface ToolContext {
 
     /** The application ID of the open project's app module, when it can be resolved. */
     fun projectApplicationId(): String?
+
+    /**
+     * Whether the caller has asked this call to stop, for a tool that waits or polls.
+     *
+     * Call it on the thread running the tool, and once: the default captures that thread, whose
+     * interrupt is how the MCP stdio server cancels a request. The in-IDE assistant does not
+     * interrupt, so it wraps its context in [CancellableToolContext]. HTTP has neither, and a call
+     * there runs to its own limit.
+     */
+    fun cancellationSignal(): CancellationSignal = CancellationSignal.currentThread()
 }
 
 /** Convenience for the many tools that only need the ddmlib handle. */

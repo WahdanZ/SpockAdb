@@ -119,7 +119,14 @@ First increment, 23 September 2026:
 - [x] Add selector, action-dispatch, density, parser, and accessibility regression tests, including nested and sibling scroll containers, target de-duplication, ambiguity messages, and scroll-container audit exemption.
 - [x] Shared observation model (`UiObservation`): device serial, the package owning the dumped window (not claimed to be the foreground app), host-clock start and duration, display rotation, viewport (window clipped to the display), effective density, data source, and the capture's limits. Every MCP UI tool opens with its one-line summary and, where it makes a claim about the screen, one line of limits; the Inspector's status line shows viewport and density. Display size and density are best effort: a failed `wm` read leaves them unknown and says so.
 - [x] Viewport-aware visibility (`ViewportVisibility`): every node is in the viewport, partly in it (with its share and the part in view), outside it, of zero area, or unclassified when the capture has no viewport. The viewport is narrowed by each scroll container above a node, and by nothing else. Nothing is described as fully visible or unobscured. `Bounds.isVisible` is now `hasArea`, which is all it ever checked. Element actions refuse a target out of view and point to `android_scroll_to_element`, and press a partly visible target at the centre of its part in view. `assert_visible` and `assert_text` pass only for a match in view, and are inconclusive without a viewport. `scroll_to_element` stops only at a match in view. `find_ui_element`, `get_ui_tree` and the Inspector say where each node is. A node whose bounds reach a scroll container's edge is flagged as possibly cut: its size is unknown, and the audit leaves it out of the size and label checks and counts it in the coverage note.
-- [ ] Finish Phase 1 bounded waits and outcome assertions.
+- [x] Bounded waits (`UiWaiter`, `android_wait_for_element`): for an element to be visible, present,
+  gone or hidden, or for exactly one match to be enabled, disabled, checked, unchecked, selected,
+  unselected or focused. Each capture gets what is left of the wait, rounded up to whole seconds;
+  refused and empty dumps are counted and retried; a lost device or a capture out of time ends the
+  wait. Cancellation is polled during each capture and between captures: an interrupt over stdio,
+  and a flag from the assistant's Stop (`CancellableToolContext`). HTTP has no cancellation, so a
+  wait there runs to its limit, at most 60 s.
+- [ ] Finish Phase 1 outcome assertions: expected results on actions, and dispatched versus verified.
 - [ ] Complete Phase 2 scrolling, input capability handling, lifecycle scenarios, and configuration recovery.
 - [ ] Complete Phase 3 scenario export and Phase 4 feasibility work.
 
@@ -157,6 +164,8 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | | `{text: "Right 35", containerTag: "list_right"}` | Found |
 | 7. Audit (Audit) | `android_accessibility_audit {}` | Two findings: `audit_unlabelled` (no accessible text, despite its tag) and `audit_small_target` (24dp, below 48dp). Nothing for `audit_list` or its rows. The coverage note says 1 control at a scroll container's edge was skipped: the half-visible fifth row |
 | 8. Never idle (Busy) | `android_tap_element {testTag: "busy_switch"}`, then `android_get_ui_tree {}` | Capture fails as `DUMP_REFUSED` ("could not get idle state"), after about 12 s on an API 34 emulator; `TIMED_OUT` where `uiautomator` waits past 30 s. The switch turns itself off after 30 s |
+| | `android_tap_element {testTag: "busy_switch"}`, then `android_wait_for_element {testTag: "busy_switch", until: "unchecked", timeoutMs: 45000}` | PASS once the switch turns itself off, about 33 s in, counting the captures refused before it |
+| | The same with `timeoutMs: 10000`; afterwards let the switch turn itself off | FAIL: timed out, its one capture not finished in the 10 s it was given, since a refused dump takes about 13 s |
 | 9. Hybrid, tags off (Hybrid) | `android_tap_element {testTag: "expose_tags_switch"}`, then `android_get_ui_tree {}` | Hybrid screen, no exposed Compose tags observed: the toolbar's View IDs do not count. `{text: "Expose test tags"}` turns them back on |
 | 10. Known gap (Hybrid, tags off) | `android_tap_element {text: "Show a View inside Compose"}`, then `android_get_ui_tree {}` | Still reports Compose tags as visible, because of the `AndroidView` ID. Expected until the gap is closed |
 | 11. A second window (Window) | `android_get_ui_tree {}` with the dialog closed | First line `Observed on <serial>, window spock.adb.sample, <ISO-8601 instant> (host clock, <n> s capture), viewport <W>x<H> rot 0, <dpi> dpi, source: uiautomator accessibility dump of the active window.` Second line starts `Limits:` and, tags being exposed, names the `AndroidView` gap. Rotation and dpi match the tab's own *This app sees* line |
@@ -169,6 +178,12 @@ text lives in `FixtureCards.kt`, so change the two together, and close the sheet
 | | `android_find_ui_element {testTag: "half_visible"}`, then `android_get_ui_tree {}` | One match, "partly in the viewport, cut at its scroll container's edge; how much is out of view is unknown". The tree marks it `[partly in viewport, clipped by scroll container]` and its text `[may be clipped by scroll container]`; nothing else in the card is marked |
 | | `android_tap_element {testTag: "half_visible"}` | Tapped at the centre of its part in view, not of its bounds; *Last tap* names the half-visible row |
 | | `android_scroll_to_element {testTag: "below_fold"}`, `android_assert_visible {testTag: "below_fold"}`, `android_tap_element {testTag: "below_fold"}`; afterwards switch tabs and back to scroll the column to the top | Found after about 5 swipes; PASS, ending "(occlusion not checked)"; *Last tap* names the row below the fold |
+| 16. Something arrives, something leaves (Busy) | `android_tap_element {testTag: "start_arrival"}`, then `android_wait_for_element {testTag: "wait_appears", until: "visible", timeoutMs: 10000}` | PASS: visible, within the viewport, after 1 observation on an API 34 emulator (the 3 s timer fires during the first dump) |
+| | `android_tap_element {testTag: "start_arrival"}`, then the same wait with `timeoutMs: 1000` | FAIL: timed out. No dump finishes in 1 s on an API 34 emulator, so it says its capture did not finish in the time left |
+| | `android_tap_element {testTag: "start_departure"}`, then `android_wait_for_element {testTag: "wait_disappears", until: "gone"}` | PASS: gone, nothing in the tree matches |
+| | `android_wait_for_element {testTag: "wait_never_there", until: "gone"}` | PASS on the first observation: `gone` is met at once by something that was never there |
+| 17. A button and a switch that change (Busy) | `android_tap_element {testTag: "start_enable"}`, then `android_wait_for_element {testTag: "wait_enable_target", until: "enabled"}` | PASS: enabled, after 1 or 2 observations |
+| | `android_tap_element {testTag: "start_flip"}`, then `android_wait_for_element {testTag: "wait_toggle_target", until: "checked"}` | PASS: checked, after 1 or 2 observations |
 
 Rows 1–5 were resolved offline with the plugin's selector against a `uiautomator` dump of the
 Taps tab from an API 34 emulator, and matched the table. Nothing was dispatched through MCP.
@@ -212,3 +227,38 @@ cached IntelliJ IDEA 2025.1 install. The Plugin Verifier CLI was therefore run d
 other four targets (Android Studio 2023.2.1.25, 2024.2.1.12 and 2025.1.1.14, IntelliJ IDEA
 Community 2023.2.8), and all four reported Compatible, with only the deprecated usages already
 known.
+
+Stage 4 rows — row 8's waits, 16 and 17 — were run on the same API 34 emulator with the plugin's
+tap and wait tool classes, every command sent through `adb shell` by a temporary harness. ddmlib and
+the MCP transports were left out. Every dump took 2.3–6.7 s, and `uiautomator` waits for the UI to
+settle before it dumps. What the emulator showed:
+
+- **Row 16:** `visible`, 10 s: PASS after 1 observation, in 4.6 and 5.0 s on two runs; the 3 s timer
+  fired during the first dump. With 1 s: FAIL, timed out after 1.0–1.1 s with no observation, since
+  the capture did not finish within 1 s. `gone`: PASS after 1 observation, 4.4 s. Never there: PASS
+  after 1 observation, 2.8 s.
+- **Row 17:** `enabled`: PASS after 2 observations, 5.5 s. `checked`: PASS after 1 observation, 4.5 s.
+- **Row 8, the busy ticker and a wait:** they work together when the wait is long enough. With 45 s,
+  PASS after 3 observations in 33.1 s: the first 2 captures were refused, about 13 s each, and
+  retried, and the third found the switch off. With 10 s the wait fails as timed out after 10.1 s
+  with no observation. Each capture gets what is left of the wait, and 10 s is less than the 13 s
+  `uiautomator` takes to give up, so on a screen that never settles a wait under about 13 s ends on
+  a capture out of time rather than a refusal.
+- **Cancelling:** a 60 s wait for an element that never appears was stopped 3.5 s in, during its
+  first capture. By interrupt, the stdio path, it answered `CANCELLED` 13 ms later; by the
+  assistant's flag through `CancellableToolContext`, 18 ms later. Both latencies come from the
+  harness polling its shell command every 20 ms, which stands in for ddmlib. How quickly ddmlib
+  itself stops is not verified.
+- **The smoke test's query** (an absent `text`, `until: "visible"`) with 10 s: FAIL, timed out after
+  3 observations, 10.1 s, "Last: nothing matched". With the 1 s first planned it failed on the
+  capture timeout instead, which is the wrong path to smoke-test, so `McpSmokeTest` uses 10 s.
+- **No Wait tab.** An eighth tab made every tab 45dp wide, and fixture 7's audit reported all eight
+  below 48dp: nine findings instead of two. So the wait fixtures are two cards on the Busy tab, whose
+  column does not scroll, and the audit is back to exactly two findings.
+- One run of the 45 s busy wait was spoiled by touches from outside the harness, which switched tabs
+  part-way (visible in logcat as input at fractional coordinates). It was repeated untouched.
+
+Stage 4 validation: `./gradlew test` ran 1040 tests with 9 skipped and no failures; `detekt`,
+`buildPlugin` and the sample's `assembleDebug` passed. `verifyPlugin` still stops on the broken
+cached IntelliJ IDEA 2025.1 install. The Plugin Verifier CLI, run directly against the other four
+targets, reported all four Compatible, with only the deprecated usages already known.

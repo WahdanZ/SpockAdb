@@ -71,6 +71,7 @@ class ToolSafetyTest {
                 "android_assert_visible",
                 "android_assert_enabled",
                 "android_assert_text",
+                "android_wait_for_element",
                 "android_get_http_proxy",
                 "android_list_app_storage",
                 "android_read_app_storage",

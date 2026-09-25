@@ -159,6 +159,22 @@ internal object Fixtures {
                 "Capture fails as DUMP_REFUSED (\"could not get idle state\"), after about 12 s on an API 34 " +
                     "emulator; TIMED_OUT where uiautomator waits past 30 s. The switch turns itself off after 30 s.",
             ),
+            Check(
+                listOf(
+                    call("""android_tap_element {testTag: "busy_switch"}"""),
+                    call("""android_wait_for_element {testTag: "busy_switch", until: "unchecked", timeoutMs: 45000}"""),
+                ),
+                "PASS after about 33 s, once the switch turns itself off: 3 observations on an API 34 emulator, " +
+                    "the first 2 refused while the ticker ran, which the result counts.",
+            ),
+            Check(
+                listOf(
+                    call("""android_tap_element {testTag: "busy_switch"}"""),
+                    call("""android_wait_for_element {testTag: "busy_switch", until: "unchecked", timeoutMs: 10000}"""),
+                ),
+                "FAIL: timed out. Its one capture did not finish in the 10 s it was given, since a refused dump takes " +
+                    "about 13 s while the ticker runs. Let the switch turn itself off before the next check.",
+            ),
         ),
     )
     val HYBRID = Fixture(
@@ -259,6 +275,57 @@ internal object Fixtures {
                 ),
                 "Found after about 5 swipes; PASS, ending (occlusion not checked); Last tap names the row below " +
                     "the fold.",
+            ),
+        ),
+    )
+    val ARRIVES_AND_LEAVES = Fixture(
+        "16", "Something arrives, something leaves", "Shown or removed 3 s after a button",
+        listOf(
+            Check(
+                listOf(
+                    call("""android_tap_element {testTag: "start_arrival"}"""),
+                    call("""android_wait_for_element {testTag: "wait_appears", until: "visible", timeoutMs: 10000}"""),
+                ),
+                "PASS: visible, within the viewport. A dump takes 2–7 s on an API 34 emulator, so the timer usually " +
+                    "fires during the first one: 1 observation, about 5 s.",
+            ),
+            Check(
+                listOf(
+                    call("""android_tap_element {testTag: "start_arrival"}"""),
+                    call("""android_wait_for_element {testTag: "wait_appears", until: "visible", timeoutMs: 1000}"""),
+                ),
+                "FAIL: timed out. A 1 s wait cannot finish one dump on an API 34 emulator, so it says its capture did " +
+                    "not finish in the time left.",
+            ),
+            Check(
+                listOf(
+                    call("""android_tap_element {testTag: "start_departure"}"""),
+                    call("""android_wait_for_element {testTag: "wait_disappears", until: "gone"}"""),
+                ),
+                "PASS: gone, nothing in the tree matches, after 1 observation. The button puts it back.",
+            ),
+            Check(
+                listOf(call("""android_wait_for_element {testTag: "wait_never_there", until: "gone"}""")),
+                "PASS on the first observation: gone is met at once by something that was never there.",
+            ),
+        ),
+    )
+    val CHANGES_STATE = Fixture(
+        "17", "A button and a switch that change", "Enabled or turned on 3 s after a button",
+        listOf(
+            Check(
+                listOf(
+                    call("""android_tap_element {testTag: "start_enable"}"""),
+                    call("""android_wait_for_element {testTag: "wait_enable_target", until: "enabled"}"""),
+                ),
+                "PASS: enabled, after 1 or 2 observations.",
+            ),
+            Check(
+                listOf(
+                    call("""android_tap_element {testTag: "start_flip"}"""),
+                    call("""android_wait_for_element {testTag: "wait_toggle_target", until: "checked"}"""),
+                ),
+                "PASS: checked, after 1 or 2 observations.",
             ),
         ),
     )

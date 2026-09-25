@@ -1,6 +1,7 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
+import spock.adb.CancellationSignal
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.uitree.DisplayMetrics
@@ -35,11 +36,18 @@ internal object UiTreeReader {
      *
      * @param metrics display metrics an earlier capture in the same call already read; see
      *   [UiTreeOperations.observe].
+     * @param timeoutSeconds for each command of the capture; a wait passes what it has left.
+     * @param cancellation what stops the capture; by default this thread's interrupt.
      * @throws IllegalStateException with an actionable message when the dump fails. A lost
      *   device is told what an agent can do about it, which a person in the Inspector cannot.
      */
-    fun read(device: ConnectedDevice, metrics: DisplayMetrics? = null): UiObservation = try {
-        UiTreeOperations(device.device, serial = device.serialNumber).observe(metrics)
+    fun read(
+        device: ConnectedDevice,
+        metrics: DisplayMetrics? = null,
+        timeoutSeconds: Long = UiTreeOperations.DUMP_TIMEOUT_SECONDS,
+        cancellation: CancellationSignal = CancellationSignal.currentThread(),
+    ): UiObservation = try {
+        UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation).observe(metrics)
     } catch (e: UiCaptureException) {
         throw when (e.kind) {
             UiCaptureException.Kind.DEVICE_UNAVAILABLE ->

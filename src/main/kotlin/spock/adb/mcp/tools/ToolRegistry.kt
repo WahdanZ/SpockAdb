@@ -69,6 +69,8 @@ object ToolRegistry {
         AssertVisibleTool(),
         AssertEnabledTool(),
         AssertTextTool(),
+        // Bounded waits for an element to appear, go or change state, instead of re-asserting by hand
+        WaitForElementTool(),
         // Interaction
         OpenDeepLinkTool(),
         InputTextTool(),
