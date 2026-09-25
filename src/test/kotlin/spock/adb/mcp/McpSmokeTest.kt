@@ -257,6 +257,8 @@ class McpSmokeTest {
             "android_get_debug_context" to "{}",
             // The 4.x text bundle, kept for the clients that parse it.
             "android_get_debug_context" to """{"format":"full","maxLogcatLines":20}""",
+            // Every section and a screenshot, for a well-known app that is always installed.
+            "android_diagnose_current_screen" to """{"packageName":"com.android.settings"}""",
         )
 
         /** Search for something. Reporting "no match" is a pass; anything else is not. */

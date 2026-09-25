@@ -2,14 +2,18 @@ package spock.adb.diagnostics
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import spock.adb.ShellQuote
 import spock.adb.command.DeviceConditionTracker
+import spock.adb.command.GetApplicationPermission
 import spock.adb.command.StandbyBucket
 import spock.adb.command.deviceConditions
 import spock.adb.command.pendingAlarms
 import spock.adb.command.scheduledJobs
+import spock.adb.device.ops.AppNotInstalledException
 import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.diagnostics.LikelyProblem.Severity
+import spock.adb.premission.ListItem
 import spock.adb.uitree.AccessibilityAudit
 import spock.adb.uitree.UiTree
 
@@ -28,6 +32,7 @@ object DiagnosticSections {
         UiSection,
         BackgroundWorkSection,
         DeviceConditionsSection,
+        PermissionsSection,
     )
 
     /**
@@ -81,8 +86,25 @@ object ScreenSection : DiagnosticSection {
             return SectionReport(data, listOf(problem))
         }
 
+        addActivityStack(data, probe, app)
         addFragments(data, probe, app)
         return SectionReport(data)
+    }
+
+    /**
+     * The app's own activities, top first. Best effort, like the fragments: "which screen led
+     * here" is context, and a dump that will not parse must not cost the activity above.
+     */
+    private fun addActivityStack(data: JsonObject, probe: DiagnosticProbe, app: String) {
+        val activities = runCatching { InspectionOperations(probe.device).activityStack() }
+            .getOrDefault(emptyList())
+            .filter { it.appPackage == app }
+            .flatMap { it.activitiesList }
+        if (activities.isEmpty()) return
+        val names = JsonArray()
+        activities.take(MAX_ACTIVITIES).forEach { names.add(it.substringAfterLast('.')) }
+        data.add("activityStack", names)
+        if (activities.size > MAX_ACTIVITIES) data.addProperty("moreActivities", activities.size - MAX_ACTIVITIES)
     }
 
     /** Best effort: a screen without fragments, or a dump that will not parse, is not a problem. */
@@ -108,6 +130,7 @@ object ScreenSection : DiagnosticSection {
 
     private val COMPONENT = Regex("""\s([A-Za-z][\w.]*)/([\w.$]+)""")
     private const val MAX_FRAGMENTS = 8
+    private const val MAX_ACTIVITIES = 8
     private const val RESUMED_COMMAND =
         "dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity'"
 }
@@ -337,4 +360,53 @@ object DeviceConditionsSection : DiagnosticSection {
         }
         return SectionReport(data, problems)
     }
+}
+
+/**
+ * Runtime permissions, granted and denied.
+ *
+ * A denied permission is not a fault — the user may have said no, and the app should cope — so
+ * it is reported as information: the line an agent needs before it concludes the camera preview
+ * is black because of a bug in the preview.
+ */
+object PermissionsSection : DiagnosticSection {
+    override val id = "permissions"
+    override val detail = DetailRef("android_get_package_info")
+
+    override fun collect(probe: DiagnosticProbe): SectionReport {
+        val app = probe.packageName ?: error("No app is known, so there are no permissions to read.")
+        ShellQuote.requireValidComponent(app, "Package name")
+        val dump = DiagnosticShell.run(probe.device, "dumpsys package ${ShellQuote.quote(app)}")
+        // Without this, an app that is not installed has no permission block to parse and read
+        // as "no runtime permissions" — an answer, where nothing was read at all. Checked in the
+        // dump already fetched, so it costs no extra round trip.
+        if ("Package [$app]" !in dump) throw AppNotInstalledException(app)
+        return summarise(GetApplicationPermission.parse(dump))
+    }
+
+    fun summarise(permissions: List<ListItem>): SectionReport {
+        val denied = permissions.filterNot { it.isSelected }.map { it.name.substringAfterLast('.') }
+        val data = JsonObject().apply {
+            addProperty("runtime", permissions.size)
+            addProperty("granted", permissions.size - denied.size)
+            add("denied", JsonArray().apply { denied.take(MAX_NAMES).forEach(::add) })
+            if (denied.size > MAX_NAMES) addProperty("moreDenied", denied.size - MAX_NAMES)
+        }
+        val problems = if (denied.isEmpty()) {
+            emptyList()
+        } else {
+            listOf(
+                LikelyProblem(
+                    "permission",
+                    Severity.INFO,
+                    "${denied.size} runtime permission(s) denied: " +
+                        DiagnosticShell.clip(denied.joinToString(", ")),
+                    section = id,
+                ),
+            )
+        }
+        return SectionReport(data, problems)
+    }
+
+    private const val MAX_NAMES = 12
 }

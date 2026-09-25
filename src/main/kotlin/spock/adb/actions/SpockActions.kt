@@ -102,3 +102,27 @@ class OpenDevicesAction : OpenTabAction("Devices")
 class OpenMcpPanelAction : OpenTabAction("MCP Server")
 class OpenAssistantAction : OpenTabAction("Assistant")
 class OpenUiInspectorAction : OpenTabAction("UI Inspector")
+
+/**
+ * Brings the Diagnose tab forward and diagnoses the current screen.
+ *
+ * Not a [DeviceAwareAction]: that asks which device when several are connected, and a diagnosis
+ * is of the device and app the tool window's header already names — the same target as every
+ * tab it links into.
+ */
+class DiagnoseCurrentScreenAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = event.project != null
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        val project = event.project ?: return
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Spock ADB") ?: return
+        // Activating builds the tool window's content on first use, so the shell exists by the
+        // time this runs.
+        toolWindow.activate { spock.adb.SpockAdbShell.find(project)?.diagnoseCurrentScreen() }
+    }
+}
