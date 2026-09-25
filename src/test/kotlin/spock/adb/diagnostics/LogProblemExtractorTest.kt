@@ -159,4 +159,43 @@ class LogProblemExtractorTest {
 
         assertEquals(1, result.problems.size)
     }
+
+    @Test
+    fun `a secret near the clip point is redacted before it is cut, not after`() {
+        // Clipping first would keep the JWT's first two segments, which its redaction rule
+        // (three segments) no longer matches. Assembled so no token-shaped literal is tracked.
+        val jwt = listOf("eyJ" + "h".repeat(30), "p".repeat(30), "s".repeat(30)).joinToString(".")
+        val result = extract(line(100, 'E', "Auth", "x".repeat(150) + " refresh with " + jwt))
+
+        val summary = result.problems.single().summary
+        assertFalse(summary.contains("eyJhhhh"), summary)
+        assertTrue(summary.length <= DiagnosticShell.MAX_VALUE_CHARS, summary)
+    }
+
+    @Test
+    fun `credentials in a URL's userinfo never reach the summary`() {
+        val password = listOf("not", "a", "password").joinToString("")
+        val result = extract(line(100, 'W', "Net", "GET https://admin:$password@api.example.com/items -> HTTP 401"))
+
+        val summary = result.problems.single().summary
+        assertFalse(summary.contains(password), summary)
+        assertEquals("GET /items (api.example.com) returned HTTP 401", summary)
+    }
+
+    @Test
+    fun `an ANR in a package that merely starts with the app's name is not the app's`() {
+        val result = extract(
+            line(1000, 'E', "ActivityManager", "ANR in com.example.app.debug (com.example.app.debug/.Main)"),
+            line(1000, 'E', "ActivityManager", "Reason: Input dispatching timed out"),
+        )
+
+        assertTrue(result.problems.isEmpty(), "${result.problems}")
+    }
+
+    @Test
+    fun `an ANR in the app's own secondary process is still the app's`() {
+        val result = extract(line(1000, 'E', "ActivityManager", "ANR in com.example.app:remote"))
+
+        assertEquals("anr", result.problems.single().type)
+    }
 }

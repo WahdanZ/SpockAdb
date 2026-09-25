@@ -43,6 +43,7 @@ class DebugContextToolTest {
         logcatReply: String = "01-01 00:00:00.000  1234  1234 E MyApp: boom",
         resumedReply: String = "  mResumedActivity: ActivityRecord{9f1c u0 com.example.app/.CheckoutActivity t12}",
         pidReply: String = "1234",
+        screencapReply: String = Base64.getEncoder().encodeToString(pngBytes),
     ): ConnectedDevice {
         val device = mockk<IDevice>(relaxed = true)
         val command = slot<String>()
@@ -58,8 +59,7 @@ class DebugContextToolTest {
                 issuedCommand.startsWith("pidof") -> pidReply
                 issuedCommand.startsWith("dumpsys activity activities") -> resumedReply
                 issuedCommand.startsWith("logcat") -> logcatReply
-                issuedCommand.startsWith("screencap") ->
-                    Base64.getEncoder().encodeToString(pngBytes)
+                issuedCommand.startsWith("screencap") -> screencapReply
                 else -> ""
             }
             val bytes = reply.toByteArray()
@@ -337,5 +337,18 @@ class DebugContextToolTest {
 
         assertTrue(text.length <= 12_000, "summary was ${text.length} chars")
         assertTrue(JsonParser.parseString(text).asJsonObject["moreProblems"].asInt > 0)
+    }
+
+    @Test
+    fun `a failed screenshot's message cannot push the summary past its bound`() {
+        // The note is added after the collector's size cut, so it has to be bounded itself.
+        val device = routedDevice(screencapReply = "screencap: " + "not base64 ".repeat(5_000))
+
+        val result = run(summaryIncluding("screenshot"), device)
+        val text = textOf(result)
+
+        assertTrue(result.content.none { it is ToolContent.Image })
+        assertTrue(text.length <= 12_000, "summary was ${text.length} chars")
+        assertTrue(JsonParser.parseString(text).asJsonObject["screenshot"].asString.length <= 300)
     }
 }

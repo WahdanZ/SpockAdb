@@ -73,12 +73,15 @@ object LogProblemExtractor {
 
         // ActivityManager prints an ANR over several lines — "ANR in", "PID:", "Reason:" — and
         // only the first names the app, so the rest are kept by following it.
+        // Matched as a whole name: `com.example.app` must not claim `com.example.app.debug`'s ANR,
+        // but does own its own `com.example.app:remote` process.
+        val ownAnr = Regex("""ANR in ${Regex.escape(packageName)}(?=[\s:(]|$)""")
         var anrLinesLeft = 0
         var anrPid: String? = null
         return lines.filter { line ->
             val isSystemAnr = line.tag == ACTIVITY_MANAGER && line.message.contains("ANR in ")
             when {
-                isSystemAnr && line.message.contains("ANR in $packageName") -> {
+                isSystemAnr && ownAnr.containsMatchIn(line.message) -> {
                     anrPid = line.pid
                     anrLinesLeft = ANR_FOLLOW_LINES
                     true
@@ -113,6 +116,8 @@ object LogProblemExtractor {
         private var pending: Line? = null
 
         fun report(key: String, type: String, severity: Severity, summary: String, at: String): Accumulator {
+            // Redacted whole, then clipped: a clip can cut a token short of the length its
+            // redaction rule needs, and leave the part it kept in plain sight.
             val acc = found.getOrPut(key) { Accumulator(type, severity, clipLine(redact(summary))) }
             acc.count++
             acc.lastSeen = at
@@ -138,7 +143,7 @@ object LogProblemExtractor {
         private fun stackFrame(line: Line) {
             val cause = CAUSED_BY.find(line.message)?.groupValues?.get(1) ?: return
             if (networkException(cause) != null && pending == null) {
-                report("net:$cause", TYPE_NETWORK, Severity.ERROR, "Network failure: ${clipLine(cause)}", line.time)
+                report("net:$cause", TYPE_NETWORK, Severity.ERROR, "Network failure: $cause", line.time)
             }
         }
 
@@ -150,7 +155,7 @@ object LogProblemExtractor {
                     fatalThreads[line.pid] = message.substringAfter(':').trim()
                 line.pid in fatalThreads && EXCEPTION_HEAD.matches(message) -> {
                     val thread = fatalThreads.remove(line.pid)
-                    val summary = "App crashed: ${clipLine(message)}" +
+                    val summary = "App crashed: ${message.trim()}" +
                         thread?.takeIf { it.isNotBlank() }?.let { " (thread $it)" }.orEmpty()
                     report("crash:${normalise(message)}", TYPE_CRASH, Severity.ERROR, summary, line.time)
                 }
@@ -161,7 +166,7 @@ object LogProblemExtractor {
             flushPending()
             val message = line.message
             if (message.contains("ANR in ")) {
-                val summary = "App not responding: ${clipLine(message.substringAfter("ANR in "))}"
+                val summary = "App not responding: ${message.substringAfter("ANR in ").trim()}"
                 anrAwaitingReason[line.pid] =
                     report("anr:${normalise(message)}", TYPE_ANR, Severity.ERROR, summary, line.time)
             } else if (message.startsWith("Reason:")) {
@@ -208,7 +213,7 @@ object LogProblemExtractor {
                 "exc:${line.tag}:${normalise(className + (previous?.message ?: ""))}",
                 type,
                 severity,
-                "${line.tag}: ${clipLine(context + line.message)}",
+                "${line.tag}: ${(context + line.message).trim()}",
                 line.time,
             )
         }
@@ -220,7 +225,7 @@ object LogProblemExtractor {
                 "log:${line.level}:${line.tag}:${normalise(line.message)}",
                 type,
                 severity,
-                "${line.tag}: ${clipLine(line.message)}",
+                "${line.tag}: ${line.message.trim()}",
                 line.time,
             )
         }
@@ -252,13 +257,14 @@ object LogProblemExtractor {
         val severity = if (status >= HTTP_SERVER_ERROR) Severity.ERROR else Severity.WARNING
         val target = describeUrl(url)
         val summary = listOfNotNull(method, target).joinToString(" ") + " returned HTTP $status"
-        return Triple("http:$method:$url:$status", severity, clipLine(summary))
+        return Triple("http:$method:$url:$status", severity, summary)
     }
 
     /** `/payment (api.example.com)`: the path is what a developer greps for, the host disambiguates. */
     private fun describeUrl(url: String): String {
         val match = URL_PARTS.matchEntire(url) ?: return url
-        val host = match.groupValues[1]
+        // `user:pass@host` loses its `://` here, and with it the shape the redactor recognises.
+        val host = match.groupValues[1].substringAfterLast('@')
         val path = match.groupValues[2].ifBlank { "/" }
         return "$path ($host)"
     }
