@@ -48,7 +48,17 @@
   then a View id's `android:id` in a layout or its `R.id` in code, then the text or content
   description as a string literal, or as a `strings.xml` value followed to its `R.string` use, then
   a custom View's class. A match by text says it may be one of several, and when more than one
-  place matched, Jump to Source lists them, best first. Nothing found says what was searched;
+  place matched, Jump to Source lists them, best first. Values an app builds at run time are found
+  too: a tag written as `testTag("form_${form}_button")` is found from the `form_a_button` the device
+  reports, by reading the argument of every `testTag(...)` call, and so is text such as
+  `Text("Feed row $row")` from "Feed row 1", or a `strings.xml` value with `%d` in it. A literal equal
+  to the value still ranks first, and the Source line names the template it matched through. Most
+  Compose rows have nothing of their own to search for — a Button's label is a child Text, a Row or
+  Column has neither tag nor text — so clicking a button used to open nothing while clicking its
+  label worked. Such an element now borrows from its nearest identifiable relative, its label
+  first, then what is inside it, then what encloses it, and says so: "via its label 'Save'", "via
+  enclosing 'feed_section'". When nothing at all is found, it opens the Activity that was on screen
+  when the UI was captured, and says that is what it did. Nothing found says what was searched;
   while the IDE is indexing it says so instead of searching, and each search is cancelled as soon
   as the selection moves on.
 - **Agents can wait for the screen instead of guessing how long to sleep.** `android_wait_for_element`

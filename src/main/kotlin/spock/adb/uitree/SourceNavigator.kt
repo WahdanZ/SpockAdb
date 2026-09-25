@@ -46,6 +46,9 @@ import javax.swing.SwingUtilities
  * shortcut, the context menu and the details link always open it with focus, and offer a list when
  * several places matched.
  *
+ * An element with nothing of its own to find borrows from its relatives, and when nothing at all
+ * is found the screen's Activity — read with the capture — is the answer, said as such.
+ *
  * While the IDE is indexing the word index cannot be read, so it says so rather than searching, and
  * fills the line in once indexing ends.
  */
@@ -69,7 +72,15 @@ internal class SourceNavigator(
         get() = PropertiesComponent.getInstance().getBoolean(AUTOSCROLL_KEY, true)
         set(value) = PropertiesComponent.getInstance().setValue(AUTOSCROLL_KEY, value, true)
 
-    private data class Selection(val query: SourceQuery, val windowPackage: String?, val screen: Set<String>)
+    private data class Selection(
+        val query: SourceQuery,
+        val windowPackage: String?,
+        val screen: Set<String>,
+        val relatives: List<SourceRelative>,
+        val activity: String?,
+    ) {
+        val searchable: Boolean get() = !query.isEmpty || relatives.isNotEmpty() || activity != null
+    }
 
     val autoscrollAction: AnAction = object :
         ToggleAction(
@@ -93,7 +104,7 @@ internal class SourceNavigator(
     ) {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
         override fun update(e: AnActionEvent) {
-            e.presentation.isEnabled = selection?.query?.isEmpty == false
+            e.presentation.isEnabled = selection?.searchable == true
         }
         override fun actionPerformed(e: AnActionEvent) = jumpFromTree()
     }
@@ -138,8 +149,11 @@ internal class SourceNavigator(
         }
     }
 
-    /** The tree's selection changed to [node], from [observation]. */
-    fun select(node: UiNode?, observation: UiObservation?) {
+    /**
+     * The tree's selection changed to [node], from [observation]; [activity] is the Activity that
+     * was resumed when it was captured, if it could be read.
+     */
+    fun select(node: UiNode?, observation: UiObservation?, activity: String?) {
         cancelPending()
         generation++
         resolved = null
@@ -148,14 +162,19 @@ internal class SourceNavigator(
                 SourceQuery.of(it, observation?.tree?.framework ?: UiFramework.UNKNOWN),
                 observation?.windowPackage,
                 SourceRanking.screenValues(observation?.tree, it),
+                SourceRelatives.of(observation?.tree, it),
+                activity,
             )
         }
-        val query = selection?.query
+        val current = selection
         when {
-            query == null -> line.clear()
-            query.isEmpty -> line.say(SourceStatus.NOTHING_TO_SEARCH)
+            current == null -> line.clear()
+            !current.searchable -> line.say(SourceStatus.NOTHING_TO_SEARCH)
             DumbService.isDumb(project) -> searchAfterIndexing()
-            else -> search { result -> if (autoscroll) result.best?.let { open(it, requestFocus = false) } }
+            else -> {
+                val opens = autoscroll
+                search(opens) { result -> if (opens) result.best?.let { open(it, requestFocus = false) } }
+            }
         }
     }
 
@@ -176,25 +195,25 @@ internal class SourceNavigator(
         val current = selection ?: return
         val known = resolved
         when {
-            current.query.isEmpty -> onNotice(SourceStatus.NOTHING_TO_SEARCH)
+            !current.searchable -> onNotice(SourceStatus.NOTHING_TO_SEARCH)
             DumbService.isDumb(project) -> onNotice(SourceStatus.INDEXING)
             known != null -> present(known, showPopup)
             else -> {
                 // A search for this selection may be under way; its answer is wanted now, with focus.
                 cancelPending()
                 generation++
-                search { present(it, showPopup) }
+                search(opens = true) { present(it, showPopup) }
             }
         }
     }
 
     private fun present(result: SourceResult, showPopup: (JBPopup) -> Unit) {
         when (result.hits.size) {
-            0 -> onNotice(SourceStatus.notFound(result.query))
+            0 -> onNotice(SourceStatus.notFound(result))
             1 -> open(result.hits.single(), requestFocus = true)
             else -> JBPopupFactory.getInstance()
                 .createPopupChooserBuilder(result.hits)
-                .setTitle("Found by ${result.tier?.label ?: "search"} — best first")
+                .setTitle("Found by ${SourceStatus.how(result)} — best first")
                 .setRenderer(SimpleListCellRenderer.create("") { it.presentation })
                 .setItemChosenCallback { open(it, requestFocus = true) }
                 .createPopup()
@@ -202,11 +221,15 @@ internal class SourceNavigator(
         }
     }
 
-    private fun search(then: (SourceResult) -> Unit) {
+    /** [opens] says whether [then] opens the answer, for the Source line to say so. */
+    private fun search(opens: Boolean, then: (SourceResult) -> Unit) {
         val current = selection ?: return
         val request = generation
         line.searching()
-        val locate = Callable { SourceLocator(project, current.screen).locate(current.query, current.windowPackage) }
+        val locate = Callable {
+            SourceLocator(project, current.screen)
+                .locate(current.query, current.windowPackage, current.relatives, current.activity)
+        }
         pending = ReadAction.nonBlocking(locate)
             .inSmartMode(project)
             .expireWith(this)
@@ -214,7 +237,7 @@ internal class SourceNavigator(
                 if (request != generation) return@finishOnUiThread
                 pending = null
                 resolved = result
-                line.show(result)
+                line.show(result, opened = opens)
                 then(result)
             }
             .submit(AppExecutorUtil.getAppExecutorService())
@@ -234,7 +257,7 @@ internal class SourceNavigator(
         line.say(SourceStatus.INDEXING)
         val request = generation
         DumbService.getInstance(project).runWhenSmart {
-            if (!disposed && request == generation) search { }
+            if (!disposed && request == generation) search(opens = false) { }
         }
     }
 

@@ -1,6 +1,7 @@
 package spock.adb.uitree
 
 import com.intellij.openapi.module.ModuleUtilCore
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.JavaPsiFacade
@@ -26,6 +27,13 @@ import spock.adb.declaration
  *
  * A search, not a mapping: see [SourceQuery]. It walks [SourceQuery.steps] in order and stops at
  * the first that finds anything, so a test tag that is found is never second-guessed by the text.
+ * An element that finds nothing borrows from its relatives ([SourceRelatives]), and a screen where
+ * nothing is found at all falls back to its Activity.
+ *
+ * A value the app builds with a Kotlin template — `testTag("form_${form}_button")`, `Text("Feed row
+ * $i")` — is matched through [SourceTemplate.pattern]. Text is found by its words, the fixed ones
+ * among them; a rendered tag is usually one word the source never contains, so every `testTag(...)`
+ * call's argument is read instead.
  *
  * Only the project's own content is searched, never libraries, and only through the word index —
  * [PsiSearchHelper.processElementsWithWord] finds every file holding a word without reading the
@@ -54,26 +62,84 @@ internal class SourceLocator(
         return SourceResult(query, null, emptyList())
     }
 
+    /**
+     * [query]'s own search; failing that, each of [relatives]' in turn; failing that, the
+     * declaration of [activity] — the screen's Activity, when it was read and is in this project.
+     */
+    fun locate(
+        query: SourceQuery,
+        windowPackage: String?,
+        relatives: List<SourceRelative>,
+        activity: String?,
+    ): SourceResult {
+        val own = locate(query, windowPackage)
+        if (own.hits.isNotEmpty()) return own
+        relatives.forEachIndexed { tried, relative ->
+            ProgressManager.checkCanceled()
+            val found = locate(relative.query, windowPackage)
+            if (found.hits.isNotEmpty()) return found.copy(query = query, via = relative, relativesTried = tried)
+        }
+        val tried = relatives.size
+        val screen = activity?.let(::classDeclaration)
+            ?: return SourceResult(query, null, emptyList(), relativesTried = tried)
+        return SourceResult(query, SourceTier.ACTIVITY, listOf(screen), activity = activity, relativesTried = tried)
+    }
+
     private fun find(step: SourceStep): Pair<SourceTier, List<SourceHit>> = when (step.tier) {
-        SourceTier.TEST_TAG -> step.tier to literals(step.value, tagCall = true)
+        SourceTier.TEST_TAG -> step.tier to literals(step.value, tagCall = true) + tagCallSites(step.value)
         SourceTier.VIEW_ID -> step.tier to viewIds(step.value)
         SourceTier.TEXT, SourceTier.CONTENT_DESCRIPTION -> {
             val literals = literals(step.value, tagCall = false)
             if (literals.isNotEmpty()) step.tier to literals else SourceTier.STRING_RESOURCE to strings(step.value)
         }
         SourceTier.CLASS -> step.tier to listOfNotNull(classDeclaration(step.value))
-        SourceTier.STRING_RESOURCE -> step.tier to emptyList()
+        SourceTier.STRING_RESOURCE, SourceTier.ACTIVITY -> step.tier to emptyList()
     }
 
     // ---------------------------------------------------------------- tiers
 
-    /** String literals in code equal to [value]; with [tagCall], ones passed to `testTag(...)` rank first. */
+    /**
+     * String literals in code equal to [value]; with [tagCall], ones passed to `testTag(...)` rank
+     * first. For text, also templates that render to it; a tag's templates are [tagCallSites]'.
+     */
     private fun literals(value: String, tagCall: Boolean): List<SourceHit> {
-        val word = SourceMatching.searchWord(value) ?: return emptyList()
-        val literals = leavesWith(word).mapNotNullTo(LinkedHashSet()) { literalAround(it) }
-        return literals
-            .filter { literalValue(it) == value }
-            .mapNotNull { hit(it, exactContext = tagCall && SourceMatching.isTestTagArgument(textBefore(it))) }
+        val literals = SourceTemplate.searchWords(value).flatMapTo(LinkedHashSet()) { word ->
+            leavesWith(word).mapNotNull { literalAround(it) }
+        }
+        return literals.mapNotNull { literal ->
+            when {
+                literalValue(literal) == value ->
+                    hit(literal, exactContext = tagCall && SourceMatching.isTestTagArgument(textBefore(literal)))
+                !tagCall && rendersTo(literal, value) ->
+                    hit(literal, exactContext = false, pattern = SourceTemplate.body(literal.text))
+                else -> null
+            }
+        }
+    }
+
+    /** `testTag(...)` calls whose argument is [tag], or a template that renders to it. */
+    private fun tagCallSites(tag: String): List<SourceHit> = tagArguments.mapNotNull { literal ->
+        when {
+            literalValue(literal) == tag -> hit(literal, exactContext = true)
+            rendersTo(literal, tag) -> hit(literal, exactContext = true, pattern = SourceTemplate.body(literal.text))
+            else -> null
+        }
+    }
+
+    /**
+     * The string literal passed to each `testTag(...)` call in the project, read once per search
+     * and shared by the relatives'. A call passing a variable — `testTag(tag)` — is not followed:
+     * where that value is written as a literal, [literals] finds it.
+     */
+    private val tagArguments: List<PsiElement> by lazy {
+        leavesWith(TEST_TAG, MAX_TAG_CALLS).mapNotNull { leaf ->
+            val file = leaf.containingFile
+            if (leaf.text != TEST_TAG || file is XmlFile) return@mapNotNull null
+            val text = file.viewProvider.contents
+            val end = leaf.textRange.endOffset
+            val after = text.subSequence(end, (end + CONTEXT_CHARS).coerceAtMost(text.length))
+            SourceTemplate.tagArgumentOffset(after)?.let { file.findElementAt(end + it) }?.let(::literalAround)
+        }
     }
 
     /** `android:id="@+id/name"` in layout XML, the element's own declaration; then `R.id.name` in code. */
@@ -94,12 +160,23 @@ internal class SourceLocator(
      * code, `@string/name` in XML — falling back to the entry itself when nothing uses it.
      */
     private fun strings(value: String): List<SourceHit> {
-        val word = SourceMatching.searchWord(value) ?: return emptyList()
-        val entries = leavesWith(word).mapNotNullTo(LinkedHashSet()) { stringEntry(it) }
-            .filter { SourceMatching.androidStringValue(it.value.text) == value }
+        val candidates = SourceTemplate.searchWords(value).flatMapTo(LinkedHashSet()) { word ->
+            leavesWith(word).mapNotNull { stringEntry(it) }
+        }
+        // Each entry with the format it matched through, or null when its value is [value] itself.
+        val entries = candidates.mapNotNull { entry ->
+            val shown = SourceMatching.androidStringValue(entry.value.text)
+            when {
+                shown == value -> entry to null
+                SourceTemplate.formatPattern(shown)?.matches(value) == true -> entry to shown
+                else -> null
+            }
+        }
         if (entries.isEmpty()) return emptyList()
-        val usages = entries.mapNotNull { it.getAttributeValue("name") }.distinct().flatMap(::stringUsages)
-        return usages.ifEmpty { entries.mapNotNull { hit(it, exactContext = false) } }
+        val usages = entries.distinctBy { (entry, _) -> entry.getAttributeValue("name") }.flatMap { (entry, format) ->
+            entry.getAttributeValue("name")?.let(::stringUsages).orEmpty().map { it.copy(pattern = format) }
+        }
+        return usages.ifEmpty { entries.mapNotNull { (entry, format) -> hit(entry, exactContext = false, format) } }
     }
 
     private fun stringUsages(name: String): List<SourceHit> = leavesWith(name).mapNotNull { leaf ->
@@ -122,16 +199,16 @@ internal class SourceLocator(
      * The processor is handed the leaf first and then each of its parents, so only leaves are kept.
      * It can be called from several threads at once — files are searched concurrently — hence the
      * lock; the order it collects in does not matter, since [SourceRanking] sorts the result.
-     * Stops after [MAX_OCCURRENCES]: a word like "OK" is everywhere, and a popup of hundreds helps nobody.
+     * Stops after [limit]: a word like "OK" is everywhere, and a popup of hundreds helps nobody.
      */
-    private fun leavesWith(word: String): Collection<PsiElement> {
+    private fun leavesWith(word: String, limit: Int = MAX_OCCURRENCES): Collection<PsiElement> {
         val leaves = LinkedHashSet<PsiElement>()
         words.processElementsWithWord(
             { element, _ ->
                 val leaf = element.firstChild == null
                 synchronized(leaves) {
                     if (leaf) leaves += element
-                    leaves.size < MAX_OCCURRENCES
+                    leaves.size < limit
                 }
             },
             scope,
@@ -159,6 +236,10 @@ internal class SourceLocator(
         (literal as? PsiLiteralValue)?.value as? String
             ?: SourceMatching.literalValue(literal.text, kotlin = literal.language.id == KOTLIN)
 
+    /** A Kotlin string template that renders to [value]. */
+    private fun rendersTo(literal: PsiElement, value: String): Boolean =
+        literal.language.id == KOTLIN && SourceTemplate.pattern(literal.text)?.matches(value) == true
+
     /** [leaf] when it is [name] in `R.<type>.name`, outside comments. */
     private fun resourceReference(leaf: PsiElement, name: String, type: String): SourceHit? {
         if (leaf.text != name || PsiTreeUtil.getParentOfType(leaf, PsiComment::class.java, false) != null) return null
@@ -179,7 +260,8 @@ internal class SourceLocator(
         return text.subSequence((start - CONTEXT_CHARS).coerceAtLeast(0), start)
     }
 
-    private fun hit(element: PsiElement, exactContext: Boolean): SourceHit? {
+    /** [pattern] is the template [element] matched through: see [SourceHit.pattern]. */
+    private fun hit(element: PsiElement, exactContext: Boolean, pattern: String? = null): SourceHit? {
         val file = element.containingFile ?: return null
         val virtualFile = file.virtualFile ?: return null
         val document = PsiDocumentManager.getInstance(project).getDocument(file) ?: return null
@@ -198,12 +280,14 @@ internal class SourceLocator(
             screenAffinity = screenAffinity.getOrPut(virtualFile.url) {
                 SourceRanking.screenAffinity(file.viewProvider.contents, screen)
             },
+            pattern = pattern,
         )
     }
 
     private companion object {
         const val ANDROID_ID = "android:id"
         const val KOTLIN = "kotlin"
+        const val TEST_TAG = "testTag"
 
         /** Leaf, template entry, template: how deep a Kotlin string's text sits. Java's is the leaf. */
         const val LITERAL_DEPTH = 4
@@ -211,5 +295,8 @@ internal class SourceLocator(
         /** Enough source before a match to see `testTag(tag = ` or a package-qualified `R.id.`. */
         const val CONTEXT_CHARS = 120
         const val MAX_OCCURRENCES = 500
+
+        /** Enough for every `testTag(...)` call in a large app; each is one short read, not a search. */
+        const val MAX_TAG_CALLS = 3000
     }
 }

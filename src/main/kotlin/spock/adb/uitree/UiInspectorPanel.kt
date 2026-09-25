@@ -27,6 +27,7 @@ import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import spock.adb.device.ConnectedDevice
+import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
 import java.awt.BorderLayout
 import java.awt.datatransfer.StringSelection
@@ -79,6 +80,9 @@ class UiInspectorPanel(
     private var connected: ConnectedDevice? = null
     private val device: DeviceLabel? get() = connected?.let { DeviceLabel(it.serialNumber, it.info.displayName) }
     private var captured: UiObservation? = null
+
+    /** The Activity resumed when [captured] was taken: Jump to Source's answer when nothing else is found. */
+    private var capturedActivity: String? = null
 
     /** Each captured node's place in the viewport, worked out with the capture on the pooled thread. */
     private var visibility: Map<UiNode, NodeVisibility> = emptyMap()
@@ -265,12 +269,17 @@ class UiInspectorPanel(
 
         // The dump is a blocking ADB round trip plus a file read; never on the EDT.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching { observe(target).let { it to ViewportVisibility.classifyAll(it) } }
+            val result = runCatching {
+                val observation = observe(target)
+                Triple(observation, ViewportVisibility.classifyAll(observation), resumedActivity(target))
+            }
 
             ApplicationManager.getApplication().invokeLater({
                 capturing = false
                 result
-                    .onSuccess { (observation, classified) -> onCaptured(observation, classified, from) }
+                    .onSuccess { (observation, classified, activity) ->
+                        onCaptured(observation, classified, activity, from)
+                    }
                     .onFailure { failure = it }
                 refresh()
             }) { project.isDisposed }
@@ -281,8 +290,21 @@ class UiInspectorPanel(
     private fun observe(target: ConnectedDevice): UiObservation =
         UiTreeOperations(target.device, serial = target.serialNumber).observe()
 
-    private fun onCaptured(observation: UiObservation, classified: Map<UiNode, NodeVisibility>, from: DeviceLabel) {
+    /**
+     * The Activity on screen, read after the dump with the same code as Current Activity. Null when
+     * it cannot be read: it is only a last resort for Jump to Source, never a reason to fail a capture.
+     */
+    private fun resumedActivity(target: ConnectedDevice): String? =
+        runCatching { InspectionOperations(target.device).currentActivity() }.getOrNull()
+
+    private fun onCaptured(
+        observation: UiObservation,
+        classified: Map<UiNode, NodeVisibility>,
+        activity: String?,
+        from: DeviceLabel,
+    ) {
         captured = observation
+        capturedActivity = activity
         visibility = classified
         capturedFrom = from
         header.show(observation, from)
@@ -367,7 +389,7 @@ class UiInspectorPanel(
     private fun showDetails() {
         val node = selectedNode()
         details.show(node, captured, capturedTree, node?.let { visibility[it] })
-        source.select(node, captured)
+        source.select(node, captured, capturedActivity)
         pendingNotice = null
         refresh()
     }

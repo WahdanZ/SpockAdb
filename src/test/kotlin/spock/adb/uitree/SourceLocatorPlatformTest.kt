@@ -164,6 +164,172 @@ class SourceLocatorPlatformTest : BasePlatformTestCase() {
         assertEquals(checkout.text.indexOf("\"Continue\""), result.best?.offset)
     }
 
+    fun testTemplatedTestTagCallSiteIsFoundForTheRenderedTag() {
+        val taps = kotlin(
+            "com/app/Taps.kt",
+            """
+            package com.app
+
+            fun forms(modifier: Modifier) = listOf("a", "b").map { form ->
+                modifier.testTag("form_${'$'}{form}_button")
+            }
+
+            fun carousel(modifier: Modifier, row: Int) = modifier.testTag(tag = "carousel_${'$'}row")
+
+            fun passed(modifier: Modifier, tag: String) = modifier.testTag(tag)
+            """,
+        )
+
+        val form = locate(SourceQuery(testTag = "form_a_button"))
+
+        assertEquals(SourceTier.TEST_TAG, form.tier)
+        assertEquals(1, form.hits.size)
+        val best = form.hits.single()
+        assertTrue(best.exactContext)
+        assertEquals(taps.text.indexOf("\"form_"), best.offset)
+        assertEquals("form_\${form}_button", best.pattern)
+        assertEquals("Taps.kt:4 · found by test tag pattern `form_\${form}_button`", SourceStatus.found(form))
+
+        val carousel = locate(SourceQuery(testTag = "carousel_4"))
+
+        assertEquals(taps.text.indexOf("\"carousel_"), carousel.best?.offset)
+        assertEquals("carousel_\$row", carousel.best?.pattern)
+    }
+
+    fun testTemplatedTextIsFoundForTheRenderedText() {
+        val feed = kotlin(
+            "com/app/Feed.kt",
+            """
+            package com.app
+
+            fun feed(row: Int) = Text("Feed row ${'$'}row")
+            fun last(event: String) = Text("Last tap: ${'$'}event")
+            fun loose(label: String, i: Int) = Text("${'$'}label ${'$'}i")
+            """,
+        )
+
+        val row = locate(SourceQuery(text = "Feed row 1"))
+
+        assertEquals(SourceTier.TEXT, row.tier)
+        assertEquals(listOf(feed.text.indexOf("\"Feed row")), row.hits.map { it.offset })
+        assertEquals("Feed row \$row", row.best?.pattern)
+
+        // "nothing", the longest word, is the part the template filled in; the fixed words find it.
+        val last = locate(SourceQuery(text = "Last tap: nothing yet"))
+
+        assertEquals(feed.text.indexOf("\"Last tap"), last.best?.offset)
+    }
+
+    fun testAnExactLiteralRanksAboveATemplate() {
+        val file = kotlin(
+            "com/app/Carousel.kt",
+            """
+            package com.app
+
+            fun carousel(m: Modifier, row: Int) = m.testTag("carousel_${'$'}row")
+            fun pinned(m: Modifier) = m.testTag("carousel_4")
+            fun feed(row: Int) = Text("Feed row ${'$'}row")
+            fun first() = Text("Feed row 1")
+            """,
+        )
+
+        val tag = locate(SourceQuery(testTag = "carousel_4"))
+
+        assertEquals(2, tag.hits.size)
+        assertEquals(file.text.indexOf("\"carousel_4\""), tag.best?.offset)
+        assertNull(tag.best?.pattern)
+        assertEquals("carousel_\$row", tag.hits[1].pattern)
+
+        val text = locate(SourceQuery(text = "Feed row 1"))
+
+        assertEquals(2, text.hits.size)
+        assertEquals(file.text.indexOf("\"Feed row 1\""), text.best?.offset)
+        assertEquals("Feed row \$row", text.hits[1].pattern)
+    }
+
+    fun testAStringsXmlFormatIsFoundForTheRenderedText() {
+        xml(
+            "res/values/strings.xml",
+            """
+            <resources>
+                <string name="taps_count">Tapped %1${'$'}d times</string>
+            </resources>
+            """,
+        )
+        val code = kotlin(
+            "com/app/Count.kt",
+            """
+            package com.app
+
+            fun count(n: Int) = stringResource(R.string.taps_count, n)
+            """,
+        )
+
+        val result = locate(SourceQuery(text = "Tapped 3 times"))
+
+        assertEquals(SourceTier.STRING_RESOURCE, result.tier)
+        assertEquals(code.text.indexOf("taps_count, n"), result.best?.offset)
+        assertEquals("Tapped %1\$d times", result.best?.pattern)
+    }
+
+    fun testAnElementWithNothingOfItsOwnBorrowsFromItsLabel() {
+        val file = kotlin(
+            "com/app/Form.kt",
+            """
+            package com.app
+
+            fun form() = Button(onClick = {}) { Text("Save changes") }
+            """,
+        )
+        val label = uiNode(text = "Save changes")
+        val button = uiNode(children = listOf(label, uiNode(className = "android.widget.Button")))
+        val tree = UiTree(button, UiFramework.COMPOSE, UiTree.TestTagSupport.AVAILABLE)
+        val query = SourceQuery.of(button, UiFramework.COMPOSE)
+
+        val result = ReadAction.compute<SourceResult, RuntimeException> {
+            SourceLocator(project).locate(query, "com.app", SourceRelatives.of(tree, button), activity = null)
+        }
+
+        assertTrue(query.isEmpty)
+        assertEquals(SourceTier.TEXT, result.tier)
+        assertSame(label, result.via?.node)
+        assertEquals(file.text.indexOf("\"Save changes\""), result.best?.offset)
+        assertEquals(
+            "Form.kt:3 · found by text via its label 'Save changes' — may be one of several",
+            SourceStatus.found(result),
+        )
+    }
+
+    fun testNothingFoundFallsBackToTheScreensActivity() {
+        val screen = kotlin(
+            "com/app/MainActivity.kt",
+            """
+            package com.app
+
+            class MainActivity
+            """,
+        )
+        val nowhere = SourceQuery(text = "Nowhere at all")
+        val also = SourceQuery(text = "Also nowhere")
+        val relative = SourceRelative(uiNode(text = "Also nowhere"), SourceRelative.Kind.ANCESTOR, also)
+
+        val result = ReadAction.compute<SourceResult, RuntimeException> {
+            SourceLocator(project).locate(nowhere, "com.app", listOf(relative), "com.app.MainActivity")
+        }
+
+        assertEquals(SourceTier.ACTIVITY, result.tier)
+        assertEquals(screen.text.indexOf("MainActivity"), result.best?.offset)
+        assertEquals("com.app.MainActivity", result.activity)
+        assertEquals(1, result.relativesTried)
+
+        val elsewhere = ReadAction.compute<SourceResult, RuntimeException> {
+            SourceLocator(project).locate(nowhere, "com.app", emptyList(), "com.other.Gone")
+        }
+
+        assertNull(elsewhere.tier)
+        assertTrue(elsewhere.hits.isEmpty())
+    }
+
     fun testNothingFoundReportsNoTier() {
         kotlin("com/app/Empty.kt", "package com.app\n\nval unrelated = \"something else\"\n")
 
@@ -179,4 +345,28 @@ class SourceLocatorPlatformTest : BasePlatformTestCase() {
     private fun kotlin(path: String, text: String): PsiFile = myFixture.addFileToProject(path, text.trimIndent())
     private fun java(path: String, text: String): PsiFile = myFixture.addFileToProject(path, text.trimIndent())
     private fun xml(path: String, text: String): PsiFile = myFixture.addFileToProject(path, text.trimIndent())
+
+    private fun uiNode(
+        text: String = "",
+        className: String = "android.view.View",
+        children: List<UiNode> = emptyList(),
+    ) = UiNode(
+            className = className,
+            packageName = "com.app",
+            text = text,
+            contentDescription = "",
+            resourceId = "",
+            bounds = UiNode.Bounds(0, 0, 100, 100),
+            clickable = children.isNotEmpty(),
+            longClickable = false,
+            enabled = true,
+            focused = false,
+            focusable = false,
+            scrollable = false,
+            checkable = false,
+            checked = false,
+            selected = false,
+            password = false,
+            children = children,
+        )
 }

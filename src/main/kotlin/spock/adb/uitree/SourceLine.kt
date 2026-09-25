@@ -51,8 +51,9 @@ internal class SourceLine(private val onJump: (JComponent) -> Unit) : JPanel() {
         link.isVisible = false
     }
 
-    fun show(result: SourceResult) {
-        val found = SourceStatus.found(result) ?: return say(SourceStatus.notFound(result.query))
+    /** [opened]: the answer is being opened as well as shown. */
+    fun show(result: SourceResult, opened: Boolean = false) {
+        val found = SourceStatus.found(result, opened) ?: return say(SourceStatus.notFound(result))
         say(found)
         status.toolTipText = SourceStatus.HOW_FOUND
         link.text = if (result.hits.size > 1) "Choose from ${result.hits.size}…" else "Jump to Source"

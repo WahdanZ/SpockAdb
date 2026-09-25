@@ -104,11 +104,11 @@ class SourceRankingTest {
     // ---------------------------------------------------------------- reading source text
 
     @Test
-    fun `the index is searched by the value's longest word`() {
-        assertEquals("checkout_continue", SourceMatching.searchWord("checkout_continue"))
-        assertEquals("resource", SourceMatching.searchWord("Kept in a resource file"))
-        assertEquals("Größe", SourceMatching.searchWord("Größe: 3"))
-        assertNull(SourceMatching.searchWord("→ …"))
+    fun `the index is searched by the value's longest word first`() {
+        assertEquals("checkout_continue", SourceTemplate.searchWords("checkout_continue").firstOrNull())
+        assertEquals("resource", SourceTemplate.searchWords("Kept in a resource file").firstOrNull())
+        assertEquals("Größe", SourceTemplate.searchWords("Größe: 3").firstOrNull())
+        assertNull(SourceTemplate.searchWords("→ …").firstOrNull())
     }
 
     @Test
@@ -208,6 +208,17 @@ class SourceRankingTest {
     }
 
     @Test
+    fun `a literal equal to the value outranks a template that renders to it`() {
+        val template = hit("A.kt", offset = 5, exactContext = true, pattern = "carousel_\$row")
+        val literal = hit("B.kt", offset = 500, exactContext = true)
+        val mention = hit("C.kt")
+
+        val ranked = SourceRanking.rank(listOf(template, mention, literal), windowPackage = null)
+
+        assertEquals(listOf(literal, template, mention), ranked)
+    }
+
+    @Test
     fun `then the module most matches are in`() {
         val lonely = hit("A.kt", module = "legacy")
         val app1 = hit("B.kt", module = "app")
@@ -294,6 +305,84 @@ class SourceRankingTest {
     }
 
     @Test
+    fun `a match through a template names the template`() {
+        val tag = SourceResult(
+            SourceQuery(testTag = "form_a_button"),
+            SourceTier.TEST_TAG,
+            listOf(hit("Taps.kt", line = 243, pattern = "form_\${form}_button")),
+        )
+        val text = SourceResult(
+            SourceQuery(text = "Feed row 1"),
+            SourceTier.TEXT,
+            listOf(hit("Feed.kt", line = 303, pattern = "Feed row \$row")),
+        )
+
+        assertEquals("Taps.kt:243 · found by test tag pattern `form_\${form}_button`", SourceStatus.found(tag))
+        assertEquals(
+            "Feed.kt:303 · found by text pattern `Feed row \$row` — may be one of several",
+            SourceStatus.found(text),
+        )
+    }
+
+    @Test
+    fun `a match through a relative says whose identifier found it`() {
+        val label = SourceRelative(node(text = "Save"), SourceRelative.Kind.LABEL, SourceQuery(text = "Save"))
+        val section = SourceRelative(node(resourceId = "feed_section"), SourceRelative.Kind.ANCESTOR, SourceQuery())
+        val byLabel = SourceResult(SourceQuery(), SourceTier.TEXT, listOf(hit("Taps.kt", line = 244)), via = label)
+        val bySection =
+            SourceResult(SourceQuery(), SourceTier.TEST_TAG, listOf(hit("Feed.kt", line = 300)), via = section)
+
+        assertEquals(
+            "Taps.kt:244 · found by text via its label 'Save' — may be one of several",
+            SourceStatus.found(byLabel),
+        )
+        assertEquals("Feed.kt:300 · found by test tag via enclosing 'feed_section'", SourceStatus.found(bySection))
+        assertEquals("test tag via enclosing 'feed_section'", SourceStatus.how(bySection))
+    }
+
+    @Test
+    fun `with nothing found but the screen's activity, it says so, and whether it opened it`() {
+        val result = SourceResult(
+            SourceQuery(),
+            SourceTier.ACTIVITY,
+            listOf(hit("ComposeReliabilityActivity.kt", line = 107)),
+            activity = "spock.adb.sample.compose.ComposeReliabilityActivity",
+            relativesTried = 2,
+        )
+
+        assertEquals(
+            "No match for this element; opened the screen's activity `ComposeReliabilityActivity`",
+            SourceStatus.found(result, opened = true),
+        )
+        assertEquals(
+            "No match for this element; Jump to Source opens the screen's activity `ComposeReliabilityActivity`",
+            SourceStatus.found(result),
+        )
+    }
+
+    @Test
+    fun `nothing found counts the relatives that were searched for too`() {
+        val bare = SourceResult(SourceQuery(), null, emptyList(), relativesTried = 2)
+        val tagged = SourceResult(SourceQuery(testTag = "x"), null, emptyList(), relativesTried = 1)
+        val alone = SourceResult(SourceQuery(testTag = "x"), null, emptyList())
+
+        assertEquals(
+            "No source found for this element, nor for its 2 nearest identifiable elements, in this project.",
+            SourceStatus.notFound(bare),
+        )
+        assertEquals(
+            "No source found for tag 'x', nor for its nearest identifiable element, in this project.",
+            SourceStatus.notFound(tagged),
+        )
+        assertEquals(SourceStatus.notFound(alone.query), SourceStatus.notFound(alone))
+        // Nothing of its own, no relatives, and an activity that is not in this project.
+        assertEquals(
+            "No source found for this element in this project.",
+            SourceStatus.notFound(SourceResult(SourceQuery(), null, emptyList())),
+        )
+    }
+
+    @Test
     fun `nothing found says what was searched`() {
         val query = SourceQuery(testTag = "x", text = "y")
 
@@ -327,6 +416,7 @@ class SourceRankingTest {
         module: String? = null,
         packageName: String? = null,
         screenAffinity: Int = 0,
+        pattern: String? = null,
     ) = SourceHit(
         url = "file:///project/$fileName",
         fileName = fileName,
@@ -337,6 +427,7 @@ class SourceRankingTest {
         module = module,
         packageName = packageName,
         screenAffinity = screenAffinity,
+        pattern = pattern,
     )
 
     private fun node(text: String = "", contentDescription: String = "", resourceId: String = "") = UiNode(

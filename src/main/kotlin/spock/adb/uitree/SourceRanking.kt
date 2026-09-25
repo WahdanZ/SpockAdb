@@ -68,6 +68,9 @@ internal enum class SourceTier(val label: String, val noun: String, val guess: B
     /** Text or a description found in `strings.xml`, then where that string is used. */
     STRING_RESOURCE("text in strings.xml", "string", true),
     CLASS("class", "class", false),
+
+    /** Nothing about the element or its relatives was found: the Activity the screen belongs to. */
+    ACTIVITY("the screen's activity", "activity", true),
 }
 
 /** A resource id as `uiautomator` reports it. */
@@ -108,6 +111,11 @@ internal data class SourceHit(
     val packageName: String? = null,
     /** How many of the rest of the capture's tags and texts this file quotes: see [SourceRanking.screenAffinity]. */
     val screenAffinity: Int = 0,
+    /**
+     * The template it matched through, as written without its quotes — `form_${form}_button`, or a
+     * `strings.xml` value with `%d` in it — when it is not a literal equal to the value.
+     */
+    val pattern: String? = null,
 ) {
     /** How the candidates popup lists it: `file:line — snippet`. */
     val presentation: String get() = "$fileName:$line — ${snippet.clipped()}"
@@ -124,6 +132,12 @@ internal data class SourceResult(
     val query: SourceQuery,
     val tier: SourceTier?,
     val hits: List<SourceHit>,
+    /** Found through this relative, the element itself having found nothing. */
+    val via: SourceRelative? = null,
+    /** With [SourceTier.ACTIVITY], the class name of the Activity that was found. */
+    val activity: String? = null,
+    /** How many relatives were searched for, as well as the element, before this answer. */
+    val relativesTried: Int = 0,
 ) {
     val best: SourceHit? get() = hits.firstOrNull()
 }
@@ -132,7 +146,8 @@ internal object SourceRanking {
 
     /**
      * Best first: the element's own declaration (a `testTag(...)` argument, an `android:id`) over a
-     * mere mention; then a place in the module most of the other matches are in; then a file whose
+     * mere mention; then a literal equal to the value over a template that renders to it; then a
+     * place in the module most of the other matches are in; then a file whose
      * package shares more of the captured window's package; then a file that builds more of the
      * rest of the captured screen. Ties keep a stable file-then-offset order.
      */
@@ -141,6 +156,7 @@ internal object SourceRanking {
         val perModule = distinct.mapNotNull { it.module }.groupingBy { it }.eachCount()
         return distinct.sortedWith(
             compareByDescending<SourceHit> { it.exactContext }
+                .thenBy { it.pattern != null }
                 .thenByDescending { hit -> hit.module?.let { perModule[it] } ?: 0 }
                 .thenByDescending { packageAffinity(it.packageName, windowPackage) }
                 .thenByDescending { it.screenAffinity }
@@ -199,13 +215,6 @@ internal object SourceMatching {
         return className.replace('$', '.')
     }
 
-    /**
-     * The word to look up in the IDE's word index: its longest run of identifier characters, since
-     * the index holds words, not phrases. Null when there is none, as for "→".
-     */
-    fun searchWord(value: String): String? =
-        Regex("""[\p{L}\p{N}_]+""").findAll(value).map { it.value }.maxByOrNull { it.length }
-
     /** [before] is the source text leading up to a string literal; true when it opens `testTag(`. */
     fun isTestTagArgument(before: CharSequence): Boolean = TEST_TAG_CALL.containsMatchIn(before)
 
@@ -225,7 +234,7 @@ internal object SourceMatching {
     /**
      * The value of a string literal, from its source text including the quotes. Null for anything
      * that is not one whole constant: a Kotlin template with `$name` or `${…}` in it is only known
-     * at run time, so it cannot equal what the device shows.
+     * at run time, so it cannot equal what the device shows. [SourceTemplate.pattern] matches it instead.
      */
     fun literalValue(source: String, kotlin: Boolean): String? {
         val raw = source.length >= RAW_QUOTES * 2 && source.startsWith(TRIPLE_QUOTE) && source.endsWith(TRIPLE_QUOTE)
@@ -330,11 +339,19 @@ internal object SourceStatus {
     const val HOW_FOUND = "Found by searching this project for the element's identifiers. A UI capture " +
         "carries no source locations, so this is the best match, not a certain one."
 
-    /** `File.kt:12 · found by test tag`, saying so when it may be one of several. */
-    fun found(result: SourceResult): String? {
+    /**
+     * `File.kt:12 · found by test tag`, saying so when it may be one of several. With nothing found
+     * but the screen's activity, says that instead — as opened when [opened], else as what Jump to
+     * Source opens.
+     */
+    fun found(result: SourceResult, opened: Boolean = false): String? {
         val best = result.best ?: return null
         val tier = result.tier ?: return null
-        val where = "${best.fileName}:${best.line} · found by ${tier.label}"
+        if (tier == SourceTier.ACTIVITY) {
+            val activity = "the screen's activity `${result.activity?.substringAfterLast('.') ?: best.fileName}`"
+            return "No match for this element; " + if (opened) "opened $activity" else "Jump to Source opens $activity"
+        }
+        val where = "${best.fileName}:${best.line} · found by ${how(result)}"
         return when {
             result.hits.size > 1 -> "$where · best of ${result.hits.size}"
             tier.guess -> "$where — may be one of several"
@@ -342,10 +359,28 @@ internal object SourceStatus {
         }
     }
 
+    /** What found the best match: "test tag pattern `form_${form}_button` via enclosing 'form_a'". */
+    fun how(result: SourceResult): String = buildString {
+        append(result.tier?.label ?: "search")
+        result.best?.pattern?.let { append(" pattern `").append(it.shortened()).append('`') }
+        result.via?.let { append(' ').append(it.description) }
+    }
+
     /** "No source found for tag 'x', text 'y' in this project", naming everything that was tried. */
     fun notFound(query: SourceQuery): String {
         val searched = query.steps.joinToString(", ") { "${it.tier.noun} '${it.value.shortened()}'" }
         return "No source found for $searched in this project."
+    }
+
+    /** [notFound], also counting the relatives that were searched for in the element's place. */
+    fun notFound(result: SourceResult): String {
+        val searched = result.query.steps.joinToString(", ") { "${it.tier.noun} '${it.value.shortened()}'" }
+        val relatives = when (result.relativesTried) {
+            0 -> ""
+            1 -> ", nor for its nearest identifiable element,"
+            else -> ", nor for its ${result.relativesTried} nearest identifiable elements,"
+        }
+        return "No source found for ${searched.ifEmpty { "this element" }}$relatives in this project."
     }
 
     private fun String.shortened(): String =

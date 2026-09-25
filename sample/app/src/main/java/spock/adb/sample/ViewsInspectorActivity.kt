@@ -40,11 +40,12 @@ class ViewsInspectorActivity : SampleActivity() {
  *
  * It reports its own class name to accessibility; a TextView subclass otherwise reports
  * `android.widget.TextView`, and the Inspector would have nothing of the app's to look up. Its text
- * is built at run time, so no literal matches it and the search falls through to the class.
+ * is joined from parts at run time — not a template, which the search would match as a pattern — so
+ * nothing matches it and the search falls through to the class.
  */
 class SourceBadgeView(context: Context) : TextView(context) {
     init {
-        text = "Drawn by ${javaClass.simpleName}"
+        text = listOf("Drawn", "by", javaClass.simpleName).joinToString(" ")
     }
 
     override fun getAccessibilityClassName(): CharSequence = SourceBadgeView::class.java.name
