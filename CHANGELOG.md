@@ -51,8 +51,11 @@
 - **Stop in the assistant ends a running wait, even in the middle of a screen capture.** Stop only
   took effect between tool calls, so a wait would have run for up to a minute after it was pressed.
   `android_wait_for_element` now sees Stop during each capture and between captures, and reports
-  that nothing was changed on the device. MCP clients on stdio cancel a wait the same way, by
-  interrupting the request; over HTTP a wait still runs to its limit.
+  that nothing was changed on the device. A tool call the model queued behind the wait — a tap on
+  the element it was waiting for — is not run after Stop either: it is answered "Not run: the user
+  pressed Stop." instead, so a stopped turn cannot still act on the device or ask to confirm a
+  destructive call. MCP clients on stdio cancel a wait the same way, by interrupting the request;
+  over HTTP a wait still runs to its limit.
 
 ### Changed
 

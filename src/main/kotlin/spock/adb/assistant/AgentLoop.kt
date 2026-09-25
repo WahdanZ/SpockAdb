@@ -63,8 +63,8 @@ class AgentLoop(
      * @param conversation appended to in place, so the caller keeps the transcript across
      *   turns and a cancelled turn still leaves the history consistent.
      */
-    // Six exits, each naming a different outcome the caller renders differently. Folding them
-    // into one result variable would trade six clear names for one mutable one.
+    // Seven exits, each naming a different outcome the caller renders differently. Folding them
+    // into one result variable would trade seven clear names for one mutable one.
     @Suppress("ReturnCount")
     fun run(
         system: String,
@@ -100,17 +100,26 @@ class AgentLoop(
             // a race worth having.
             if (isCancelled()) return AgentOutcome.Cancelled(lastText)
 
-            // Every result for this turn goes back in one message, in the order asked for.
+            // Every result for this turn goes back in one message, in the order asked for. Stop
+            // can land during a call — a wait ends on it — and the calls after that one are not
+            // run: a tap queued behind a cancelled wait is not what the developer asked for. Each
+            // still gets a result, so every tool call in the history is answered.
             conversation += LlmMessage(
                 role = LlmMessage.Role.USER,
-                toolResults = response.toolCalls.map { tools.invoke(it) },
+                toolResults = response.toolCalls.map { call ->
+                    if (isCancelled()) LlmToolResult(call.id, NOT_RUN, isError = true) else tools.invoke(call)
+                },
             )
+            if (isCancelled()) return AgentOutcome.Cancelled(lastText)
         }
 
         return AgentOutcome.ReachedIterationCap(lastText, maxIterations)
     }
 
     companion object {
+        /** The result of a call skipped because Stop was pressed during an earlier one. */
+        const val NOT_RUN = "Not run: the user pressed Stop."
+
         /**
          * The only guard against a surprise bill in v1, so it is deliberately not generous.
          * A debugging task that genuinely needs more than this is one to drive by hand.
