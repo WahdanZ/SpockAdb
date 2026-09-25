@@ -63,8 +63,8 @@ class AgentLoop(
      * @param conversation appended to in place, so the caller keeps the transcript across
      *   turns and a cancelled turn still leaves the history consistent.
      */
-    // Seven exits, each naming a different outcome the caller renders differently. Folding them
-    // into one result variable would trade seven clear names for one mutable one.
+    // Six exits, each naming a different outcome the caller renders differently. Folding them
+    // into one result variable would trade six clear names for one mutable one.
     @Suppress("ReturnCount")
     fun run(
         system: String,
@@ -95,15 +95,14 @@ class AgentLoop(
 
             if (response.wasRefused) return AgentOutcome.Refused(response.text)
             if (response.toolCalls.isEmpty()) return AgentOutcome.Answered(response.text)
-            // Cancelled while the model was asking for tools: stop before running any of them.
-            // The alternative — clearing app data and then noticing Stop was pressed — is not
-            // a race worth having.
-            if (isCancelled()) return AgentOutcome.Cancelled(lastText)
 
-            // Every result for this turn goes back in one message, in the order asked for. Stop
-            // can land during a call — a wait ends on it — and the calls after that one are not
-            // run: a tap queued behind a cancelled wait is not what the developer asked for. Each
-            // still gets a result, so every tool call in the history is answered.
+            // Every result for this turn goes back in one message, in the order asked for. Each
+            // call checks Stop first, so none runs once it is pressed: not when it was pressed while
+            // the model was still asking for them — clearing app data and then noticing Stop is not
+            // a race worth having — and not after a wait that ended on it, since a tap queued behind
+            // a cancelled wait is not what the developer asked for. A skipped call still gets a
+            // result, because a provider may reject the next request if any tool call in the history
+            // is left unanswered.
             conversation += LlmMessage(
                 role = LlmMessage.Role.USER,
                 toolResults = response.toolCalls.map { call ->
@@ -117,7 +116,7 @@ class AgentLoop(
     }
 
     companion object {
-        /** The result of a call skipped because Stop was pressed during an earlier one. */
+        /** The result of a call skipped because Stop was pressed before it could run. */
         const val NOT_RUN = "Not run: the user pressed Stop."
 
         /**

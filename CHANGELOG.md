@@ -79,6 +79,12 @@
 
 ### Fixed
 
+- **Stop pressed while the model was still asking for tools no longer breaks the next message.**
+  The tools were rightly not run, but the model's request for them was left in the conversation
+  with no answer, and a provider can reject a conversation holding a tool call with no result — so
+  the next thing you typed could fail. Each call is now answered "Not run: the user pressed Stop.",
+  the same as a call skipped after a stopped wait.
+
 - **Uninstall reports a device that refuses instead of claiming the app is gone.** The tool
   window threw away what ADB answered, so uninstalling a device-owner app, a system package, or
   one another user on the device still has, showed "application uninstalled" while the app stayed
