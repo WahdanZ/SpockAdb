@@ -13,7 +13,6 @@
   `|`, `;` or `&&` completion starts over for the next command. **↑/↓** choose, **Tab** inserts,
   **Enter** inserts only once something is chosen — otherwise it still runs the command — and
   **Ctrl+Space** asks for suggestions.
-
 - **Debug Timeline: what happened just before the bug, in one place.** The new **Timeline** tab of the Spock Logcat window
   records events from across Spock in time order: the selected app's activity lifecycle, its
   fragments after each resume, process starts and deaths, crashes and ANRs, and the warnings and
