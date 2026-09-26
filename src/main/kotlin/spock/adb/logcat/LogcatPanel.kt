@@ -267,9 +267,20 @@ class LogcatPanel(
 
     // ---------------------------------------------------------------- streaming
 
-    /** Called when the tool window's selected device changes. */
-    fun setDevice(connected: ConnectedDevice?) {
-        if (connected?.serialNumber == device?.serialNumber) return
+    /**
+     * Called when the device or the app chosen for the project changes.
+     *
+     * A new device starts the panel over. A new app on the same device only moves App scope to
+     * it, from the next line on — the lines already read stay, since they are still true.
+     */
+    fun setTarget(connected: ConnectedDevice?, packageName: String?) {
+        if (connected?.serialNumber == device?.serialNumber) {
+            val target = connected ?: return
+            if (packageName != null && packageName != app.packageName && stream?.isRunning == true) {
+                resolveApp(target)
+            }
+            return
+        }
         stop()
         device = connected
         // Everything held was about the previous device: its PIDs mean nothing here, and its
@@ -343,9 +354,10 @@ class LogcatPanel(
      * App shows nothing, which is honest and lasts about as long as a `pidof`.
      */
     private fun resolveApp(target: ConnectedDevice) {
-        val applicationId = runCatching {
-            spock.adb.command.GetApplicationIDCommand.resolve(project)
-        }.getOrNull()
+        // The app chosen for the project, else the open project's own: Logcat's App scope used to
+        // follow the project alone, so it showed a different app from every other surface.
+        val applicationId = spock.adb.context.SpockSelection.getInstance(project).snapshot.app
+            ?: runCatching { spock.adb.command.GetApplicationIDCommand.resolve(project) }.getOrNull()
 
         if (applicationId == null) {
             app = AppProcesses.UNKNOWN

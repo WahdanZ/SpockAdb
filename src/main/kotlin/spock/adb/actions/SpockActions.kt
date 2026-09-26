@@ -94,7 +94,19 @@ abstract class OpenTabAction(private val tabName: String) : AnAction() {
     }
 }
 
-class OpenLogcatAction : OpenTabAction("Logcat")
+/** Opens the Spock Logcat tool window, which is a window of its own rather than a tab. */
+class OpenLogcatAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = event.project != null
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        event.project?.let { spock.adb.logcat.SpockLogcatToolWindow.open(it) }
+    }
+}
 class OpenCommandCenterAction : OpenTabAction("Commands")
 class OpenDevicesAction : OpenTabAction("Device")
 class OpenMcpPanelAction : OpenTabAction("MCP Server")

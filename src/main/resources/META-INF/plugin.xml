@@ -57,6 +57,12 @@
                     icon="/icons/spockAdb.svg"
                     factoryClass="spock.AdbDrawerViewer"
                     secondary="true"/>
+        <!-- Docked where a log fits: the IDE's width, a few lines high, beside the actions. -->
+        <toolWindow anchor="bottom"
+                    canCloseContents="false"
+                    id="Spock Logcat"
+                    icon="AllIcons.Debugger.Console"
+                    factoryClass="spock.adb.logcat.SpockLogcatToolWindow"/>
     </extensions>
 
     <applicationListeners>

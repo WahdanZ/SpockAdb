@@ -10,13 +10,12 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.util.ui.JBUI
 import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantPanel
-import spock.adb.assistant.AssistantPrefill
 import spock.adb.backgroundwork.BackgroundWorkPanel
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.diagnostics.DiagnosePanel
-import spock.adb.logcat.LogcatPanel
+import spock.adb.logcat.SpockLogcatToolWindow
 import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerPanel
 import spock.adb.mcp.McpServerService
@@ -58,7 +57,6 @@ class SpockAdbShell(
 
     private val devices = SpockAdbViewer(project)
     private val storage = AppStoragePanel(project)
-    private val logcat = LogcatPanel(project)
     private val commands = CommandCenterPanel(project)
     private val uiInspector = UiInspectorPanel(project)
     private val backgroundWork = BackgroundWorkPanel(project)
@@ -71,10 +69,7 @@ class SpockAdbShell(
             tabs.select(UI_INSPECTOR_TAB)
             uiInspector.captureNow()
         },
-        viewRelatedLogs = {
-            tabs.select(LOGCAT_TAB)
-            logcat.showRelatedErrors()
-        },
+        viewRelatedLogs = { SpockLogcatToolWindow.open(project) { it.showRelatedErrors() } },
     )
 
     /**
@@ -103,24 +98,13 @@ class SpockAdbShell(
     }
 
     init {
-        listOfNotNull(diagnose, storage, logcat, commands, uiInspector, backgroundWork, mcp, assistant)
+        listOfNotNull(diagnose, storage, commands, uiInspector, backgroundWork, mcp, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
-
-        // Logcat hands prepared context to the Assistant rather than reaching into it: the tab
-        // is brought forward and the prompt placed, and the developer presses Send. See
-        // [spock.adb.assistant.AssistantPrefill]. Wired only when the tab exists.
-        assistant?.let { panel ->
-            logcat.assistant = AssistantPrefill { prompt ->
-                tabs.select(ASSISTANT_TAB)
-                panel.prefill(prompt)
-            }
-        }
 
         tabs.addTab("Device", devices)
         tabs.addTab(DIAGNOSE_TAB, diagnose)
         tabs.addTab(STORAGE_TAB, storage)
-        tabs.addTab(LOGCAT_TAB, logcat)
         tabs.addTab("Commands", commands)
         tabs.addTab(UI_INSPECTOR_TAB, uiInspector)
         tabs.addTab(BACKGROUND_WORK_TAB, backgroundWork)
@@ -184,7 +168,6 @@ class SpockAdbShell(
         devices.setDevice(device)
         diagnose.setDevice(device)
         storage.setDevice(device)
-        logcat.setDevice(device)
         commands.setDevice(device)
         uiInspector.setDevice(device)
         backgroundWork.setDevice(device)
@@ -203,6 +186,12 @@ class SpockAdbShell(
     fun diagnoseCurrentScreen() {
         tabs.select(DIAGNOSE_TAB)
         diagnose.diagnose()
+    }
+
+    private fun prefillAssistant(prompt: String) {
+        val panel = assistant ?: return
+        tabs.select(ASSISTANT_TAB)
+        panel.prefill(prompt)
     }
 
     /** Brings the tab titled [title] forward, for the actions that open one. */
@@ -261,12 +250,20 @@ class SpockAdbShell(
                 ?.contentManager?.contents
                 ?.firstNotNullOfOrNull { it.component as? SpockAdbShell }
 
+        /**
+         * Brings the Assistant tab forward with [prompt] placed, for Logcat's Ask AI. The
+         * developer presses Send; see [spock.adb.assistant.AssistantPrefill].
+         */
+        fun prefillAssistant(project: Project, prompt: String) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
+            toolWindow.activate { find(project)?.prefillAssistant(prompt) }
+        }
+
         private const val TOOL_WINDOW_ID = "Spock ADB"
         private const val ASSISTANT_TAB = "Assistant"
         private const val BACKGROUND_WORK_TAB = "Background Work"
         private const val STORAGE_TAB = "Storage"
         private const val DIAGNOSE_TAB = "Diagnose"
-        private const val LOGCAT_TAB = "Logcat"
         private const val UI_INSPECTOR_TAB = "UI Inspector"
     }
 }
