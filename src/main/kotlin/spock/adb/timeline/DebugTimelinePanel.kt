@@ -69,7 +69,7 @@ class DebugTimelinePanel(
     private val markerButton = JButton("Add Marker").apply {
         toolTipText = "Note the moment you saw the problem"
     }
-    private val copyButton = JButton("Copy Range")
+    private val copyButton = JButton("Copy All")
     private val exportButton = JButton("Export…")
     private val clearButton = JButton("Clear")
     private val contextButton = JButton().apply { isVisible = false }
@@ -87,6 +87,7 @@ class DebugTimelinePanel(
     }
 
     private val refreshQueued = AtomicBoolean(false)
+    private var shownIds: List<Long> = emptyList()
     private val listener: () -> Unit = ::queueRefresh
 
     @Volatile
@@ -187,14 +188,34 @@ class DebugTimelinePanel(
         val following = isFollowing()
         val keep = selectedEvents().map { it.id }.toSet()
         model.events = service.timeline.query(filter())
+        // Restoring the selection row by row fired a selection event per row, each re-rendering the
+        // detail: quadratic in the selection, on the EDT, on every event that arrived. One batch.
+        val selection = table.selectionModel
+        selection.valueIsAdjusting = true
         model.fireTableDataChanged()
-        model.events.forEachIndexed { index, event ->
-            if (event.id in keep) table.selectionModel.addSelectionInterval(index, index)
-        }
+        keptRanges(keep).forEach { range -> selection.addSelectionInterval(range.first, range.last) }
+        selection.valueIsAdjusting = false
         if (following && model.events.isNotEmpty()) {
             table.scrollRectToVisible(table.getCellRect(model.events.lastIndex, 0, true))
         }
         updateStatus()
+    }
+
+    /** The rows now holding [ids], as runs of consecutive indices. */
+    private fun keptRanges(ids: Set<Long>): List<IntRange> {
+        if (ids.isEmpty()) return emptyList()
+        val ranges = mutableListOf<IntRange>()
+        var start = -1
+        model.events.forEachIndexed { index, event ->
+            val kept = event.id in ids
+            if (kept && start < 0) start = index
+            if (!kept && start >= 0) {
+                ranges += start until index
+                start = -1
+            }
+        }
+        if (start >= 0) ranges += start..model.events.lastIndex
+        return ranges
     }
 
     /** At the bottom with nothing selected: keep showing the newest event as it arrives. */
@@ -223,17 +244,29 @@ class DebugTimelinePanel(
 
     private fun showSelection() {
         val selected = selectedEvents()
+        // A refresh re-selects the same rows; rewriting the detail then threw away the reader's
+        // scroll position in a stack trace every time the app logged.
+        val ids = selected.map { it.id }
+        if (ids == shownIds) return
+        shownIds = ids
         val event = selected.lastOrNull()
         detail.text = when {
             event == null -> ""
-            selected.size > 1 -> TimelineExport.format(TimelineExport.range(model.events, selected))
+            selected.size > 1 -> preview(TimelineExport.range(model.events, selected))
             else -> describe(event)
         }
         detail.caretPosition = 0
         val tab = event?.let { CONTEXT_TABS[it.category] }
         contextButton.isVisible = tab != null && selected.size == 1
         contextButton.text = "Open $tab"
-        copyButton.text = if (selected.size > 1) "Copy Range" else "Copy All"
+        copyButton.text = if (selected.isEmpty()) "Copy All" else "Copy Range"
+    }
+
+    /** A range, capped: the pane is a preview, and Copy Range takes the whole of it. */
+    private fun preview(range: List<TimelineEvent>): String {
+        if (range.size <= PREVIEW_LIMIT) return TimelineExport.format(range)
+        return TimelineExport.format(range.take(PREVIEW_LIMIT)) +
+            "… and ${range.size - PREVIEW_LIMIT} more. Copy Range or Export takes them all."
     }
 
     private fun describe(event: TimelineEvent): String = buildString {
@@ -325,6 +358,7 @@ class DebugTimelinePanel(
         const val GAP = 6
         const val SPLIT = 0.7f
         const val FOLLOW_SLACK = 24
+        const val PREVIEW_LIMIT = 300
         const val TIME_WIDTH = 90
         const val SEVERITY_WIDTH = 60
         const val CATEGORY_WIDTH = 75

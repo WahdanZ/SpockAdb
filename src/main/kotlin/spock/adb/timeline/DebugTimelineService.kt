@@ -1,6 +1,7 @@
 package spock.adb.timeline
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import spock.adb.ActionResult
@@ -144,8 +145,36 @@ class DebugTimelineService(private val project: Project) : Disposable {
             "Recording $app on ${device.info.displayName}",
             deviceSerial = device.serialNumber,
         )
-        recorder = DeviceEventRecorder(device, app, sink = { event -> if (!disposed) timeline.record(event) })
-            .also { it.start() }
+        var started: DeviceEventRecorder? = null
+        started = DeviceEventRecorder(
+            device,
+            app,
+            sink = { event -> if (!disposed) timeline.record(event) },
+            onEnded = { reason ->
+                ApplicationManager.getApplication().invokeLater({ recorderEnded(started, reason) }) { disposed }
+            },
+        )
+        recorder = started.also { it.start() }
+    }
+
+    /**
+     * The stream ended while nothing asked it to. Forgets what it was following, so the status stops
+     * claiming a recording and choosing the same device and app again starts a new one.
+     */
+    private fun recorderEnded(ended: DeviceEventRecorder?, reason: String) {
+        if (ended == null || ended !== recorder) return
+        val serial = followedDevice?.serialNumber
+        recorder = null
+        recordingTarget = null
+        followedDevice = null
+        followedApp = null
+        record(
+            TimelineCategory.DEVICE,
+            TimelineSeverity.WARNING,
+            "Stopped recording device events",
+            "$reason\nSelect the device or app again, or toggle Record device events, to resume.",
+            serial,
+        )
     }
 
     private fun onDevices(devices: List<ConnectedDevice>) {
@@ -166,7 +195,8 @@ class DebugTimelineService(private val project: Project) : Disposable {
                 category = TimelineCategory.MCP,
                 severity = if (call.isError) TimelineSeverity.WARNING else TimelineSeverity.INFO,
                 title = "${call.toolName}$outcome" + (call.client?.let { " ($it)" }.orEmpty()),
-                detail = "Arguments: ${call.arguments}\nResult: ${call.result.take(DETAIL_LIMIT)}\n" +
+                detail = "Arguments: ${call.arguments.take(DETAIL_LIMIT)}\n" +
+                    "Result: ${call.result.take(DETAIL_LIMIT)}\n" +
                     "Took ${call.durationMs} ms.",
                 deviceSerial = call.deviceSerial,
             ),
