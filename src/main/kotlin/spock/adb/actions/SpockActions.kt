@@ -44,6 +44,13 @@ class ClearAppDataAndRestartAction : DeviceAwareAction() {
     }
 }
 
+/** No confirmation: it deletes only what the app rebuilds on its own, cache/ and code_cache/. */
+class ClearAppCacheAction : DeviceAwareAction() {
+    override val baseDescription = "Delete the app's cache and code_cache; needs a debuggable build"
+    override fun perform(project: Project, device: ConnectedDevice) =
+        SpockAdbService.getInstance(project).controller.clearAppCache(device.device)
+}
+
 class UninstallAppAction : DeviceAwareAction() {
     override val baseDescription = "Uninstall the app from the device"
     override fun perform(project: Project, device: ConnectedDevice) {
@@ -108,7 +115,7 @@ class OpenLogcatAction : AnAction() {
     }
 }
 class OpenCommandCenterAction : OpenTabAction("Commands")
-class OpenDevicesAction : OpenTabAction("Device")
+class OpenDevicesAction : OpenTabAction("Home")
 class OpenMcpPanelAction : OpenTabAction("MCP Server")
 class OpenAssistantAction : OpenTabAction("Assistant")
 class OpenUiInspectorAction : OpenTabAction("UI Inspector")

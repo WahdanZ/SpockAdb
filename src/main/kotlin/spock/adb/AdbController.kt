@@ -99,6 +99,12 @@ interface AdbController {
     /** The selected app's version, UID and whether it is running. Answered on the EDT. */
     fun appInfo(device: IDevice, block: (info: Result<AppInfo>) -> Unit)
 
+    /**
+     * The activity in front and the selected app's fragments, read without opening anything.
+     * Answered on the EDT; the fragments are empty when the app cannot be resolved.
+     */
+    fun screen(device: IDevice, block: (screen: Result<ScreenInfo>) -> Unit)
+
     /** How many of the app's runtime permissions are granted. Answered on the EDT. */
     fun permissionSummary(device: IDevice, block: (summary: Result<PermissionSummary>) -> Unit)
 
@@ -142,3 +148,10 @@ data class PermissionSummary(val granted: Int, val denied: Int) {
 
     fun describe(): String = if (total == 0) "No runtime permissions" else "$granted granted / $denied denied"
 }
+
+/**
+ * What is on screen: the resumed activity's class, and the app's fragments as top-level names.
+ *
+ * @param activity fully qualified, or null when the device named none.
+ */
+data class ScreenInfo(val activity: String?, val fragments: List<String>)

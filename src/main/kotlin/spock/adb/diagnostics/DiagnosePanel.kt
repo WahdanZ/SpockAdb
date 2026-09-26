@@ -200,8 +200,13 @@ class DiagnosePanel(
 
     // ---------------------------------------------------------------- diagnosing
 
-    /** Reads the screen for the selected device and app. Public for the Diagnose action. */
-    fun diagnose() {
+    /**
+     * Reads the screen for the selected device and app. Public for the Diagnose action.
+     *
+     * @param thenCopy copies the report for AI once it lands: Home's "Copy screen for AI", one
+     *   click for what was Diagnose, wait, then Copy for AI.
+     */
+    fun diagnose(thenCopy: Boolean = false) {
         val target = device ?: run {
             pending = true
             return status("Waiting for a device. Connect one, or choose one at the top of the tool window.")
@@ -222,7 +227,10 @@ class DiagnosePanel(
                 if (!reads.isLatest(request)) return@invokeLater
                 busy = false
                 result
-                    .onSuccess { (report, png) -> show(ScreenDiagnosis(report), png) }
+                    .onSuccess { (report, png) ->
+                        show(ScreenDiagnosis(report), png)
+                        if (thenCopy) copyForAi()
+                    }
                     .onFailure { status("Diagnosis failed: ${it.message ?: it::class.java.simpleName}") }
             }) { disposed || project.isDisposed }
         }

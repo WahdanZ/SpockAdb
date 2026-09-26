@@ -90,6 +90,12 @@ class SpockSelection(private val project: Project) : Disposable {
             ExecutionTargetManager.TOPIC,
             ExecutionTargetListener { readStudioTarget(force = true) },
         )
+        // The project's app appears when Gradle sync ends; until then nothing could be selected.
+        ProjectSync.whenSynced(project, this) {
+            ApplicationManager.getApplication().invokeLater({
+                if (!disposed && snapshot.app == null) loadApps(snapshot.device, keepApp = false)
+            }) { project.isDisposed }
+        }
     }
 
     /** Whether the device chosen in Android Studio's run-target selector is selected here too. */

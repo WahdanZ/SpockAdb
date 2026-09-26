@@ -29,7 +29,7 @@ import javax.swing.JTextField
  * nothing for the one switching between a local proxy and a device lab, who retyped the other
  * one every time.
  *
- * Its own component rather than more fields on [SpockAdbViewer], which is already at the
+ * Its own component rather than more fields on the old Device tab, which is already at the
  * size Detekt complains about — and the proxy is self-contained enough that there is
  * nothing to gain from folding it in.
  */

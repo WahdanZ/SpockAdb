@@ -94,9 +94,11 @@
             <!-- Navigation -->
             <action id="spock.adb.actions.GetCurrentActivityAction"
                     class="spock.adb.actions.GetCurrentActivityAction"
+                    icon="AllIcons.Nodes.Class"
                     text="Open Current Activity"/>
             <action id="spock.adb.actions.GetCurrentFragmentAction"
                     class="spock.adb.actions.GetCurrentFragmentAction"
+                    icon="AllIcons.Nodes.AbstractClass"
                     text="Open Current Fragment"/>
             <action id="spock.adb.actions.GetCurrentApplicationBackStackAction"
                     class="spock.adb.actions.GetCurrentApplicationBackStackAction"
@@ -114,15 +116,19 @@
             <!-- App lifecycle -->
             <action id="spock.adb.actions.RestartAppAction"
                     class="spock.adb.actions.RestartAppAction"
+                    icon="AllIcons.Actions.Restart"
                     text="Restart App"/>
             <action id="spock.adb.actions.RestartAppWithDebuggerAction"
                     class="spock.adb.actions.RestartAppWithDebuggerAction"
+                    icon="AllIcons.Actions.StartDebugger"
                     text="Restart App With Debugger"/>
             <action id="spock.adb.actions.ForceStopAppAction"
                     class="spock.adb.actions.ForceStopAppAction"
+                    icon="AllIcons.Actions.Suspend"
                     text="Force Stop App"/>
             <action id="spock.adb.actions.TestProcessDeathAction"
                     class="spock.adb.actions.TestProcessDeathAction"
+                    icon="AllIcons.Debugger.KillProcess"
                     text="Test Process Death"/>
 
             <separator/>
@@ -131,6 +137,9 @@
             <action id="spock.adb.actions.ClearAppDataAction"
                     class="spock.adb.actions.ClearAppDataAction"
                     text="Clear App Data..."/>
+            <action id="spock.adb.actions.ClearAppCacheAction"
+                    class="spock.adb.actions.ClearAppCacheAction"
+                    text="Clear App Cache"/>
             <action id="spock.adb.actions.ClearAppDataAndRestartAction"
                     class="spock.adb.actions.ClearAppDataAndRestartAction"
                     text="Clear App Data and Restart..."/>
@@ -143,7 +152,7 @@
             <!-- Tool window -->
             <action id="spock.adb.actions.OpenDevicesAction"
                     class="spock.adb.actions.OpenDevicesAction"
-                    text="Open Devices"/>
+                    text="Open Spock ADB Home"/>
             <action id="spock.adb.actions.OpenLogcatAction"
                     class="spock.adb.actions.OpenLogcatAction"
                     text="Open Logcat"/>

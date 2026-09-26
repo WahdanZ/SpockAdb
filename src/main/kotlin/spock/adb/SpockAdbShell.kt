@@ -15,6 +15,7 @@ import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.diagnostics.DiagnosePanel
+import spock.adb.home.HomePanel
 import spock.adb.logcat.SpockLogcatToolWindow
 import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerPanel
@@ -55,7 +56,7 @@ class SpockAdbShell(
      */
     private val tabs = TabStrip()
 
-    private val devices = SpockAdbViewer(project)
+    private val home = HomePanel(project)
     private val storage = AppStoragePanel(project)
     private val commands = CommandCenterPanel(project)
     private val uiInspector = UiInspectorPanel(project)
@@ -102,7 +103,7 @@ class SpockAdbShell(
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
 
-        tabs.addTab("Device", devices)
+        tabs.addTab(HOME_TAB, home)
         tabs.addTab(DIAGNOSE_TAB, diagnose)
         tabs.addTab(STORAGE_TAB, storage)
         tabs.addTab("Commands", commands)
@@ -139,10 +140,16 @@ class SpockAdbShell(
 
     fun start(controller: AdbController) {
         this.controller = controller
-        devices.initPlugin(controller)
+        home.attach(controller)
+        home.onDiagnose = { diagnoseCurrentScreen() }
+        home.onCopyScreenForAi = {
+            tabs.select(DIAGNOSE_TAB)
+            diagnose.diagnose(thenCopy = true)
+        }
+        home.onBackgroundWork = { tabs.select(BACKGROUND_WORK_TAB) }
 
         controller.onResult { result -> statusBar.show(result) }
-        header.settingsButton.addActionListener { devices.showActionSettings() }
+        header.settingsButton.addActionListener { home.showActionSettings() }
         header.refreshButton.addActionListener { statusBar.working("Reading the device list…") }
         // A change of app refused because of unapplied edits puts the selection back, so every
         // view names the app the Storage tab is still showing. Later rather than now: the refusal
@@ -165,7 +172,7 @@ class SpockAdbShell(
 
     private fun selectDevice(device: ConnectedDevice?) {
         selectedDevice = device
-        devices.setDevice(device)
+        home.setDevice(device)
         diagnose.setDevice(device)
         storage.setDevice(device)
         commands.setDevice(device)
@@ -179,7 +186,7 @@ class SpockAdbShell(
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
         diagnose.setApp(packageName)
-        devices.setApp()
+        home.setApp()
     }
 
     /** Brings the Diagnose tab forward and runs it: the Diagnose Current Screen action. */
@@ -234,7 +241,7 @@ class SpockAdbShell(
                         // device was plugged in afterwards — could only be recovered by
                         // reopening the project.
                         selection.refresh()
-                        devices.onShown()
+                        home.onShown()
                     }
                 },
             )
@@ -262,6 +269,7 @@ class SpockAdbShell(
         private const val TOOL_WINDOW_ID = "Spock ADB"
         private const val ASSISTANT_TAB = "Assistant"
         private const val BACKGROUND_WORK_TAB = "Background Work"
+        private const val HOME_TAB = "Home"
         private const val STORAGE_TAB = "Storage"
         private const val DIAGNOSE_TAB = "Diagnose"
         private const val UI_INSPECTOR_TAB = "UI Inspector"

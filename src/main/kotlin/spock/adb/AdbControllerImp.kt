@@ -586,6 +586,15 @@ class AdbControllerImp(
     override fun appInfo(device: IDevice, block: (info: Result<AppInfo>) -> Unit) =
         read(block) { AppInfoCommand().execute(getApplicationID(device), project, device) }
 
+    override fun screen(device: IDevice, block: (screen: Result<ScreenInfo>) -> Unit) =
+        read(block) {
+            val activity = GetActivityCommand().execute(Any(), project, device)
+            // Fragments are the app's own; with no app to ask about, the activity alone is the answer.
+            val fragments = runCatching { GetFragmentsCommand().execute(getApplicationID(device), project, device) }
+                .getOrDefault(emptyList())
+            ScreenInfo(activity, fragments.map { it.fragment })
+        }
+
     override fun permissionSummary(device: IDevice, block: (summary: Result<PermissionSummary>) -> Unit) =
         read(block) {
             val permissions = GetApplicationPermission().execute(getApplicationID(device), project, device)

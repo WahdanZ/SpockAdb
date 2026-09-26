@@ -39,7 +39,7 @@ enum class QuickAction(val gate: SpockAction) {
          *
          * Unknown names are dropped rather than failing: settings written by a later version, or
          * an action removed since, must not cost a developer the rest of their pins — the same
-         * reason [SpockAdbViewer] ignores unknown entries in the visible-actions list.
+         * reason [spock.adb.home.HomePanel] ignores unknown entries in the visible-actions list.
          */
         fun read(stored: List<String>): List<QuickAction> =
             stored.mapNotNull { name -> entries.firstOrNull { it.name == name } }.distinct()
