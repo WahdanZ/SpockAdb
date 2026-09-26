@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Autocomplete, with docs, in the ADB Command Center.** Typing a command now shows what can
+  come next: commands such as `pm`, `am`, `cmd`, `dumpsys`, `settings`, `input` and `logcat`,
+  their subcommands and flags, key codes, and the selected device's installed packages wherever a
+  package goes (`pm clear`, `am force-stop`, `dumpsys meminfo`, `monkey -p`…). The selected
+  entry's usage and a line on what it does sit under the list, so the shell no longer has to be
+  remembered or looked up in a browser. Flags already typed are not offered again, and after a
+  `|`, `;` or `&&` completion starts over for the next command. **↑/↓** choose, **Tab** inserts,
+  and **Enter** inserts only a suggestion picked with the arrows or the best match of a word still
+  being typed; a word typed in full runs the command, even when a longer name such as
+  `com.example.app.debug` would also match. **Ctrl+Space** or **Alt/Option+Space** asks for
+  suggestions, since macOS often keeps Ctrl+Space for switching input sources.
 - **Debug Timeline: what happened just before the bug, in one place.** The new **Timeline** tab of the Spock Logcat window
   records events from across Spock in time order: the selected app's activity lifecycle, its
   fragments after each resume, process starts and deaths, crashes and ANRs, and the warnings and
