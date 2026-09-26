@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
             open("Network — HTTP proxy, Wi-Fi, mobile data", NetworkActivity::class.java)
 
             heading("Other tabs")
+            open("Timeline — lifecycle, warnings, a crash to reproduce", TimelineActivity::class.java)
             open("Storage — SharedPreferences, DataStore, cache", StorageActivity::class.java)
             open("Logcat — levels, stack traces, crash", LogcatActivity::class.java)
             open("Debug context — failures for android_get_debug_context", DebugContextActivity::class.java)

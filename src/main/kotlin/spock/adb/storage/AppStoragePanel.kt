@@ -35,6 +35,7 @@ import spock.adb.command.ReadAppFileCommand
 import spock.adb.command.ReadAppStorageFileCommand
 import spock.adb.command.WriteAppStorageFileCommand
 import spock.adb.device.ConnectedDevice
+import spock.adb.timeline.DebugTimelineService
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.Component
@@ -539,6 +540,14 @@ class AppStoragePanel(
             val message = write?.let { "$done ${afterWrite(it, restart, packageName)}${warningOf(it)}" }
                 ?: result.exceptionOrNull()?.message
                 ?: "Could not write ${file.path}."
+            DebugTimelineService.getInstance(project).recordStorageWrite(
+                path = file.path,
+                packageName = packageName,
+                done = done.takeIf { write != null },
+                unverified = unverified != null,
+                message = message,
+                deviceSerial = target.serialNumber,
+            )
 
             // The file changed on the device since it was read, so nothing was written and the
             // rows on screen are still the developer's unapplied work. Re-reading would throw it

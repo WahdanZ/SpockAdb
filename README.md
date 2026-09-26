@@ -15,7 +15,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 66 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 67 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -40,6 +40,7 @@ Spock ADB brings ADB workflows into one shared tool window that keeps a selected
   - [📜 Logcat, without the noise](#logcat)
   - [⌨️ ADB Command Center](#adb-command-center)
   - [🩺 Diagnose Current Screen](#diagnose)
+  - [🕒 Debug Timeline](#debug-timeline)
   - [🔍 UI Inspector](#ui-inspector)
   - [🛠 Background Work](#background-work)
   - [🤖 Android debugging for AI agents](#ai-agents)
@@ -61,7 +62,7 @@ Spock ADB brings those workflows into the IDE and keeps one selected **device + 
 
 - **Status bar** — the device and app every Spock surface acts on (it follows Android Studio's run target by default), and whether the MCP server is on.
 - **Spock ADB** (left) — **Home** (the app, the screen it is on, its permissions, device controls), **Storage**, **Work** and **Shell**.
-- **Spock Logcat** (bottom) — the app's log, beside the actions that produce it.
+- **Spock Logcat** (bottom) — the app's log and the **Debug Timeline**, beside the actions that produce them.
 - **Spock Screen** (right) — **Diagnose** and the **UI Tree** of the screen in front of you.
 - **⚡ Spock Actions** (main toolbar) — every action, searchable, with pins and recents; bind it to a shortcut in the keymap.
 
@@ -177,6 +178,17 @@ Problems come first, ranked; a part that cannot be read is reported in place and
 
 ---
 
+<a id="debug-timeline"></a>
+### 🕒 Debug Timeline
+
+What happened just before the bug, in one list and on one clock:
+
+**Activity lifecycle and fragments · Process starts, deaths, crashes and ANRs · The app's warnings and errors · Actions run from Spock · Storage writes, jobs run and device-condition changes · Devices connecting · Agent tool calls · Your own markers**
+
+Filter by category and severity, select an event for its detail and the tab it came from, and select two events to **Copy Range** or **Export** everything between them into a bug report. Device log times are moved onto the host's clock with a measured offset, so an action and the log line it caused appear in the order they happened. The history is bounded and says when the oldest events were dropped. Agents read the same list with `android_get_debug_timeline`.
+
+---
+
 <a id="ui-inspector"></a>
 ### 🔍 UI Inspector
 
@@ -228,7 +240,7 @@ Run a supported job on demand instead of waiting for the system to trigger it, a
 
 Spock ADB includes a built-in **MCP server** for tools such as Claude Code, Claude Desktop, Cursor, and other MCP clients.
 
-Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **66 structured Android debugging tools**.
+Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **67 structured Android debugging tools**.
 
 Agents can inspect things such as:
 
@@ -284,7 +296,7 @@ Select device + app
 
 Spock ADB isn't an ADB command cheat sheet.
 
-It provides a shared debugging workspace where **Device, Storage, Logcat, Commands, UI Inspector, Background Work, and MCP** all use the same selected Android device and application.
+It provides a shared debugging workspace where **Home, Storage, Work, Shell, Logcat, Timeline, Diagnose, UI Inspector and MCP** all use the same selected Android device and application.
 
 That means less setup, fewer targeting mistakes, and less time spent fighting your tools.
 

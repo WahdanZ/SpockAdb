@@ -23,6 +23,7 @@ import spock.adb.models.FragmentData
 import spock.adb.models.FragmentRow
 import spock.adb.notification.CommonNotifier
 import spock.adb.premission.ListItem
+import spock.adb.timeline.DebugTimelineService
 import spock.adb.ui.ActivityStackList
 import spock.adb.ui.ActivityStackRow
 import spock.adb.ui.className
@@ -654,7 +655,11 @@ class AdbControllerImp(
      */
     private fun report(message: String, ok: Boolean) {
         val elapsed = startedAt.get()?.let { System.currentTimeMillis() - it }
-        onEdt { resultListeners.forEach { it(ActionResult(message, ok, elapsed)) } }
+        val result = ActionResult(message, ok, elapsed)
+        // Here rather than through [onResult]: the timeline records an action run from the Tools
+        // menu before the tool window has ever been opened.
+        if (!project.isDisposed) DebugTimelineService.getInstance(project).recordAction(result)
+        onEdt { resultListeners.forEach { it(result) } }
     }
 
     /**

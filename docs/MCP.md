@@ -281,11 +281,11 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-66 tools, in three levels.
+67 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (27) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
+| **Read-only** (28) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline` |
 | **Safe action** (31) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
@@ -766,6 +766,39 @@ you need to see the screen as well as read about it.
 
 A screenshot the device refuses — a `FLAG_SECURE` window — is reported in the `screenshot` field
 and the rest of the diagnosis still comes back.
+
+
+### `android_get_debug_timeline`
+
+What happened recently, in order, from every part of Spock — the same list the tool window's
+**Timeline** tab shows. It reads what the IDE already recorded and asks the device nothing, so it is
+cheap and answers even when the device is gone. Reach for it to answer "what happened just before
+the bug", or to see what your own sequence of calls did to the app.
+
+Events, all on the host's clock (device log stamps are moved onto it with a measured offset):
+
+- `activity` — the app's activities being created, started, resumed, paused, stopped and
+  destroyed, and the fragment tree after each resume;
+- `app_lifecycle` — its process starting and dying, crashes and ANRs;
+- `log` — warnings and errors the app's own process logged, one event per log call with any stack
+  trace in the detail;
+- `spock_action`, `storage`, `background_work`, `device_condition` — what the tool window did;
+- `device` — devices connecting and disconnecting, and recording starting;
+- `mcp` — tool calls, this one excepted;
+- `marker` — notes the developer added.
+
+Device events (`activity`, `app_lifecycle`, `log`) are recorded only while the Spock ADB tool window
+has a device and app selected and **Record device events** is on. The first line of the result
+says what was being recorded, so an empty answer is not mistaken for a quiet app.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `sinceSeconds` | `300` | Only events from this many seconds back. |
+| `categories` | all | Only these kinds, from the list above. |
+| `minSeverity` | `info` | `info`, `warning` or `error`. |
+| `query` | none | Only events whose title or detail contains this text. |
+| `limit` | `200` | At most this many, the most recent kept. |
+| `includeDetails` | `true` | `false` leaves out details such as stack traces. |
 
 ### `android_push_file` and `android_pull_file`
 

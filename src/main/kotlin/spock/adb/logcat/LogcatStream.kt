@@ -24,6 +24,11 @@ class LogcatStream(
     private val device: IDevice,
     private val onEntry: (LogcatEntry) -> Unit,
     private val onStopped: (Throwable?) -> Unit = {},
+    /**
+     * The command to tail. Anything given here must still print `threadtime`, the format
+     * [LogcatParser] reads; the Debug Timeline narrows buffers and tags, not the format.
+     */
+    private val command: String = DEFAULT_COMMAND,
 ) {
 
     private val log = Logger.getInstance(LogcatStream::class.java)
@@ -52,7 +57,7 @@ class LogcatStream(
                 // required here — an idle device can legitimately log nothing for minutes.
                 // It is only safe because the receiver can be cancelled; the same zero
                 // timeout on the non-cancellable receiver was an unrecoverable hang.
-                device.executeShellCommand("logcat -v threadtime", shellReceiver, 0L, TimeUnit.SECONDS)
+                device.executeShellCommand(command, shellReceiver, 0L, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 if (!shellReceiver.isCancelled) {
                     failure = e
@@ -65,8 +70,9 @@ class LogcatStream(
         }
     }
 
-    private companion object {
-        const val CLEAR_TIMEOUT_SECONDS = 10L
+    companion object {
+        const val DEFAULT_COMMAND = "logcat -v threadtime"
+        private const val CLEAR_TIMEOUT_SECONDS = 10L
     }
 
     fun stop() {

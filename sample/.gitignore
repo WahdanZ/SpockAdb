@@ -4,3 +4,8 @@
 /.kotlin/
 /local.properties
 /.idea/
+
+# Written by Spock ADB. The entry in it only works on this machine: stdio names this
+# JDK, plugin jar and IDE config by absolute path, and the HTTP URL names the port
+# this IDE happens to be listening on.
+.mcp.json

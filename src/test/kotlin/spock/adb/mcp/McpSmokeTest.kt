@@ -259,6 +259,8 @@ class McpSmokeTest {
             "android_get_debug_context" to """{"format":"full","maxLogcatLines":20}""",
             // Every section and a screenshot, for a well-known app that is always installed.
             "android_diagnose_current_screen" to """{"packageName":"com.android.settings"}""",
+            // What the IDE recorded; asks the device nothing, so it answers even when nothing was.
+            "android_get_debug_timeline" to """{"sinceSeconds":600,"limit":20}""",
         )
 
         /** Search for something. Reporting "no match" is a pass; anything else is not. */

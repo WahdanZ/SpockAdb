@@ -19,6 +19,7 @@ import spock.adb.home.HomePanel
 import spock.adb.mcp.McpServerPanel
 import spock.adb.screen.SpockScreenToolWindow
 import spock.adb.storage.AppStoragePanel
+import spock.adb.timeline.DebugTimelineService
 import spock.adb.ui.TabStrip
 import java.awt.BorderLayout
 import javax.swing.JPanel
@@ -135,6 +136,9 @@ class SpockAdbShell(
             if (SpockSelection.Change.APP in changes) snapshot.app?.let(::selectApp)
         }
         listenForToolWindow()
+        // Created here so the Debug Timeline follows the selection from the moment the window
+        // opens, whether or not its tab is ever shown.
+        DebugTimelineService.getInstance(project)
     }
 
     // ---------------------------------------------------------------- device
@@ -227,6 +231,12 @@ class SpockAdbShell(
         fun prefillAssistant(project: Project, prompt: String) {
             val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
             toolWindow.activate { find(project)?.prefillAssistant(prompt) }
+        }
+
+        /** Opens the Spock ADB window on the tab titled [title]. */
+        fun openTab(project: Project, title: String) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
+            toolWindow.activate { find(project)?.selectTab(title) }
         }
 
         /** Opens the MCP server's agent activity, from the status-bar indicator or the Tools menu. */

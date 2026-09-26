@@ -9,6 +9,7 @@ import spock.adb.SpockAdbShell
 import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantPrefill
 import spock.adb.context.SpockSelection
+import spock.adb.timeline.DebugTimelinePanel
 
 /**
  * Logcat in a tool window of its own, docked at the bottom by default.
@@ -18,6 +19,7 @@ import spock.adb.context.SpockSelection
  * width and a few lines of height, and the actions want a narrow column beside the editor — so
  * the two are docked where each fits, and both are visible at once.
  *
+ * Its second tab is the Debug Timeline, the other stream a developer watches while acting.
  * It shows the device and app chosen in [SpockSelection], like every other Spock surface.
  */
 class SpockLogcatToolWindow : ToolWindowFactory {
@@ -40,11 +42,26 @@ class SpockLogcatToolWindow : ToolWindowFactory {
         }
 
         val contentManager = toolWindow.contentManager
-        contentManager.addContent(contentManager.factory.createContent(panel, null, false))
+        val logContent = contentManager.factory.createContent(panel, LOGCAT, false)
+        contentManager.addContent(logContent)
+
+        // The Debug Timeline is a stream watched while acting too, so it is the window's second
+        // tab. An event opens where it came from: a log line here, anything else where it lives.
+        val timeline = DebugTimelinePanel(project) { source ->
+            when (source) {
+                LOGCAT -> contentManager.setSelectedContent(logContent)
+                SpockAdbShell.MCP_TAB -> SpockAdbShell.openMcpActivity(project)
+                else -> SpockAdbShell.openTab(project, source)
+            }
+        }
+        Disposer.register(toolWindow.disposable, timeline)
+        contentManager.addContent(contentManager.factory.createContent(timeline, TIMELINE, false))
     }
 
     companion object {
         const val ID = "Spock Logcat"
+        private const val LOGCAT = "Logcat"
+        private const val TIMELINE = "Timeline"
 
         /** Opens the window, building it on first use, then hands its panel to [then]. */
         fun open(project: Project, then: (LogcatPanel) -> Unit = {}) {
