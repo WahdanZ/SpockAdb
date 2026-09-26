@@ -20,6 +20,7 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import spock.adb.command.installedPackages
 import spock.adb.device.ConnectedDevice
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
@@ -77,6 +78,11 @@ class CommandCenterPanel(
     private val searchField = JBTextField(SEARCH_COLUMNS)
 
     private var device: ConnectedDevice? = null
+
+    /** The selected device's third-party packages, offered wherever a command takes one. */
+    @Volatile
+    private var installedPackages: List<String> = emptyList()
+    private val completion = CommandCompletionPopup(commandField, packages = { installedPackages })
     private val outputBuffer = StringBuilder()
 
     /** When the running command started, for the duration reported when it ends. */
@@ -95,6 +101,19 @@ class CommandCenterPanel(
     fun setDevice(connected: ConnectedDevice?) {
         device = connected
         updateStatus()
+        loadPackages(connected)
+    }
+
+    private fun loadPackages(connected: ConnectedDevice?) {
+        installedPackages = emptyList()
+        connected ?: return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val found = runCatching { connected.device.installedPackages() }.getOrDefault(emptyList())
+            ApplicationManager.getApplication().invokeLater({
+                // A slow device answering after the selection moved on must not win.
+                if (device === connected) installedPackages = found
+            }) { project.isDisposed }
+        }
     }
 
     // ---------------------------------------------------------------- layout
@@ -462,7 +481,10 @@ class CommandCenterPanel(
         runButton.isEnabled = target != null && !runner.isRunning
     }
 
-    override fun dispose() = runner.cancel()
+    override fun dispose() {
+        runner.cancel()
+        completion.dispose()
+    }
 
     private companion object {
         const val NO_DEVICE = "No device selected."
@@ -484,6 +506,8 @@ class CommandCenterPanel(
 
         val EMPTY_OUTPUT_HINT = """
             Type an adb shell command above and press Run.
+            Suggestions and docs appear as you type:
+            ↑↓ to choose, Tab to insert, Ctrl+Space to ask.
 
             Examples:
               pm list packages -3
