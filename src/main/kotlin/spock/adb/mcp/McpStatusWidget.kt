@@ -122,10 +122,8 @@ internal class McpStatusWidget(private val project: Project) :
     }
 
     /** The serial an agent chose, when the server runs and it is not the selected device. */
-    private fun mismatch(): String? {
-        val target = service.targetedSerial ?: return null
-        return target.takeIf { service.isRunning && it != selection.snapshot.device?.serialNumber }
-    }
+    private fun mismatch(): String? =
+        McpStatusText.mismatch(service.isRunning, service.targetedSerial, selection.snapshot.device?.serialNumber)
 
     private fun popup(): ListPopup {
         val manager = ActionManager.getInstance()
@@ -192,6 +190,16 @@ internal class StatusDot(private val color: Color) : Icon {
 
 /** What the MCP indicator says, apart from Swing so it can be tested. */
 internal object McpStatusText {
+
+    /**
+     * The serial an agent chose, when the server runs and a different device is selected. Not
+     * while nothing is selected: that is the device list still loading, not an agent elsewhere.
+     */
+    fun mismatch(running: Boolean, targeted: String?, selected: String?): String? = when {
+        !running || targeted == null || selected == null -> null
+        targeted == selected -> null
+        else -> targeted
+    }
 
     fun color(running: Boolean, mismatch: String?): Color = when {
         mismatch != null -> StatusDot.MISMATCH
