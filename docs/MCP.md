@@ -915,6 +915,10 @@ unnecessary.
 
 ## Example workflows
 
+For the full set — UI bugs, state bugs, crashes and ANRs, process death, background work, deep
+links and accessibility, with the safety rules an agent should follow — install the
+[Spock ADB Agent Skill](../skills/spock-adb/README.md). The three below are the short form.
+
 **Debug a crash.** `android_get_debug_context()` → read `likelyProblems` → follow the `more`
 reference for the section it names, e.g. `android_get_logcat(minLevel: "E")` for the full stack
 trace. The first call is small enough to always make, and every section describes the same
@@ -930,8 +934,9 @@ moment.
 
 Recorded honestly so the gaps are not mistaken for features:
 
-- **Prompts.** `prompts/list` answers with an empty array. The debugging workflows in this
-  document are prose an agent cannot call.
+- **Prompts.** `prompts/list` answers with an empty array. The debugging workflows ship as an
+  [Agent Skill](../skills/spock-adb/README.md) instead, which a client loads as instructions
+  rather than calls.
 - **Cancellation over HTTP.** stdio honours `notifications/cancelled` by interrupting the
   request; the HTTP transport is stateless by design and has nothing to cancel against, so a
   slow tool call there runs to its timeout. Waits, and an action's expected result, are capped at

@@ -15,12 +15,20 @@
   when one is. The counts are listed per function rather than on the tree's rows, because the
   accessibility tree the Inspector reads has no composable names to pair them with
   ([#119](https://github.com/WahdanZ/SpockAdb/issues/119),
-  [#120](https://github.com/WahdanZ/SpockAdb/issues/120)).
+  [#120](https://github.com/WahdanZ/SpockAdb/issues/120)). The Agent Skill gains an eighth playbook
+  for it.
 - **Compose wording for the tree and search tools.** `android_get_ui_tree` now says it is the
   composable tree as Compose publishes it, with `Modifier.testTag` values as `testTag`, and
   `android_find_ui_element` says how to find a composable by its test tag, so an agent asked for
   either reaches for the tools that already do it
   ([#120](https://github.com/WahdanZ/SpockAdb/issues/120)).
+- **An Agent Skill for debugging with Spock ADB.** `skills/spock-adb/SKILL.md` tells an agent
+  which MCP tools to call and in what order: start from `android_get_debug_context`, narrow to the
+  app, prefer safe actions to destructive ones and explain the destructive ones first, and re-read
+  after every change. Seven playbooks — UI bugs, state bugs, crashes and ANRs, process death,
+  background work, deep links and accessibility — each with a matching screen in the sample app,
+  and a setup guide for Claude Code. A test fails the build if the skill, the README or
+  `docs/MCP.md` names a tool the registry does not have, or if the skill's destructive list drifts.
 - **A redesigned UI Inspector, and a selector for any element in one click.** The tree is drawn
   with the IDE's own renderer, so rows follow the theme instead of sitting on mismatched grey
   blocks, and each row reads as the class, then the test tag, the text and the content
