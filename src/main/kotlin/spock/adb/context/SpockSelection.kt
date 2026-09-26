@@ -111,11 +111,22 @@ class SpockSelection(private val project: Project) : Disposable {
     /**
      * Calls [listener] on every change until [parent] is disposed, and once now with what is
      * already known, so a surface built after the first device arrived does not start blank.
+     *
+     * Always called on the EDT. A service created on a pooled thread gets its first call later,
+     * on the EDT, unless [parent] is disposed first.
      */
     fun addListener(parent: Disposable, listener: Listener) {
         listeners += listener
         Disposer.register(parent) { listeners -= listener }
-        listener.selectionChanged(snapshot, Change.entries.toSet())
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) {
+            listener.selectionChanged(snapshot, Change.entries.toSet())
+        } else {
+            // Removed from [listeners] when [parent] is disposed, which is what cancels this.
+            application.invokeLater({
+                listener.selectionChanged(snapshot, Change.entries.toSet())
+            }) { disposed || project.isDisposed || listener !in listeners }
+        }
     }
 
     /** Chooses the device with [serial]. A serial that is not connected is ignored. */
