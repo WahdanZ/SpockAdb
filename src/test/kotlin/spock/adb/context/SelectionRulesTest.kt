@@ -65,4 +65,36 @@ class SelectionRulesTest {
     fun `without a project app, the app already chosen stays`() {
         assertEquals("com.typed", SelectionRules.nextApp(current = "com.typed", projectApp = null, keep = false))
     }
+
+    @Test
+    fun `re-reading the same device's apps does not announce the same app again`() {
+        assertEquals(
+            setOf(SpockSelection.Change.APPS),
+            SelectionRules.afterAppsRead(current = "com.app", next = "com.app", sameDevice = true),
+        )
+    }
+
+    @Test
+    fun `the same app on another device is announced, its state there is different`() {
+        assertEquals(
+            setOf(SpockSelection.Change.APPS, SpockSelection.Change.APP),
+            SelectionRules.afterAppsRead(current = "com.app", next = "com.app", sameDevice = false),
+        )
+    }
+
+    @Test
+    fun `a newly chosen app is announced`() {
+        assertEquals(
+            setOf(SpockSelection.Change.APPS, SpockSelection.Change.APP),
+            SelectionRules.afterAppsRead(current = null, next = "com.app", sameDevice = true),
+        )
+    }
+
+    @Test
+    fun `no app chosen announces only the list`() {
+        assertEquals(
+            setOf(SpockSelection.Change.APPS),
+            SelectionRules.afterAppsRead(current = null, next = null, sameDevice = false),
+        )
+    }
 }

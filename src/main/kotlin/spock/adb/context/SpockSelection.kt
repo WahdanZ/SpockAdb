@@ -245,8 +245,10 @@ class SpockSelection(private val project: Project) : Disposable {
                 // no files is said once it is chosen, rather than the choice being left blank.
                 val apps = InstalledPackages.choices(installed.getOrDefault(emptyList()), projectApp)
                 snapshot = snapshot.copy(apps = apps, projectApp = projectApp)
-                val app = SelectionRules.nextApp(current = snapshot.app, projectApp = projectApp, keep = keepApp)
-                if (app == null) notify(setOf(Change.APPS)) else setApp(app, setOf(Change.APPS))
+                val current = snapshot.app
+                val app = SelectionRules.nextApp(current = current, projectApp = projectApp, keep = keepApp)
+                val changes = SelectionRules.afterAppsRead(current = current, next = app, sameDevice = keepApp)
+                if (app != null && Change.APP in changes) setApp(app, setOf(Change.APPS)) else notify(changes)
             }) { project.isDisposed }
         }
     }
@@ -298,4 +300,16 @@ internal object SelectionRules {
      */
     fun nextApp(current: String?, projectApp: String?, keep: Boolean): String? =
         if (keep && current != null) current else projectApp ?: current
+
+    /**
+     * What to announce once a device's apps are read and [next] is chosen. The app only when it
+     * changed or the device did: a device-list refresh re-reads the same device's apps, and
+     * sending APP for it made every surface re-read the app's state from the device again.
+     */
+    fun afterAppsRead(current: String?, next: String?, sameDevice: Boolean): Set<SpockSelection.Change> =
+        if (next == null || (sameDevice && next == current)) {
+            setOf(SpockSelection.Change.APPS)
+        } else {
+            setOf(SpockSelection.Change.APPS, SpockSelection.Change.APP)
+        }
 }
