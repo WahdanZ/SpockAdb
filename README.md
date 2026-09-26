@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/banner.png" alt="Spock ADB — Android device debugging without leaving the IDE" width="100%">
+  <img src="images/banner.png" alt="Spock ADB — Android debugging without leaving the IDE: Home, Spock Screen, Spock Logcat, Spock Actions, push messages and MCP" width="100%">
 </p>
 
 <p align="center">
