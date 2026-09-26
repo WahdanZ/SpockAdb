@@ -82,6 +82,9 @@ class CommandCenterPanel(
     /** The selected device's third-party packages, offered wherever a command takes one. */
     @Volatile
     private var installedPackages: List<String> = emptyList()
+
+    /** The device [installedPackages] belong to. */
+    private var packagesSerial: String? = null
     private val completion = CommandCompletionPopup(commandField, packages = { installedPackages })
     private val outputBuffer = StringBuilder()
 
@@ -105,13 +108,18 @@ class CommandCenterPanel(
     }
 
     private fun loadPackages(connected: ConnectedDevice?) {
-        installedPackages = emptyList()
+        val serial = connected?.serialNumber
+        // Every change to the device list announces the selection again; the same device keeps
+        // the packages it already has instead of going blank while they are asked for again.
+        if (serial == packagesSerial && installedPackages.isNotEmpty()) return
+        if (serial != packagesSerial) installedPackages = emptyList()
+        packagesSerial = serial
         connected ?: return
         ApplicationManager.getApplication().executeOnPooledThread {
             val found = runCatching { connected.device.installedPackages() }.getOrDefault(emptyList())
             ApplicationManager.getApplication().invokeLater({
                 // A slow device answering after the selection moved on must not win.
-                if (device === connected) installedPackages = found
+                if (packagesSerial == serial) installedPackages = found
             }) { project.isDisposed }
         }
     }
@@ -507,7 +515,7 @@ class CommandCenterPanel(
         val EMPTY_OUTPUT_HINT = """
             Type an adb shell command above and press Run.
             Suggestions and docs appear as you type:
-            ↑↓ to choose, Tab to insert, Ctrl+Space to ask.
+            ↑↓ to choose, Tab to insert, Ctrl+Space or Alt+Space to ask.
 
             Examples:
               pm list packages -3
