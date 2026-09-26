@@ -26,7 +26,7 @@ Spock ADB brings ADB workflows into the IDE and keeps one selected device and ap
 </p>
 
 <p align="center">
-  <img src="images/spock-adb-overview.png" alt="Spock ADB tool window" width="100%">
+  <img src="images/spock-adb-overview.png" alt="Spock ADB in Android Studio: Spock Screen and Spock ADB on the left, Spock Logcat at the bottom, device, app and MCP state in the status bar" width="100%">
 </p>
 
 ---
