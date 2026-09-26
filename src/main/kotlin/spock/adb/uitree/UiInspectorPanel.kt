@@ -29,6 +29,7 @@ import com.intellij.util.ui.JBUI
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
+import spock.adb.ui.MinHeightScrollPane
 import java.awt.BorderLayout
 import java.awt.datatransfer.StringSelection
 import java.util.function.Function
@@ -108,8 +109,17 @@ class UiInspectorPanel(
         source.install(tree, focusScope = this)
         Disposer.register(this, source)
 
-        setToolbar(top())
-        setContent(body())
+        // Header and body scroll together below a floor, rather than being squeezed into a
+        // short docking slot; see [MinHeightScrollPane].
+        setContent(
+            MinHeightScrollPane(
+                JPanel(BorderLayout()).apply {
+                    add(top(), BorderLayout.NORTH)
+                    add(body(), BorderLayout.CENTER)
+                },
+                MIN_HEIGHT,
+            ),
+        )
         wire()
         refresh()
     }
@@ -465,6 +475,9 @@ class UiInspectorPanel(
     }
 
     private companion object {
+        /** Below this the panel scrolls instead of squeezing its parts; see [MinHeightScrollPane]. */
+        const val MIN_HEIGHT = 560
+
         const val GAP = 4
         const val SPLIT_PROPORTION = 0.55f
         const val MAX_AUTO_EXPAND_ROWS = 200

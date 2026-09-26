@@ -62,6 +62,27 @@ data class DeviceInfo(
         if (state != DeviceState.ONLINE) append(SEPARATOR).append(state.label)
     }
 
+    /**
+     * The fewest words that still tell two devices apart, for the status bar: `Pixel 8 · API 35`,
+     * or `Emulator 5554 · API 34`.
+     *
+     * An emulator's model is the system image's (`sdk_gphone64_arm64`), which names no device
+     * and is the same for every emulator, so the console port from its serial names it instead.
+     */
+    fun compactLabel(): String = buildString {
+        val port = serialNumber.removePrefix(EMULATOR_SERIAL_PREFIX).takeIf { isEmulator && it != serialNumber }
+        append(
+            when {
+                port != null -> "Emulator $port"
+                isEmulator -> "Emulator"
+                model.isNotBlank() -> model
+                else -> serialNumber
+            },
+        )
+        apiLevel?.let { append(SEPARATOR).append("API ").append(it) }
+        if (state != DeviceState.ONLINE) append(SEPARATOR).append(state.label)
+    }
+
     /** What [shortLabel] leaves out, for the tooltip beside it. */
     fun details(): String = listOfNotNull(
         serialNumber,
@@ -86,6 +107,7 @@ data class DeviceInfo(
 
     companion object {
         private const val EMULATOR_PREFIX = "Emulator: "
+        private const val EMULATOR_SERIAL_PREFIX = "emulator-"
         private const val SEPARATOR = " \u00b7 "
 
         /** Used when a device disconnects before its properties could be read. */

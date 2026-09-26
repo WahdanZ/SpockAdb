@@ -4,7 +4,7 @@
 
 ### Added
 
-- **Debug Timeline: what happened just before the bug, in one place.** The new **Timeline** tab
+- **Debug Timeline: what happened just before the bug, in one place.** The new **Timeline** tab of the Spock Logcat window
   records events from across Spock in time order: the selected app's activity lifecycle, its
   fragments after each resume, process starts and deaths, crashes and ANRs, and the warnings and
   errors its own process logs — a stack trace is one row, not forty — alongside actions run from
@@ -158,6 +158,31 @@
 
 ### Changed
 
+- **The tool window is split by what each part is for** ([#139](https://github.com/WahdanZ/SpockAdb/issues/139)).
+  One window with eight tabs meant the log and the button that produced it, or the UI tree and
+  the code it points into, took turns on screen. Now:
+  - **Device and app are chosen once, in the status bar.** Every tool window, action and
+    shortcut uses that choice; actions no longer ask "which device?" when several are connected.
+    It follows the device selected in Android Studio's run-target selector by default (switch it
+    off in the widget or in **Settings › Tools › Spock ADB**), and a device picked in Spock ADB
+    stays picked until that selection changes again.
+  - **Spock Logcat** is its own tool window, docked at the bottom. Its **App** filter follows the
+    selected app instead of always the project's own.
+  - **Spock Screen** is a tool window on the left, above Spock ADB, with **Diagnose** and the **UI Tree** as its tabs.
+  - The **Device** tab is replaced by **Home**: the app's state and a toolbar of Restart, Attach
+    debugger, Force stop and Process death, with Clear cache, Clear data and Uninstall behind a
+    menu instead of one click away; the activity and fragment on screen as links to their source,
+    read live; **Copy screen for AI**, which diagnoses and copies in one click; permissions; and
+    the device controls, collapsed until wanted.
+  - The Spock ADB window's tabs are **Home**, **Storage**, **Scheduler** (jobs, alarms and device conditions; was Background Work) and **Shell**, in a fixed
+    order — the selected tab used to jump to the front of the row.
+  - **⚡ Spock Actions** in the main toolbar lists every action with speed search, your pins and
+    the last five used. Pins made on the old Quick actions row carry over. New actions for what
+    was only a widget: Copy Screen for AI, Toggle Don't Keep Activities / Show Taps / Layout
+    Bounds, Open Deep Link…, Send Text to Device… and Clear App Cache.
+  - **MCP server** state moved from a tab to the status bar: `MCP: on`, `MCP: off`, or a warning
+    when an AI agent is driving a different device from the selected one, with a balloon when that
+    starts. Its agent activity opens as a tab when asked for.
 - **`android_get_debug_context` now answers with what is wrong, not everything it saw.** It used to
   hand an agent the whole UI tree and hundreds of raw logcat lines, which cost thousands of tokens
   on every call and still left the agent to work out which line mattered. It now returns a bounded
@@ -214,6 +239,16 @@
 
 ### Fixed
 
+- **The UI Tree and the MCP Server tab squeezed their parts into a short docking slot**, so the
+  tree showed two rows and header text overlapped the controls under it. Below a minimum height
+  they now scroll instead.
+- **The Shell tab said "No device selected." under "Runs on <device>"** until a command was run,
+  when the device arrived after the tab was built. The stale line is now cleared.
+- **Open Logcat, Open UI Inspector, Open MCP Server Panel and Open Devices opened the tool window
+  on whatever tab it was already on.** They looked the tab up as tool window content, which it no
+  longer was.
+- **No app was selected when a device connected before a freshly opened project's first Gradle
+  sync finished.** The project's app is resolved again when sync ends.
 - **Process Death now kills the process, and brings back the screen it killed.** It waited a
   fixed 2.5 s after sending the app home and ran `am kill` once, which exits 0 whether or not it
   killed anything — on an API 34 emulator the process often survived, and the action still said

@@ -369,16 +369,16 @@ class DebugTimelinePanel(
         val ERROR_COLOR = JBColor(0xB3261E, 0xF2857C)
         val WARNING_COLOR = JBColor(0x8A5A00, 0xE0B050)
 
-        /** The tab each kind of event came from, named as the tab strip names it. */
+        /** Where each kind of event came from: a Spock ADB tab, Logcat, or the MCP server's activity. */
         val CONTEXT_TABS = mapOf(
             TimelineCategory.LOG to "Logcat",
             TimelineCategory.APP_LIFECYCLE to "Logcat",
             TimelineCategory.MCP to "MCP Server",
             TimelineCategory.STORAGE to "Storage",
-            TimelineCategory.BACKGROUND_WORK to "Background Work",
-            TimelineCategory.DEVICE_CONDITION to "Background Work",
-            TimelineCategory.ACTIVITY to "Device",
-            TimelineCategory.SPOCK_ACTION to "Device",
+            TimelineCategory.BACKGROUND_WORK to "Scheduler",
+            TimelineCategory.DEVICE_CONDITION to "Scheduler",
+            TimelineCategory.ACTIVITY to "Home",
+            TimelineCategory.SPOCK_ACTION to "Home",
         )
 
         fun labelRenderer(suffix: String = ""): ListCellRenderer<Any?> {

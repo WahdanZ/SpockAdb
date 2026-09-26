@@ -21,7 +21,7 @@ class TimelineActivity : SampleActivity() {
         super.onCreate(savedInstanceState)
         screen("Debug Timeline") {
             note(
-                "Select \"$packageName\" in the tool window header and open the Timeline tab. Opening this " +
+                "Check the status bar names \"$packageName\", then open Spock Logcat › Timeline. Opening this " +
                     "screen is already on it: TimelineActivity created, started, resumed.",
             )
             heading("One event each")

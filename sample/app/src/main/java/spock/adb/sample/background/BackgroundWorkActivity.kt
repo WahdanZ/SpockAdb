@@ -33,7 +33,7 @@ class BackgroundWorkActivity : SampleActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         screen("Background work") {
-            note("Schedule, then open the plugin's Background Work tab.")
+            note("Schedule, then open Spock ADB › Scheduler.")
             val result = output()
             button("Schedule everything") { result.text = scheduleAll() }
             button("WorkManager: one-off, charging + unmetered, 15 min delay") { result.text = scheduleOneOff() }

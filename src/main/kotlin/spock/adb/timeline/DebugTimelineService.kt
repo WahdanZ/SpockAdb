@@ -6,6 +6,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import spock.adb.ActionResult
 import spock.adb.SpockAdbService
+import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.DeviceInfo
 import spock.adb.mcp.McpCall
@@ -55,6 +56,12 @@ class DebugTimelineService(private val project: Project) : Disposable {
     init {
         McpServerService.getInstance().addCallListener(mcpListener)
         SpockAdbService.getInstance(project).controller.observeDevices(::onDevices)
+        // Records the device and app every Spock surface acts on, as they change.
+        SpockSelection.getInstance(project).addListener(this) { snapshot, changes ->
+            if (SpockSelection.Change.DEVICE in changes || SpockSelection.Change.APP in changes) {
+                follow(snapshot.device, snapshot.app)
+            }
+        }
     }
 
     fun record(

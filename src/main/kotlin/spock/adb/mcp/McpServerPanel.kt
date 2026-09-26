@@ -18,6 +18,7 @@ import com.intellij.util.ui.JBUI
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
 import spock.adb.ui.CollapsibleSection
+import spock.adb.ui.MinHeightScrollPane
 import spock.adb.ui.WrapLayout
 import spock.adb.ui.renderWith
 import java.awt.BorderLayout
@@ -158,8 +159,17 @@ class McpServerPanel(
     private var disposed = false
 
     init {
-        setToolbar(header())
-        setContent(body())
+        // Header and body scroll together below a floor, rather than being squeezed into a
+        // short docking slot; see [MinHeightScrollPane].
+        setContent(
+            MinHeightScrollPane(
+                JPanel(BorderLayout()).apply {
+                    add(header(), BorderLayout.NORTH)
+                    add(body(), BorderLayout.CENTER)
+                },
+                MIN_HEIGHT,
+            ),
+        )
 
         toolsPane.onSelected = { details ->
             detailArea.text = details ?: EMPTY_DETAIL
@@ -560,6 +570,9 @@ class McpServerPanel(
     // ------------------------------------------------------------------ rendering
 
     private companion object {
+        /** Below this the panel scrolls instead of squeezing its parts; see [MinHeightScrollPane]. */
+        const val MIN_HEIGHT = 520
+
         const val GAP = 4
         const val SEARCH_COLUMNS = 14
         const val ANY_TOOL = "All tools"

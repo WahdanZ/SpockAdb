@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Spock's antennae, so the window reads as Spock's log rather than the IDE's -->
+  <line x1="5.5" y1="4" x2="4" y2="1.9" stroke="#CED0D6" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="3.7" cy="1.5" r="0.9" fill="#CED0D6"/>
+  <line x1="10.5" y1="4" x2="12" y2="1.9" stroke="#CED0D6" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="12.3" cy="1.5" r="0.9" fill="#CED0D6"/>
+  <!-- The head is a log: a frame holding lines of decreasing length -->
+  <rect x="1.6" y="4" width="12.8" height="10.4" rx="2" fill="none" stroke="#CED0D6" stroke-width="1.2"/>
+  <line x1="4.2" y1="7" x2="11.8" y2="7" stroke="#CED0D6" stroke-width="1.2" stroke-linecap="round"/>
+  <line x1="4.2" y1="9.3" x2="10" y2="9.3" stroke="#CED0D6" stroke-width="1.2" stroke-linecap="round"/>
+  <line x1="4.2" y1="11.6" x2="8" y2="11.6" stroke="#CED0D6" stroke-width="1.2" stroke-linecap="round"/>
+</svg>

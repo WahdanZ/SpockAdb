@@ -1,7 +1,7 @@
 # The in-IDE AI assistant
 
 > **Not enabled in this build.** The Assistant tab, its IDE action and its settings section are
-> hidden, and the Logcat tab offers no `Ask AI` control — there is no way to reach any of this
+> hidden, and Spock Logcat offers no `Ask AI` control — there is no way to reach any of this
 > from the UI. The code and its tests are intact behind `AssistantFeature`; this document
 > describes what happens when it is switched back on. Nothing below can occur until then.
 
@@ -36,7 +36,7 @@ Three things follow, and the plugin is built around them:
 If you are working on something that must not leave the building, the honest answer is not to
 enable the assistant.
 
-## Logs from the Logcat tab
+## Logs from Spock Logcat
 
 `Logcat → Ask AI → Ask Spock Assistant` prepares a context from what is on screen and **places it
 in the input**. It is not sent. The Assistant tab comes forward with the prompt ready, appended

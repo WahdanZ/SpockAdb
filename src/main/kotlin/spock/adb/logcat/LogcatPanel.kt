@@ -267,19 +267,34 @@ class LogcatPanel(
 
     // ---------------------------------------------------------------- streaming
 
-    /** Called when the tool window's selected device changes. */
-    fun setDevice(connected: ConnectedDevice?) {
-        if (connected?.serialNumber == device?.serialNumber) return
-        stop()
-        device = connected
-        // Everything held was about the previous device: its PIDs mean nothing here, and its
-        // lines would sit in the same buffer with nothing on screen saying where they came from.
-        app = AppProcesses.UNKNOWN
-        buffer.clear()
-        incoming.clear()
-        view.clear()
+    /**
+     * Called when the device or the app chosen for the project changes.
+     *
+     * A new device starts the panel over. A new app on the same device only moves App scope to
+     * it, from the next line on — the lines already read stay, since they are still true.
+     */
+    fun setTarget(connected: ConnectedDevice?, packageName: String?) {
+        val sameDevice = connected?.serialNumber == device?.serialNumber
+        val sameApp = packageName == null || packageName == app.packageName
+        if (sameDevice && (connected == null || sameApp)) return
+        if (sameDevice && stream?.isRunning == true) {
+            resolveApp(connected ?: return)
+            return
+        }
+        if (!sameDevice) {
+            stop()
+            device = connected
+            // Everything held was about the previous device: its PIDs mean nothing here, and its
+            // lines would sit in the same buffer with nothing on screen saying where they came from.
+            buffer.clear()
+            incoming.clear()
+            view.clear()
+            refreshDetails()
+        }
+        // Not streaming, the app is only named, so the status says which app App will show
+        // rather than that there is none; its processes are looked up when streaming starts.
+        app = packageName?.let { AppProcesses(AppProcesses.State.UNKNOWN, packageName = it) } ?: AppProcesses.UNKNOWN
         applyFilter()
-        refreshDetails()
         updateStatus()
     }
 
@@ -343,9 +358,10 @@ class LogcatPanel(
      * App shows nothing, which is honest and lasts about as long as a `pidof`.
      */
     private fun resolveApp(target: ConnectedDevice) {
-        val applicationId = runCatching {
-            spock.adb.command.GetApplicationIDCommand.resolve(project)
-        }.getOrNull()
+        // The app chosen for the project, else the open project's own: Logcat's App scope used to
+        // follow the project alone, so it showed a different app from every other surface.
+        val applicationId = spock.adb.context.SpockSelection.getInstance(project).snapshot.app
+            ?: runCatching { spock.adb.command.GetApplicationIDCommand.resolve(project) }.getOrNull()
 
         if (applicationId == null) {
             app = AppProcesses.UNKNOWN

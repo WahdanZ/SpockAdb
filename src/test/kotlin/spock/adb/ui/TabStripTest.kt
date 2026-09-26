@@ -55,19 +55,37 @@ class TabStripTest {
     @Test
     fun `the tab being looked at is never the one hidden`() {
         val strip = strip(DOCKED)
+        val before = strip.visibleTitles()
 
         // The last tab is the first to overflow, so selecting it is the case that matters.
         strip.select("Assistant")
         strip.doLayout()
 
-        assertTrue("Assistant" in strip.visibleTitles(), strip.visibleTitles().toString())
-        // Read from where they were laid out, not from the order they were added in: the strip
-        // places the selected tab leftmost without moving it in the component list.
-        val leftmost = strip.components
+        val after = strip.visibleTitles()
+        assertTrue("Assistant" in after, after.toString())
+        val rightmost = strip.components
             .filterIsInstance<JToggleButton>()
             .filter { it.isVisible }
-            .minBy { it.x }
-        assertEquals("Assistant", leftmost.text, "it is placed at the front of the run")
+            .maxBy { it.x }
+        assertEquals("Assistant", rightmost.text, "it takes the last place on the row")
+        val kept = after.dropLast(1)
+        assertEquals(
+            before.take(kept.size),
+            kept,
+            "the tabs still on the row stay where they were; only the ones at the end make room",
+        )
+    }
+
+    @Test
+    fun `selecting a visible tab moves nothing`() {
+        val strip = strip(DOCKED)
+        val before = strip.components.filterIsInstance<JToggleButton>().filter { it.isVisible }.map { it.text to it.x }
+
+        strip.select(strip.visibleTitles()[1])
+        strip.doLayout()
+
+        val after = strip.components.filterIsInstance<JToggleButton>().filter { it.isVisible }.map { it.text to it.x }
+        assertEquals(before, after, "a tab has to be where it was last time to be clicked without reading")
     }
 
     @Test

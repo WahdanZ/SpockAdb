@@ -17,12 +17,12 @@ class MainActivity : AppCompatActivity() {
         val info = packageManager.getPackageInfo(packageName, 0)
         screen("Spock Sample") {
             note(
-                "A playground for every Spock ADB feature. Select \"$packageName\" in the tool " +
-                    "window header, then open the screen for the feature you are testing.",
+                "A playground for every Spock ADB feature. Check that the IDE's status bar names " +
+                    "\"$packageName\", then open the screen for the feature you are testing.",
             )
             output("version ${info.versionName}  pid ${Process.myPid()}")
 
-            heading("Device tab")
+            heading("Spock ADB › Home")
             open("Activity stack — Current Activity, Activity Stack", StackActivity::class.java)
             open("Fragments — Current Fragment, back stack", NavigationActivity::class.java)
             open("Deep links — Open Deep Link", DeepLinkActivity::class.java)
@@ -31,17 +31,17 @@ class MainActivity : AppCompatActivity() {
             open("Process death, Don't keep activities, Restart", ProcessDeathActivity::class.java)
             open("Network — HTTP proxy, Wi-Fi, mobile data", NetworkActivity::class.java)
 
-            heading("Other tabs")
-            open("Timeline — lifecycle, warnings, a crash to reproduce", TimelineActivity::class.java)
-            open("Storage — SharedPreferences, DataStore, cache", StorageActivity::class.java)
-            open("Logcat — levels, stack traces, crash", LogcatActivity::class.java)
+            heading("Other Spock windows and tabs")
+            open("Spock Logcat › Timeline — lifecycle, warnings, a crash", TimelineActivity::class.java)
+            open("Spock ADB › Storage — SharedPreferences, DataStore, cache", StorageActivity::class.java)
+            open("Spock Logcat — levels, stack traces, crash", LogcatActivity::class.java)
             open("Debug context — failures for android_get_debug_context", DebugContextActivity::class.java)
-            open("Diagnose — Diagnose Current Screen, android_diagnose_current_screen", DiagnoseActivity::class.java)
-            open("UI Inspector — Compose screen", ComposeInspectorActivity::class.java)
-            open("UI Inspector — Compose reliability fixtures", ComposeReliabilityActivity::class.java)
-            open("UI Inspector — Recomposition counts", RecompositionActivity::class.java)
-            open("UI Inspector — Views screen", ViewsInspectorActivity::class.java)
-            open("Background Work — jobs, WorkManager, alarms", BackgroundWorkActivity::class.java)
+            open("Spock Screen › Diagnose — Copy screen for AI", DiagnoseActivity::class.java)
+            open("Spock Screen › UI Tree — Compose screen", ComposeInspectorActivity::class.java)
+            open("Spock Screen › UI Tree — Compose reliability fixtures", ComposeReliabilityActivity::class.java)
+            open("Spock Screen › UI Tree — Recomposition counts", RecompositionActivity::class.java)
+            open("Spock Screen › UI Tree — Views screen", ViewsInspectorActivity::class.java)
+            open("Spock ADB › Scheduler — jobs, WorkManager, alarms", BackgroundWorkActivity::class.java)
         }
     }
 }

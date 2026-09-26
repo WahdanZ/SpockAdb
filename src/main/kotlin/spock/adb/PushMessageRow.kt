@@ -16,7 +16,7 @@ import javax.swing.JPanel
  * The "Push message" control under Send to device: opens the payload editor, and keeps the
  * last send's verdict on screen beneath it.
  *
- * Its own component rather than more fields on [SpockAdbViewer], which is at the size Detekt
+ * Its own component rather than more fields on the old Device tab, which is at the size Detekt
  * flags — the same reason [HttpProxyRow] is one.
  */
 class PushMessageRow(

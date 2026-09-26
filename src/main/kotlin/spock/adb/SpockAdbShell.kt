@@ -10,23 +10,18 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.util.ui.JBUI
 import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantPanel
-import spock.adb.assistant.AssistantPrefill
 import spock.adb.backgroundwork.BackgroundWorkPanel
 import spock.adb.commandcenter.CommandCenterPanel
+import spock.adb.context.ContextLine
+import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
-import spock.adb.diagnostics.DiagnosePanel
-import spock.adb.logcat.LogcatPanel
-import spock.adb.mcp.McpCall
+import spock.adb.home.HomePanel
 import spock.adb.mcp.McpServerPanel
-import spock.adb.mcp.McpServerService
+import spock.adb.screen.SpockScreenToolWindow
 import spock.adb.storage.AppStoragePanel
-import spock.adb.timeline.DebugTimelinePanel
 import spock.adb.timeline.DebugTimelineService
 import spock.adb.ui.TabStrip
-import spock.adb.uitree.UiInspectorPanel
 import java.awt.BorderLayout
-import java.awt.event.ItemEvent
-import javax.swing.DefaultComboBoxModel
 import javax.swing.JPanel
 
 /**
@@ -49,7 +44,7 @@ class SpockAdbShell(
 
     private var disposed = false
 
-    private val header = ToolWindowHeader(project) { !disposed && !project.isDisposed }
+    private val contextLine = ContextLine(project, parentDisposable)
     private val statusBar = ActionStatusBar()
 
     /**
@@ -59,27 +54,13 @@ class SpockAdbShell(
      */
     private val tabs = TabStrip()
 
-    private val devices = SpockAdbViewer(project)
+    private val home = HomePanel(project)
     private val storage = AppStoragePanel(project)
-    private val logcat = LogcatPanel(project)
     private val commands = CommandCenterPanel(project)
-    private val uiInspector = UiInspectorPanel(project)
     private val backgroundWork = BackgroundWorkPanel(project)
-    private val mcp = McpServerPanel(project)
-    private val timeline = DebugTimelinePanel(project) { title -> tabs.select(title) }
 
-    /** Its quick actions lead into the other tabs, so it is handed the way there. */
-    private val diagnose = DiagnosePanel(
-        project,
-        inspectUi = {
-            tabs.select(UI_INSPECTOR_TAB)
-            uiInspector.captureNow()
-        },
-        viewRelatedLogs = {
-            tabs.select(LOGCAT_TAB)
-            logcat.showRelatedErrors()
-        },
-    )
+    /** Built when first asked for: the server is configured once and then only checked on. */
+    private var mcp: McpServerPanel? = null
 
     /**
      * Built only when the tab is shown.
@@ -89,45 +70,22 @@ class SpockAdbShell(
      */
     private val assistant = if (AssistantFeature.TAB_VISIBLE) AssistantPanel(project) else null
 
-    private var connected: List<ConnectedDevice> = emptyList()
+    private val selection = SpockSelection.getInstance(project)
+
+    /** The device the tabs were last told about, so a reconnect is not announced as a change. */
     private var selectedDevice: ConnectedDevice? = null
 
     private lateinit var controller: AdbController
 
-    /**
-     * Refreshed on every recorded MCP call rather than on a timer.
-     *
-     * The agent's target only changes through `android_select_device`, which is itself a
-     * recorded call, so the one event that can make this label wrong is the one that fires it.
-     */
-    private val mcpCallListener: (McpCall) -> Unit = {
-        ApplicationManager.getApplication().invokeLater({ refreshAgentTarget() }) { project.isDisposed }
-    }
-
     init {
-        listOfNotNull(diagnose, timeline, storage, logcat, commands, uiInspector, backgroundWork, mcp, assistant)
+        listOfNotNull(storage, commands, backgroundWork, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
 
-        // Logcat hands prepared context to the Assistant rather than reaching into it: the tab
-        // is brought forward and the prompt placed, and the developer presses Send. See
-        // [spock.adb.assistant.AssistantPrefill]. Wired only when the tab exists.
-        assistant?.let { panel ->
-            logcat.assistant = AssistantPrefill { prompt ->
-                tabs.select(ASSISTANT_TAB)
-                panel.prefill(prompt)
-            }
-        }
-
-        tabs.addTab("Device", devices)
-        tabs.addTab(DIAGNOSE_TAB, diagnose)
-        tabs.addTab("Timeline", timeline)
+        tabs.addTab(HOME_TAB, home)
         tabs.addTab(STORAGE_TAB, storage)
-        tabs.addTab(LOGCAT_TAB, logcat)
-        tabs.addTab("Commands", commands)
-        tabs.addTab(UI_INSPECTOR_TAB, uiInspector)
         tabs.addTab(BACKGROUND_WORK_TAB, backgroundWork)
-        tabs.addTab("MCP Server", mcp)
+        tabs.addTab(SHELL_TAB, commands)
         assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
         // Read on arrival rather than on every device or app change: two dumpsys round trips,
         // one of them the whole alarm table, for a tab that may never be opened.
@@ -139,11 +97,11 @@ class SpockAdbShell(
             }
         }
 
-        // The header and the tabs are both about the whole window, so they sit together above
-        // the content rather than the tabs being part of it.
+        // The context line and the tabs are both about the whole window, so they sit together
+        // above the content rather than the tabs being part of it.
         setToolbar(
             JPanel(BorderLayout()).apply {
-                add(header, BorderLayout.NORTH)
+                add(contextLine, BorderLayout.NORTH)
                 add(tabs, BorderLayout.SOUTH)
             },
         )
@@ -158,139 +116,77 @@ class SpockAdbShell(
 
     fun start(controller: AdbController) {
         this.controller = controller
-        devices.initPlugin(controller)
+        home.attach(controller)
+        home.onDiagnose = { SpockScreenToolWindow.diagnose(project) }
+        home.onCopyScreenForAi = { SpockScreenToolWindow.diagnose(project, thenCopy = true) }
+        home.onBackgroundWork = { tabs.select(BACKGROUND_WORK_TAB) }
 
         controller.onResult { result -> statusBar.show(result) }
-        header.settingsButton.addActionListener { devices.showActionSettings() }
-        header.refreshButton.addActionListener {
-            statusBar.working("Reading the device list…")
-            controller.refresh()
-        }
-        header.deviceCombo.addItemListener { event ->
-            // A combo box fires DESELECTED then SELECTED, and reports index -1 when the model
-            // is emptied. Indexing straight into the list threw ArrayIndexOutOfBoundsException
-            // whenever the last device disconnected.
-            if (event.stateChange == ItemEvent.SELECTED) {
-                selectDevice(connected.getOrNull(header.deviceCombo.selectedIndex))
+        // A change of app refused because of unapplied edits puts the selection back, so every
+        // view names the app the Storage tab is still showing. Later rather than now: the refusal
+        // arrives while the selection is still telling its listeners about the change.
+        storage.onAppKept = { kept ->
+            if (kept != null) {
+                ApplicationManager.getApplication().invokeLater({ selection.selectApp(kept) }) { disposed }
             }
         }
-        header.onAppChosen = { packageName -> selectApp(packageName) }
-        // A change of app refused because of unapplied edits has to put the header back, or the
-        // header would name an app the Storage tab is not showing.
-        storage.onAppKept = { kept -> if (kept != null) selectApp(kept) }
 
-        watchAgentTarget()
+        selection.addListener(parentDisposable) { snapshot, changes ->
+            if (SpockSelection.Change.DEVICE in changes) selectDevice(snapshot.device)
+            if (SpockSelection.Change.APP in changes) snapshot.app?.let(::selectApp)
+        }
         listenForToolWindow()
-        observeDevices()
+        // Created here so the Debug Timeline follows the selection from the moment the window
+        // opens, whether or not its tab is ever shown.
+        DebugTimelineService.getInstance(project)
     }
 
     // ---------------------------------------------------------------- device
 
-    private fun observeDevices() {
-        controller.observeDevices { list ->
-            connected = list
-
-            // Match on serial rather than instance identity: ddmlib hands out a new IDevice
-            // after a reconnect, so identity comparison silently reset the selection. Falls
-            // back to the serial persisted from the previous session, then to the first device
-            // that is actually usable, so the plugin does not default to an offline one.
-            val preferred = selectedDevice?.serialNumber ?: persistedSerial()
-            val next = list.firstOrNull { it.serialNumber == preferred }
-                ?: list.firstOrNull { it.info.isUsable }
-                ?: list.firstOrNull()
-
-            if (list.isEmpty()) {
-                // An empty dropdown with no explanation is indistinguishable from a broken
-                // plugin. Say so, and say what to do about it.
-                header.deviceCombo.model = DefaultComboBoxModel(arrayOf(NO_DEVICES))
-                header.deviceCombo.isEnabled = false
-                header.setDevice(
-                    null,
-                    hint = "Connect a device or start an emulator, then press Refresh. " +
-                        "If a device is attached, check idea.log for ADB errors.",
-                )
-            } else {
-                header.deviceCombo.isEnabled = true
-                // The name and the Android version only: the serial and the architecture are in
-                // the tooltip, where they do not push the name out of a docked tool window.
-                header.deviceCombo.model = DefaultComboBoxModel(list.map { it.info.shortLabel() }.toTypedArray())
-                next?.let { header.deviceCombo.selectedIndex = list.indexOf(it) }
-            }
-            // Swapping the model fires no SELECTED event when the chosen index is 0 — a single
-            // device, first load, a reconnect — so the item listener cannot be relied on here.
-            selectDevice(next, listChanged = true)
-        }
-    }
-
-    private fun selectDevice(device: ConnectedDevice?, listChanged: Boolean = false) {
-        val sameDevice = device != null && device.serialNumber == selectedDevice?.serialNumber
+    private fun selectDevice(device: ConnectedDevice?) {
         selectedDevice = device
-        rememberSelectedDevice()
-        if (device != null || listChanged) header.setDevice(device, sameDevice = sameDevice)
-
-        devices.setDevice(device)
-        diagnose.setDevice(device)
+        home.setDevice(device)
         storage.setDevice(device)
-        logcat.setDevice(device)
         commands.setDevice(device)
-        uiInspector.setDevice(device)
         backgroundWork.setDevice(device)
-        followOnTimeline()
-        refreshAgentTarget()
     }
 
-    /**
-     * The app every tab and every action uses.
-     *
-     * Told to the controller rather than to each tab: the controller is where an action
-     * resolved the project's app module for itself, which is what made the header a label.
-     */
+    /** The app every tab and every action uses, as chosen in [SpockSelection]. */
     private fun selectApp(packageName: String) {
-        controller.selectedApp = packageName
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
-        diagnose.setApp(packageName)
-        devices.setApp()
-        followOnTimeline()
+        home.setApp()
     }
 
-    /** The timeline reads the app the header chose, on the device it names. */
-    private fun followOnTimeline() {
-        DebugTimelineService.getInstance(project).follow(selectedDevice, controller.selectedApp)
+    /** Opens the dialog that chooses which actions Home shows. From the title bar's menu. */
+    fun customizeHome() = home.showActionSettings()
+
+    /** Reads the device and app lists again. From the title bar's refresh. */
+    fun refresh() {
+        statusBar.working("Reading the device list…")
+        selection.refresh()
     }
 
-    private fun persistedSerial(): String? =
-        AppSettingService.getInstance().state.selectedDevice?.takeIf { it.isNotBlank() }
-
-    private fun rememberSelectedDevice() {
-        val service = AppSettingService.getInstance()
-        val current = service.state
-        val serial = selectedDevice?.serialNumber
-        if (current.selectedDevice != serial) {
-            service.loadState(current.copy(selectedDevice = serial))
+    /** Adds the MCP server's tab the first time it is asked for, and brings it forward. */
+    private fun showMcp() {
+        if (mcp == null) {
+            mcp = McpServerPanel(project).also {
+                Disposer.register(parentDisposable, it)
+                tabs.addTab(MCP_TAB, it)
+            }
         }
+        tabs.select(MCP_TAB)
     }
 
-    /** Brings the Diagnose tab forward and runs it: the Diagnose Current Screen action. */
-    fun diagnoseCurrentScreen() {
-        tabs.select(DIAGNOSE_TAB)
-        diagnose.diagnose()
+    private fun prefillAssistant(prompt: String) {
+        val panel = assistant ?: return
+        tabs.select(ASSISTANT_TAB)
+        panel.prefill(prompt)
     }
 
-    // ---------------------------------------------------------------- agents
-
-    private fun watchAgentTarget() {
-        val service = McpServerService.getInstance()
-        service.addCallListener(mcpCallListener)
-        Disposer.register(parentDisposable) { service.removeCallListener(mcpCallListener) }
-        refreshAgentTarget()
-    }
-
-    private fun refreshAgentTarget() {
-        val service = McpServerService.getInstance()
-        val target = service.targetedSerial
-        val mismatched = service.isRunning && target != null && target != selectedDevice?.serialNumber
-        header.setAgentTarget(target.takeIf { mismatched })
+    /** Brings the tab titled [title] forward, for the actions that open one. */
+    fun selectTab(title: String) {
+        tabs.select(title)
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -311,8 +207,8 @@ class SpockAdbShell(
                         // dropdown that came up empty — because ADB had not started yet, or a
                         // device was plugged in afterwards — could only be recovered by
                         // reopening the project.
-                        controller.refresh()
-                        devices.onShown()
+                        selection.refresh()
+                        home.onShown()
                     }
                 },
             )
@@ -328,13 +224,33 @@ class SpockAdbShell(
                 ?.contentManager?.contents
                 ?.firstNotNullOfOrNull { it.component as? SpockAdbShell }
 
+        /**
+         * Brings the Assistant tab forward with [prompt] placed, for Logcat's Ask AI. The
+         * developer presses Send; see [spock.adb.assistant.AssistantPrefill].
+         */
+        fun prefillAssistant(project: Project, prompt: String) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
+            toolWindow.activate { find(project)?.prefillAssistant(prompt) }
+        }
+
+        /** Opens the Spock ADB window on the tab titled [title]. */
+        fun openTab(project: Project, title: String) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
+            toolWindow.activate { find(project)?.selectTab(title) }
+        }
+
+        /** Opens the MCP server's agent activity, from the status-bar indicator or the Tools menu. */
+        fun openMcpActivity(project: Project) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
+            toolWindow.activate { find(project)?.showMcp() }
+        }
+
+        const val MCP_TAB = "MCP Server"
         private const val TOOL_WINDOW_ID = "Spock ADB"
-        private const val NO_DEVICES = "No devices connected"
         private const val ASSISTANT_TAB = "Assistant"
-        private const val BACKGROUND_WORK_TAB = "Background Work"
+        private const val BACKGROUND_WORK_TAB = "Scheduler"
+        const val SHELL_TAB = "Shell"
+        private const val HOME_TAB = "Home"
         private const val STORAGE_TAB = "Storage"
-        private const val DIAGNOSE_TAB = "Diagnose"
-        private const val LOGCAT_TAB = "Logcat"
-        private const val UI_INSPECTOR_TAB = "UI Inspector"
     }
 }

@@ -44,6 +44,13 @@ class ClearAppDataAndRestartAction : DeviceAwareAction() {
     }
 }
 
+/** No confirmation: it deletes only what the app rebuilds on its own, cache/ and code_cache/. */
+class ClearAppCacheAction : DeviceAwareAction() {
+    override val baseDescription = "Delete the app's cache and code_cache; needs a debuggable build"
+    override fun perform(project: Project, device: ConnectedDevice) =
+        SpockAdbService.getInstance(project).controller.clearAppCache(device.device)
+}
+
 class UninstallAppAction : DeviceAwareAction() {
     override val baseDescription = "Uninstall the app from the device"
     override fun perform(project: Project, device: ConnectedDevice) {
@@ -84,11 +91,9 @@ abstract class OpenTabAction(private val tabName: String) : AnAction() {
         val project = event.project ?: return
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
 
-        toolWindow.activate {
-            toolWindow.contentManager.contents
-                .firstOrNull { it.displayName == tabName }
-                ?.let { toolWindow.contentManager.setSelectedContent(it) }
-        }
+        // The window has one content, the shell, and the tabs are inside it: looking the tab up
+        // as content found nothing, so these actions opened the window on whatever tab it had.
+        toolWindow.activate { spock.adb.SpockAdbShell.find(project)?.selectTab(tabName) }
     }
 
     private companion object {
@@ -96,15 +101,54 @@ abstract class OpenTabAction(private val tabName: String) : AnAction() {
     }
 }
 
-class OpenLogcatAction : OpenTabAction("Logcat")
-class OpenCommandCenterAction : OpenTabAction("Commands")
-class OpenDevicesAction : OpenTabAction("Devices")
-class OpenMcpPanelAction : OpenTabAction("MCP Server")
+/** Opens the Spock Logcat tool window, which is a window of its own rather than a tab. */
+class OpenLogcatAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = event.project != null
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        event.project?.let { spock.adb.logcat.SpockLogcatToolWindow.open(it) }
+    }
+}
+
+class OpenCommandCenterAction : OpenTabAction(spock.adb.SpockAdbShell.SHELL_TAB)
+class OpenDevicesAction : OpenTabAction("Home")
+
+/** Opens the MCP server's agent activity, adding its tab the first time. */
+class OpenMcpPanelAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = event.project != null
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        event.project?.let { spock.adb.SpockAdbShell.openMcpActivity(it) }
+    }
+}
 class OpenAssistantAction : OpenTabAction("Assistant")
-class OpenUiInspectorAction : OpenTabAction("UI Inspector")
+
+/** Opens the Spock Screen tool window on its UI tree. */
+class OpenUiInspectorAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = event.project != null
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        event.project?.let { spock.adb.screen.SpockScreenToolWindow.inspect(it) }
+    }
+}
 
 /**
- * Brings the Diagnose tab forward and diagnoses the current screen.
+ * Opens the Spock Screen tool window on Diagnose and diagnoses the current screen.
  *
  * Not a [DeviceAwareAction]: that asks which device when several are connected, and a diagnosis
  * is of the device and app the tool window's header already names — the same target as every
@@ -120,9 +164,6 @@ class DiagnoseCurrentScreenAction : AnAction() {
 
     override fun actionPerformed(event: AnActionEvent) {
         val project = event.project ?: return
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Spock ADB") ?: return
-        // Activating builds the tool window's content on first use, so the shell exists by the
-        // time this runs.
-        toolWindow.activate { spock.adb.SpockAdbShell.find(project)?.diagnoseCurrentScreen() }
+        spock.adb.screen.SpockScreenToolWindow.diagnose(project)
     }
 }

@@ -25,8 +25,9 @@ import javax.swing.JToggleButton
  * `SCROLL_TAB_LAYOUT` cannot be used at all, because IntelliJ's `DarculaTabbedPaneUI` recurses
  * between `ensureSelectedTabIsVisible` and `tabForCoordinate` until the stack overflows.
  *
- * The selected tab is never the one hidden: it is moved to the front of the visible run, so the
- * tab you are on is always on screen.
+ * Tabs keep the order they were added in, so a tab is always found where it was last time. The
+ * selected tab is never the one hidden: when it would overflow, it takes the last place on the
+ * row instead, and only the tab it displaces moves into More.
  */
 internal class TabStrip : JPanel(null) {
 
@@ -86,27 +87,23 @@ internal class TabStrip : JPanel(null) {
         val insets = insets
         val top = insets.top
         val rowHeight = height - insets.top - insets.bottom
-        val order = visibleOrder()
-        val moreWidth = more.preferredSize.width + JBUI.scale(GAP)
-        val full = insets.left + order.sumOf { buttons.getValue(it).preferredSize.width + JBUI.scale(GAP) }
+        val gap = JBUI.scale(GAP)
+        val titles = buttons.keys.toList()
+        val widths = titles.map { buttons.getValue(it).preferredSize.width }
+        val full = insets.left + widths.sumOf { it + gap }
+        val moreWidth = more.preferredSize.width + gap
         val limit = width - insets.right - if (full > width - insets.right) moreWidth else 0
 
+        val shown = tabRun(widths, titles.indexOf(selected), limit - insets.left, gap)
+        titles.forEachIndexed { index, title -> buttons.getValue(title).isVisible = index in shown }
         var x = insets.left
-        val hidden = mutableListOf<String>()
-        order.forEach { title ->
-            val button = buttons.getValue(title)
-            val w = button.preferredSize.width
-            if (x + w <= limit) {
-                button.isVisible = true
-                button.setBounds(x, top, w, rowHeight)
-                x += w + JBUI.scale(GAP)
-            } else {
-                button.isVisible = false
-                hidden += title
-            }
+        shown.forEach { index ->
+            val button = buttons.getValue(titles[index])
+            button.setBounds(x, top, widths[index], rowHeight)
+            x += widths[index] + gap
         }
-        overflow = hidden
-        more.isVisible = hidden.isNotEmpty()
+        overflow = titles.filterIndexed { index, _ -> index !in shown }
+        more.isVisible = overflow.isNotEmpty()
         if (more.isVisible) {
             more.setBounds(width - insets.right - more.preferredSize.width, top, more.preferredSize.width, rowHeight)
         }
@@ -119,13 +116,6 @@ internal class TabStrip : JPanel(null) {
     }
 
     override fun getMinimumSize(): Dimension = preferredSize
-
-    /** The selected tab first, so the one being looked at is never the one pushed into More. */
-    private fun visibleOrder(): List<String> {
-        val titles = buttons.keys.toList()
-        val current = selected ?: return titles
-        return listOf(current) + titles.filterNot { it == current }
-    }
 
     private var overflow: List<String> = emptyList()
 
@@ -197,4 +187,29 @@ internal class TabStrip : JPanel(null) {
         const val GAP = 4
         const val MORE_LABEL = "More ▾"
     }
+}
+
+/**
+ * Which tabs are on the row, as indexes in the order they are drawn.
+ *
+ * Tabs are placed in their own order until one does not fit in [room]. If [selected] is among
+ * those left over, tabs are taken off the end of the run until it fits, and it goes last: every
+ * tab before it keeps its place, and the selected one is still on screen.
+ *
+ * @param widths each tab's width, in the order the tabs were added.
+ * @param selected the selected tab's index, or -1 when none is.
+ */
+internal fun tabRun(widths: List<Int>, selected: Int, room: Int, gap: Int): List<Int> {
+    val run = mutableListOf<Int>()
+    var used = 0
+    for (index in widths.indices) {
+        if (used + widths[index] > room) break
+        run += index
+        used += widths[index] + gap
+    }
+    if (selected !in widths.indices || selected in run) return run
+    while (run.isNotEmpty() && used + widths[selected] > room) {
+        used -= widths[run.removeAt(run.lastIndex)] + gap
+    }
+    return run + selected
 }

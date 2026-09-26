@@ -45,11 +45,26 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
             .map { ListItem(it.name.replace("_", " "), true) }
     }
 
-    /** The actions pinned to Quick actions, in the order they are shown. */
-    fun pinnedActions(): List<QuickAction> = QuickAction.read(localData.pinned)
+    /**
+     * The action IDs pinned to the top of the Spock Actions popup, in order.
+     *
+     * Before any are chosen, the pins made on the old Device tab, and before those the three
+     * actions most runs of the debugging loop start with.
+     */
+    fun pinnedActionIds(): List<String> = localData.pinnedActionIds
+        ?: QuickAction.actionIds(localData.pinned).ifEmpty { DEFAULT_PINS }
 
-    fun savePinnedActions(pinned: List<QuickAction>) {
-        localData = localData.copy(pinned = pinned.map { it.name })
+    fun savePinnedActionIds(ids: List<String>) {
+        localData = localData.copy(pinnedActionIds = ids.distinct())
+    }
+
+    /** The actions run most recently from the popup, newest first. */
+    fun recentActionIds(): List<String> = localData.recentActionIds
+
+    fun recordRecentAction(id: String) {
+        localData = localData.copy(
+            recentActionIds = (listOf(id) + localData.recentActionIds.filterNot { it == id }).take(MAX_RECENT),
+        )
     }
 
     /**
@@ -87,6 +102,13 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
         fun getInstance(): AppSettingService =
             // Non-inline lookup, for the same reason as SpockAdbService.getInstance.
             ApplicationManager.getApplication().getService(AppSettingService::class.java)
+
+        private const val MAX_RECENT = 5
+        private val DEFAULT_PINS = listOf(
+            "spock.adb.actions.RestartAppAction",
+            "spock.adb.actions.CopyScreenForAiAction",
+            "spock.adb.actions.DiagnoseCurrentScreenAction",
+        )
     }
 }
 
@@ -100,6 +122,11 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
  *   the project.
  * @param pinned the [QuickAction] names pinned to the Quick actions row, in the order shown.
  *   Order is the whole point, so this is a list rather than the set it would otherwise be.
+ * @param pinnedActionIds the actions pinned in the Spock Actions popup; null until chosen, so the
+ *   old [pinned] list can stand in for it.
+ * @param recentActionIds the actions last run from that popup, newest first.
+ * @param followStudioDevice selects the device chosen in Android Studio's run-target selector
+ *   whenever that choice changes, so the device is picked once for running and debugging alike.
  */
 data class AppSetting(
     val selectedDevice: String? = "",
@@ -107,6 +134,9 @@ data class AppSetting(
     val httpProxy: String = "",
     val httpProxyHistory: List<String> = emptyList(),
     val pinned: List<String> = emptyList(),
+    val followStudioDevice: Boolean = true,
+    val pinnedActionIds: List<String>? = null,
+    val recentActionIds: List<String> = emptyList(),
 )
 enum class SpockAction {
     APP_INFO,
