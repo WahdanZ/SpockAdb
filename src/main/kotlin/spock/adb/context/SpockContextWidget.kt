@@ -3,9 +3,10 @@ package spock.adb.context
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.DumbAwareToggleAction
 import com.intellij.openapi.project.Project
@@ -79,7 +80,7 @@ internal class SpockContextWidget(private val project: Project) :
     private fun popup(): ListPopup = JBPopupFactory.getInstance().createActionGroupPopup(
         "Spock ADB: Device and App",
         ContextActions.group(project, selection),
-        DataContext.EMPTY_CONTEXT,
+        SimpleDataContext.getProjectContext(project),
         JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
         true,
     )
@@ -149,8 +150,11 @@ internal object ContextActions {
         add(DumbAwareAction.create("Refresh Devices and Apps") { selection.refresh() })
         add(Separator.create())
         add(
-            DumbAwareAction.create("Spock Actions…") {
-                SpockActionsPopup.show(project, DataContext.EMPTY_CONTEXT)
+            DumbAwareAction.create("Spock Actions…") { event ->
+                // Its actions read the project from the context and are disabled without one.
+                val context = event.dataContext.takeIf { CommonDataKeys.PROJECT.getData(it) != null }
+                    ?: SimpleDataContext.getProjectContext(project)
+                SpockActionsPopup.show(project, context)
             },
         )
     }
