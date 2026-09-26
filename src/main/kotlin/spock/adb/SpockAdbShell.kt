@@ -20,6 +20,8 @@ import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerPanel
 import spock.adb.mcp.McpServerService
 import spock.adb.storage.AppStoragePanel
+import spock.adb.timeline.DebugTimelinePanel
+import spock.adb.timeline.DebugTimelineService
 import spock.adb.ui.TabStrip
 import spock.adb.uitree.UiInspectorPanel
 import java.awt.BorderLayout
@@ -64,6 +66,7 @@ class SpockAdbShell(
     private val uiInspector = UiInspectorPanel(project)
     private val backgroundWork = BackgroundWorkPanel(project)
     private val mcp = McpServerPanel(project)
+    private val timeline = DebugTimelinePanel(project) { title -> tabs.select(title) }
 
     /** Its quick actions lead into the other tabs, so it is handed the way there. */
     private val diagnose = DiagnosePanel(
@@ -102,7 +105,7 @@ class SpockAdbShell(
     }
 
     init {
-        listOfNotNull(diagnose, storage, logcat, commands, uiInspector, backgroundWork, mcp, assistant)
+        listOfNotNull(diagnose, timeline, storage, logcat, commands, uiInspector, backgroundWork, mcp, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
 
@@ -118,6 +121,7 @@ class SpockAdbShell(
 
         tabs.addTab("Device", devices)
         tabs.addTab(DIAGNOSE_TAB, diagnose)
+        tabs.addTab("Timeline", timeline)
         tabs.addTab(STORAGE_TAB, storage)
         tabs.addTab(LOGCAT_TAB, logcat)
         tabs.addTab("Commands", commands)
@@ -231,6 +235,7 @@ class SpockAdbShell(
         commands.setDevice(device)
         uiInspector.setDevice(device)
         backgroundWork.setDevice(device)
+        followOnTimeline()
         refreshAgentTarget()
     }
 
@@ -246,6 +251,12 @@ class SpockAdbShell(
         backgroundWork.setApp(packageName)
         diagnose.setApp(packageName)
         devices.setApp()
+        followOnTimeline()
+    }
+
+    /** The timeline reads the app the header chose, on the device it names. */
+    private fun followOnTimeline() {
+        DebugTimelineService.getInstance(project).follow(selectedDevice, controller.selectedApp)
     }
 
     private fun persistedSerial(): String? =

@@ -28,6 +28,9 @@ import spock.adb.command.setCharger
 import spock.adb.command.setStandbyBucket
 import spock.adb.command.unplugBattery
 import spock.adb.device.ConnectedDevice
+import spock.adb.timeline.DebugTimelineService
+import spock.adb.timeline.TimelineCategory
+import spock.adb.timeline.TimelineSeverity
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -266,9 +269,17 @@ internal class DeviceConditionsRow(
         onStatus(working)
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching { action(target.device) }
+            val message = result.fold({ it }, { it.message ?: "The change failed." })
+            DebugTimelineService.getInstance(project).record(
+                TimelineCategory.DEVICE_CONDITION,
+                if (result.isSuccess) TimelineSeverity.INFO else TimelineSeverity.ERROR,
+                message.lineSequence().first(),
+                message,
+                target.serialNumber,
+            )
             ApplicationManager.getApplication().invokeLater({
                 busy = false
-                onStatus(result.fold({ it }, { it.message ?: "The change failed." }))
+                onStatus(message)
                 refresh()
             }) { isDisposed() || project.isDisposed }
         }

@@ -69,6 +69,7 @@
         <activity android:name=".StorageActivity" android:exported="false" />
         <activity android:name=".NetworkActivity" android:exported="false" />
         <activity android:name=".LogcatActivity" android:exported="false" />
+        <activity android:name=".TimelineActivity" android:exported="false" />
         <activity android:name=".DebugContextActivity" android:exported="false" />
         <activity android:name=".DiagnoseActivity" android:exported="false" />
         <activity android:name=".compose.ComposeInspectorActivity" android:exported="false" />

@@ -79,6 +79,7 @@ class ToolSafetyTest {
                 "android_get_scheduled_jobs",
                 "android_get_pending_alarms",
                 "android_get_device_conditions",
+                "android_get_debug_timeline",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )

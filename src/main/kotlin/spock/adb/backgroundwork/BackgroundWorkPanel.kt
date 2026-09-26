@@ -32,6 +32,9 @@ import spock.adb.parser.JobSchedulerDump
 import spock.adb.parser.JobSchedulerDumpParser
 import spock.adb.parser.PendingAlarm
 import spock.adb.parser.ScheduledJob
+import spock.adb.timeline.DebugTimelineService
+import spock.adb.timeline.TimelineCategory
+import spock.adb.timeline.TimelineSeverity
 import java.awt.BorderLayout
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
@@ -330,6 +333,14 @@ class BackgroundWorkPanel(
         val request = RunJobRequest(app, job.jobId, job.namespace)
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching { RunJobNowCommand().execute(request, project, target.device) }
+            val message = result.fold({ it }, { "Could not run job ${job.jobId}: ${it.message}" })
+            DebugTimelineService.getInstance(project).record(
+                TimelineCategory.BACKGROUND_WORK,
+                if (result.isSuccess) TimelineSeverity.INFO else TimelineSeverity.ERROR,
+                message.lineSequence().first(),
+                message,
+                target.serialNumber,
+            )
             ApplicationManager.getApplication().invokeLater({
                 busy = false
                 result
@@ -339,7 +350,7 @@ class BackgroundWorkPanel(
                         // Reading back shows whether it is now running, and where its schedule moved.
                         refresh()
                     }
-                    .onFailure { status("Could not run job ${job.jobId}: ${it.message}") }
+                    .onFailure { status(message) }
             }) { disposed || project.isDisposed }
         }
     }
