@@ -68,9 +68,13 @@ class StubbedIDeviceApiTest {
     fun `the scan actually sees IDevice calls`() {
         // Without this, a broken class path or a changed javap format would turn the guard
         // above into a test that passes because it inspected nothing.
-        val disassembled = disassemble(compiledPluginClasses().take(BATCH_SIZE))
+        // Every batch, not the first: which classes come first is file-system order, and a
+        // package of new classes early in it would otherwise push every caller out of view.
+        val seen = compiledPluginClasses().chunked(BATCH_SIZE).asSequence()
+            .map(::disassemble)
+            .any { it.contains("com/android/ddmlib/IDevice.executeShellCommand") }
         assertTrue(
-            disassembled.contains("com/android/ddmlib/IDevice.executeShellCommand"),
+            seen,
             "the scan found no IDevice.executeShellCommand call, so it is not reading the plugin's bytecode",
         )
     }

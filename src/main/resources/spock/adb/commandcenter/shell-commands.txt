@@ -1,0 +1,312 @@
+# Completions and docs for the Command Center's `adb shell` field.
+#
+# One entry per line: `name | usage | what it does`. Two spaces of indentation make an entry a
+# subcommand or flag of the entry above it. A name followed by ` @package` takes a package name
+# next, and the installed packages are offered there. Lines starting with `#` are comments.
+
+pm | pm <command> | Package manager: list, inspect, install and clear apps.
+  list | pm list <packages|permissions|features|users> | Lists what the package manager knows about.
+    packages | pm list packages [-3] [-s] [-d] [-e] [-f] [-U] [filter] | Lists installed packages, optionally only those whose name contains the filter.
+      -3 | pm list packages -3 | Third-party apps only.
+      -s | pm list packages -s | System apps only.
+      -d | pm list packages -d | Disabled apps only.
+      -e | pm list packages -e | Enabled apps only.
+      -f | pm list packages -f | Also shows the path of each APK.
+      -U | pm list packages -U | Also shows each package's UID.
+      -i | pm list packages -i | Also shows the installer of each package.
+    permissions | pm list permissions [-g] [-d] [-f] [group] | Lists known permissions.
+      -g | pm list permissions -g | Groups permissions by permission group.
+      -d | pm list permissions -d | Dangerous (runtime) permissions only.
+      -f | pm list permissions -f | Prints every field of each permission.
+    features | pm list features | Lists the hardware and software features the device declares.
+    users | pm list users | Lists the users on the device.
+    instrumentation | pm list instrumentation | Lists installed test instrumentation packages.
+  path @package | pm path <package> | Prints the path of the package's APK files.
+  dump @package | pm dump <package> | Dumps everything the system knows about a package.
+  install | pm install [-r] [-t] [-g] [-d] <path> | Installs an APK that is already on the device.
+    -r | pm install -r <path> | Replaces the existing app, keeping its data.
+    -t | pm install -t <path> | Allows test-only APKs.
+    -g | pm install -g <path> | Grants every runtime permission in the manifest.
+    -d | pm install -d <path> | Allows a version code downgrade (debuggable apps only).
+  uninstall @package | pm uninstall [-k] <package> | Uninstalls an app. -k keeps its data and cache.
+    -k | pm uninstall -k <package> | Keeps the app's data and cache directories.
+  clear @package | pm clear <package> | Deletes all of an app's data, as Clear Storage does.
+  grant @package | pm grant <package> <permission> | Grants a runtime permission.
+  revoke @package | pm revoke <package> <permission> | Revokes a runtime permission.
+  reset-permissions | pm reset-permissions | Resets every runtime permission for every app.
+  enable @package | pm enable <package|component> | Enables a package or component.
+  disable-user @package | pm disable-user [--user 0] <package> | Disables a package for a user.
+  hide @package | pm hide <package> | Hides a package: it stays installed but is unusable.
+  unhide @package | pm unhide <package> | Makes a hidden package usable again.
+  get-app-links @package | pm get-app-links <package> | Shows the verification state of the app's App Links domains.
+  set-app-links | pm set-app-links [--package <package>] <state> <domains> | Sets the verification state of App Links domains.
+  verify-app-links | pm verify-app-links [--re-verify] <package> | Asks the system to verify an app's App Links again.
+  trim-caches | pm trim-caches <size> | Frees cache files until the given amount of space is free.
+
+am | am <command> | Activity manager: start, stop and inspect activities, services and processes.
+  start | am start [-W] [-S] [-D] [-n <component>] [-a <action>] [-d <uri>] | Starts an activity.
+    -n | am start -n <package>/<activity> | Names the component to start.
+    -a | am start -a <action> | Sets the intent action, e.g. android.intent.action.VIEW.
+    -d | am start -d <uri> | Sets the intent data URI, e.g. a deep link.
+    -c | am start -c <category> | Adds an intent category.
+    -W | am start -W ... | Waits for launch to complete and prints launch timing.
+    -S | am start -S ... | Force-stops the app before starting the activity.
+    -D | am start -D ... | Enables debugging: the app waits for a debugger to attach.
+    --es | am start --es <key> <value> | Adds a string extra.
+    --ei | am start --ei <key> <value> | Adds an int extra.
+    --ez | am start --ez <key> <true|false> | Adds a boolean extra.
+    --activity-clear-task | am start --activity-clear-task ... | Clears the task before starting.
+  start-activity | am start-activity ... | Same as am start.
+  startservice | am startservice [-n <component>] [-a <action>] | Starts a service.
+  start-foreground-service | am start-foreground-service [-n <component>] | Starts a foreground service.
+  stopservice | am stopservice [-n <component>] | Stops a service.
+  broadcast | am broadcast [-a <action>] [-n <component>] [--es <key> <value>] | Sends a broadcast intent.
+    -a | am broadcast -a <action> | Sets the broadcast action.
+    -n | am broadcast -n <package>/<receiver> | Delivers to one receiver.
+    -p @package | am broadcast -p <package> | Limits delivery to one package.
+    --es | am broadcast --es <key> <value> | Adds a string extra.
+    --ei | am broadcast --ei <key> <value> | Adds an int extra.
+    --ez | am broadcast --ez <key> <true|false> | Adds a boolean extra.
+  force-stop @package | am force-stop <package> | Stops everything the app is running.
+  kill @package | am kill <package> | Kills the app's process, but only if it is safe to (backgrounded).
+  kill-all | am kill-all | Kills every background process that is safe to kill.
+  crash @package | am crash <package|pid> | Crashes the app's process.
+  set-debug-app @package | am set-debug-app [-w] [--persistent] <package> | Makes an app wait for a debugger when it starts.
+    -w | am set-debug-app -w <package> | Waits for the debugger on the next start.
+    --persistent | am set-debug-app --persistent <package> | Keeps the setting across starts.
+  clear-debug-app | am clear-debug-app | Undoes set-debug-app.
+  instrument | am instrument [-w] [-r] [-e <key> <value>] <package>/<runner> | Runs instrumentation tests.
+    -w | am instrument -w ... | Waits for the tests to finish before returning.
+    -r | am instrument -r ... | Prints raw results.
+    -e | am instrument -e <key> <value> ... | Passes an argument, e.g. -e class com.example.MyTest.
+  dumpheap | am dumpheap [-n] <process> <file> | Writes a heap dump of a process to a file on the device.
+  send-trim-memory | am send-trim-memory <process> <level> | Sends onTrimMemory, e.g. RUNNING_LOW or COMPLETE.
+  stack | am stack list | Lists activity stacks and tasks.
+  get-current-user | am get-current-user | Prints the id of the foreground user.
+  monitor | am monitor | Watches for crashes and ANRs until cancelled.
+  make-uid-idle @package | am make-uid-idle <package> | Puts the app's UID into the idle state, as Doze would.
+
+cmd | cmd <service> <command> | Runs a command on a system service directly.
+  package | cmd package <command> | The package service: the same commands as pm.
+  activity | cmd activity <command> | The activity service: the same commands as am.
+  jobscheduler | cmd jobscheduler <command> | Inspects and forces scheduled jobs.
+    run @package | cmd jobscheduler run [-f] <package> <job-id> | Runs a job now. -f ignores its constraints.
+      -f @package | cmd jobscheduler run -f <package> <job-id> | Runs the job even when its constraints are not met.
+    get-job-state | cmd jobscheduler get-job-state <package> <job-id> | Prints why a job is or is not ready.
+  notification | cmd notification <command> | Posts and inspects notifications.
+    post | cmd notification post [-t <title>] <tag> <text> | Posts a test notification.
+  connectivity | cmd connectivity <command> | Controls network connectivity.
+    airplane-mode | cmd connectivity airplane-mode [enable|disable] | Reads or changes airplane mode.
+  wifi | cmd wifi <command> | Controls Wi-Fi.
+    set-wifi-enabled | cmd wifi set-wifi-enabled <enabled|disabled> | Turns Wi-Fi on or off.
+    status | cmd wifi status | Prints the Wi-Fi state and the current network.
+  uimode | cmd uimode <command> | Controls the UI mode.
+    night | cmd uimode night [yes|no|auto] | Reads or sets dark theme.
+  statusbar | cmd statusbar <command> | Controls the status bar.
+    expand-notifications | cmd statusbar expand-notifications | Opens the notification shade.
+    collapse | cmd statusbar collapse | Closes the notification shade.
+  overlay | cmd overlay <command> | Lists and toggles runtime resource overlays.
+    list | cmd overlay list | Lists overlays and whether each is enabled.
+  appops | cmd appops <command> | Same as appops.
+  locale | cmd locale set-app-locales <package> --locales <tags> | Sets per-app languages (API 33+).
+  deviceidle | cmd deviceidle <command> | Same as dumpsys deviceidle.
+
+dumpsys | dumpsys [-l] [service] [args] | Dumps the state of a system service. With no service, dumps all of them.
+  -l | dumpsys -l | Lists the services that can be dumped.
+  activity | dumpsys activity [activities|services|broadcasts|processes|recents|top] | Activity manager state.
+    activities | dumpsys activity activities | The activity back stack of every task.
+    top | dumpsys activity top | The view hierarchy and state of the foreground activity.
+    services | dumpsys activity services [package] | Running services.
+    broadcasts | dumpsys activity broadcasts | Registered receivers and recent broadcasts.
+    processes | dumpsys activity processes | Running processes and their importance.
+    recents | dumpsys activity recents | The recent tasks list.
+    intents | dumpsys activity intents | Pending intents.
+  battery | dumpsys battery [set|unplug|reset] | Battery level and charging state, and faking them.
+    set | dumpsys battery set <level|ac|usb|status> <value> | Fakes a battery value, e.g. set level 5.
+    unplug | dumpsys battery unplug | Pretends the device is on battery.
+    reset | dumpsys battery reset | Returns to the real battery state.
+  batterystats | dumpsys batterystats [--reset] [--charged] [package] | Battery usage since the last charge.
+    --reset | dumpsys batterystats --reset | Clears the collected battery statistics.
+    --charged | dumpsys batterystats --charged | Statistics since the last full charge only.
+  meminfo @package | dumpsys meminfo [package|pid] | Memory use, for one app or every process.
+  gfxinfo @package | dumpsys gfxinfo <package> [reset|framestats] | Frame rendering statistics for an app.
+    reset | dumpsys gfxinfo <package> reset | Clears the frame statistics.
+    framestats | dumpsys gfxinfo <package> framestats | Per-frame timings of the last 120 frames.
+  package @package | dumpsys package [package] | Everything the package manager knows, or about one package.
+  window | dumpsys window [windows|displays|policy] | Window manager state.
+    windows | dumpsys window windows | Every window, and which one has focus.
+    displays | dumpsys window displays | Displays and their configuration.
+  cpuinfo | dumpsys cpuinfo | Recent CPU use per process.
+  alarm | dumpsys alarm | Pending alarms.
+  jobscheduler @package | dumpsys jobscheduler [package] | Scheduled jobs and their constraints.
+  notification | dumpsys notification [--noredact] | Posted notifications and channels.
+  power | dumpsys power | Power manager state and wake locks.
+  deviceidle | dumpsys deviceidle [force-idle|unforce|step|whitelist] | Doze state, and forcing it.
+    force-idle | dumpsys deviceidle force-idle | Puts the device into Doze now.
+    unforce | dumpsys deviceidle unforce | Leaves forced Doze.
+    step | dumpsys deviceidle step [light|deep] | Moves Doze on by one step.
+    whitelist | dumpsys deviceidle whitelist [+|-<package>] | Lists or edits apps exempt from Doze.
+  connectivity | dumpsys connectivity | Networks and their state.
+  netstats | dumpsys netstats | Network usage statistics.
+  location | dumpsys location | Location providers and requests.
+  input | dumpsys input | Input devices and the input dispatcher.
+  display | dumpsys display | Displays and their modes.
+  SurfaceFlinger | dumpsys SurfaceFlinger | Composition and layer state.
+  usagestats | dumpsys usagestats | App usage statistics and standby buckets.
+  procstats | dumpsys procstats [--hours <n>] | Process statistics over time.
+  wifi | dumpsys wifi | Wi-Fi state and scan results.
+  media.audio_flinger | dumpsys media.audio_flinger | Audio mixer state.
+
+settings | settings <get|put|delete|list|reset> <namespace> [key] [value] | Reads and writes system settings.
+  get | settings get <system|secure|global> <key> | Prints a setting's value.
+    system | settings get system <key> | User preferences, e.g. screen_off_timeout.
+    secure | settings get secure <key> | Protected user settings, e.g. location_mode.
+    global | settings get global <key> | Device-wide settings, e.g. animator_duration_scale.
+  put | settings put <system|secure|global> <key> <value> | Changes a setting.
+    system | settings put system <key> <value> | User preferences, e.g. screen_off_timeout.
+    secure | settings put secure <key> <value> | Protected user settings.
+    global | settings put global <key> <value> | Device-wide settings, e.g. window_animation_scale 0.
+  delete | settings delete <system|secure|global> <key> | Deletes a setting.
+    system | settings delete system <key> | User preferences.
+    secure | settings delete secure <key> | Protected user settings.
+    global | settings delete global <key> | Device-wide settings.
+  list | settings list <system|secure|global> | Lists every setting in a namespace.
+    system | settings list system | User preferences.
+    secure | settings list secure | Protected user settings.
+    global | settings list global | Device-wide settings.
+
+input | input <text|keyevent|tap|swipe|draganddrop|press|roll> ... | Injects input events.
+  text | input text <string> | Types text into the focused field. Use %s for a space.
+  keyevent | input keyevent [--longpress] <keycode> | Sends a key press, by name or number.
+    --longpress | input keyevent --longpress <keycode> | Holds the key down.
+    KEYCODE_HOME | input keyevent KEYCODE_HOME | Home (3).
+    KEYCODE_BACK | input keyevent KEYCODE_BACK | Back (4).
+    KEYCODE_APP_SWITCH | input keyevent KEYCODE_APP_SWITCH | Recent apps (187).
+    KEYCODE_MENU | input keyevent KEYCODE_MENU | Menu (82).
+    KEYCODE_POWER | input keyevent KEYCODE_POWER | Power (26).
+    KEYCODE_WAKEUP | input keyevent KEYCODE_WAKEUP | Wakes the screen (224).
+    KEYCODE_SLEEP | input keyevent KEYCODE_SLEEP | Turns the screen off (223).
+    KEYCODE_ENTER | input keyevent KEYCODE_ENTER | Enter (66).
+    KEYCODE_DEL | input keyevent KEYCODE_DEL | Backspace (67).
+    KEYCODE_TAB | input keyevent KEYCODE_TAB | Tab (61).
+    KEYCODE_DPAD_UP | input keyevent KEYCODE_DPAD_UP | D-pad up (19).
+    KEYCODE_DPAD_DOWN | input keyevent KEYCODE_DPAD_DOWN | D-pad down (20).
+    KEYCODE_DPAD_LEFT | input keyevent KEYCODE_DPAD_LEFT | D-pad left (21).
+    KEYCODE_DPAD_RIGHT | input keyevent KEYCODE_DPAD_RIGHT | D-pad right (22).
+    KEYCODE_VOLUME_UP | input keyevent KEYCODE_VOLUME_UP | Volume up (24).
+    KEYCODE_VOLUME_DOWN | input keyevent KEYCODE_VOLUME_DOWN | Volume down (25).
+    KEYCODE_CAMERA | input keyevent KEYCODE_CAMERA | Camera (27).
+    KEYCODE_NOTIFICATION | input keyevent KEYCODE_NOTIFICATION | Opens notifications (83).
+    KEYCODE_MEDIA_PLAY_PAUSE | input keyevent KEYCODE_MEDIA_PLAY_PAUSE | Play or pause media (85).
+  tap | input tap <x> <y> | Taps a point on the screen, in pixels.
+  swipe | input swipe <x1> <y1> <x2> <y2> [duration-ms] | Swipes between two points. A long duration is a long press.
+  draganddrop | input draganddrop <x1> <y1> <x2> <y2> [duration-ms] | Drags from one point to another.
+  press | input press | Presses the trackball.
+  roll | input roll <dx> <dy> | Rolls the trackball.
+
+wm | wm <size|density|reset> ... | Window manager: fake a different screen.
+  size | wm size [reset|<width>x<height>] | Reads, overrides or resets the screen resolution.
+    reset | wm size reset | Returns to the real resolution.
+  density | wm density [reset|<dpi>] | Reads, overrides or resets the screen density.
+    reset | wm density reset | Returns to the real density.
+  dismiss-keyguard | wm dismiss-keyguard | Dismisses the lock screen, if it is not secure.
+
+svc | svc <wifi|data|power|bluetooth|usb|nfc> ... | Turns radios and power options on and off.
+  wifi | svc wifi <enable|disable> | Turns Wi-Fi on or off.
+    enable | svc wifi enable | Turns Wi-Fi on.
+    disable | svc wifi disable | Turns Wi-Fi off.
+  data | svc data <enable|disable> | Turns mobile data on or off.
+    enable | svc data enable | Turns mobile data on.
+    disable | svc data disable | Turns mobile data off.
+  bluetooth | svc bluetooth <enable|disable> | Turns Bluetooth on or off.
+    enable | svc bluetooth enable | Turns Bluetooth on.
+    disable | svc bluetooth disable | Turns Bluetooth off.
+  power | svc power stayon <true|false|usb|ac|wireless> | Keeps the screen on while charging.
+    stayon | svc power stayon <true|false|usb|ac|wireless> | Keeps the screen on while plugged in.
+
+appops | appops <get|set|reset> <package> [op] [mode] | Reads and changes app ops (fine-grained permissions).
+  get @package | appops get <package> [op] | Prints the app's app-op modes.
+  set @package | appops set <package> <op> <allow|ignore|deny|default> | Changes an app-op mode.
+  reset @package | appops reset [package] | Resets app-op modes to their defaults.
+
+content | content <query|insert|update|delete|call> --uri <uri> | Talks to a content provider.
+  query | content query --uri <uri> [--projection <cols>] [--where <clause>] | Prints the rows a provider returns.
+  insert | content insert --uri <uri> --bind <name>:<type>:<value> | Inserts a row.
+  update | content update --uri <uri> --bind <name>:<type>:<value> [--where <clause>] | Updates rows.
+  delete | content delete --uri <uri> [--where <clause>] | Deletes rows.
+  call | content call --uri <uri> --method <name> | Calls a provider method.
+
+getprop | getprop [property] | Prints system properties, or one of them.
+  ro.build.version.sdk | getprop ro.build.version.sdk | The API level.
+  ro.build.version.release | getprop ro.build.version.release | The Android version.
+  ro.product.model | getprop ro.product.model | The device model.
+  ro.product.manufacturer | getprop ro.product.manufacturer | The manufacturer.
+  ro.product.cpu.abi | getprop ro.product.cpu.abi | The primary CPU ABI.
+  ro.debuggable | getprop ro.debuggable | 1 on userdebug and eng builds.
+  persist.sys.locale | getprop persist.sys.locale | The system language.
+setprop | setprop <property> <value> | Sets a system property. Most ro. properties cannot be changed.
+  debug.layout | setprop debug.layout <true|false> | Shows layout bounds (reopen the app to see it).
+  log.tag. | setprop log.tag.<TAG> <VERBOSE|DEBUG|INFO|WARN|ERROR|SUPPRESS> | Sets the minimum log level for a tag.
+
+logcat | logcat [options] [filterspecs] | Prints the device log. Without -d it streams until cancelled.
+  -d | logcat -d | Dumps the log and exits instead of streaming.
+  -c | logcat -c | Clears the log buffers.
+  -b | logcat -b <main|system|crash|events|radio|all> | Chooses a log buffer.
+  -v | logcat -v <brief|threadtime|time|color|long> | Chooses the output format.
+  -s | logcat -s <TAG> | Silences everything except the given tags.
+  -e | logcat -e <regex> | Prints only lines matching the expression.
+  -t | logcat -t <count|'time'> | Prints the most recent lines and exits.
+  --pid | logcat --pid <pid> | Prints only one process's lines.
+  -g | logcat -g | Prints the size of the log buffers.
+
+screencap | screencap [-p] [-d <display>] <file> | Takes a screenshot, e.g. screencap -p /sdcard/s.png.
+  -p | screencap -p <file> | Saves as PNG.
+screenrecord | screenrecord [--time-limit <s>] [--size <WxH>] [--bit-rate <bps>] <file> | Records the screen to an MP4 until cancelled or the limit.
+  --time-limit | screenrecord --time-limit <seconds> <file> | Stops after this many seconds (max 180).
+  --size | screenrecord --size <width>x<height> <file> | Records at this resolution.
+  --bit-rate | screenrecord --bit-rate <bps> <file> | Sets the video bit rate.
+  --bugreport | screenrecord --bugreport <file> | Adds timestamps and device info to the video.
+  --verbose | screenrecord --verbose <file> | Prints progress.
+monkey | monkey [-p <package>] [-v] [--throttle <ms>] [-s <seed>] <event-count> | Sends random input events to stress-test an app.
+  -p @package | monkey -p <package> <count> | Keeps events inside one app.
+  -v | monkey -v <count> | More output. Repeat for more detail.
+  --throttle | monkey --throttle <ms> <count> | Waits between events.
+  -s | monkey -s <seed> <count> | Seeds the generator, to replay a run.
+uiautomator | uiautomator dump [file] | Dumps the current screen's view hierarchy as XML.
+  dump | uiautomator dump [file] | Writes the hierarchy to /sdcard/window_dump.xml or the given file.
+ime | ime <list|enable|disable|set> | Lists and switches input methods.
+  list | ime list [-s] [-a] | Lists input methods. -s prints only their ids.
+  set | ime set <id> | Switches to an input method.
+device_config | device_config <get|put|delete|list> <namespace> [key] [value] | Reads and writes feature flags.
+  get | device_config get <namespace> <key> | Prints a flag.
+  put | device_config put <namespace> <key> <value> | Sets a flag.
+  list | device_config list [namespace] | Lists flags.
+service | service <list|check|call> | Talks to binder services.
+  list | service list | Lists the running system services.
+
+run-as @package | run-as <package> <command> | Runs a command as a debuggable app, inside its data directory.
+pidof @package | pidof <process> | Prints a process's pid, e.g. pidof com.example.app.
+ps | ps [-A] [-o <columns>] [-p <pid>] | Lists processes.
+  -A | ps -A | Every process, not only your shell's.
+  -o | ps -o <PID,NAME,...> | Chooses the columns.
+  -p | ps -p <pid> | Only the given process.
+  -T | ps -T -p <pid> | The threads of a process.
+top | top [-n <count>] [-m <max>] [-b] [-d <seconds>] | Shows the processes using the most CPU.
+  -n | top -n <count> | Stops after this many updates.
+  -m | top -m <max> | Shows at most this many processes.
+  -b | top -b | Batch mode: plain output, for logs.
+  -d | top -d <seconds> | Seconds between updates.
+kill | kill [-9] <pid> | Sends a signal to a process.
+ls | ls [-l] [-a] [-R] <path> | Lists files.
+cat | cat <file> | Prints a file.
+rm | rm [-r] [-f] <path> | Deletes files.
+mkdir | mkdir [-p] <path> | Creates a directory.
+cp | cp [-r] <from> <to> | Copies files.
+mv | mv <from> <to> | Moves or renames files.
+df | df [-h] | Free space on each filesystem.
+du | du [-h] [-s] <path> | Disk space used by a directory.
+id | id | Your shell's user and groups.
+uptime | uptime | How long the device has been running, and the load.
+date | date | The device's date and time.
+getenforce | getenforce | Whether SELinux is Enforcing or Permissive.
+reboot | reboot [bootloader|recovery] | Restarts the device.
