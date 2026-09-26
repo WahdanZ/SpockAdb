@@ -128,7 +128,13 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         // waits on either — the activity view shows what has arrived so far, and a call recorded
         // while it is in flight is kept rather than overwritten.
         ApplicationManager.getApplication().executeOnPooledThread {
-            sessionToken()
+            try {
+                sessionToken()
+            } finally {
+                // Still pending means the keychain did not take it. The plain-text copy goes back,
+                // so the next startup retries rather than minting a token no client holds.
+                pendingLegacyToken.takeIf { it.isNotBlank() }?.let { settings.legacyToken = it }
+            }
             ensureHistoryLoaded()
         }
     }
