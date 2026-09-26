@@ -71,3 +71,25 @@ class PushMessageJsonTest {
         assertTrue(empty.message!!.contains("no title, body or data"), empty.message)
     }
 }
+
+class PushMessageJsonFormatTest {
+
+    @Test
+    fun `editing as JSON and applying it unchanged gives the same message back`() {
+        val message = PushMessage(
+            data = linkedMapOf("orderId" to "42", "order" to """{"id":42}""", "quote" to "it's \"fine\"", "b" to "<x>"),
+            title = "Shipped",
+            body = "Line one\nline two",
+        )
+
+        assertEquals(message, PushMessageJson.parse(PushMessageJson.format(message)))
+    }
+
+    @Test
+    fun `a data message is shown without a notification block`() {
+        val text = PushMessageJson.format(PushMessage(data = mapOf("a" to "1")))
+
+        assertTrue(!text.contains("notification"), text)
+        assertEquals(PushMessage(data = mapOf("a" to "1")), PushMessageJson.parse(text))
+    }
+}

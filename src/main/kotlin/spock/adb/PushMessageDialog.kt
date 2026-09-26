@@ -51,6 +51,9 @@ class PushMessageDialog(
     private val saved = ComboBox<String>()
     private val saveButton = JButton("Save as…")
     private val deleteButton = JButton("Delete")
+    private val editJsonButton = JButton("Edit as JSON…").apply {
+        toolTipText = "Edit the title, body and data as one JSON document"
+    }
     private val pasteJsonButton = JButton("Paste JSON…").apply {
         toolTipText = "Fill the title, body and data from an FCM message or a data payload in JSON"
     }
@@ -104,6 +107,7 @@ class PushMessageDialog(
         saved.addActionListener { saved.selectedItem?.toString()?.let(::load) }
         saveButton.addActionListener { saveCurrent() }
         pasteJsonButton.addActionListener { pasteJson() }
+        editJsonButton.addActionListener { editJson() }
         deleteButton.addActionListener {
             saved.selectedItem?.toString()?.let { name ->
                 store.remove(name)
@@ -122,6 +126,7 @@ class PushMessageDialog(
             add(saved, BorderLayout.CENTER)
             add(
                 JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
+                    add(editJsonButton)
                     add(pasteJsonButton)
                     add(saveButton)
                     add(deleteButton)
@@ -245,19 +250,36 @@ class PushMessageDialog(
     private fun pasteJson() {
         val clipboard = CopyPasteManager.getInstance().getContents<String>(DataFlavor.stringFlavor)
             ?.trim()?.takeIf { it.startsWith("{") }
+        askForJson(
+            "Paste Push Message JSON",
+            "An FCM message ({\"message\": …} or {\"notification\": …, \"data\": …}), " +
+                "or a data payload. It replaces what the editor holds.",
+            clipboard ?: EXAMPLE_JSON,
+        )
+    }
+
+    /**
+     * The editor as JSON, for the edits a table is slow at: many keys at once, a long value,
+     * copying one payload's shape into another. An editor with nothing in it opens on the example,
+     * so the shape is there to fill in.
+     */
+    private fun editJson() {
+        val message = current()
+        val empty = message.data.isEmpty() && !message.isNotification
+        askForJson(
+            "Edit Push Message as JSON",
+            "The title and body under \"notification\", the pairs under \"data\". Every data value is " +
+                "a string.",
+            if (empty) EXAMPLE_JSON else PushMessageJson.format(message),
+        )
+    }
+
+    private fun askForJson(title: String, prompt: String, initial: String) {
         val validator = object : InputValidatorEx {
             override fun getErrorText(inputString: String): String? =
                 runCatching { PushMessageJson.parse(inputString) }.exceptionOrNull()?.message
         }
-        val text = Messages.showMultilineInputDialog(
-            project,
-            "An FCM message ({\"message\": …} or {\"notification\": …, \"data\": …}), " +
-                "or a data payload. It replaces what the editor holds.",
-            "Paste Push Message JSON",
-            clipboard ?: EXAMPLE_JSON,
-            null,
-            validator,
-        ) ?: return
+        val text = Messages.showMultilineInputDialog(project, prompt, title, initial, null, validator) ?: return
         show(PushMessageJson.parse(text))
         result.text = "Filled from JSON. Nothing sent yet."
     }

@@ -1,5 +1,6 @@
 package spock.adb.command
 
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParseException
@@ -45,6 +46,26 @@ object PushMessageJson {
                 "The JSON has no title, body or data to send."
             }
         }
+    }
+
+    /**
+     * [message] in the shape [parse] reads first, so editing it as JSON and applying it gives the
+     * same message back. Data values stay strings: a value holding JSON is shown as the string
+     * the app receives, not unpacked into an object it never sees.
+     */
+    fun format(message: PushMessage): String {
+        val root = JsonObject()
+        if (message.isNotification) {
+            root.add(
+                "notification",
+                JsonObject().apply {
+                    message.title?.let { addProperty("title", it) }
+                    message.body?.let { addProperty("body", it) }
+                },
+            )
+        }
+        root.add("data", JsonObject().apply { message.data.forEach { (key, value) -> addProperty(key, value) } })
+        return GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root)
     }
 
     private fun JsonObject.objectOrNull(name: String): JsonObject? =
