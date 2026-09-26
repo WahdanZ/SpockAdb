@@ -157,7 +157,8 @@ class GetUiTreeTool : AdbTool {
             "with Views, Jetpack Compose, or both. Each node reports test tag, text, content " +
             "description, bounds and whether it is clickable, enabled, scrollable, checked or " +
             "selected. Use this before interacting: match elements semantically rather than " +
-            "guessing coordinates from a screenshot."
+            "guessing coordinates from a screenshot. On a Compose screen this is the composable " +
+            "tree as Compose publishes it: merged semantics, with Modifier.testTag values as testTag."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         boolean("interactiveOnly", "List only elements that can be acted on. Defaults to false.")
@@ -192,7 +193,8 @@ class FindUiElementTool : AdbTool {
     override val description =
         "Find elements on screen by test tag, text or content description, and report what " +
             "was matched including bounds, whether it is enabled, and whether it is in the viewport. " +
-            "Use it to check an element exists before acting, or to disambiguate when several match."
+            "Use it to check an element exists before acting, or to disambiguate when several match. " +
+            "To find a composable by its Modifier.testTag, pass testTag with exactTag=true."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { with(UiTreeReader) { elementSelector() } }
 

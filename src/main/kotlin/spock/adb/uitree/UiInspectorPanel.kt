@@ -52,7 +52,8 @@ import javax.swing.tree.TreeSelectionModel
  * so it works identically for Views, Compose and hybrid screens.
  *
  * This class lays the tab out and owns its state; what each part draws lives in its own
- * component: [InspectorHeader], [UiNodeRenderer], [NodeDetailsPanel] and [AuditFindingsPanel].
+ * component: [InspectorHeader], [UiNodeRenderer], [NodeDetailsPanel], [AuditFindingsPanel] and
+ * [RecompositionPanel].
  * [SourceNavigator] finds and opens the source a selected element most likely comes from.
  */
 class UiInspectorPanel(
@@ -75,6 +76,7 @@ class UiInspectorPanel(
     private val source = SourceNavigator(project, ::notice)
     private val details = NodeDetailsPanel(::notice, source.line)
     private val findings = AuditFindingsPanel(::select)
+    private val recompositions = RecompositionPanel(project, { connected }, { captured?.windowPackage }, { disposed })
     private val detailTabs = JBTabbedPane()
 
     private var connected: ConnectedDevice? = null
@@ -198,6 +200,7 @@ class UiInspectorPanel(
     private fun body(): JComponent {
         detailTabs.addTab("Properties", details)
         detailTabs.addTab(AUDIT_TAB, findings)
+        detailTabs.addTab("Recompositions", recompositions)
 
         val splitter = OnePixelSplitter(true, SPLIT_PROPORTION).apply {
             firstComponent = JBScrollPane(tree)

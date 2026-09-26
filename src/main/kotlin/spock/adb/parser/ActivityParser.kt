@@ -15,4 +15,16 @@ object ActivityParser {
             ?.replace("}", "")
             ?.replace(Regex(".+/"), "")
             ?.takeIf { it.isNotBlank() }
+
+    /**
+     * The package of the resumed activity — the part of its component before the `/`, e.g.
+     * `com.example` from `com.example/.MainActivity`. Not derivable from [parseResumedActivity],
+     * whose class name may sit in a different package from the app.
+     */
+    fun parseResumedPackage(output: String): String? =
+        output
+            .split(" ")
+            .find { it.contains("/") }
+            ?.substringBefore("/")
+            ?.takeIf { it.isNotBlank() }
 }
