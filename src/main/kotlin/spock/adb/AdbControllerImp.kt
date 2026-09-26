@@ -355,8 +355,10 @@ class AdbControllerImp(
     override fun testProcessDeath(device: IDevice) {
         execute {
             val applicationID = getApplicationID(device)
-            ProcessDeathCommand().execute(applicationID, project, device)
-            showSuccess("application $applicationID killed. App launched.")
+            val death = ProcessDeathCommand().execute(applicationID, project, device)
+            val after = death.pidsAfter.ifEmpty { null }?.joinToString(prefix = ", new pid ") ?: ""
+            val before = death.pidsBefore.joinToString()
+            showSuccess("application $applicationID killed (pid $before) and relaunched$after")
         }
     }
 

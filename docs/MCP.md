@@ -281,12 +281,12 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-64 tools, in three levels.
+65 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
 | **Read-only** (27) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
-| **Safe action** (29) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts` |
+| **Safe action** (30) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
 Rules that hold regardless of what a client asks for:
@@ -904,6 +904,31 @@ Every change is tracked, whether an agent made it or the Background Work tab did
 banner until the change is reset, and the last project to close resets every device that is still
 online. A device that is offline then keeps its state; a reboot clears Doze and the battery
 override.
+
+### `android_simulate_process_death`
+
+Kills the app's process the way Android does to reclaim memory, then relaunches it, so a screen
+can be checked for what it loses. It is the tool window's **Process Death** action; both run the
+same code.
+
+Force-stopping is not process death: `android_stop_app` and `android_restart_app` also drop the
+task's saved instance state, so a screen that loses its state to a real kill survives them. This
+tool sends the app to the background, kills it with `am kill`, and relaunches it the way the
+launcher icon does, so Android brings the task back and recreates the top activity from saved
+state.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `packageName` | the open project's app | The app to kill. It must be running. |
+| `relaunch` | `true` | `false` leaves the process dead, for looking at the device meanwhile; restore it from recents. |
+| `deviceSerial` | the selected device | Which device. |
+
+`am kill` only kills a process Android already treats as background, and an app that has just
+left the screen is not one for a second or two. So the kill is repeated until the process is
+gone, for up to about eight seconds, and the result gives the pid before and after. A process that
+will not die — a foreground service, picture-in-picture — is reported as a failure and nothing is
+relaunched. It is a **safe action**: it touches only the app under test, and the relaunch
+restores it.
 
 ### `android_select_project`
 

@@ -131,6 +131,57 @@ class RestartAppTool : AdbTool {
     }
 }
 
+/**
+ * `android_simulate_process_death` — the tool window's Process Death, for agents.
+ *
+ * A safe action: it affects only the app under test, it is what a developer does by hand from
+ * the tool window, and the relaunch restores the app. Before it existed, agents reached for
+ * `am kill` through `android_run_adb_command`, which asks the developer every time.
+ */
+class SimulateProcessDeathTool : AdbTool {
+    override val name = "android_simulate_process_death"
+    override val description =
+        "Simulate Android killing the app in the background to reclaim memory: send it to the " +
+            "background, kill its process, and relaunch it the way the launcher icon does, so Android " +
+            "recreates the top screen from saved instance state. Use it to test that a screen survives " +
+            "process death. Not the same as android_stop_app or android_restart_app, which force-stop " +
+            "and discard saved state. The app must be running. Reports the pid before and after, and " +
+            "fails if the process did not die."
+    override val safety = ToolSafety.SAFE_ACTION
+    override val inputSchema: JsonObject = Schema.obj {
+        string("packageName", "Package to kill. Defaults to the open project's application ID.")
+        boolean(
+            "relaunch",
+            "Bring the app back after the kill. Defaults to true. Pass false to inspect the device " +
+                "while the process is dead, then restore it from recents (android_press_key APP_SWITCH).",
+        )
+        deviceSerial()
+    }
+
+    override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        val operations = context.appOperations(arguments)
+        val packageName = context.resolvePackage(arguments)
+        val relaunch = arguments.optionalBoolean("relaunch", default = true)
+
+        return appOperation {
+            val death = operations.simulateProcessDeath(packageName, relaunch)
+            val killed = "Killed $packageName in the background (pid ${death.pidsBefore.joinToString()} is gone)."
+            when {
+                death.relaunched == null ->
+                    "$killed Not relaunched: its task is still in recents, and restoring it from there " +
+                        "recreates the top screen from saved state."
+                death.pidsAfter.isEmpty() ->
+                    "$killed Relaunched ${death.relaunched}, but no new process had appeared yet; " +
+                        "check with android_get_processes."
+                else ->
+                    "$killed Relaunched ${death.relaunched} as pid ${death.pidsAfter.joinToString()}. " +
+                        "The top screen was recreated from saved instance state: whatever differs from " +
+                        "before the kill is state it does not save."
+            }
+        }
+    }
+}
+
 /** `android_clear_app_data` — destructive, always confirmed. */
 class ClearAppDataTool : AdbTool {
     override val name = "android_clear_app_data"

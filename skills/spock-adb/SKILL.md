@@ -139,16 +139,13 @@ discard the saved instance state that process death keeps. Use them for cold sta
 
 1. Put the app in a known state on the screen under test, then read it —
    `android_assert_text` on the values that must survive.
-2. `android_press_key` with `key: "HOME"`, so the app is in the background.
-3. `android_get_processes` with the package as `filter` — note the pid.
-4. Kill the process: `android_run_adb_command` with `command: "am kill <package>"` and a
-   `reason` saying no typed tool kills a background process while keeping its task
-   (**destructive**, the developer approves it). `am kill` only kills a background app, which is
-   why step 2 comes first.
-5. `android_get_processes` again: the pid must be gone.
-6. `android_launch_app` — the task comes back and Android recreates the screen from saved state.
-7. `android_get_processes` shows a new pid; `android_assert_text` on the same values as step 1.
-   Whatever changed is what the screen does not save.
+2. `android_simulate_process_death`. It backgrounds the app, kills the process, relaunches it
+   from the launcher so Android restores the task, and reports the old and new pid. It fails,
+   and relaunches nothing, if the process would not die (a foreground service keeps it alive).
+3. `android_assert_text` on the same values as step 1. Whatever changed is what the screen does
+   not save.
+4. Do not relaunch with `android_launch_app`: it starts the launcher activity on top of the
+   restored task instead of showing the screen that was recreated.
 
 ### 5. Background work — "the job never runs / the alarm is late"
 

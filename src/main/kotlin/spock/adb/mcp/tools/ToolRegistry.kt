@@ -22,6 +22,7 @@ object ToolRegistry {
         LaunchAppTool(),
         StopAppTool(),
         RestartAppTool(),
+        SimulateProcessDeathTool(),
         ClearAppDataTool(),
         ClearAppCacheTool(),
         UninstallAppTool(),

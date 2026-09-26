@@ -32,4 +32,18 @@ class ActivityParserTest {
         assertNull(ActivityParser.parseResumedActivity(""))
         assertNull(ActivityParser.parseResumedActivity("mResumedActivity: null"))
     }
+
+    @Test
+    fun `the resumed package is the app, even when the activity class lives elsewhere`() {
+        val output = "  mResumedActivity: ActivityRecord{1 u0 com.example.app/com.other.lib.SplashActivity t1}"
+
+        assertEquals("com.example.app", ActivityParser.parseResumedPackage(output))
+        assertEquals(
+            "spock.adb.sample",
+            ActivityParser.parseResumedPackage(
+                "    topResumedActivity=ActivityRecord{f285 u0 spock.adb.sample/.compose.RecompositionActivity t113}",
+            ),
+        )
+        assertNull(ActivityParser.parseResumedPackage(""))
+    }
 }
