@@ -57,9 +57,9 @@ The [sample app](../../sample/README.md) has a screen for every playbook. Instal
 | Deep links | any | "Check that `spocksample://open/item/42?ref=spock` opens item 42." |
 | Accessibility | *UI Inspector — Compose reliability fixtures* → *Audit* | "Audit this screen for accessibility problems." |
 
-A good run for the process-death prompt: the agent reads the counters, presses Home, checks the
-pid, asks you to approve `am kill spock.adb.sample` with a reason, relaunches, and reports that
-only the saved-state counter survived, with the old and new pid.
+A good run for the process-death prompt: the agent reads the counters, calls
+`android_simulate_process_death`, reads them again, and reports that only the saved-state
+counter survived, with the old and new pid.
 
 ## Keeping it true
 

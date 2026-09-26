@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import spock.adb.command.ClearAppCacheCommand
 import spock.adb.command.ClearAppDataCommand
 import spock.adb.command.ForceKillAppCommand
+import spock.adb.command.ProcessDeathCommand
 import spock.adb.command.RestartAppCommand
 import spock.adb.command.UninstallAppCommand
 import spock.adb.mcp.FakeToolContext
@@ -52,6 +53,13 @@ class AppOperationsParityTest {
     }
 
     @Test
+    fun `process death is the same from the tool window and from an agent`() {
+        assertSameDeviceTraffic("android_simulate_process_death", { ProcessDeathScript()::reply }) { device ->
+            ProcessDeathCommand().execute(PACKAGE, project, device)
+        }
+    }
+
+    @Test
     fun `clear data is the same from the tool window and from an agent`() {
         assertSameDeviceTraffic("android_clear_app_data") { device ->
             ClearAppDataCommand().execute(PACKAGE, project, device)
@@ -83,13 +91,19 @@ class AppOperationsParityTest {
      * The agent path is given an approving developer: a destructive tool that was declined
      * would send nothing and pass this by doing nothing at all.
      *
+     * @param script makes each device's replies; called once per device, so a stateful script
+     *   starts fresh for each path.
      * @return the two devices, for a caller that has more to check than the shell traffic.
      */
-    private fun assertSameDeviceTraffic(toolName: String, ide: (IDevice) -> Unit): Pair<IDevice, IDevice> {
-        val (ideDevice, ideCommands) = scriptedDevice()
+    private fun assertSameDeviceTraffic(
+        toolName: String,
+        script: () -> (String) -> String = { ::healthyDevice },
+        ide: (IDevice) -> Unit,
+    ): Pair<IDevice, IDevice> {
+        val (ideDevice, ideCommands) = scriptedDevice(script())
         ide(ideDevice)
 
-        val (agentDevice, agentCommands) = scriptedDevice()
+        val (agentDevice, agentCommands) = scriptedDevice(script())
         val context = FakeToolContext(
             available = listOf(FakeToolContext.device("emulator-5554").copy(device = agentDevice)),
             applicationId = PACKAGE,

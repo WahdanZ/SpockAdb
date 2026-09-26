@@ -40,6 +40,27 @@ fun IDevice.startActivity(activity: String) {
     )
 }
 
+/**
+ * Starts [activity] the way the launcher icon does, so an app whose task still exists is brought
+ * back to the front — with its top activity recreated from saved state after process death —
+ * instead of having a fresh launcher activity pushed on top, which is what `am start -n` alone does.
+ */
+fun IDevice.resumeFromLauncher(activity: String) {
+    executeShellCommand(
+        "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n ${ShellQuote.quote(activity)}",
+        ShellOutputReceiver(),
+        15L,
+        TimeUnit.SECONDS,
+    )
+}
+
+/** The app's process ids, from `pidof`; empty when it is not running. */
+fun IDevice.pidsOf(applicationID: String, seconds: Long): Set<String> {
+    val receiver = ShellOutputReceiver()
+    executeShellCommand("pidof ${ShellQuote.quote(applicationID)}", receiver, seconds, TimeUnit.SECONDS)
+    return receiver.toString().trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.toSet()
+}
+
 fun IDevice.clearAppData(applicationID: String?, seconds: Long) {
     executeShellCommand(
         "pm clear ${ShellQuote.quote(applicationID.orEmpty())}",
@@ -116,12 +137,6 @@ fun IDevice.getAnimatorDurationScale(): String {
     val shellOutputReceiver = ShellOutputReceiver()
     executeShellCommand("settings get global animator_duration_scale", shellOutputReceiver, 15L, TimeUnit.SECONDS)
     return shellOutputReceiver.toString()
-}
-
-fun IDevice.isAppInForeground(applicationID: String?):Boolean{
-    val shellOutputReceiver = ShellOutputReceiver()
-    executeShellCommand("dumpsys activity recents | grep 'Recent #0' | cut -d= -f2 | sed 's| .*||' | cut -d '/' -f1", shellOutputReceiver, 15L, TimeUnit.SECONDS)
-    return shellOutputReceiver.toString().equals(applicationID, true)
 }
 
 fun IDevice.getNetworkState(network: Network): NetworkState {

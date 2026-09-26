@@ -4,6 +4,12 @@
 
 ### Added
 
+- **`android_simulate_process_death`: process death for agents, without a confirmation.** It
+  backgrounds the app, kills its process and relaunches it the way the launcher does, so the top
+  screen comes back from saved instance state, and it reports the pid before and after. It is the
+  tool window's **Process Death** action, sharing its code. Agents previously had to ask for
+  `am kill` through `android_run_adb_command`, which needs approval every time. The Agent Skill's
+  process-death playbook now uses it.
 - **An Agent Skill for debugging with Spock ADB.** `skills/spock-adb/SKILL.md` tells an agent
   which MCP tools to call and in what order: start from `android_get_debug_context`, narrow to the
   app, prefer safe actions to destructive ones and explain the destructive ones first, and re-read
@@ -161,6 +167,13 @@
 
 ### Fixed
 
+- **Process Death now kills the process, and brings back the screen it killed.** It waited a
+  fixed 2.5 s after sending the app home and ran `am kill` once, which exits 0 whether or not it
+  killed anything — on an API 34 emulator the process often survived, and the action still said
+  it was killed. It then relaunched with `am start -n`, which pushes a new launcher activity on
+  top of the task instead of restoring the screen under test. It now retries the kill until the
+  process is gone, says so when it will not die, relaunches the way the launcher icon does, and
+  reports the old and new pid.
 - **Stop pressed while the model was still asking for tools no longer breaks the next message.**
   The tools were rightly not run, but the model's request for them was left in the conversation
   with no answer, and a provider can reject a conversation holding a tool call with no result — so
