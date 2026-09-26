@@ -111,4 +111,60 @@ class ShellCompleterTest {
     fun `keycodes complete case-insensitively`() {
         assertEquals(listOf("KEYCODE_HOME"), texts("input keyevent keycode_ho"))
     }
+
+    @Test
+    fun `a word typed in full, in any case, is not offered again`() {
+        val result = completer.complete("input keyevent keycode_home")
+        assertEquals(emptyList<ShellCompleter.Suggestion>(), result.suggestions)
+        assertTrue(result.exact)
+    }
+
+    @Test
+    fun `a finished package is exact even when a longer one shares its name`() {
+        val installed = listOf("com.example.app", "com.example.app.debug")
+        val result = completer.complete("am force-stop com.example.app", packages = installed)
+        // The longer package is still offered, but the word is finished, so Enter must run the command.
+        assertEquals(listOf("com.example.app.debug"), result.suggestions.map { it.text })
+        assertTrue(result.exact)
+        assertFalse(completer.complete("am force-stop com.example.ap", packages = installed).exact)
+    }
+
+    @Test
+    fun `a finished subcommand is exact even when a longer one shares its name`() {
+        val result = completer.complete("am start")
+        assertTrue("start-activity" in result.suggestions.map { it.text })
+        assertTrue(result.exact)
+    }
+
+    @Test
+    fun `accepting with the caret mid-word replaces the whole word`() {
+        val line = "dumpsys battery"
+        val result = completer.complete(line, caret = 11)
+        val battery = result.suggestions.first { it.text == "battery" }
+        val (text, caret) = completer.accept(line, result, battery, caret = 11)
+        assertEquals("dumpsys battery ", text)
+        assertEquals(text.length, caret)
+    }
+
+    @Test
+    fun `separators and spaces inside quotes do not split the command`() {
+        val flags = texts("pm list packages \"a|b c\" -")
+        assertTrue("-3" in flags, "flags after a quoted filter: $flags")
+        assertEquals(emptyList<String>(), texts("input text \"a|b\" get"))
+        assertTrue("battery" in texts("echo 'a;b' && dumpsys bat"))
+    }
+
+    @Test
+    fun `packages are offered after the flag of a command that takes one`() {
+        assertEquals(listOf("com.example.app"), texts("cmd jobscheduler run -f com.example.a"))
+        assertEquals(listOf("com.example.app"), texts("am make-uid-idle com.example.a"))
+    }
+
+    @Test
+    fun `a stray separator inside a catalog line fails with its line number`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            ShellCommandCatalog.parse("# comment\npm | pm <a | b> | Summary.")
+        }
+        assertTrue(error.message!!.startsWith("Line 2:"), error.message)
+    }
 }

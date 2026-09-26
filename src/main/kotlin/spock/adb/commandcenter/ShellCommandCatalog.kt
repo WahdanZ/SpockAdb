@@ -47,8 +47,11 @@ object ShellCommandCatalog {
             val depth = indent / INDENT
             require(depth <= path.size) { "Line $lineNumber: indented deeper than its parent" }
 
-            val fields = raw.trim().split(" | ", limit = FIELDS)
-            require(fields.size == FIELDS) { "Line $lineNumber: expected `name | usage | summary`" }
+            // No limit: a stray ` | ` inside the usage or summary must fail here, not shift the fields.
+            val fields = raw.trim().split(" | ")
+            require(fields.size == FIELDS) {
+                "Line $lineNumber: expected exactly `name | usage | summary`; write `|` without spaces around it"
+            }
             val (rawName, usage, summary) = fields.map(String::trim)
             val takesPackage = rawName.endsWith(PACKAGE_MARKER)
             val name = rawName.removeSuffix(PACKAGE_MARKER)

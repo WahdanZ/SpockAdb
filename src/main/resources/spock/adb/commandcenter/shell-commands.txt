@@ -84,13 +84,14 @@ am | am <command> | Activity manager: start, stop and inspect activities, servic
   stack | am stack list | Lists activity stacks and tasks.
   get-current-user | am get-current-user | Prints the id of the foreground user.
   monitor | am monitor | Watches for crashes and ANRs until cancelled.
-  make-uid-idle | am make-uid-idle <package> | Puts the app's UID into the idle state, as Doze would.
+  make-uid-idle @package | am make-uid-idle <package> | Puts the app's UID into the idle state, as Doze would.
 
 cmd | cmd <service> <command> | Runs a command on a system service directly.
   package | cmd package <command> | The package service: the same commands as pm.
   activity | cmd activity <command> | The activity service: the same commands as am.
   jobscheduler | cmd jobscheduler <command> | Inspects and forces scheduled jobs.
     run @package | cmd jobscheduler run [-f] <package> <job-id> | Runs a job now. -f ignores its constraints.
+      -f @package | cmd jobscheduler run -f <package> <job-id> | Runs the job even when its constraints are not met.
     get-job-state | cmd jobscheduler get-job-state <package> <job-id> | Prints why a job is or is not ready.
   notification | cmd notification <command> | Posts and inspects notifications.
     post | cmd notification post [-t <title>] <tag> <text> | Posts a test notification.

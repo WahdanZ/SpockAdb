@@ -33,8 +33,9 @@ import javax.swing.text.JTextComponent
  * field, and the documentation of the selected entry — or of the command being typed — below it.
  *
  * The popup never takes focus, so typing carries on in the field. ↑/↓ choose, Tab inserts,
- * Enter inserts only once an entry has been chosen (otherwise it runs the command, as before),
- * Esc closes, and Ctrl+Space opens it on demand.
+ * Enter inserts only an entry that is chosen (otherwise it runs the command, as before), Esc
+ * closes, and Ctrl+Space or Alt+Space opens it on demand — Ctrl+Space is often the macOS
+ * input-source switch.
  */
 internal class CommandCompletionPopup(
     private val field: JTextComponent,
@@ -46,12 +47,14 @@ internal class CommandCompletionPopup(
         selectionMode = ListSelectionModel.SINGLE_SELECTION
         visibleRowCount = VISIBLE_ROWS
         cellRenderer = SuggestionRenderer()
+        // A click on a suggestion must not take focus from the field, or focusLost closes the popup.
+        isFocusable = false
     }
     private val doc = JBLabel().apply {
         border = JBUI.Borders.empty(DOC_PAD)
         verticalAlignment = JBLabel.TOP
     }
-    private val hint = JBLabel("↑↓ choose · Tab or Enter insert · Esc close").apply {
+    private val hint = JBLabel("↑↓ choose · Tab or Enter insert · Esc close · Ctrl or Alt+Space ask").apply {
         setComponentStyle(UIUtil.ComponentStyle.SMALL)
         setFontColor(UIUtil.FontColor.BRIGHTER)
         border = JBUI.Borders.empty(0, DOC_PAD, DOC_PAD, DOC_PAD)
@@ -70,6 +73,7 @@ internal class CommandCompletionPopup(
 
     private var popup: JBPopup? = null
     private var result: ShellCompleter.Result? = null
+    private var disposed = false
 
     val isShowing: Boolean get() = popup?.isVisible == true
 
@@ -104,13 +108,20 @@ internal class CommandCompletionPopup(
         popup = null
     }
 
-    override fun dispose() = hide()
+    override fun dispose() {
+        disposed = true
+        hide()
+    }
 
     // The caret moves after the document event, so the word at the caret is read once it has.
     private fun scheduleRefresh(open: Boolean) =
-        ApplicationManager.getApplication().invokeLater { refresh(open || isShowing) }
+        ApplicationManager.getApplication().invokeLater({ refresh(open || isShowing) }) { disposed }
 
     private fun refresh(open: Boolean) {
+        if (disposed || !field.isShowing) {
+            hide()
+            return
+        }
         if (!open) return
         val completion = completer.complete(field.text, field.caretPosition, packages())
         result = completion
@@ -119,9 +130,9 @@ internal class CommandCompletionPopup(
             return
         }
         list.setListData(completion.suggestions.toTypedArray())
-        // After a space nothing is chosen yet, so Enter still runs the command; once a word is
-        // being typed the best match is chosen, so Enter or Tab finishes it.
-        if (completion.prefix.isEmpty()) list.clearSelection() else list.selectedIndex = 0
+        // After a space, or once the word is typed in full, nothing is chosen, so Enter still runs
+        // the command; while a word is being typed the best match is chosen, so Enter or Tab finishes it.
+        if (completion.prefix.isEmpty() || completion.exact) list.clearSelection() else list.selectedIndex = 0
         list.ensureIndexIsVisible(maxOf(list.selectedIndex, 0))
         showDoc()
         show()
@@ -157,8 +168,14 @@ internal class CommandCompletionPopup(
     }
 
     private fun insert(suggestion: ShellCompleter.Suggestion) {
-        val completion = result ?: return
-        val (text, caret) = completer.accept(field.text, completion, suggestion, field.caretPosition)
+        // The list may lag the field by a refresh still queued, so the word is read again now.
+        val completion = completer.complete(field.text, field.caretPosition, packages())
+        val current = completion.suggestions.firstOrNull { it.text == suggestion.text }
+        if (current == null) {
+            refresh(open = true)
+            return
+        }
+        val (text, caret) = completer.accept(field.text, completion, current, field.caretPosition)
         field.text = text
         field.caretPosition = caret
         // What can follow the inserted word is the next thing to choose.
@@ -176,13 +193,20 @@ internal class CommandCompletionPopup(
     private inner class Keys : KeyAdapter() {
         override fun keyPressed(e: KeyEvent) {
             val handled = when {
-                e.keyCode == KeyEvent.VK_SPACE && e.isControlDown -> true.also { refresh(open = true) }
+                isAsk(e) -> true.also { refresh(open = true) }
                 e.keyCode == KeyEvent.VK_TAB -> true.also { tab(e.isShiftDown) }
                 isShowing -> navigate(e.keyCode)
                 else -> false
             }
             if (handled) e.consume()
         }
+
+        // Option+Space would otherwise type a non-breaking space on macOS.
+        override fun keyTyped(e: KeyEvent) {
+            if ((e.isControlDown || e.isAltDown) && e.keyChar in ASK_CHARS) e.consume()
+        }
+
+        private fun isAsk(e: KeyEvent) = e.keyCode == KeyEvent.VK_SPACE && (e.isControlDown || e.isAltDown)
 
         private fun tab(backward: Boolean) = when {
             backward -> field.transferFocusBackward()
@@ -229,6 +253,7 @@ internal class CommandCompletionPopup(
         const val VISIBLE_ROWS = 8
         const val DOC_PAD = 6
         const val DOC_WIDTH = 420
+        const val ASK_CHARS = " \u00A0"
 
         fun escape(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     }

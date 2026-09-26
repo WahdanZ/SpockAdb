@@ -19,13 +19,16 @@ class ShellCompleter(
      * The suggestions for the word at the caret.
      *
      * [replaceFrom] is where that word starts; [context] is the command being typed, whose
-     * documentation is worth showing even when nothing is selected.
+     * documentation is worth showing even when nothing is selected. [exact] is whether the word
+     * is already, in full, something valid here: a longer match may still be offered, but the
+     * word is finished, so Enter runs the command rather than picking that match.
      */
     data class Result(
         val replaceFrom: Int,
         val prefix: String,
         val suggestions: List<Suggestion>,
         val context: ShellCommandDoc?,
+        val exact: Boolean = false,
     )
 
     /** Where the walk over the typed words ended up. */
@@ -38,25 +41,62 @@ class ShellCompleter(
         val usedFlags: MutableSet<String> = mutableSetOf(),
     )
 
+    /** The command being typed: where its last word starts, and the words before that. */
+    private class Scan(val wordStart: Int, val words: List<String>)
+
     fun complete(line: String, caret: Int = line.length, packages: List<String> = emptyList()): Result {
         val before = line.substring(0, caret.coerceIn(0, line.length))
-        // Only the command after the last `;`, `|` or `&` is being typed: `ps -A | grep` completes grep.
-        val segmentStart = before.indexOfLast { it in SEPARATORS } + 1
-        val wordStart = maxOf(segmentStart, before.indexOfLast(Char::isWhitespace) + 1)
-        val prefix = before.substring(wordStart)
-        val words = before.substring(segmentStart, wordStart).split(WHITESPACE).filter(String::isNotEmpty)
+        val scan = scan(before)
+        val prefix = before.substring(scan.wordStart)
+        val position = walk(scan.words)
 
-        val position = walk(words)
-        return Result(wordStart, prefix, suggest(position, prefix, packages), position.context)
+        val candidates = candidates(position, prefix, packages)
+        val exact = candidates.any { it.text.equals(prefix, ignoreCase = true) }
+        val suggestions = candidates
+            // Nothing to complete once the word is typed in full; offering it again would make
+            // Enter insert a space instead of running the command.
+            .filterNot { it.text.equals(prefix, ignoreCase = true) }
+            .take(MAX_SUGGESTIONS)
+        return Result(scan.wordStart, prefix, suggestions, position.context, exact)
     }
 
     /** The line with [suggestion] in place of the word at the caret, and where the caret goes. */
     fun accept(line: String, result: Result, suggestion: Suggestion, caret: Int = line.length): Pair<String, Int> {
-        val after = line.substring(caret.coerceIn(result.replaceFrom, line.length))
+        // The whole word is replaced, including any of it after the caret, so none of it is left behind.
+        val from = caret.coerceIn(result.replaceFrom, line.length)
+        val wordEnd = (from until line.length).firstOrNull { line[it].isWhitespace() || line[it] in SEPARATORS }
+            ?: line.length
+        val after = line.substring(wordEnd)
         // A property prefix such as `log.tag.` is finished by the tag typed next, not by a space.
         val space = if (after.startsWith(" ") || suggestion.text.endsWith(".")) "" else " "
         val inserted = suggestion.text + space
         return line.substring(0, result.replaceFrom) + inserted + after to result.replaceFrom + inserted.length
+    }
+
+    /**
+     * Splits what is before the caret the way the shell would. Only the command after the last
+     * `;`, `|` or `&` is being typed (`ps -A | grep` completes grep), and those, like spaces,
+     * count only outside quotes: `input text "a|b" ` is still one command.
+     */
+    private fun scan(before: String): Scan {
+        var quote: Char? = null
+        var wordStart = 0
+        val words = mutableListOf<String>()
+        before.forEachIndexed { index, char ->
+            when {
+                quote != null -> if (char == quote) quote = null
+                char in QUOTES -> quote = char
+                char in SEPARATORS -> {
+                    words.clear()
+                    wordStart = index + 1
+                }
+                char.isWhitespace() -> {
+                    if (index > wordStart) words += before.substring(wordStart, index)
+                    wordStart = index + 1
+                }
+            }
+        }
+        return Scan(wordStart, words)
     }
 
     private fun walk(words: List<String>): Position {
@@ -82,7 +122,8 @@ class ShellCompleter(
         return position
     }
 
-    private fun suggest(position: Position, prefix: String, packages: List<String>): List<Suggestion> {
+    /** Everything valid at [position] that starts with [prefix], or for a package contains it. */
+    private fun candidates(position: Position, prefix: String, packages: List<String>): List<Suggestion> {
         val flagsOnly = prefix.startsWith("-")
         val packageSuggestions = if (position.packageExpected && !flagsOnly) {
             packages.filter { it.contains(prefix, ignoreCase = true) }
@@ -100,16 +141,12 @@ class ShellCompleter(
         val docs = (commands.map { it to Kind.COMMAND } + flags.map { it to Kind.FLAG })
             .map { (entry, kind) -> Suggestion(entry.name, entry.usage, entry.summary, kind) }
 
-        return (packageSuggestions + docs)
-            // Nothing to complete once the word is typed in full; offering it again would make
-            // Enter insert a space instead of running the command.
-            .filterNot { it.text == prefix }
-            .take(MAX_SUGGESTIONS)
+        return packageSuggestions + docs
     }
 
     private companion object {
         const val SEPARATORS = ";|&"
+        const val QUOTES = "\"'"
         const val MAX_SUGGESTIONS = 200
-        val WHITESPACE = Regex("\\s+")
     }
 }
