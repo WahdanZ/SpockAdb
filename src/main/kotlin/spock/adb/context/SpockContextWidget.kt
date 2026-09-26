@@ -17,6 +17,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
+import spock.adb.actions.SpockActionsPopup
 
 /**
  * The device and app every Spock surface acts on, in the status bar.
@@ -146,6 +147,12 @@ internal object ContextActions {
             },
         )
         add(DumbAwareAction.create("Refresh Devices and Apps") { selection.refresh() })
+        add(Separator.create())
+        add(
+            DumbAwareAction.create("Spock Actions…") {
+                SpockActionsPopup.show(project, DataContext.EMPTY_CONTEXT)
+            },
+        )
     }
 
     private fun choice(text: String, selected: Boolean, choose: () -> Unit): AnAction =

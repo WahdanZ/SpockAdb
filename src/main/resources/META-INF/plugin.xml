@@ -97,6 +97,20 @@
                description="Android device actions provided by Spock ADB">
             <add-to-group group-id="ToolsMenu" anchor="first"/>
 
+            <!-- Every action below, searchable, with pins and recents. -->
+            <action id="spock.adb.actions.SpockActionsPopupAction"
+                    class="spock.adb.actions.SpockActionsPopupAction"
+                    text="Spock Actions…"
+                    icon="AllIcons.Actions.Lightning"
+                    description="Run any Spock ADB action on the selected device and app">
+                <add-to-group group-id="MainToolbarRight" anchor="first"/>
+            </action>
+            <action id="spock.adb.actions.CustomizeSpockActionsAction"
+                    class="spock.adb.actions.CustomizeSpockActionsAction"
+                    text="Customize Pinned Spock Actions…"/>
+
+            <separator/>
+
             <!-- Navigation -->
             <action id="spock.adb.actions.GetCurrentActivityAction"
                     class="spock.adb.actions.GetCurrentActivityAction"
@@ -116,6 +130,11 @@
                     class="spock.adb.actions.DiagnoseCurrentScreenAction"
                     text="Diagnose Current Screen"
                     description="Read the screen, app, logs, UI, permissions, background work and device conditions in one place"/>
+            <action id="spock.adb.actions.CopyScreenForAiAction"
+                    class="spock.adb.actions.CopyScreenForAiAction"
+                    text="Copy Screen for AI"
+                    icon="AllIcons.Actions.Copy"
+                    description="Diagnose the current screen and copy the redacted report for an AI assistant"/>
 
             <separator/>
 
@@ -171,6 +190,21 @@
                     description="Inspect the semantics tree of the screen, for Views and Jetpack Compose"/>            <action id="spock.adb.actions.OpenMcpPanelAction"
                     class="spock.adb.actions.OpenMcpPanelAction"
                     text="Open MCP Server Panel"/>
+            <action id="spock.adb.actions.ToggleDontKeepActivitiesAction"
+                    class="spock.adb.actions.ToggleDontKeepActivitiesAction"
+                    text="Toggle Don't Keep Activities"/>
+            <action id="spock.adb.actions.ToggleShowTapsAction"
+                    class="spock.adb.actions.ToggleShowTapsAction"
+                    text="Toggle Show Taps"/>
+            <action id="spock.adb.actions.ToggleLayoutBoundsAction"
+                    class="spock.adb.actions.ToggleLayoutBoundsAction"
+                    text="Toggle Show Layout Bounds"/>
+            <action id="spock.adb.actions.OpenDeepLinkAction"
+                    class="spock.adb.actions.OpenDeepLinkAction"
+                    text="Open Deep Link…"/>
+            <action id="spock.adb.actions.SendTextToDeviceAction"
+                    class="spock.adb.actions.SendTextToDeviceAction"
+                    text="Send Text to Device…"/>
             <action id="spock.adb.actions.OpenDeveloperOptionsAction"
                     class="spock.adb.actions.OpenDeveloperOptionsAction"
                     text="Open Developer Options on Device"/>

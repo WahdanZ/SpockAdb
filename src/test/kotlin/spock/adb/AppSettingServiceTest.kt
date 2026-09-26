@@ -68,15 +68,33 @@ class AppSettingServiceTest {
     fun `pins are remembered in the order they were put in`() {
         val service = service.apply { loadState(AppSetting(list = emptyList())) }
 
-        assertEquals(emptyList<QuickAction>(), service.pinnedActions())
-        service.savePinnedActions(listOf(QuickAction.FORCE_STOP, QuickAction.RESTART_APP))
+        service.savePinnedActionIds(listOf("b.Force", "a.Restart", "b.Force"))
 
-        assertEquals(
-            listOf(QuickAction.FORCE_STOP, QuickAction.RESTART_APP),
-            service.pinnedActions(),
-            "the order is the point, so it cannot be stored as a set",
-        )
-        assertEquals(listOf("FORCE_STOP", "RESTART_APP"), service.state.pinned, "it has to survive a restart")
+        assertEquals(listOf("b.Force", "a.Restart"), service.pinnedActionIds(), "ordered, and each once")
+        assertEquals(listOf("b.Force", "a.Restart"), service.state.pinnedActionIds, "it has to survive a restart")
+    }
+
+    @Test
+    fun `pins made on the old Device tab carry over until new ones are chosen`() {
+        val service = service.apply { loadState(AppSetting(list = emptyList(), pinned = listOf("FORCE_STOP"))) }
+
+        assertEquals(listOf("spock.adb.actions.ForceStopAppAction"), service.pinnedActionIds())
+    }
+
+    @Test
+    fun `with nothing pinned ever, the popup still starts with the common actions`() {
+        val service = service.apply { loadState(AppSetting(list = emptyList())) }
+
+        assertTrue(service.pinnedActionIds().contains("spock.adb.actions.RestartAppAction"))
+    }
+
+    @Test
+    fun `recent actions are newest first, without repeats, and few`() {
+        val service = service.apply { loadState(AppSetting(list = emptyList())) }
+
+        listOf("a", "b", "c", "a", "d", "e", "f").forEach(service::recordRecentAction)
+
+        assertEquals(listOf("f", "e", "d", "a", "c"), service.recentActionIds())
     }
 
     @Test
