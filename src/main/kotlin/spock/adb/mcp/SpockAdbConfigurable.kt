@@ -6,11 +6,13 @@ import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
+import spock.adb.AppSettingService
 import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantKeyStore
 import spock.adb.assistant.AssistantProvider
@@ -74,6 +76,9 @@ class SpockAdbConfigurable : Configurable {
     private val apiKeyField = JBPasswordField().apply { columns = FIELD_COLUMNS }
     private val keyStatusLabel = JBLabel()
 
+    /** Mirrors the widget's toggle; see [spock.adb.context.SpockSelection.followsStudio]. */
+    private val followStudioBox = JBCheckBox("Follow the device selected in Android Studio's run-target selector")
+
     /** One checkbox per registered tool, in registry order within its safety group. */
     private val toolChecks = LinkedHashMap<String, JCheckBox>()
 
@@ -88,6 +93,21 @@ class SpockAdbConfigurable : Configurable {
             insets = Insets(0, 0, JBUI.scale(SECTION_GAP), 0)
         }
 
+        content.add(
+            section(
+                "Device",
+                JPanel(BorderLayout()).apply {
+                    add(followStudioBox, BorderLayout.NORTH)
+                    add(
+                        JBLabel("A device picked in Spock ADB stays picked until the run target changes again.").apply {
+                            foreground = com.intellij.util.ui.UIUtil.getContextHelpForeground()
+                        },
+                        BorderLayout.CENTER,
+                    )
+                },
+            ),
+            constraints,
+        )
         content.add(mcpSection(), constraints)
         // The AI Assistant section is not added while the tab is hidden: a settings page for a
         // feature with no way in is worse than no settings page — it reads as something broken.
@@ -410,7 +430,8 @@ class SpockAdbConfigurable : Configurable {
     override fun isModified(): Boolean {
         val historyChanged = (historySpinner?.value as? Int)?.let { it != service.historySize } ?: false
         val toolsChanged = toolChecks.isNotEmpty() && uncheckedTools() != service.disabledTools
-        return historyChanged || toolsChanged || assistantModified()
+        val followChanged = followStudioBox.isSelected != AppSettingService.getInstance().state.followStudioDevice
+        return historyChanged || toolsChanged || followChanged || assistantModified()
     }
 
     /**
@@ -429,6 +450,7 @@ class SpockAdbConfigurable : Configurable {
             apiKeyField.password.isNotEmpty()
 
     override fun apply() {
+        spock.adb.context.SpockSelection.followStudioEverywhere(followStudioBox.isSelected)
         (historySpinner?.value as? Int)?.let { service.historySize = it }
         if (toolChecks.isNotEmpty()) service.setDisabledTools(uncheckedTools())
 
@@ -453,6 +475,7 @@ class SpockAdbConfigurable : Configurable {
     }
 
     override fun reset() {
+        followStudioBox.isSelected = AppSettingService.getInstance().state.followStudioDevice
         historySpinner?.value = service.historySize
         toolChecks.forEach { (name, box) -> box.isSelected = service.isToolEnabled(name) }
 

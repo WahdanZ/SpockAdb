@@ -72,6 +72,9 @@
         <!-- The device and app every Spock surface acts on, visible with every tool window hidden. -->
         <statusBarWidgetFactory id="SpockAdb.Context"
                                 implementation="spock.adb.context.SpockContextWidgetFactory"/>
+        <!-- MCP server state, amber when an agent drives a different device from the one selected. -->
+        <statusBarWidgetFactory id="SpockAdb.McpStatus"
+                                implementation="spock.adb.mcp.McpStatusWidgetFactory"/>
     </extensions>
 
     <applicationListeners>

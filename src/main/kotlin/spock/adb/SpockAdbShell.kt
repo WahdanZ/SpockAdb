@@ -15,9 +15,7 @@ import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.home.HomePanel
-import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerPanel
-import spock.adb.mcp.McpServerService
 import spock.adb.screen.SpockScreenToolWindow
 import spock.adb.storage.AppStoragePanel
 import spock.adb.ui.TabStrip
@@ -58,7 +56,9 @@ class SpockAdbShell(
     private val storage = AppStoragePanel(project)
     private val commands = CommandCenterPanel(project)
     private val backgroundWork = BackgroundWorkPanel(project)
-    private val mcp = McpServerPanel(project)
+
+    /** Built when first asked for: the server is configured once and then only checked on. */
+    private var mcp: McpServerPanel? = null
 
     /**
      * Built only when the tab is shown.
@@ -75,18 +75,8 @@ class SpockAdbShell(
 
     private lateinit var controller: AdbController
 
-    /**
-     * Refreshed on every recorded MCP call rather than on a timer.
-     *
-     * The agent's target only changes through `android_select_device`, which is itself a
-     * recorded call, so the one event that can make this label wrong is the one that fires it.
-     */
-    private val mcpCallListener: (McpCall) -> Unit = {
-        ApplicationManager.getApplication().invokeLater({ refreshAgentTarget() }) { project.isDisposed }
-    }
-
     init {
-        listOfNotNull(storage, commands, backgroundWork, mcp, assistant)
+        listOfNotNull(storage, commands, backgroundWork, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
 
@@ -94,7 +84,6 @@ class SpockAdbShell(
         tabs.addTab(STORAGE_TAB, storage)
         tabs.addTab("Commands", commands)
         tabs.addTab(BACKGROUND_WORK_TAB, backgroundWork)
-        tabs.addTab("MCP Server", mcp)
         assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
         // Read on arrival rather than on every device or app change: two dumpsys round trips,
         // one of them the whole alarm table, for a tab that may never be opened.
@@ -146,7 +135,6 @@ class SpockAdbShell(
             if (SpockSelection.Change.DEVICE in changes) selectDevice(snapshot.device)
             if (SpockSelection.Change.APP in changes) snapshot.app?.let(::selectApp)
         }
-        watchAgentTarget()
         listenForToolWindow()
     }
 
@@ -158,7 +146,6 @@ class SpockAdbShell(
         storage.setDevice(device)
         commands.setDevice(device)
         backgroundWork.setDevice(device)
-        refreshAgentTarget()
     }
 
     /** The app every tab and every action uses, as chosen in [SpockSelection]. */
@@ -166,6 +153,17 @@ class SpockAdbShell(
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
         home.setApp()
+    }
+
+    /** Adds the MCP server's tab the first time it is asked for, and brings it forward. */
+    private fun showMcp() {
+        if (mcp == null) {
+            mcp = McpServerPanel(project).also {
+                Disposer.register(parentDisposable, it)
+                tabs.addTab(MCP_TAB, it)
+            }
+        }
+        tabs.select(MCP_TAB)
     }
 
     private fun prefillAssistant(prompt: String) {
@@ -177,22 +175,6 @@ class SpockAdbShell(
     /** Brings the tab titled [title] forward, for the actions that open one. */
     fun selectTab(title: String) {
         tabs.select(title)
-    }
-
-    // ---------------------------------------------------------------- agents
-
-    private fun watchAgentTarget() {
-        val service = McpServerService.getInstance()
-        service.addCallListener(mcpCallListener)
-        Disposer.register(parentDisposable) { service.removeCallListener(mcpCallListener) }
-        refreshAgentTarget()
-    }
-
-    private fun refreshAgentTarget() {
-        val service = McpServerService.getInstance()
-        val target = service.targetedSerial
-        val mismatched = service.isRunning && target != null && target != selectedDevice?.serialNumber
-        header.setAgentTarget(target.takeIf { mismatched })
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -239,6 +221,13 @@ class SpockAdbShell(
             toolWindow.activate { find(project)?.prefillAssistant(prompt) }
         }
 
+        /** Opens the MCP server's agent activity, from the status-bar indicator or the Tools menu. */
+        fun openMcpActivity(project: Project) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
+            toolWindow.activate { find(project)?.showMcp() }
+        }
+
+        const val MCP_TAB = "MCP Server"
         private const val TOOL_WINDOW_ID = "Spock ADB"
         private const val ASSISTANT_TAB = "Assistant"
         private const val BACKGROUND_WORK_TAB = "Background Work"

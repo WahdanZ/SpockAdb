@@ -117,7 +117,20 @@ class OpenLogcatAction : AnAction() {
 
 class OpenCommandCenterAction : OpenTabAction("Commands")
 class OpenDevicesAction : OpenTabAction("Home")
-class OpenMcpPanelAction : OpenTabAction("MCP Server")
+
+/** Opens the MCP server's agent activity, adding its tab the first time. */
+class OpenMcpPanelAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        event.presentation.isEnabled = event.project != null
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        event.project?.let { spock.adb.SpockAdbShell.openMcpActivity(it) }
+    }
+}
 class OpenAssistantAction : OpenTabAction("Assistant")
 
 /** Opens the Spock Screen tool window on its UI tree. */

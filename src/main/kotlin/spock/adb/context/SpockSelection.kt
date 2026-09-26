@@ -6,6 +6,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import spock.adb.AppSettingService
 import spock.adb.LatestRequest
@@ -253,6 +254,20 @@ class SpockSelection(private val project: Project) : Disposable {
 
     companion object {
         fun getInstance(project: Project): SpockSelection = project.getService(SpockSelection::class.java)
+
+        /**
+         * Stores whether Android Studio's device is followed, and applies it to every open
+         * project's selection, so switching it on selects that device now rather than at the
+         * run target's next change. For the Settings page.
+         */
+        fun followStudioEverywhere(follow: Boolean) {
+            val settings = AppSettingService.getInstance()
+            if (follow == settings.state.followStudioDevice) return
+            settings.loadState(settings.state.copy(followStudioDevice = follow))
+            ProjectManager.getInstance().openProjects
+                .mapNotNull { it.getServiceIfCreated(SpockSelection::class.java) }
+                .forEach { it.followsStudio = follow }
+        }
     }
 }
 

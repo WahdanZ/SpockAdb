@@ -4,8 +4,6 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.ui.JBColor
-import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
@@ -61,16 +59,6 @@ internal class ToolWindowHeader(
     /** True while the combo is filled by code, when a change of selection is not the developer's pick. */
     private var populating = false
 
-    /**
-     * Which device AI agents are driving, when that is not the one selected here.
-     *
-     * These two selections are genuinely independent: an agent chooses with
-     * `android_select_device` and this dropdown does not follow it, so a developer can be
-     * watching one phone while an agent clears app data on another. Nothing surfaced that
-     * before, which made it a trap rather than a choice.
-     */
-    private val agentTargetLabel = JBLabel().apply { isVisible = false }
-
     init {
         border = JBUI.Borders.empty(GAP)
         // Neither may widen the tool window: both elide, and the row wraps when it must.
@@ -91,7 +79,6 @@ internal class ToolWindowHeader(
         add(refreshButton)
         add(appPicker)
         add(settingsButton)
-        add(agentTargetLabel)
 
         selection.addListener(parent) { snapshot, changes ->
             if (SpockSelection.Change.DEVICES in changes || SpockSelection.Change.DEVICE in changes) {
@@ -126,30 +113,11 @@ internal class ToolWindowHeader(
         }
     }
 
-    /**
-     * Says something only when there is something to say.
-     *
-     * Silent when the server is stopped, and silent when the agent is on the same device the
-     * developer is looking at — a permanent "everything agrees" banner would train them to stop
-     * reading it, which is the opposite of what the mismatch case needs.
-     */
-    fun setAgentTarget(serial: String?) {
-        agentTargetLabel.isVisible = serial != null
-        if (serial == null) return
-        agentTargetLabel.text = "<html>⚠ AI agents are targeting <b>$serial</b>, not the device selected here.</html>"
-        agentTargetLabel.foreground = WARNING
-        agentTargetLabel.toolTipText =
-            "An agent chose this device with android_select_device. Actions you run from this " +
-                "panel still apply to the device in the dropdown above."
-    }
-
     private companion object {
         const val GAP = 4
         const val DEVICE_WIDTH = 240
         const val NO_DEVICES = "No devices connected"
         const val NO_DEVICES_HINT = "Connect a device or start an emulator, then press Refresh. " +
             "If a device is attached, check idea.log for ADB errors."
-
-        val WARNING = JBColor(0x8A6100, 0xE0A030)
     }
 }
