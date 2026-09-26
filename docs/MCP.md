@@ -281,12 +281,12 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-64 tools, in three levels.
+65 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
 | **Read-only** (27) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
-| **Safe action** (29) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions` |
+| **Safe action** (30) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
 Rules that hold regardless of what a client asks for:
@@ -422,14 +422,54 @@ one. `android_tap_element` walks up to the nearest clickable ancestor automatica
   `android_get_current_fragments`.
 
 - **The Layout Inspector's Compose protocol is deliberately not used.** Android Studio reads
-  the full composition tree — recomposition counts, modifiers, parameters — through the
+  the full composition tree — modifiers, parameters, per-node recomposition counts — through the
   app-inspection framework, which needs a debuggable build, the `ui-tooling` artifact, and a
   JVMTI agent speaking an undocumented protocol. Reimplementing that would mean depending on
   unstable Compose internals and would break with Compose releases. The semantics tree is the
   stable, documented, version-independent alternative, and is what test frameworks use too.
 
-- **Recomposition counts are therefore not available.** Use Android Studio's Layout Inspector
-  for that; it is better at it and already exists.
+- **Recomposition counts come from composition tracing, per composable, not per node.** See
+  [Recomposition counts](#recomposition-counts).
+
+### Recomposition counts
+
+`android_get_recomposition_counts` records a running app for 1–30 seconds (5 by default) and
+lists how many times each composable composed or recomposed, with its source file and line,
+most frequent first. The UI Inspector's **Recompositions** tab is the same recording for a
+person: pick a duration, press **Record**, use the app, and double-click a row to open its line.
+
+The counts are Compose's own. With composition tracing in the app, every composable that runs
+while tracing is on leaves a trace slice named after it, and the tool counts those slices:
+
+1. It asks the app to turn tracing on, through the `androidx.tracing.perfetto` receiver the
+   tracing library adds. Tracing stays on until the app's process ends and changes nothing the
+   app does, which is why the tool is a safe action rather than read-only.
+2. `perfetto` records track events for the window, keeping only the app's own process.
+3. The trace is read back, counted, and deleted from the device.
+
+What the app needs, debug builds being enough:
+
+```kotlin
+debugImplementation("androidx.compose.runtime:runtime-tracing")
+debugImplementation("androidx.tracing:tracing-perfetto-binary:1.0.0") // match the app's tracing-perfetto
+```
+
+Android Studio pushes the native half, `tracing-perfetto-binary`, to the device itself when it
+records a trace; Spock does not, so the app ships it. Without either dependency the tool says
+which one is missing instead of returning zeros.
+
+What a count is, and is not:
+
+- **It is per composable function, not per UI Inspector row.** The accessibility tree carries
+  no composable names, so pairing a count with a node would be a guess.
+- **The first composition counts.** Anything that appeared during the recording counts once
+  for appearing. Record a screen that is already showing to see recompositions only.
+- **A high count is a lead, not a defect.** A composable driven by an animation should run
+  every frame. Compare the count with what changed on screen.
+- By default only the app's own composables are listed; `includeLibraries` adds androidx and
+  Kotlin ones such as `Text` and `Box`.
+- Verified on an API 34 emulator. Older Android versions are untested; where `perfetto` or
+  its tracing service is unavailable, the result quotes what `perfetto` said.
 
 ### Accessibility audit
 

@@ -10,6 +10,24 @@
   tool window's **Process Death** action, sharing its code. Agents previously had to ask for
   `am kill` through `android_run_adb_command`, which needs approval every time. The Agent Skill's
   process-death playbook now uses it.
+- **See how often each composable recomposes, in the UI Inspector and for agents.** The
+  Inspector's new **Recompositions** tab records the app for 5, 10 or 30 seconds and lists every
+  composable that composed or recomposed meanwhile, most frequent first, with its file and line;
+  double-click a row to open it. The new `android_get_recomposition_counts` MCP tool is the same
+  recording for an agent. The counts are Compose's own composition-tracing slices, recorded with
+  `perfetto` over ADB and counted per composable: nothing is estimated, so a composable that ran
+  95 times reports 95. It needs `androidx.compose.runtime:runtime-tracing` and
+  `androidx.tracing:tracing-perfetto-binary` in the app's debug build, and says which is missing
+  when one is. The counts are listed per function rather than on the tree's rows, because the
+  accessibility tree the Inspector reads has no composable names to pair them with
+  ([#119](https://github.com/WahdanZ/SpockAdb/issues/119),
+  [#120](https://github.com/WahdanZ/SpockAdb/issues/120)). The Agent Skill gains an eighth playbook
+  for it.
+- **Compose wording for the tree and search tools.** `android_get_ui_tree` now says it is the
+  composable tree as Compose publishes it, with `Modifier.testTag` values as `testTag`, and
+  `android_find_ui_element` says how to find a composable by its test tag, so an agent asked for
+  either reaches for the tools that already do it
+  ([#120](https://github.com/WahdanZ/SpockAdb/issues/120)).
 - **An Agent Skill for debugging with Spock ADB.** `skills/spock-adb/SKILL.md` tells an agent
   which MCP tools to call and in what order: start from `android_get_debug_context`, narrow to the
   app, prefer safe actions to destructive ones and explain the destructive ones first, and re-read

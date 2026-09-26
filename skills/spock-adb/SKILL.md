@@ -186,6 +186,20 @@ discard the saved instance state that process death keeps. Use them for cold sta
 4. After a fix is deployed: re-run `android_accessibility_audit` and compare the counts. A
    finding that moved to another element is not fixed.
 
+### 8. Compose recomposition — "this screen recomposes too much / feels janky"
+
+1. Put the screen in the state to measure, then `android_get_recomposition_counts` with
+   `durationSeconds` long enough to cover the interaction; drive the interaction (taps, scrolls)
+   while it records. Record an idle screen to find recompositions that should not happen at all.
+2. If it says the app lacks composition tracing, tell the developer the two debug dependencies it
+   names. Do not guess counts from screenshots or the UI tree.
+3. Compare each count with what changed on screen. A composable that ran far more often than its
+   inputs changed is a lead: open its file and line and look for unstable parameters or state read
+   too high in the tree. A count is not proof of a performance problem.
+4. After a fix: record the same interaction again and compare the counts.
+
+Sample app screen: **UI Inspector — Recomposition counts**.
+
 ## Reporting
 
 End with what you observed, from which call, and what is still unverified. Name any state you

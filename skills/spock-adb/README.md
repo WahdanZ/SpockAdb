@@ -2,8 +2,8 @@
 
 [`SKILL.md`](SKILL.md) teaches an agent *how* to debug an Android app with the Spock ADB MCP
 tools: start from the bounded debug context, narrow to the app, act safely before
-destructively, and re-read after every change — with seven playbooks (UI bug, state bug,
-crash / ANR, process death, background work, deep links, accessibility).
+destructively, and re-read after every change — with eight playbooks (UI bug, state bug,
+crash / ANR, process death, background work, deep links, accessibility, Compose recomposition).
 
 The MCP server gives an agent the tools. This skill gives it the order to use them in. It is
 plain Markdown in the [Agent Skills](https://agentskills.io) format, so any client that loads
