@@ -29,3 +29,17 @@ feature it is for.
 | Restart with debugger, Input Text, Show taps / layout bounds | any screen                           | The debug build is debuggable; the Views screen has a text field                                                                                                            |
 
 Everything the app does in the background is written to Logcat under the tag `SpockSample`.
+
+## Command Center autocomplete
+
+No screen needed: with the sample installed, type `pm clear spock.adb.sample` or
+`am force-stop spock.` in the **Shell** tab and **spock.adb.sample** is offered where the package
+goes, with its usage underneath. The installed packages are read once per device, so install
+anything new before selecting the device, or reconnect it (`adb reconnect`) to read them again.
+
+To check that a finished word runs rather than completes, install a second package whose name
+extends the sample's: add `applicationIdSuffix = ".debug"` to the `debug` build type in
+`app/build.gradle.kts`, run `installDebug` again, and revert the line (both apps stay installed).
+Then `am force-stop spock.adb.sample` + **Enter** must run the command, although
+`spock.adb.sample.debug` is still listed; pressing **↓** first and then **Enter** inserts it.
+Uninstall it afterwards with `adb uninstall spock.adb.sample.debug`.

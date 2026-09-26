@@ -187,7 +187,14 @@ Still need the shell? The **Shell** tab of the Spock ADB window is an ADB comman
 
 Run ADB commands inside the IDE with:
 
-**Device targeting · History · Favourites · Timeout · Cancellation · Searchable output · Execution status**
+**Autocomplete with docs · Device targeting · History · Favourites · Timeout · Cancellation · Searchable output · Execution status**
+
+Start typing and Spock suggests what comes next — commands, subcommands, flags, key codes and
+the device's installed packages — with the usage and a one-line explanation of each one, so you
+no longer have to remember whether it was `pm clear` or `am clear`. **↑/↓** to choose, **Tab**
+to insert, **Ctrl+Space** or **Alt/Option+Space** to ask, **Esc** to close. **Enter** inserts a
+suggestion you picked with the arrows, or the best match of a word you are still typing; once a
+word is typed in full, Enter runs the command.
 
 You keep the power of ADB without constantly opening another terminal.
 
