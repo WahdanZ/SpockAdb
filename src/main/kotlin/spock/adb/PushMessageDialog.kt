@@ -165,6 +165,9 @@ class PushMessageDialog(
     override fun getPreferredFocusedComponent(): JComponent = titleField
 
     private fun send() {
+        // The header's device or app may have changed since the dialog opened; say who this
+        // send is really going to be judged against.
+        refreshReadiness()
         val message = try {
             current().also { it.requireSendable() }
         } catch (e: IllegalArgumentException) {
@@ -190,7 +193,7 @@ class PushMessageDialog(
      * Says, per device, whether its shell can deliver — so a send that is going to be refused is
      * explained before it is tried, not only after.
      */
-    private fun refreshReadiness() {
+    fun refreshReadiness() {
         val request = readinessReads.begin()
         withTargets { devices ->
             if (!readinessReads.isLatest(request)) return@withTargets

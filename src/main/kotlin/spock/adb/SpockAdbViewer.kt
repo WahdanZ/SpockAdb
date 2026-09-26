@@ -239,6 +239,7 @@ class SpockAdbViewer(
         selectedDevice = connected
         refreshDeviceState()
         refreshAppState()
+        pushMessageRow.targetChanged()
     }
 
     /**
@@ -255,6 +256,7 @@ class SpockAdbViewer(
     /** The app chosen in the tool window's header changed, so what this tab says about it has. */
     fun setApp() {
         refreshAppState()
+        pushMessageRow.targetChanged()
     }
 
     /**

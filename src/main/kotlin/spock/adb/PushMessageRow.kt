@@ -1,6 +1,7 @@
 package spock.adb
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -54,11 +55,20 @@ class PushMessageRow(
                 dialog.toFront()
                 return@addActionListener
             }
-            open = PushMessageDialog(project, controller, device) { deliveries ->
+            val dialog = PushMessageDialog(project, controller, device) { deliveries ->
                 status.text = summary(deliveries)
                 status.toolTipText = deliveries.joinToString("\n") { it.message }
-            }.also { it.show() }
+            }
+            // Dropped on close, so a closed editor is not what the next click brings forward.
+            Disposer.register(dialog.disposable) { open = null }
+            open = dialog
+            dialog.show()
         }
+    }
+
+    /** The header's device or app changed: an open editor re-reads which devices can receive. */
+    fun targetChanged() {
+        open?.takeIf { it.isShowing }?.refreshReadiness()
     }
 
     private fun summary(deliveries: List<PushDelivery>): String {

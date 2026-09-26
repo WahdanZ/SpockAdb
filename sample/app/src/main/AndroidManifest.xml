@@ -86,8 +86,9 @@
 
         <receiver android:name=".background.AlarmReceiver" android:exported="false" />
 
-        <!-- Push messages: guarded like Firebase Messaging's receiver, so shell is refused
-             unless it is root (`adb root` on an emulator image without the Play Store). -->
+        <!-- Push messages: guarded like Firebase Messaging's receiver. This debug build is sent to
+             as the app itself (run-as), with no root; a release build is refused unless the
+             shell is root. -->
         <receiver
             android:name=".PushReceiver"
             android:exported="true"
