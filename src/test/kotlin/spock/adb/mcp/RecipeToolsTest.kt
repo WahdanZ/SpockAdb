@@ -128,6 +128,40 @@ class RecipeToolsTest {
     }
 
     @Test
+    fun `a cancel by interrupt stops the steps but not the restore`() {
+        // The stdio server cancels by interrupting the worker thread; ddmlib then fails every shell
+        // call on it. These tools stand in for that: the first is where the cancel lands, and the
+        // restore refuses to run on an interrupted thread, as a real ADB call would.
+        val cancelled = FakeTool("android_open_deep_link") {
+            Thread.currentThread().interrupt()
+            ToolResult.text("opened")
+        }
+        val reset = FakeTool("android_reset_device_conditions") {
+            when {
+                Thread.currentThread().isInterrupted -> ToolResult.error("ClosedByInterruptException")
+                else -> ToolResult.text("reset")
+            }
+        }
+        val lookup = tools + mapOf(cancelled.name to cancelled, reset.name to reset)
+        val interrupted = Recipe(
+            id = "interrupted",
+            title = "Interrupted",
+            description = "",
+            steps = listOf(Call("open", "android_open_deep_link"), Call("where", "android_get_current_activity")),
+            restore = listOf(Call("reset", "android_reset_device_conditions")),
+        )
+
+        val result = RunRecipeTool({ listOf(interrupted) }, lookup::get, { true }, { recorded += it })
+            .execute(args("""{"recipe":"interrupted"}"""), FakeToolContext())
+
+        // Put back for the caller, and cleared here so the test thread is left as it was found.
+        assertTrue(Thread.interrupted(), "the interrupt must be restored after restore")
+        assertTrue(result.isError)
+        assertEquals(listOf("android_open_deep_link", "android_reset_device_conditions"), executed.map { it.first })
+        assertFalse(recorded.last().isError, recorded.last().result)
+    }
+
+    @Test
     fun `bad input is refused before any step runs`() {
         val unknown = tool().execute(args("""{"recipe":"nope"}"""), FakeToolContext())
         val missing = tool().execute(args("""{"recipe":"demo"}"""), FakeToolContext())

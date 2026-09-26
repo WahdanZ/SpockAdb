@@ -15,12 +15,15 @@ import spock.adb.mcp.tools.ToolResult
  * @param invoke runs one tool with fully resolved arguments. May throw; a throw fails the step.
  * @param pause waits, returning false when the wait was cancelled.
  * @param isCancelled checked before every step; once true, no further step of the recipe starts.
+ * @param aroundRestore wraps the restore phase, for a caller whose cancel would otherwise stop the
+ *   restore steps too: a thread interrupt makes every later ADB call on that thread fail at once.
  */
 class RecipeRunner(
     private val invoke: (tool: String, arguments: JsonObject) -> ToolResult,
     private val pause: (millis: Long) -> Boolean,
     private val isCancelled: () -> Boolean = { false },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val aroundRestore: (restore: () -> Unit) -> Unit = { it() },
 ) {
 
     /**
@@ -68,10 +71,17 @@ class RecipeRunner(
 
         // Restore runs even after a failure or a cancel: that is exactly when a device is most
         // likely to have been left in forced Doze or unplugged. Every restore step is attempted.
-        recipe.restore.forEachIndexed { index, step ->
-            outcomes += when {
-                restore -> runStep(Phase.RESTORE, index, step, values)
-                else -> StepOutcome.notRun(Phase.RESTORE, index, step)
+        val passed = outcomes.filter { it.status == StepStatus.PASSED }.map { it.step.title }.toSet()
+        aroundRestore {
+            recipe.restore.forEachIndexed { index, step ->
+                outcomes += when {
+                    !restore -> StepOutcome.notRun(Phase.RESTORE, index, step)
+                    step.after != null && step.after !in passed -> StepOutcome(
+                        Phase.RESTORE, index, step, StepStatus.SKIPPED,
+                        "Skipped: \"${step.after}\" did not pass, so there is nothing to undo.", 0,
+                    )
+                    else -> runStep(Phase.RESTORE, index, step, values)
+                }
             }
         }
         return RecipeRun(recipe, outcomes, cancelled, restoreSkipped = !restore && recipe.restore.isNotEmpty())

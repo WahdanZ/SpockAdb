@@ -1006,9 +1006,15 @@ is an error unless every step passed.
 
 - **A failed step stops the recipe**, unless the recipe marks it to continue: reading the log
   afterwards is informational, forcing Doze is not. The call still fails either way.
-- **Restore steps always run** — after a failure, and after a cancel — because that is exactly when
-  a device is most likely to be left in forced Doze. `"restore": false` skips them, and the report
-  says so.
+- **Restore steps run after a failure and after a cancel**, because that is exactly when a device
+  is most likely to be left in forced Doze. A cancel over stdio interrupts the request's thread,
+  which would make every later ADB call fail at once, so restore runs with the interrupt set aside.
+  A restore step only undoes a step that passed: `job_in_doze` resets device conditions only if
+  forcing Doze went through, so a typo in `jobId` does not wipe a battery override or standby
+  bucket you set yourself. `"restore": false` skips them, and the report says so.
+- **Over HTTP, a recipe gets 20 seconds.** HTTP cannot cancel a call, so no new step starts after
+  that, restore still runs, and the report says the run was cut short. Use stdio to run the longer
+  recipes in full.
 - **Every step is an ordinary tool call.** It goes through the same enable switch, runs against
   the same device, and appears in the Activity tab and the Debug Timeline as its own row, with
   the client `recipe:<id>`. A step whose tool is switched off is refused, and a destructive step

@@ -49,6 +49,12 @@ sealed interface RecipeStep {
     val onlyIf: String?
 
     /**
+     * The title of an earlier step this one undoes. Unless that step passed, this one is skipped:
+     * a restore must not reset state the recipe never changed, which may be the developer's own.
+     */
+    val after: String?
+
+    /**
      * Calls one Spock tool.
      *
      * @property arguments string values are templates: `{name}` is replaced by a recipe parameter
@@ -67,6 +73,7 @@ sealed interface RecipeStep {
         val keepImages: Boolean = false,
         override val onFailure: FailurePolicy = FailurePolicy.STOP,
         override val onlyIf: String? = null,
+        override val after: String? = null,
     ) : RecipeStep
 
     /** Waits a fixed time, for a state change nothing on screen announces. Cancellable. */
@@ -75,6 +82,7 @@ sealed interface RecipeStep {
         val millis: Long,
         override val onFailure: FailurePolicy = FailurePolicy.STOP,
         override val onlyIf: String? = null,
+        override val after: String? = null,
     ) : RecipeStep
 }
 
@@ -91,6 +99,16 @@ sealed interface Expectation {
     data class Contains(override val template: String) : Expectation {
         override fun describe(resolved: String) = "output contains \"$resolved\""
         override fun matches(output: String, resolved: String) = output.contains(resolved, ignoreCase = true)
+    }
+
+    /**
+     * The output contains [template] as whole words, ignoring case, so `Job 4` does not match
+     * `Job 42`.
+     */
+    data class ContainsWord(override val template: String) : Expectation {
+        override fun describe(resolved: String) = "output contains the words \"$resolved\""
+        override fun matches(output: String, resolved: String) =
+            Regex("(?<!\\w)${Regex.escape(resolved)}(?!\\w)", RegexOption.IGNORE_CASE).containsMatchIn(output)
     }
 
     /** The output is exactly [template], after trimming. */

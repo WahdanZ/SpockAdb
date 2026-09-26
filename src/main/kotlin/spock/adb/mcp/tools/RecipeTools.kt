@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
+import spock.adb.CancellationSignal
 import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerService
 import spock.adb.mcp.ToolGate
@@ -90,7 +91,12 @@ class RunRecipeTool(
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         // Taken first, on this thread: the default signal is this thread's interrupt.
-        val signal = context.cancellationSignal()
+        val callerSignal = context.cancellationSignal()
+        // Over HTTP nothing can cancel a call, so a recipe that outlives its client would hold one
+        // of the server's few threads for the sum of its waits. No new step starts after this.
+        val deadline = if (context.canCancel) Long.MAX_VALUE else System.currentTimeMillis() + UNCANCELLABLE_BUDGET_MS
+        val outOfTime = { System.currentTimeMillis() > deadline }
+        val signal = CancellationSignal { callerSignal.isCancelled() || outOfTime() }
         val id = arguments.requiredString("recipe")
         val recipe = recipes().firstOrNull { it.id == id }
             ?: return ToolResult.error("No recipe is called '$id'. Available: ${recipes().joinToString { it.id }}.")
@@ -106,12 +112,19 @@ class RunRecipeTool(
             },
             pause = { millis -> pause(millis, signal::isCancelled) },
             isCancelled = signal::isCancelled,
+            aroundRestore = ::withoutInterrupt,
         )
         val problems = runner.validate(recipe, params)
         if (problems.isNotEmpty()) return ToolResult.error("Recipe '$id' was not run. ${problems.joinToString(" ")}")
 
         val run = runner.run(recipe, params, restore = arguments.optionalBoolean("restore", default = true))
-        return ToolResult(listOf(ToolContent.Text(RecipeReport.format(run))) + run.images, isError = !run.passed)
+        val report = RecipeReport.format(run) + if (run.cancelled && outOfTime()) {
+            "\nStopped after ${UNCANCELLABLE_BUDGET_MS / MS_PER_SECOND} s: over HTTP, which cannot cancel a call, a " +
+                "recipe gets no longer than that. Use the stdio transport to run it in full."
+        } else {
+            ""
+        }
+        return ToolResult(listOf(ToolContent.Text(report)) + run.images, isError = !run.passed)
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -164,6 +177,25 @@ class RunRecipeTool(
         private val RECIPE_TOOLS = setOf("android_run_recipe", "android_list_recipes")
         private const val RESULT_PREVIEW_CHARS = 4_000
         private const val PAUSE_SLICE_MS = 100L
+        private const val UNCANCELLABLE_BUDGET_MS = 20_000L
+        private const val MS_PER_SECOND = 1_000
+
+        /**
+         * Runs [block] with this thread's interrupt cleared, and puts it back afterwards.
+         *
+         * The stdio server cancels by interrupting, and ddmlib opens every shell connection with an
+         * interruptible channel, so an interrupted thread fails each restore call before it reaches
+         * the device — leaving it in forced Doze, which is exactly what restore is for. The cancel
+         * has already stopped the recipe's own steps by then; it must not stop the cleanup too.
+         */
+        internal fun withoutInterrupt(block: () -> Unit) {
+            val interrupted = Thread.interrupted()
+            try {
+                block()
+            } finally {
+                if (interrupted) Thread.currentThread().interrupt()
+            }
+        }
 
         /** Sleeps in slices so a cancel is noticed within one. False when cancelled. */
         internal fun pause(millis: Long, isCancelled: () -> Boolean): Boolean {

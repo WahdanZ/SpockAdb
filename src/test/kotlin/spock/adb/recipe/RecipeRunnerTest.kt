@@ -71,6 +71,50 @@ class RecipeRunnerTest {
     }
 
     @Test
+    fun `a restore step only undoes a step that passed`() {
+        replies["tool_change"] = ToolResult.error("declined")
+        val run = runner().run(
+            recipe(
+                Call("change", "tool_change"),
+                restore = listOf(Call("undo", "tool_reset", after = "change"), Call("always", "tool_other")),
+            ),
+            emptyMap(),
+        )
+
+        assertEquals(listOf("tool_change", "tool_other"), calls.map { it.first })
+        assertEquals(StepStatus.SKIPPED, run.outcomes[1].status)
+    }
+
+    @Test
+    fun `restore runs inside the caller's restore wrapper`() {
+        var wrapped = false
+        val runner = RecipeRunner(
+            invoke = { tool, _ ->
+                calls += tool to JsonObject()
+                ToolResult.text(if (wrapped) "inside" else "outside")
+            },
+            pause = { true },
+            aroundRestore = { block ->
+                wrapped = true
+                block()
+                wrapped = false
+            },
+        )
+
+        val run = runner.run(recipe(Call("one", "tool_a"), restore = listOf(Call("undo", "tool_reset"))), emptyMap())
+
+        assertEquals(listOf("outside", "inside"), run.outcomes.map { it.detail })
+    }
+
+    @Test
+    fun `a whole-word expectation does not match a longer number`() {
+        val expectation = Expectation.ContainsWord("Job 4")
+
+        assertFalse(expectation.matches("Job 42 — Service\nJob 4545 — Service", "Job 4"))
+        assertTrue(expectation.matches("Job 42 — Service\nJob 4 (namespace x) — Service", "Job 4"))
+    }
+
+    @Test
     fun `restore can be skipped on request`() {
         val recipe = recipe(Call("one", "tool_a"), restore = listOf(Call("undo", "tool_reset")))
         val run = runner().run(recipe, emptyMap(), restore = false)

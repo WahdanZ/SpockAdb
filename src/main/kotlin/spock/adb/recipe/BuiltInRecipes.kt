@@ -15,6 +15,8 @@ object BuiltInRecipes {
     /** Enough of the app's log to show the job ran, not so much it buries it. */
     private const val LOGCAT_LINES = 40
 
+    private const val FORCE_DOZE = "Force the device into deep Doze"
+
     private val packageName = RecipeParam(
         "packageName",
         "The app under test. Defaults to the open project's application ID.",
@@ -114,7 +116,8 @@ object BuiltInRecipes {
         title = "Run a background job in Doze",
         description = "Force the device into deep Doze, run one of the app's scheduled jobs now, then take " +
             "the device out of Doze again. Forcing Doze affects every app, so the developer is asked to " +
-            "confirm it, and the restore step runs even when a step fails.",
+            "confirm it. Once Doze is forced, the restore step runs even when a later step fails or the run " +
+            "is cancelled.",
         params = listOf(
             RecipeParam("jobId", "The job to run, as android_get_scheduled_jobs reports it.", required = true),
             RecipeParam("namespace", "The job's namespace, if it has one. Found automatically when omitted."),
@@ -125,9 +128,9 @@ object BuiltInRecipes {
                 "The job is scheduled",
                 "android_get_scheduled_jobs",
                 mapOf("packageName" to "{packageName}"),
-                expect = Expectation.Contains("Job {jobId}"),
+                expect = Expectation.ContainsWord("Job {jobId}"),
             ),
-            Call("Force the device into deep Doze", "android_force_doze"),
+            Call(FORCE_DOZE, "android_force_doze"),
             Call(
                 "Run the job now",
                 "android_run_job_now",
@@ -152,6 +155,7 @@ object BuiltInRecipes {
                 "Take the device out of Doze",
                 "android_reset_device_conditions",
                 mapOf("packageName" to "{packageName}"),
+                after = FORCE_DOZE,
             ),
         ),
     )

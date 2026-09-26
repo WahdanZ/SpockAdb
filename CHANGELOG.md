@@ -9,7 +9,7 @@
   points — and reports every step as passed, failed, skipped or not run. Four ship with the plugin:
   `process_death`, `deep_link`, `restart_keeps_state` and `job_in_doze`. A failed step stops the
   recipe unless it is marked to continue, and restore steps — taking the device out of Doze — run
-  afterwards regardless. Each step is an ordinary tool call: it respects the tool switches, a
+  afterwards, after a cancel too, whenever the step they undo went through. Each step is an ordinary tool call: it respects the tool switches, a
   destructive step still asks you, and it shows in the Activity tab and the Debug Timeline under
   the client `recipe:<id>`. `android_list_recipes` describes each recipe and its parameters. The
   sample app's **Debug Recipes** screen is a fixture for all four.

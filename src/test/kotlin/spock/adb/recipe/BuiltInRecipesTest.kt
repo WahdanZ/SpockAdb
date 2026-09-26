@@ -44,6 +44,9 @@ class BuiltInRecipesTest {
             val known = recipe.params.map { it.name }.toMutableSet()
             (recipe.steps + recipe.restore).forEach { step ->
                 step.onlyIf?.let { assertTrue(it in known, "${recipe.id}: onlyIf '$it' is not a parameter") }
+                step.after?.let { title ->
+                    assertTrue(recipe.steps.any { it.title == title }, "${recipe.id}: after '$title' is not a step")
+                }
                 references(step).forEach {
                     assertTrue(it in known, "${recipe.id}: '${step.title}' refers to unknown '$it'")
                 }
