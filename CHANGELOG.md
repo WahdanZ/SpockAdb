@@ -8,7 +8,9 @@
   Compose…** opens an editor for the data pairs and an optional title and body, and hands the
   message straight to the app's Firebase Messaging receiver — no web console, no registration
   token, no waiting on the network. Send it to the selected device or to every connected device
-  at once, and save payloads per project so "order shipped" is one pick next time. The result
+  at once, and save payloads per project so "order shipped" is one pick next time. **Paste JSON…**
+  fills the editor from what you already have — an FCM HTTP v1 or legacy request body, or a plain
+  data payload — with nested values sent as their JSON. The result
   says, per device, whether it was **accepted** or **refused**, never just "sent". No root is
   needed: the receiver only accepts Google Play services or the app itself, so the message is
   sent as the app, which works on any device — retail phones included — for a debuggable build.

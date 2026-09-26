@@ -1,8 +1,10 @@
 package spock.adb
 
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.ui.InputValidatorEx
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBLabel
@@ -15,11 +17,13 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import spock.adb.command.PushDelivery
 import spock.adb.command.PushMessage
+import spock.adb.command.PushMessageJson
 import spock.adb.command.ShellAccess
 import spock.adb.device.ConnectedDevice
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
+import java.awt.datatransfer.DataFlavor
 import java.awt.event.ActionEvent
 import javax.swing.Action
 import javax.swing.DefaultComboBoxModel
@@ -47,6 +51,9 @@ class PushMessageDialog(
     private val saved = ComboBox<String>()
     private val saveButton = JButton("Save as…")
     private val deleteButton = JButton("Delete")
+    private val pasteJsonButton = JButton("Paste JSON…").apply {
+        toolTipText = "Fill the title, body and data from an FCM message or a data payload in JSON"
+    }
 
     private val titleField = JBTextField().apply { emptyText.text = "Optional: makes it a notification message" }
     private val bodyField = JBTextField()
@@ -96,6 +103,7 @@ class PushMessageDialog(
         reloadSaved()
         saved.addActionListener { saved.selectedItem?.toString()?.let(::load) }
         saveButton.addActionListener { saveCurrent() }
+        pasteJsonButton.addActionListener { pasteJson() }
         deleteButton.addActionListener {
             saved.selectedItem?.toString()?.let { name ->
                 store.remove(name)
@@ -114,6 +122,7 @@ class PushMessageDialog(
             add(saved, BorderLayout.CENTER)
             add(
                 JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(GAP), 0)).apply {
+                    add(pasteJsonButton)
                     add(saveButton)
                     add(deleteButton)
                 },
@@ -224,7 +233,36 @@ class PushMessageDialog(
     }
 
     private fun load(name: String) {
-        val message = store.payloads().firstOrNull { it.name == name } ?: return
+        store.payloads().firstOrNull { it.name == name }?.let(::show)
+    }
+
+    /**
+     * Asks for JSON and fills the editor from it. The clipboard is offered first when it holds
+     * JSON, since pasting what was just copied from a backend or a console is the point. A parse
+     * error is shown under the text as it is typed, so a stray comma is fixed in place rather than
+     * after a round trip through an error dialog.
+     */
+    private fun pasteJson() {
+        val clipboard = CopyPasteManager.getInstance().getContents<String>(DataFlavor.stringFlavor)
+            ?.trim()?.takeIf { it.startsWith("{") }
+        val validator = object : InputValidatorEx {
+            override fun getErrorText(inputString: String): String? =
+                runCatching { PushMessageJson.parse(inputString) }.exceptionOrNull()?.message
+        }
+        val text = Messages.showMultilineInputDialog(
+            project,
+            "An FCM message ({\"message\": …} or {\"notification\": …, \"data\": …}), " +
+                "or a data payload. It replaces what the editor holds.",
+            "Paste Push Message JSON",
+            clipboard ?: EXAMPLE_JSON,
+            null,
+            validator,
+        ) ?: return
+        show(PushMessageJson.parse(text))
+        result.text = "Filled from JSON. Nothing sent yet."
+    }
+
+    private fun show(message: PushMessage) {
         stopEditing()
         titleField.text = message.title.orEmpty()
         bodyField.text = message.body.orEmpty()
@@ -267,6 +305,11 @@ class PushMessageDialog(
         const val RESULT_ROWS = 4
         const val TABLE_WIDTH = 460
         const val TABLE_HEIGHT = 160
+
+        const val EXAMPLE_JSON = """{
+  "notification": { "title": "Order shipped", "body": "Order 42 is on its way" },
+  "data": { "orderId": "42", "deepLink": "myapp://orders/42" }
+}"""
     }
 }
 
