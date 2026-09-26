@@ -63,6 +63,12 @@
                     id="Spock Logcat"
                     icon="AllIcons.Debugger.Console"
                     factoryClass="spock.adb.logcat.SpockLogcatToolWindow"/>
+        <!-- The screen in front of the developer: a tree wants height, beside the editor. -->
+        <toolWindow anchor="right"
+                    canCloseContents="false"
+                    id="Spock Screen"
+                    icon="AllIcons.General.InspectionsEye"
+                    factoryClass="spock.adb.screen.SpockScreenToolWindow"/>
         <!-- The device and app every Spock surface acts on, visible with every tool window hidden. -->
         <statusBarWidgetFactory id="SpockAdb.Context"
                                 implementation="spock.adb.context.SpockContextWidgetFactory"/>

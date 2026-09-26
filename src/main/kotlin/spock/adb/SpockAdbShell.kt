@@ -14,15 +14,13 @@ import spock.adb.backgroundwork.BackgroundWorkPanel
 import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
-import spock.adb.diagnostics.DiagnosePanel
 import spock.adb.home.HomePanel
-import spock.adb.logcat.SpockLogcatToolWindow
 import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerPanel
 import spock.adb.mcp.McpServerService
+import spock.adb.screen.SpockScreenToolWindow
 import spock.adb.storage.AppStoragePanel
 import spock.adb.ui.TabStrip
-import spock.adb.uitree.UiInspectorPanel
 import java.awt.BorderLayout
 import javax.swing.JPanel
 
@@ -59,19 +57,8 @@ class SpockAdbShell(
     private val home = HomePanel(project)
     private val storage = AppStoragePanel(project)
     private val commands = CommandCenterPanel(project)
-    private val uiInspector = UiInspectorPanel(project)
     private val backgroundWork = BackgroundWorkPanel(project)
     private val mcp = McpServerPanel(project)
-
-    /** Its quick actions lead into the other tabs, so it is handed the way there. */
-    private val diagnose = DiagnosePanel(
-        project,
-        inspectUi = {
-            tabs.select(UI_INSPECTOR_TAB)
-            uiInspector.captureNow()
-        },
-        viewRelatedLogs = { SpockLogcatToolWindow.open(project) { it.showRelatedErrors() } },
-    )
 
     /**
      * Built only when the tab is shown.
@@ -99,15 +86,13 @@ class SpockAdbShell(
     }
 
     init {
-        listOfNotNull(diagnose, storage, commands, uiInspector, backgroundWork, mcp, assistant)
+        listOfNotNull(storage, commands, backgroundWork, mcp, assistant)
             .forEach { Disposer.register(parentDisposable, it) }
         Disposer.register(parentDisposable) { disposed = true }
 
         tabs.addTab(HOME_TAB, home)
-        tabs.addTab(DIAGNOSE_TAB, diagnose)
         tabs.addTab(STORAGE_TAB, storage)
         tabs.addTab("Commands", commands)
-        tabs.addTab(UI_INSPECTOR_TAB, uiInspector)
         tabs.addTab(BACKGROUND_WORK_TAB, backgroundWork)
         tabs.addTab("MCP Server", mcp)
         assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
@@ -141,11 +126,8 @@ class SpockAdbShell(
     fun start(controller: AdbController) {
         this.controller = controller
         home.attach(controller)
-        home.onDiagnose = { diagnoseCurrentScreen() }
-        home.onCopyScreenForAi = {
-            tabs.select(DIAGNOSE_TAB)
-            diagnose.diagnose(thenCopy = true)
-        }
+        home.onDiagnose = { SpockScreenToolWindow.diagnose(project) }
+        home.onCopyScreenForAi = { SpockScreenToolWindow.diagnose(project, thenCopy = true) }
         home.onBackgroundWork = { tabs.select(BACKGROUND_WORK_TAB) }
 
         controller.onResult { result -> statusBar.show(result) }
@@ -173,10 +155,8 @@ class SpockAdbShell(
     private fun selectDevice(device: ConnectedDevice?) {
         selectedDevice = device
         home.setDevice(device)
-        diagnose.setDevice(device)
         storage.setDevice(device)
         commands.setDevice(device)
-        uiInspector.setDevice(device)
         backgroundWork.setDevice(device)
         refreshAgentTarget()
     }
@@ -185,14 +165,7 @@ class SpockAdbShell(
     private fun selectApp(packageName: String) {
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
-        diagnose.setApp(packageName)
         home.setApp()
-    }
-
-    /** Brings the Diagnose tab forward and runs it: the Diagnose Current Screen action. */
-    fun diagnoseCurrentScreen() {
-        tabs.select(DIAGNOSE_TAB)
-        diagnose.diagnose()
     }
 
     private fun prefillAssistant(prompt: String) {
@@ -271,7 +244,5 @@ class SpockAdbShell(
         private const val BACKGROUND_WORK_TAB = "Background Work"
         private const val HOME_TAB = "Home"
         private const val STORAGE_TAB = "Storage"
-        private const val DIAGNOSE_TAB = "Diagnose"
-        private const val UI_INSPECTOR_TAB = "UI Inspector"
     }
 }
