@@ -76,6 +76,7 @@
         <activity android:name=".ViewsInspectorActivity" android:exported="false" />
         <activity android:name=".background.BackgroundWorkActivity" android:exported="false" />
         <activity android:name=".ProcessDeathActivity" android:exported="false" />
+        <activity android:name=".PushActivity" android:exported="false" />
 
         <service
             android:name=".background.SampleJobService"
@@ -83,5 +84,16 @@
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <receiver android:name=".background.AlarmReceiver" android:exported="false" />
+
+        <!-- Push messages: guarded like Firebase Messaging's receiver, so shell is refused
+             unless it is root (`adb root` on an emulator image without the Play Store). -->
+        <receiver
+            android:name=".PushReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

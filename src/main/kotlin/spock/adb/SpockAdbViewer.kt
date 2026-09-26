@@ -83,6 +83,7 @@ class SpockAdbViewer(
     private val openDeepLinkButton = JButton("Open")
 
     private val httpProxyRow = HttpProxyRow(project, GAP)
+    private val pushMessageRow = PushMessageRow(project, GAP)
 
     /** Kept only so the hidden, unimplemented "connect over IP" control still resolves. */
     private val adbWifi = JButton()
@@ -399,6 +400,7 @@ class SpockAdbViewer(
         deepLinkRow = fieldRow("Deep link", openDeepLinkTextField, openDeepLinkButton)
         add(inputRow)
         add(deepLinkRow)
+        add(pushMessageRow)
     }
 
     /**
@@ -553,6 +555,7 @@ class SpockAdbViewer(
         developerOptions.attach(adbController) { selectedDevice }
         appInfoCard.attach(adbController) { selectedDevice }
         httpProxyRow.attach(adbController) { selectedDevice }
+        pushMessageRow.attach(adbController) { selectedDevice }
         wifiRow.attach(adbController) { selectedDevice }
         mobileDataRow.attach(adbController) { selectedDevice }
     }
@@ -644,6 +647,7 @@ class SpockAdbViewer(
         httpProxyRow.isVisible = shown(SpockAction.HTTP_PROXY, PROXY_TERMS)
         inputRow.isVisible = shown(SpockAction.INPUT, INPUT_TERMS)
         deepLinkRow.isVisible = shown(SpockAction.DEEP_LINK, DEEP_LINK_TERMS)
+        pushMessageRow.isVisible = shown(SpockAction.PUSH_MESSAGE, PUSH_MESSAGE_TERMS)
 
         val searching = searchQuery.isNotBlank()
         // While searching, an empty Quick actions row is noise; its hint is not what was asked for.
@@ -651,7 +655,7 @@ class SpockAdbViewer(
         appInfoSection.setSectionVisible(shown(SpockAction.APP_INFO, APP_INFO_TERMS))
         developerSection.setSectionVisible(shown(SpockAction.DEVELOPER_OPTIONS, DEVELOPER_TERMS))
         networkSection.setSectionVisible(networkToggles.isVisible || httpProxyRow.isVisible)
-        sendSection.setSectionVisible(inputRow.isVisible || deepLinkRow.isVisible)
+        sendSection.setSectionVisible(inputRow.isVisible || deepLinkRow.isVisible || pushMessageRow.isVisible)
 
         // A match inside a collapsed section is a match the developer cannot see.
         val sections = allSections()
@@ -689,6 +693,7 @@ class SpockAdbViewer(
         const val PROXY_TERMS = "network http proxy host port charles proxyman mitmproxy"
         const val INPUT_TERMS = "send to device text input type keyboard"
         const val DEEP_LINK_TERMS = "send to device deep link url intent open"
+        const val PUSH_MESSAGE_TERMS = "send to device push message notification fcm firebase messaging payload"
         const val STORAGE_TERMS = "app storage shared preferences sharedpreferences datastore file editor"
     }
 }

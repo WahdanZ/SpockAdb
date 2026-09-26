@@ -6,6 +6,9 @@ import spock.adb.command.GetApplicationPermission
 import spock.adb.command.HttpProxy
 import spock.adb.command.Network
 import spock.adb.command.NetworkState
+import spock.adb.command.PushDelivery
+import spock.adb.command.PushMessage
+import spock.adb.command.ShellAccess
 import spock.adb.command.WifiStatus
 import spock.adb.device.ConnectedDevice
 import spock.adb.premission.ListItem
@@ -116,6 +119,16 @@ interface AdbController {
      * or with a failure when the device could not be read.
      */
     fun currentHttpProxy(device: IDevice, block: (read: Result<HttpProxy?>) -> Unit)
+
+    /**
+     * Hands [message] to the selected app's messaging receiver on each of [devices], and
+     * reports each device's verdict: one refusal must not hide the others' deliveries.
+     * [onDone] runs on the EDT with one [PushDelivery] per device, in the order given.
+     */
+    fun sendPushMessage(message: PushMessage, devices: List<ConnectedDevice>, onDone: (List<PushDelivery>) -> Unit)
+
+    /** Whether each device can deliver push messages to the selected app, before sending. Answered on the EDT. */
+    fun pushShellAccess(devices: List<ConnectedDevice>, block: (Map<ConnectedDevice, ShellAccess>) -> Unit)
 }
 
 /**

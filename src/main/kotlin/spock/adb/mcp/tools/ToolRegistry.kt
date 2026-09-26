@@ -75,6 +75,7 @@ object ToolRegistry {
         WaitForElementTool(),
         // Interaction
         OpenDeepLinkTool(),
+        SendPushMessageTool(),
         InputTextTool(),
         TapTool(),
         SwipeTool(),

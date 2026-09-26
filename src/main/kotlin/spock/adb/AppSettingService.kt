@@ -129,6 +129,7 @@ enum class SpockAction {
     DEEP_LINK,
     HTTP_PROXY,
     APP_STORAGE,
+    PUSH_MESSAGE,
 }
 
 /**

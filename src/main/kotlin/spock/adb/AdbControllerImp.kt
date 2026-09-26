@@ -726,6 +726,54 @@ class AdbControllerImp(
         }
     }
 
+    override fun sendPushMessage(
+        message: PushMessage,
+        devices: List<ConnectedDevice>,
+        onDone: (List<PushDelivery>) -> Unit,
+    ) {
+        execute {
+            // Each device answers for itself: an app missing from one device, or a device that
+            // drops mid-send, is that device's failure, not the whole send's.
+            val deliveries = devices.map { target ->
+                try {
+                    SendPushMessageCommand()
+                        .execute(getApplicationID(target.device), message, project, target.device)
+                        .copy(device = target.info.displayName)
+                } catch (e: ProcessCanceledException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn("Could not send a push message to ${target.device.serialNumber}", e)
+                    PushDelivery(
+                        device = target.info.displayName,
+                        packageName = selectedApp.orEmpty(),
+                        outcome = PushDelivery.Outcome.FAILED,
+                        access = ShellAccess.UNKNOWN,
+                        detail = e.message ?: e.javaClass.simpleName,
+                    )
+                }
+            }
+            val summary = deliveries.joinToString("\n") { it.message }
+            if (deliveries.all { it.accepted }) showSuccess(summary) else showError(summary)
+            onEdt { onDone(deliveries) }
+        }
+    }
+
+    override fun pushShellAccess(devices: List<ConnectedDevice>, block: (Map<ConnectedDevice, ShellAccess>) -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val access = devices.associateWith { target ->
+                try {
+                    target.device.pushShellAccess(getApplicationID(target.device))
+                } catch (e: ProcessCanceledException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn("Could not read shell access on ${target.device.serialNumber}", e)
+                    ShellAccess.UNKNOWN
+                }
+            }
+            onEdt { block(access) }
+        }
+    }
+
     override fun dispose() {
         AndroidDebugBridge.removeDeviceChangeListener(this)
         deviceObservers.clear()
