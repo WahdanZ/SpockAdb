@@ -49,9 +49,12 @@ class CustomizeSpockActionsAction : AnAction(), DumbAware {
         val settings = AppSettingService.getInstance()
         val all = SpockActionsPopup.allActionIds()
         val pinned = settings.pinnedActionIds().toMutableList()
-        val items = all.map { id -> ListItem(SpockActionsPopup.label(id), id in pinned) }
-        CheckBoxDialog(items) { item ->
-            val id = all[items.indexOf(item)]
+        // Keyed by the item instance: ListItem is a data class whose equality includes its
+        // mutable check state, and two actions can share a label, so a value lookup can land on
+        // the wrong action.
+        val entries = all.map { id -> id to ListItem(SpockActionsPopup.label(id), id in pinned) }
+        CheckBoxDialog(entries.map { it.second }) { item ->
+            val id = entries.firstOrNull { it.second === item }?.first ?: return@CheckBoxDialog
             if (item.isSelected) pinned += id else pinned -= id
             // Kept in the order of the full list, so the pins read the way the menu does.
             settings.savePinnedActionIds(all.filter { it in pinned })
