@@ -4,6 +4,21 @@
 
 ### Added
 
+- **Send a test push message to the app over ADB.** Under **Send to device**, **Push message →
+  Compose…** opens an editor for the data pairs and an optional title and body, and hands the
+  message straight to the app's Firebase Messaging receiver — no web console, no registration
+  token, no waiting on the network. Send it to the selected device or to every connected device
+  at once, and save payloads per project so "order shipped" is one pick next time. **Paste JSON…**
+  fills the editor from what you already have — an FCM HTTP v1 or legacy request body, or a plain
+  data payload — with nested values sent as their JSON, and **Edit as JSON…** opens the message as
+  one JSON document, for the edits a table is slow at. The result
+  says, per device, whether it was **accepted** or **refused**, never just "sent". No root is
+  needed: the receiver only accepts Google Play services or the app itself, so the message is
+  sent as the app, which works on any device — retail phones included — for a debuggable build.
+  A release build needs `adb root`, and the editor says before you send which devices can
+  receive and why the others cannot. Agents get the same thing as
+  `android_send_push_message`. The sample app's **Push messages** screen shows exactly what
+  arrived.
 - **`android_simulate_process_death`: process death for agents, without a confirmation.** It
   backgrounds the app, kills its process and relaunches it the way the launcher does, so the top
   screen comes back from saved instance state, and it reports the pid before and after. It is the

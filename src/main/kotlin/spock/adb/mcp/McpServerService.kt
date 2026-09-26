@@ -86,9 +86,23 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
      * whichever runs first resolves it, and [McpTokenStore.current] holds the lock for both.
      */
     private fun sessionToken(): String = McpTokenStore.current(
-        legacy = { settings.legacyToken },
-        onAdopted = { settings.legacyToken = "" },
+        legacy = { pendingLegacyToken.ifBlank { settings.legacyToken } },
+        onAdopted = {
+            pendingLegacyToken = ""
+            settings.legacyToken = ""
+        },
     )
+
+    /**
+     * A token an earlier version left in the settings file, taken out of [settings] by
+     * [loadState] and waiting for [sessionToken] to move it into the keychain.
+     *
+     * Held here rather than migrated in [loadState]: that runs on the EDT when the tool window
+     * opens, and the keychain write tripped `SlowOperations`. Whoever resolves the token first —
+     * the pooled migration or a server start — adopts it, since both read it from here.
+     */
+    @Volatile
+    private var pendingLegacyToken: String = ""
 
     /** Where the stdio bridge is listening, or null when it could not be started. */
     val stdioEndpoint: McpBridgeServer.Endpoint? get() = bridge?.endpoint
@@ -103,18 +117,23 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
         settings = state
         disabledToolNames.set(state.disabledTools.toSet())
         if (state.legacyToken.isNotBlank()) {
-            // A migrated token must clear the plain-text copy before loadState returns, or a
-            // settings save that races this startup work can write it straight back to disk.
-            sessionToken()
+            // The plain-text copy must be gone before loadState returns, or a settings save that
+            // races this startup work writes it straight back to disk. It moves to memory now and
+            // into the keychain below, off this thread.
+            pendingLegacyToken = state.legacyToken
+            settings.legacyToken = ""
         }
-        // Off the calling thread: this runs during IDE startup, the history file can hold
-        // thousands of records, and the token warm-up still reads the OS keychain when there is
-        // no legacy plaintext token to migrate synchronously. Nothing waits on either — the
-        // activity view shows what has arrived so far, and a call recorded while it is in flight
-        // is kept rather than overwritten.
+        // Off the calling thread: this can run on the EDT when the tool window opens, the history
+        // file can hold thousands of records, and the token warm-up reads the OS keychain. Nothing
+        // waits on either — the activity view shows what has arrived so far, and a call recorded
+        // while it is in flight is kept rather than overwritten.
         ApplicationManager.getApplication().executeOnPooledThread {
-            if (state.legacyToken.isBlank()) {
+            try {
                 sessionToken()
+            } finally {
+                // Still pending means the keychain did not take it. The plain-text copy goes back,
+                // so the next startup retries rather than minting a token no client holds.
+                pendingLegacyToken.takeIf { it.isNotBlank() }?.let { settings.legacyToken = it }
             }
             ensureHistoryLoaded()
         }

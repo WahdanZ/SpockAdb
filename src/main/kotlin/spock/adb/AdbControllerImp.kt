@@ -8,6 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -198,8 +199,9 @@ class AdbControllerImp(
             showError("No activities found")
             return
         }
-        JBPopupFactory.getInstance()
-            .createListPopupBuilder(ActivityStackList(rows))
+        // The builder over the list itself, not createPopupChooserBuilder(rows): that one builds its
+        // own JList, and the task headings and badges come from ActivityStackList's renderer.
+        PopupChooserBuilder(ActivityStackList(rows))
             .setTitle("Activity Stack")
             .setItemChosenCallback(
                 com.intellij.util.Consumer { row: ActivityStackRow ->
@@ -725,6 +727,54 @@ class AdbControllerImp(
                 Result.failure(e)
             }
             onEdt { block(read) }
+        }
+    }
+
+    override fun sendPushMessage(
+        message: PushMessage,
+        devices: List<ConnectedDevice>,
+        onDone: (List<PushDelivery>) -> Unit,
+    ) {
+        execute {
+            // Each device answers for itself: an app missing from one device, or a device that
+            // drops mid-send, is that device's failure, not the whole send's.
+            val deliveries = devices.map { target ->
+                try {
+                    SendPushMessageCommand()
+                        .execute(getApplicationID(target.device), message, project, target.device)
+                        .copy(device = target.info.displayName)
+                } catch (e: ProcessCanceledException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn("Could not send a push message to ${target.device.serialNumber}", e)
+                    PushDelivery(
+                        device = target.info.displayName,
+                        packageName = selectedApp.orEmpty(),
+                        outcome = PushDelivery.Outcome.FAILED,
+                        access = ShellAccess.UNKNOWN,
+                        detail = e.message ?: e.javaClass.simpleName,
+                    )
+                }
+            }
+            val summary = deliveries.joinToString("\n") { it.message }
+            if (deliveries.all { it.accepted }) showSuccess(summary) else showError(summary)
+            onEdt { onDone(deliveries) }
+        }
+    }
+
+    override fun pushShellAccess(devices: List<ConnectedDevice>, block: (Map<ConnectedDevice, ShellAccess>) -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val access = devices.associateWith { target ->
+                try {
+                    target.device.pushShellAccess(getApplicationID(target.device))
+                } catch (e: ProcessCanceledException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn("Could not read shell access on ${target.device.serialNumber}", e)
+                    ShellAccess.UNKNOWN
+                }
+            }
+            onEdt { block(access) }
         }
     }
 

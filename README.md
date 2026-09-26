@@ -15,7 +15,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 65 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into one shared tool window that keeps a selected device and app as the active target across Device, Storage, Logcat, Commands, UI Inspector, and Background Work — plus a built-in MCP server exposing 66 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -74,6 +74,7 @@ Spock ADB brings those workflows into **one shared tool window** and keeps the s
 | Inspect UI hierarchy       | `uiautomator dump` + XML inspection      | **Visual UI Inspector**           |
 | Check accessibility        | Manual inspection                        | **Built-in accessibility checks** |
 | Send a deep link           | `adb shell am start ...`                 | **Open Deep Link**                |
+| Send a test push message   | web console, token, payload form         | **Push message → Compose…**       |
 | Change HTTP proxy          | `settings put/get ...`                   | **Proxy controls + verification** |
 | Run ADB commands           | Leave the IDE for Terminal               | **ADB Command Center**            |
 | Give AI access to Android  | Custom scripts / shell access            | **Structured MCP tools**          |
@@ -91,7 +92,7 @@ Workflows that normally require **several commands, copy/paste operations, PID l
 
 Control the selected app and device without memorizing ADB commands.
 
-**Activity & Fragment navigation · Back stack · Restart · Force stop · Debugger · Process death · Permissions · Connectivity · Proxy · Developer options · Deep links**
+**Activity & Fragment navigation · Back stack · Restart · Force stop · Debugger · Process death · Permissions · Connectivity · Proxy · Developer options · Deep links · Push messages**
 
 <p align="center">
   <img src="images/devices.png" alt="Spock ADB device and app controls" width="88%">
@@ -221,7 +222,7 @@ Run a supported job on demand instead of waiting for the system to trigger it, a
 
 Spock ADB includes a built-in **MCP server** for tools such as Claude Code, Claude Desktop, Cursor, and other MCP clients.
 
-Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **65 structured Android debugging tools**.
+Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **66 structured Android debugging tools**.
 
 Agents can inspect things such as:
 

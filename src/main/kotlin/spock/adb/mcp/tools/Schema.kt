@@ -63,6 +63,17 @@ object Schema {
             if (required) this.required.add(name)
         }
 
+        /** An object of string values under any keys, such as a push message's data payload. */
+        fun stringMap(name: String, description: String, required: Boolean = false) {
+            val node = JsonObject().apply {
+                addProperty("type", "object")
+                addProperty("description", description)
+                add("additionalProperties", JsonObject().apply { addProperty("type", "string") })
+            }
+            properties.add(name, node)
+            if (required) this.required.add(name)
+        }
+
         fun enumeration(name: String, description: String, values: List<String>, required: Boolean = false) {
             val node = JsonObject().apply {
                 addProperty("type", "string")

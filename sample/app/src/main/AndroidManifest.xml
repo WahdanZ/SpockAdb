@@ -77,6 +77,7 @@
         <activity android:name=".ViewsInspectorActivity" android:exported="false" />
         <activity android:name=".background.BackgroundWorkActivity" android:exported="false" />
         <activity android:name=".ProcessDeathActivity" android:exported="false" />
+        <activity android:name=".PushActivity" android:exported="false" />
 
         <service
             android:name=".background.SampleJobService"
@@ -84,5 +85,17 @@
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <receiver android:name=".background.AlarmReceiver" android:exported="false" />
+
+        <!-- Push messages: guarded like Firebase Messaging's receiver. This debug build is sent to
+             as the app itself (run-as), with no root; a release build is refused unless the
+             shell is root. -->
+        <receiver
+            android:name=".PushReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

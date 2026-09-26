@@ -281,12 +281,12 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-65 tools, in three levels.
+66 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
 | **Read-only** (27) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions` |
-| **Safe action** (30) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts` |
+| **Safe action** (31) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
 Rules that hold regardless of what a client asks for:
@@ -828,6 +828,24 @@ worse than reporting the failure. An IPv6 host must be bracketed, for example `[
 
 It does not capture everything: apps that use their own HTTP stack, or that pin
 certificates, will not route through it.
+
+### `android_send_push_message`
+
+Hands a push message to the app's Firebase Messaging receiver over ADB, the way Google Play
+services would, with no server and no registration token. `data` is an object of string pairs;
+a `title` or `body` makes it a notification message. `packageName` defaults to the open
+project's application ID. It is a safe action: nothing persistent on the device changes, and it
+gives an agent the loop *send → wait → assert* against `android_get_logcat` or the UI tree.
+
+The receiver is guarded by a signature permission only Google Play services holds, so a plain
+`adb shell am broadcast` is refused everywhere. Android waives that check when the sender is the
+receiving app itself, so the message is sent **as the app**, through `run-as`: no root, and it
+works on retail phones and Play Store emulators, as long as the installed build is debuggable. A
+release build needs a root shell instead (`adb root`, on debuggable images). `am broadcast`
+reports "completed" whether or not the receiver heard it, so the verdict comes from the device's
+broadcast history (and its log, before Android 14), and the result says which it was —
+accepted, refused (with the way out that fits that device), no receiver in the app, or sent but
+unconfirmed. Only accepted is a success; everything else is an error result.
 
 ### App storage tools
 

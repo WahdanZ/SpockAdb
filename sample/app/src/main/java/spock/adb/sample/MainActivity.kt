@@ -26,6 +26,7 @@ class MainActivity : AppCompatActivity() {
             open("Activity stack — Current Activity, Activity Stack", StackActivity::class.java)
             open("Fragments — Current Fragment, back stack", NavigationActivity::class.java)
             open("Deep links — Open Deep Link", DeepLinkActivity::class.java)
+            open("Push messages — Send push message", PushActivity::class.java)
             open("Permissions — Grant / Revoke", PermissionsActivity::class.java)
             open("Process death, Don't keep activities, Restart", ProcessDeathActivity::class.java)
             open("Network — HTTP proxy, Wi-Fi, mobile data", NetworkActivity::class.java)
