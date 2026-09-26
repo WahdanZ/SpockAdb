@@ -4,6 +4,20 @@
 
 ### Added
 
+- **Debug Timeline: what happened just before the bug, in one place.** The new **Timeline** tab
+  records events from across Spock in time order: the selected app's activity lifecycle, its
+  fragments after each resume, process starts and deaths, crashes and ANRs, and the warnings and
+  errors its own process logs — a stack trace is one row, not forty — alongside actions run from
+  the tool window and the Tools menu, Storage writes, **Run Now**, device-condition changes,
+  devices connecting and disconnecting, agent tool calls, and markers you add with **Add Marker**.
+  Filter by category and severity; select an event for its full detail and a link to the tab it
+  came from; select two events and **Copy Range** or **Export…** everything between them. Device
+  log stamps are moved onto the host's clock with an offset measured from a marker line, so an
+  action and the log line it caused land in the order they happened. The history keeps the latest
+  5,000 events and says when older ones were dropped. Device events come from a second, narrowed
+  logcat stream that runs while a device and app are selected; **Record device events** turns it
+  off. Agents read the same list with the read-only `android_get_debug_timeline`. The sample app's
+  **Timeline** screen produces each kind of event, and a crash to reproduce.
 - **Send a test push message to the app over ADB.** Under **Send to device**, **Push message →
   Compose…** opens an editor for the data pairs and an optional title and body, and hands the
   message straight to the app's Firebase Messaging receiver — no web console, no registration

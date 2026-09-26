@@ -58,6 +58,8 @@ object ToolRegistry {
         DebugContextTool(),
         // The same report with every section and a screenshot: the Diagnose tab, for agents.
         DiagnoseCurrentScreenTool(),
+        // What happened before now, from every part of Spock, on one clock
+        GetDebugTimelineTool(),
         // UI inspection — semantics-first, so it covers Views, Compose and hybrid screens
         TakeScreenshotTool(),
         GetUiTreeTool(),
