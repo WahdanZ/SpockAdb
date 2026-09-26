@@ -48,12 +48,15 @@ class GetDebugTimelineTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val service = DebugTimelineService.getInstance(context.requireProject())
-        return answer(service.timeline, service.recordingTarget, arguments)
+        val recording = service.recordingTarget
+            ?: if (service.recordingDevice) NOT_FOLLOWING else SWITCHED_OFF
+        return answer(service.timeline, recording, arguments)
     }
 
     internal fun answer(
         timeline: DebugTimeline,
-        recordingTarget: String?,
+        /** What device events come from now, or why none do. */
+        recording: String,
         arguments: JsonObject,
         nowMs: Long = System.currentTimeMillis(),
     ): ToolResult {
@@ -82,7 +85,7 @@ class GetDebugTimelineTool : AdbTool {
         return ToolResult.text(
             buildString {
                 append("Device recording: ")
-                append(recordingTarget ?: "off — no device and app selected in the Spock ADB tool window")
+                append(recording)
                 append(".\n")
                 append(matching.size).append(" event(s) in the last ").append(seconds).append("s")
                 if (shown.size < matching.size) append(", the latest ").append(shown.size).append(" shown")
@@ -102,6 +105,9 @@ class GetDebugTimelineTool : AdbTool {
         const val MAX_SECONDS = 86_400
         const val DEFAULT_LIMIT = 200
         const val MAX_LIMIT = 2_000
+        const val SWITCHED_OFF = "off — Record device events is switched off in the Timeline tab"
+        const val NOT_FOLLOWING = "off — no device and app selected in the Spock ADB tool window, " +
+            "or the device's log stream ended (see the latest Device event)"
         val CATEGORY_NAMES = TimelineCategory.entries.joinToString { it.name.lowercase() }
     }
 }

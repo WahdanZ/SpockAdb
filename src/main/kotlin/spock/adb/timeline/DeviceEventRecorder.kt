@@ -53,8 +53,12 @@ class DeviceEventRecorder(
     private var clockAbandoned = false
     private var startedAtMs = 0L
     private var syncWrittenAtMs: Long? = null
+    private var syncWriteStartedAtMs: Long? = null
     private val waiting = ArrayList<Pair<LogcatEntry, Long>>()
     private var lastFragments: String? = null
+
+    /** Bumped for each resume; a read that finishes after a newer one was asked for is discarded. */
+    private var fragmentGeneration = 0L
     private var fragmentRead: ScheduledFuture<*>? = null
     private var replaySkipped = false
     private var droppedWaiting = 0
@@ -131,6 +135,7 @@ class DeviceEventRecorder(
             Thread.sleep(ATTACH_DELAY_MS)
             if (stopped) return
             val before = System.currentTimeMillis()
+            synchronized(lock) { syncWriteStartedAtMs = before }
             target.device.executeShellCommand(
                 "log -t $SYNC_TAG -p i ${ShellQuote.quote(nonce)}",
                 ShellOutputReceiver(),
@@ -169,7 +174,10 @@ class DeviceEventRecorder(
     }
 
     private fun syncClock(marker: LogcatEntry) {
-        val writtenAt = syncWrittenAtMs ?: System.currentTimeMillis()
+        // The marker usually arrives before the `log` command has returned. The line was written
+        // between the start of that command and now, so the middle of the two is the estimate.
+        val now = System.currentTimeMillis()
+        val writtenAt = syncWrittenAtMs ?: syncWriteStartedAtMs?.let { (it + now) / 2 } ?: now
         clock = DeviceClock.sync(marker.timestamp, writtenAt)
         if (clock == null) abandonClock() else releaseWaiting()
     }
@@ -219,15 +227,17 @@ class DeviceEventRecorder(
         if (event.category == TimelineCategory.ACTIVITY && event.title.endsWith(" resumed")) scheduleFragmentRead()
     }
 
+    /** Called with [lock] held. */
     private fun scheduleFragmentRead() {
         fragmentRead?.cancel(false)
+        val generation = ++fragmentGeneration
         fragmentRead = AppExecutorUtil.getAppScheduledExecutorService()
-            .schedule(::recordFragments, FRAGMENT_DELAY_MS, TimeUnit.MILLISECONDS)
+            .schedule({ recordFragments(generation) }, FRAGMENT_DELAY_MS, TimeUnit.MILLISECONDS)
     }
 
     // Best effort: a failed read loses one fragment snapshot, and says nothing wrong.
     @Suppress("TooGenericExceptionCaught")
-    private fun recordFragments() {
+    private fun recordFragments(generation: Long) {
         if (stopped) return
         val rows = try {
             readFragments(packageName).flatMap { it.flatten() }
@@ -236,9 +246,13 @@ class DeviceEventRecorder(
             return
         }
         val summary = rows.joinToString(" › ") { it.fragment.substringAfterLast('.') }
-        // The read can take seconds; the developer may have moved to another app meanwhile.
-        if (stopped || summary.isEmpty() || summary == lastFragments) return
-        lastFragments = summary
+        // The read can take seconds. Meanwhile the developer may have moved to another app, or another
+        // activity resumed and asked for a newer read, which `cancel(false)` could not stop this one for.
+        synchronized(lock) {
+            val superseded = stopped || generation != fragmentGeneration
+            if (superseded || summary.isEmpty() || summary == lastFragments) return
+            lastFragments = summary
+        }
         sink(
             TimelineEvent(
                 timeMs = System.currentTimeMillis(),

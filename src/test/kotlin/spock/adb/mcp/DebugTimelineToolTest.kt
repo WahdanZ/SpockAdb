@@ -54,7 +54,7 @@ class DebugTimelineToolTest {
             addProperty("minSeverity", "error")
             addProperty("includeDetails", false)
         }
-        val text = tool.answer(timeline, null, arguments, now).text()
+        val text = tool.answer(timeline, "off — Record device events is switched off", arguments, now).text()
 
         assertTrue(text.contains("FATAL EXCEPTION"))
         assertFalse(text.contains("Restarted app"))
@@ -65,7 +65,7 @@ class DebugTimelineToolTest {
     @Test
     fun `an unknown category is an error that lists the real ones`() {
         val arguments = JsonObject().apply { add("categories", JsonArray().apply { add("network") }) }
-        val result = tool.answer(timeline, null, arguments, now)
+        val result = tool.answer(timeline, "off — Record device events is switched off", arguments, now)
 
         assertTrue(result.isError)
         assertTrue(result.text().contains("app_lifecycle"))
@@ -74,7 +74,7 @@ class DebugTimelineToolTest {
     @Test
     fun `the limit keeps the most recent`() {
         val arguments = JsonObject().apply { addProperty("limit", 1) }
-        val text = tool.answer(timeline, null, arguments, now).text()
+        val text = tool.answer(timeline, "off — Record device events is switched off", arguments, now).text()
 
         assertTrue(text.contains("FATAL EXCEPTION"))
         assertFalse(text.contains("Restarted app"))
