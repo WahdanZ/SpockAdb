@@ -35,14 +35,16 @@ Spock ADB brings ADB workflows into the IDE and keeps one selected device and ap
 
 - [Stop jumping between tools](#stop-jumping-between-tools)
 - [Everything you need for Android debugging](#everything-you-need-for-android-debugging)
-  - [📱 Device Control](#device-control)
+  - [🏠 Home: the app, its screen and the device](#device-control)
+  - [🔔 Push messages](#push-messages)
   - [🗂 App Storage](#app-storage)
   - [📜 Logcat, without the noise](#logcat)
-  - [⌨️ ADB Command Center](#adb-command-center)
+  - [⌨️ Shell](#adb-command-center)
   - [🩺 Diagnose Current Screen](#diagnose)
   - [🕒 Debug Timeline](#debug-timeline)
-  - [🔍 UI Inspector](#ui-inspector)
-  - [🛠 Background Work](#background-work)
+  - [🔍 UI Tree](#ui-inspector)
+  - [⏱ Scheduler](#background-work)
+  - [⚡ Spock Actions](#spock-actions)
   - [🤖 Android debugging for AI agents](#ai-agents)
 - [Why use Spock ADB?](#why-use-spock-adb)
 - [Built for real debugging workflows](#built-for-real-debugging-workflows)
@@ -106,14 +108,31 @@ Workflows that normally require **several commands, copy/paste operations, PID l
 # Everything you need for Android debugging
 
 <a id="device-control"></a>
-### 📱 Device Control
+### 🏠 Home: the app, its screen and the device
 
-Control the selected app and device without memorizing ADB commands.
+The first tab of the **Spock ADB** window answers the questions you would otherwise run a command for, and puts the actions you use most in one row.
 
-**Activity & Fragment navigation · Back stack · Restart · Force stop · Debugger · Process death · Permissions · Connectivity · Proxy · Developer options · Deep links · Push messages**
+- **App** — version, process and UID, with **Restart**, **Attach debugger**, **Force stop** and **Process death** in a toolbar. **Clear cache**, **Clear data** and **Uninstall** sit behind **⋯**, never one click from Restart.
+- **This screen** — the resumed activity and the app's fragments, read live, as links to their source; **App back stack**, **All activities**, **Diagnose**, and **Copy screen for AI**, which diagnoses and copies the redacted report in one click.
+- **Permissions** — how many are granted, with **Manage…**, **Grant all** and **Revoke all…**.
+- **Device** — Wi-Fi and mobile data, HTTP proxy, developer options (Don't keep activities, Show taps, layout bounds, animation scales), text input, deep links and push messages. Folded until you need it.
+
+The device and app it acts on are the ones in the status bar: they follow Android Studio's run target by default, and a click changes them for every Spock window at once.
 
 <p align="center">
   <img src="images/home.png" alt="Spock ADB Home: app, lifecycle actions and current screen" width="45%">
+</p>
+
+---
+
+<a id="push-messages"></a>
+### 🔔 Push messages
+
+**Home › Device › Push message → Compose…** sends a test FCM message straight to the app's messaging receiver over ADB — no web console, no registration token. Add data pairs, or a title and body for a notification message; paste an FCM request or edit it as JSON; save payloads per project; send to one device or all of them. The result says, per device, whether the message was **accepted** or **refused**.
+
+<p align="center">
+  <img src="images/push-message.png" alt="Send Push Message editor: title, body, data pairs, target device and the accepted result" width="55%">
+  <img src="images/push-notification.png" alt="The notification the sample app shows for the pushed message" width="24%">
 </p>
 
 ---
@@ -140,7 +159,7 @@ Changes are checked, written, and read back instead of assuming the command work
 <a id="logcat"></a>
 ### 📜 Logcat, without the noise
 
-Logcat starts with the **selected app**, not the entire device.
+**Spock Logcat** docks at the bottom of the IDE, beside the actions that produce the log, and starts with the **selected app**, not the entire device.
 
 Choose the scope you actually need:
 
@@ -156,15 +175,15 @@ No manual PID lookup.
 No giant `adb logcat | grep ...` commands.
 
 <p align="center">
-  <img src="images/logcat.png" alt="Focused Logcat inside Spock ADB" width="88%">
+  <img src="images/logcat.png" alt="Spock Logcat streaming the selected app, with a log line open in the details pane" width="88%">
 </p>
 
 ---
 
 <a id="adb-command-center"></a>
-### ⌨️ ADB Command Center
+### ⌨️ Shell
 
-Still need the shell?
+Still need the shell? The **Shell** tab of the Spock ADB window is an ADB command center.
 
 Run ADB commands inside the IDE with:
 
@@ -173,7 +192,7 @@ Run ADB commands inside the IDE with:
 You keep the power of ADB without constantly opening another terminal.
 
 <p align="center">
-  <img src="images/command-center.png" alt="ADB Command Center" width="88%">
+  <img src="images/command-center.png" alt="The Shell tab: adb shell command, history, favourites and output" width="88%">
 </p>
 
 ---
@@ -181,18 +200,22 @@ You keep the power of ADB without constantly opening another terminal.
 <a id="diagnose"></a>
 ### 🩺 Diagnose Current Screen
 
-One press reads everything about the screen in front of you, for the selected device and app:
+**Spock Screen › Diagnose** — or **Diagnose** and **Copy screen for AI** on Home — reads everything about the screen in front of you, for the selected device and app:
 
 **Current activity, activity stack and fragments · Screenshot · Likely problems from Logcat · UI and accessibility summary · Process state · Runtime permissions · Jobs and alarms · Doze, standby bucket, battery and charger**
 
 Problems come first, ranked; a part that cannot be read is reported in place and never costs you the rest. From the summary go straight to **Open Activity**, **Open Fragment**, **Inspect UI** or **View Related Logs**, or **Copy for AI**. Agents get the same report from `android_diagnose_current_screen`.
+
+<p align="center">
+  <img src="images/diagnose.png" alt="Spock Screen › Diagnose: likely problems first, then screen, process, logs, UI, permissions, background work and device state" width="70%">
+</p>
 
 ---
 
 <a id="debug-timeline"></a>
 ### 🕒 Debug Timeline
 
-What happened just before the bug, in one list and on one clock:
+**Spock Logcat › Timeline** — what happened just before the bug, in one list and on one clock:
 
 **Activity lifecycle and fragments · Process starts, deaths, crashes and ANRs · The app's warnings and errors · Actions run from Spock · Storage writes, jobs run and device-condition changes · Devices connecting · Agent tool calls · Your own markers**
 
@@ -201,9 +224,9 @@ Filter by category and severity, select an event for its detail and the tab it c
 ---
 
 <a id="ui-inspector"></a>
-### 🔍 UI Inspector
+### 🔍 UI Tree
 
-Inspect the UI currently running on the device.
+**Spock Screen › UI Tree** inspects the UI currently running on the device.
 
 Supports:
 
@@ -222,15 +245,15 @@ Spock ADB can also detect common accessibility problems such as:
 **Missing labels · Duplicate labels · Touch targets below 48dp**
 
 <p align="center">
-  <img src="images/ui-inspector.png" alt="View and Compose UI inspector" width="88%">
+  <img src="images/ui-inspector.png" alt="Spock Screen › UI Tree: a Compose screen with its test tags, text and interaction state" width="50%">
 </p>
 
 ---
 
 <a id="background-work"></a>
-### 🛠 Background Work
+### ⏱ Scheduler
 
-See what's actually scheduled to run on the device.
+The **Scheduler** tab shows what's actually scheduled to run on the device.
 
 Inspect:
 
@@ -241,7 +264,18 @@ Run a supported job on demand instead of waiting for the system to trigger it, a
 **Doze · App Standby buckets · Battery level (presets or slider) · Per-charger AC/USB/wireless toggles**
 
 <p align="center">
-  <img src="images/background_task.png" alt="Background Work: scheduled jobs, alarms, and device conditions — Doze, standby buckets, battery level presets and slider, per-charger toggles" width="88%">
+  <img src="images/background_task.png" alt="Scheduler: scheduled jobs, alarms, and device conditions — Doze, standby buckets, battery level presets and slider, per-charger toggles" width="88%">
+</p>
+
+---
+
+<a id="spock-actions"></a>
+### ⚡ Spock Actions
+
+Every Spock ADB action in one searchable popup, from the main toolbar or a shortcut you bind in the keymap: your pinned actions first, then the last five you used, then all of them — restart, clear data, process death, the developer-option toggles, open a deep link, send text, copy the screen for AI. They act on the device and app in the status bar, with every tool window closed.
+
+<p align="center">
+  <img src="images/spock-actions.png" alt="Spock Actions popup: pinned, recent and all actions" width="36%">
 </p>
 
 ---
@@ -263,10 +297,10 @@ and perform actions such as:
 
 Element actions refuse to guess between look-alike targets, can wait for the screen to change instead of sleeping, and can check that a tap had the effect it should — without ever sending it twice.
 
-Sensitive or destructive operations can require approval, and MCP activity remains visible inside the IDE.
+Sensitive or destructive operations can require approval, and MCP activity remains visible inside the IDE. The status bar shows the server's state — a green dot while it runs, amber when an agent is driving a different device from the one you selected — and a click starts or stops it, connects a client, or opens the agent activity.
 
 <p align="center">
-  <img src="images/mcp-server.png" alt="Spock ADB MCP server activity panel" width="88%">
+  <img src="images/mcp-server.png" alt="MCP server: state, transports, connect and token controls, and the agent activity log" width="88%">
 </p>
 
 See [MCP documentation](docs/MCP.md) for setup, the complete tool list, and safety details.

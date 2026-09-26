@@ -228,7 +228,7 @@ class CommandCenterPanel(
 
     private fun execute() {
         val target = device ?: run {
-            statusLabel.text = "No device selected."
+            statusLabel.text = NO_DEVICE
             return
         }
         val command = commandField.text.trim()
@@ -452,13 +452,21 @@ class CommandCenterPanel(
     private fun updateStatus() {
         val target = device
         targetLabel.text = target?.let { "Runs on ${it.info.describe()}" } ?: "No device selected"
-        statusLabel.text = if (target == null) "No device selected." else statusLabel.text
+        // "No device selected." is about the moment before a device arrived; left in place, it
+        // contradicted the "Runs on …" line above it for as long as nothing was run.
+        statusLabel.text = when {
+            target == null -> NO_DEVICE
+            statusLabel.text == NO_DEVICE -> " "
+            else -> statusLabel.text
+        }
         runButton.isEnabled = target != null && !runner.isRunning
     }
 
     override fun dispose() = runner.cancel()
 
     private companion object {
+        const val NO_DEVICE = "No device selected."
+
         const val MAX_OUTPUT_CHARS = 2_000_000
         const val SEARCH_COLUMNS = 16
 

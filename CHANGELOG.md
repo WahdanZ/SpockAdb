@@ -239,6 +239,8 @@
 
 ### Fixed
 
+- **The Shell tab said "No device selected." under "Runs on <device>"** until a command was run,
+  when the device arrived after the tab was built. The stale line is now cleared.
 - **Open Logcat, Open UI Inspector, Open MCP Server Panel and Open Devices opened the tool window
   on whatever tab it was already on.** They looked the tab up as tool window content, which it no
   longer was.
