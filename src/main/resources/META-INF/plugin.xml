@@ -61,10 +61,11 @@
         <toolWindow anchor="bottom"
                     canCloseContents="false"
                     id="Spock Logcat"
-                    icon="AllIcons.Debugger.Console"
+                    icon="/icons/spockLogcat.svg"
                     factoryClass="spock.adb.logcat.SpockLogcatToolWindow"/>
-        <!-- The screen in front of the developer: a tree wants height, beside the editor. -->
-        <toolWindow anchor="right"
+        <!-- The screen in front of the developer: a tree wants height, so it docks on the left,
+             above the Spock ADB window, where the project tree usually sits. -->
+        <toolWindow anchor="left"
                     canCloseContents="false"
                     id="Spock Screen"
                     icon="AllIcons.General.InspectionsEye"

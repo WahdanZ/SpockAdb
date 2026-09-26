@@ -32,7 +32,7 @@ class StorageActivity : SampleActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         screen("Storage") {
-            note("Seed, then open the plugin's Storage tab. Edit a value there and come back to see it here.")
+            note("Seed, then open Spock ADB › Storage. Edit a value there and come back to see it here.")
             button("Seed SharedPreferences and DataStore") { seed() }
             button("Write cache files") { writeCache() }
             button("Refresh") { refresh() }

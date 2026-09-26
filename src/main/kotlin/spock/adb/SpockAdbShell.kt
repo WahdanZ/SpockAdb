@@ -248,7 +248,7 @@ class SpockAdbShell(
         const val MCP_TAB = "MCP Server"
         private const val TOOL_WINDOW_ID = "Spock ADB"
         private const val ASSISTANT_TAB = "Assistant"
-        private const val BACKGROUND_WORK_TAB = "Work"
+        private const val BACKGROUND_WORK_TAB = "Scheduler"
         const val SHELL_TAB = "Shell"
         private const val HOME_TAB = "Home"
         private const val STORAGE_TAB = "Storage"

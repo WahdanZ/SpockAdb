@@ -15,7 +15,7 @@ class LogcatActivity : SampleActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         screen("Logcat") {
-            note("Tag: ${SampleApp.TAG}. Scope the Logcat tab to this app, then press these.")
+            note("Tag: ${SampleApp.TAG}. Set Spock Logcat to App, press Live, then press these.")
             button("Play the scripted Logcat demo (scripts/demo/LogcatDemo.kt)") {
                 com.example.logcatdemo.LogcatDemo.play()
             }

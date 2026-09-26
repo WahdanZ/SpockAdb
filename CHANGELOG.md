@@ -168,13 +168,13 @@
     stays picked until that selection changes again.
   - **Spock Logcat** is its own tool window, docked at the bottom. Its **App** filter follows the
     selected app instead of always the project's own.
-  - **Spock Screen** is a tool window on the right with **Diagnose** and the **UI Tree** as its tabs.
+  - **Spock Screen** is a tool window on the left, above Spock ADB, with **Diagnose** and the **UI Tree** as its tabs.
   - The **Device** tab is replaced by **Home**: the app's state and a toolbar of Restart, Attach
     debugger, Force stop and Process death, with Clear cache, Clear data and Uninstall behind a
     menu instead of one click away; the activity and fragment on screen as links to their source,
     read live; **Copy screen for AI**, which diagnoses and copies in one click; permissions; and
     the device controls, collapsed until wanted.
-  - The Spock ADB window's tabs are **Home**, **Storage**, **Work** and **Shell**, in a fixed
+  - The Spock ADB window's tabs are **Home**, **Storage**, **Scheduler** (jobs, alarms and device conditions; was Background Work) and **Shell**, in a fixed
     order — the selected tab used to jump to the front of the row.
   - **⚡ Spock Actions** in the main toolbar lists every action with speed search, your pins and
     the last five used. Pins made on the old Quick actions row carry over. New actions for what

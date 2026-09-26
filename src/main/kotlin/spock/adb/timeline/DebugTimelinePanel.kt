@@ -375,8 +375,8 @@ class DebugTimelinePanel(
             TimelineCategory.APP_LIFECYCLE to "Logcat",
             TimelineCategory.MCP to "MCP Server",
             TimelineCategory.STORAGE to "Storage",
-            TimelineCategory.BACKGROUND_WORK to "Work",
-            TimelineCategory.DEVICE_CONDITION to "Work",
+            TimelineCategory.BACKGROUND_WORK to "Scheduler",
+            TimelineCategory.DEVICE_CONDITION to "Scheduler",
             TimelineCategory.ACTIVITY to "Home",
             TimelineCategory.SPOCK_ACTION to "Home",
         )

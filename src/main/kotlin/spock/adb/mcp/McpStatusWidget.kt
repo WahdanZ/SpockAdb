@@ -16,9 +16,17 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
+import com.intellij.ui.JBColor
+import com.intellij.util.ui.JBUI
 import spock.adb.SpockAdbShell
 import spock.adb.context.SpockSelection
 import spock.adb.notification.CommonNotifier
+import java.awt.Color
+import java.awt.Component
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.RenderingHints
+import javax.swing.Icon
 import javax.swing.Timer
 
 /**
@@ -91,6 +99,9 @@ internal class McpStatusWidget(private val project: Project) :
 
     override fun getTooltipText(): String = McpStatusText.tooltip(service.isRunning, service.port, mismatch())
 
+    /** Green while serving, amber when an agent drives another device, grey when stopped. */
+    override fun getIcon(): Icon = StatusDot(McpStatusText.color(service.isRunning, mismatch()))
+
     override fun getPopup(): JBPopup = popup()
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -152,8 +163,41 @@ internal class McpStatusWidget(private val project: Project) :
     }
 }
 
+/** A filled dot, the size of the status bar's text, in [color]. */
+internal class StatusDot(private val color: Color) : Icon {
+    override fun getIconWidth(): Int = JBUI.scale(SIZE)
+
+    override fun getIconHeight(): Int = JBUI.scale(SIZE)
+
+    override fun paintIcon(component: Component?, g: Graphics, x: Int, y: Int) {
+        val g2 = g.create() as Graphics2D
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g2.color = color
+            val inset = JBUI.scale(1)
+            g2.fillOval(x + inset, y + inset, iconWidth - inset * 2, iconHeight - inset * 2)
+        } finally {
+            g2.dispose()
+        }
+    }
+
+    companion object {
+        private const val SIZE = 10
+
+        val RUNNING: Color = JBColor(0x3E9E57, 0x5BC27B)
+        val MISMATCH: Color = JBColor(0xC27D0E, 0xE3A640)
+        val STOPPED: Color = JBColor(0x8C8F97, 0x6F737A)
+    }
+}
+
 /** What the MCP indicator says, apart from Swing so it can be tested. */
 internal object McpStatusText {
+
+    fun color(running: Boolean, mismatch: String?): Color = when {
+        mismatch != null -> StatusDot.MISMATCH
+        running -> StatusDot.RUNNING
+        else -> StatusDot.STOPPED
+    }
 
     fun of(running: Boolean, mismatch: String?): String = when {
         mismatch != null -> "⚠ MCP: agent on $mismatch"

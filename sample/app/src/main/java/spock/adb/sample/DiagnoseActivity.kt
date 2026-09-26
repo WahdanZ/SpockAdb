@@ -32,7 +32,7 @@ class DiagnoseActivity : SampleActivity() {
         screen("Diagnose current screen") {
             note(
                 "Press the buttons below, then run Tools › Spock ADB › Diagnose Current Screen (or " +
-                    "the Diagnose tab, or android_diagnose_current_screen). Expect: DiagnoseActivity " +
+                    "Home › Diagnose, or android_diagnose_current_screen). Expect: DiagnoseActivity " +
                     "on screen, above MainActivity in the stack; " +
                     "PaymentFragment under fragments; CAMERA under denied permissions; an HTTP 500 " +
                     "and a repeated error in likelyProblems; one unlabelled button in the UI line.",

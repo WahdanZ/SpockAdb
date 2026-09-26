@@ -13,7 +13,7 @@ import spock.adb.uitree.UiInspectorPanel
 
 /**
  * The screen in front of the developer: the Diagnose report and the UI tree, in a tool window
- * docked on the right by default.
+ * docked on the left by default, above the Spock ADB window.
  *
  * Both were tabs of the Spock ADB window, so the tree and the code it points into took turns
  * with Home and Storage, and Diagnose's "Inspect UI" swapped the report out for the tree. A

@@ -61,10 +61,21 @@ A normal Android debugging session can quickly become:
 Spock ADB brings those workflows into the IDE and keeps one selected **device + app** as the target of everything it does. It is laid out by what each part is for:
 
 - **Status bar** — the device and app every Spock surface acts on (it follows Android Studio's run target by default), and whether the MCP server is on.
-- **Spock ADB** (left) — **Home** (the app, the screen it is on, its permissions, device controls), **Storage**, **Work** and **Shell**.
+- **Spock ADB** (left) — **Home** (the app, the screen it is on, its permissions, device controls), **Storage**, **Scheduler** and **Shell**.
 - **Spock Logcat** (bottom) — the app's log and the **Debug Timeline**, beside the actions that produce them.
-- **Spock Screen** (right) — **Diagnose** and the **UI Tree** of the screen in front of you.
+- **Spock Screen** (left, above Spock ADB) — **Diagnose** and the **UI Tree** of the screen in front of you.
 - **⚡ Spock Actions** (main toolbar) — every action, searchable, with pins and recents; bind it to a shortcut in the keymap.
+
+<p align="center">
+  <img src="images/spock-adb-overview.png" alt="Spock ADB: Spock Screen and Spock ADB Home on the left, Spock Logcat at the bottom, device, app and MCP state in the status bar" width="92%">
+</p>
+<p align="center">
+  <img src="images/home.png" alt="Spock ADB Home: the app, its lifecycle toolbar and the screen it is on" width="36%">
+  <img src="images/spock-actions.png" alt="Spock Actions popup with pinned and all actions" width="30%">
+</p>
+<p align="center">
+  <img src="images/timeline.png" alt="Spock Logcat's Timeline tab" width="88%">
+</p>
 
 | Task                       | Without Spock ADB                        | With Spock ADB                    |
 |----------------------------|------------------------------------------|-----------------------------------|
@@ -102,7 +113,7 @@ Control the selected app and device without memorizing ADB commands.
 **Activity & Fragment navigation · Back stack · Restart · Force stop · Debugger · Process death · Permissions · Connectivity · Proxy · Developer options · Deep links · Push messages**
 
 <p align="center">
-  <img src="images/devices.png" alt="Spock ADB device and app controls" width="88%">
+  <img src="images/home.png" alt="Spock ADB Home: app, lifecycle actions and current screen" width="45%">
 </p>
 
 ---

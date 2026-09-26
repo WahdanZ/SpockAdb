@@ -23,4 +23,11 @@ class McpStatusTextTest {
     fun `the port is in the tooltip when running`() {
         assertTrue(McpStatusText.tooltip(running = true, port = 8123, mismatch = null).contains("port 8123"))
     }
+
+    @Test
+    fun `green while serving, amber on a mismatch, grey when stopped`() {
+        assertEquals(StatusDot.RUNNING, McpStatusText.color(running = true, mismatch = null))
+        assertEquals(StatusDot.MISMATCH, McpStatusText.color(running = true, mismatch = "R58M"))
+        assertEquals(StatusDot.STOPPED, McpStatusText.color(running = false, mismatch = null))
+    }
 }
