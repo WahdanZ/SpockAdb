@@ -115,7 +115,7 @@ class OpenLogcatAction : AnAction() {
     }
 }
 
-class OpenCommandCenterAction : OpenTabAction("Commands")
+class OpenCommandCenterAction : OpenTabAction(spock.adb.SpockAdbShell.SHELL_TAB)
 class OpenDevicesAction : OpenTabAction("Home")
 
 /** Opens the MCP server's agent activity, adding its tab the first time. */

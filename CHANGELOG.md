@@ -2,6 +2,42 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **The tool window is split by what each part is for** ([#139](https://github.com/WahdanZ/SpockAdb/issues/139)).
+  One window with eight tabs meant the log and the button that produced it, or the UI tree and
+  the code it points into, took turns on screen. Now:
+  - **Device and app are chosen once, in the status bar.** Every tool window, action and
+    shortcut uses that choice; actions no longer ask "which device?" when several are connected.
+    It follows the device selected in Android Studio's run-target selector by default (switch it
+    off in the widget or in **Settings › Tools › Spock ADB**), and a device picked in Spock ADB
+    stays picked until that selection changes again.
+  - **Spock Logcat** is its own tool window, docked at the bottom. Its **App** filter follows the
+    selected app instead of always the project's own.
+  - **Spock Screen** is a tool window on the right with **Diagnose** and the **UI Tree** as its tabs.
+  - The **Device** tab is replaced by **Home**: the app's state and a toolbar of Restart, Attach
+    debugger, Force stop and Process death, with Clear cache, Clear data and Uninstall behind a
+    menu instead of one click away; the activity and fragment on screen as links to their source,
+    read live; **Copy screen for AI**, which diagnoses and copies in one click; permissions; and
+    the device controls, collapsed until wanted.
+  - The Spock ADB window's tabs are **Home**, **Storage**, **Work** and **Shell**, in a fixed
+    order — the selected tab used to jump to the front of the row.
+  - **⚡ Spock Actions** in the main toolbar lists every action with speed search, your pins and
+    the last five used. Pins made on the old Quick actions row carry over. New actions for what
+    was only a widget: Copy Screen for AI, Toggle Don't Keep Activities / Show Taps / Layout
+    Bounds, Open Deep Link…, Send Text to Device… and Clear App Cache.
+  - **MCP server** state moved from a tab to the status bar: `MCP: on`, `MCP: off`, or a warning
+    when an AI agent is driving a different device from the selected one, with a balloon when that
+    starts. Its agent activity opens as a tab when asked for.
+
+### Fixed
+
+- **Open Logcat, Open UI Inspector, Open MCP Server Panel and Open Devices opened the tool window
+  on whatever tab it was already on.** They looked the tab up as tool window content, which it no
+  longer was.
+- **No app was selected when a device connected before a freshly opened project's first Gradle
+  sync finished.** The project's app is resolved again when sync ends.
+
 ### Added
 
 - **Send a test push message to the app over ADB.** Under **Send to device**, **Push message →

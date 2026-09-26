@@ -57,7 +57,13 @@ A normal Android debugging session can quickly become:
 
 `Android Studio → Terminal → adb → Logcat → Device Settings → back to Android Studio`
 
-Spock ADB brings those workflows into **one shared tool window** and keeps the selected **device + app** as the active target.
+Spock ADB brings those workflows into the IDE and keeps one selected **device + app** as the target of everything it does. It is laid out by what each part is for:
+
+- **Status bar** — the device and app every Spock surface acts on (it follows Android Studio's run target by default), and whether the MCP server is on.
+- **Spock ADB** (left) — **Home** (the app, the screen it is on, its permissions, device controls), **Storage**, **Work** and **Shell**.
+- **Spock Logcat** (bottom) — the app's log, beside the actions that produce it.
+- **Spock Screen** (right) — **Diagnose** and the **UI Tree** of the screen in front of you.
+- **⚡ Spock Actions** (main toolbar) — every action, searchable, with pins and recents; bind it to a shortcut in the keymap.
 
 | Task                       | Without Spock ADB                        | With Spock ADB                    |
 |----------------------------|------------------------------------------|-----------------------------------|
@@ -289,7 +295,7 @@ That means less setup, fewer targeting mistakes, and less time spent fighting yo
 1. Install **[Spock ADB](https://plugins.jetbrains.com/plugin/11591-spock-adb)** from the JetBrains Marketplace.
 2. Connect a device or start an emulator.
 3. Open the **Spock ADB** tool window.
-4. Select your device and application.
+4. Check the device and app in the status bar — Spock ADB picks your project's app and follows Android Studio's device; click it to choose another.
 5. Debug.
 
 > No Android project handy? `./gradlew -p sample :app:installDebug` builds the bundled [sample app](sample/README.md) — every plugin feature has a labeled screen to try it against.

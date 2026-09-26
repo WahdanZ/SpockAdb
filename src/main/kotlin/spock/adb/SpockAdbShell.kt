@@ -12,6 +12,7 @@ import spock.adb.assistant.AssistantFeature
 import spock.adb.assistant.AssistantPanel
 import spock.adb.backgroundwork.BackgroundWorkPanel
 import spock.adb.commandcenter.CommandCenterPanel
+import spock.adb.context.ContextLine
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.home.HomePanel
@@ -42,7 +43,7 @@ class SpockAdbShell(
 
     private var disposed = false
 
-    private val header = ToolWindowHeader(project, parentDisposable)
+    private val contextLine = ContextLine(project, parentDisposable)
     private val statusBar = ActionStatusBar()
 
     /**
@@ -82,8 +83,8 @@ class SpockAdbShell(
 
         tabs.addTab(HOME_TAB, home)
         tabs.addTab(STORAGE_TAB, storage)
-        tabs.addTab("Commands", commands)
         tabs.addTab(BACKGROUND_WORK_TAB, backgroundWork)
+        tabs.addTab(SHELL_TAB, commands)
         assistant?.let { tabs.addTab(ASSISTANT_TAB, it) }
         // Read on arrival rather than on every device or app change: two dumpsys round trips,
         // one of them the whole alarm table, for a tab that may never be opened.
@@ -95,11 +96,11 @@ class SpockAdbShell(
             }
         }
 
-        // The header and the tabs are both about the whole window, so they sit together above
-        // the content rather than the tabs being part of it.
+        // The context line and the tabs are both about the whole window, so they sit together
+        // above the content rather than the tabs being part of it.
         setToolbar(
             JPanel(BorderLayout()).apply {
-                add(header, BorderLayout.NORTH)
+                add(contextLine, BorderLayout.NORTH)
                 add(tabs, BorderLayout.SOUTH)
             },
         )
@@ -120,8 +121,6 @@ class SpockAdbShell(
         home.onBackgroundWork = { tabs.select(BACKGROUND_WORK_TAB) }
 
         controller.onResult { result -> statusBar.show(result) }
-        header.settingsButton.addActionListener { home.showActionSettings() }
-        header.refreshButton.addActionListener { statusBar.working("Reading the device list…") }
         // A change of app refused because of unapplied edits puts the selection back, so every
         // view names the app the Storage tab is still showing. Later rather than now: the refusal
         // arrives while the selection is still telling its listeners about the change.
@@ -153,6 +152,15 @@ class SpockAdbShell(
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
         home.setApp()
+    }
+
+    /** Opens the dialog that chooses which actions Home shows. From the title bar's menu. */
+    fun customizeHome() = home.showActionSettings()
+
+    /** Reads the device and app lists again. From the title bar's refresh. */
+    fun refresh() {
+        statusBar.working("Reading the device list…")
+        selection.refresh()
     }
 
     /** Adds the MCP server's tab the first time it is asked for, and brings it forward. */
@@ -230,7 +238,8 @@ class SpockAdbShell(
         const val MCP_TAB = "MCP Server"
         private const val TOOL_WINDOW_ID = "Spock ADB"
         private const val ASSISTANT_TAB = "Assistant"
-        private const val BACKGROUND_WORK_TAB = "Background Work"
+        private const val BACKGROUND_WORK_TAB = "Work"
+        const val SHELL_TAB = "Shell"
         private const val HOME_TAB = "Home"
         private const val STORAGE_TAB = "Storage"
     }
