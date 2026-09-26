@@ -15,7 +15,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 67 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 69 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -289,7 +289,7 @@ Every Spock ADB action in one searchable popup, from the main toolbar or a short
 
 Spock ADB includes a built-in **MCP server** for tools such as Claude Code, Claude Desktop, Cursor, and other MCP clients.
 
-Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **67 structured Android debugging tools**.
+Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **69 structured Android debugging tools**.
 
 Agents can inspect things such as:
 

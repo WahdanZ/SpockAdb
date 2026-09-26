@@ -261,6 +261,8 @@ class McpSmokeTest {
             "android_diagnose_current_screen" to """{"packageName":"com.android.settings"}""",
             // What the IDE recorded; asks the device nothing, so it answers even when nothing was.
             "android_get_debug_timeline" to """{"sinceSeconds":600,"limit":20}""",
+            // The built-in Debug Recipes; describes them, runs none.
+            "android_list_recipes" to "{}",
         )
 
         /** Search for something. Reporting "no match" is a pass; anything else is not. */

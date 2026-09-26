@@ -21,6 +21,8 @@ class MainActivity : AppCompatActivity() {
                     "\"$packageName\", then open the screen for the feature you are testing.",
             )
             output("version ${info.versionName}  pid ${Process.myPid()}")
+            // restart_keeps_state relaunches here, so the persisted line has to be here too.
+            output(RecipesActivity.persistedNote(this@MainActivity))
 
             heading("Spock ADB › Home")
             open("Activity stack — Current Activity, Activity Stack", StackActivity::class.java)
@@ -42,6 +44,7 @@ class MainActivity : AppCompatActivity() {
             open("Spock Screen › UI Tree — Recomposition counts", RecompositionActivity::class.java)
             open("Spock Screen › UI Tree — Views screen", ViewsInspectorActivity::class.java)
             open("Spock ADB › Scheduler — jobs, WorkManager, alarms", BackgroundWorkActivity::class.java)
+            open("MCP › Debug Recipes — android_run_recipe fixtures", RecipesActivity::class.java)
         }
     }
 }

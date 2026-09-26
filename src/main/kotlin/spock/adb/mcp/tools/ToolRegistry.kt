@@ -94,6 +94,9 @@ object ToolRegistry {
         GetHttpProxyTool(),
         SetHttpProxyTool(),
         ClearHttpProxyTool(),
+        // Debug Recipes: reusable sequences of the tools above, each step audited as its own call
+        ListRecipesTool(),
+        RunRecipeTool(),
         // Escape hatch
         RunAdbCommandTool(),
     )
