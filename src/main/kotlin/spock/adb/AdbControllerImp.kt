@@ -8,6 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.ui.popup.PopupChooserBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -198,8 +199,9 @@ class AdbControllerImp(
             showError("No activities found")
             return
         }
-        JBPopupFactory.getInstance()
-            .createListPopupBuilder(ActivityStackList(rows))
+        // The builder over the list itself, not createPopupChooserBuilder(rows): that one builds its
+        // own JList, and the task headings and badges come from ActivityStackList's renderer.
+        PopupChooserBuilder(ActivityStackList(rows))
             .setTitle("Activity Stack")
             .setItemChosenCallback(
                 com.intellij.util.Consumer { row: ActivityStackRow ->
