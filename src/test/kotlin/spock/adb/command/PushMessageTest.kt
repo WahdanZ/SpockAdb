@@ -105,6 +105,44 @@ class PushMessageTest {
     }
 
     @Test
+    fun `on Android 14 a clean log with no recorded state is unconfirmed, not accepted`() {
+        val delivery = PushBroadcast.parse("emu", pkg, ID, output(uid = "0", sdk = "34"))
+
+        assertEquals(Outcome.UNCONFIRMED, delivery.outcome)
+    }
+
+    @Test
+    fun `an unknown release is not trusted to log refusals`() {
+        assertEquals(Outcome.UNCONFIRMED, PushBroadcast.parse("emu", pkg, ID, output(uid = "0", sdk = "")).outcome)
+    }
+
+    @Test
+    fun `a shell that stopped answering is unconfirmed unless delivery was recorded`() {
+        val silent = PushBroadcast.parse("emu", pkg, ID, output(uid = "0"), timedOut = true)
+        val recorded = output(uid = "0", history = history("DELIVERED"))
+        val delivered = PushBroadcast.parse("emu", pkg, ID, recorded, timedOut = true)
+
+        assertEquals(Outcome.UNCONFIRMED, silent.outcome)
+        assertEquals(Outcome.ACCEPTED, delivered.outcome)
+    }
+
+    @Test
+    fun `a record whose extras run many lines still yields its state`() {
+        val long = history("SKIPPED", DENIAL_REASON).replace("line2", (1..80).joinToString("\n") { "line$it" })
+
+        val delivery = PushBroadcast.parse("emu", pkg, ID, output(sdk = "34", history = long))
+
+        assertEquals(Outcome.REFUSED, delivery.outcome)
+    }
+
+    @Test
+    fun `a data key that would replace the message ID is refused`() {
+        assertThrows<IllegalArgumentException> {
+            PushMessage(data = mapOf(PushMessage.MESSAGE_ID to "x")).requireSendable()
+        }
+    }
+
+    @Test
     fun `a receiver the history marks delivered is accepted`() {
         val delivery = PushBroadcast.parse("emu", pkg, ID, output(uid = "0", history = history("DELIVERED")))
 
@@ -139,7 +177,7 @@ class PushMessageTest {
         val command = PushBroadcast.command(pkg, PushMessage(data = mapOf("a" to "b")), ID)
 
         assertTrue(command.contains("dumpsys activity broadcasts history"), command)
-        assertTrue(command.contains("'google.message_id=$ID'"), command)
+        assertTrue(command.contains("google.message_id=$ID/,/Historical Broadcast/p"), command)
     }
 
     @Test
@@ -292,8 +330,10 @@ class PushMessageTest {
             "Broadcast completed: result=0",
         log: String = "",
         history: String = "",
+        sdk: String = "33",
     ) = listOf(
         "@@spock-uid", uid,
+        "@@spock-sdk", sdk,
         "@@spock-debuggable", debuggable,
         "@@spock-run-as", "run-as: package not debuggable: $pkg",
         "@@spock-receivers", receivers,

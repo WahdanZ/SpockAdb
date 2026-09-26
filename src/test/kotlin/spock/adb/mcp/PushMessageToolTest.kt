@@ -91,6 +91,7 @@ class PushMessageToolTest {
 
     private fun reply(uid: String = "0", log: String = "") = listOf(
         "@@spock-uid", uid,
+        "@@spock-sdk", "33",
         "@@spock-debuggable", "1",
         "@@spock-receivers", "com.example.app/.R",
         "@@spock-broadcast", "Broadcast completed: result=0",

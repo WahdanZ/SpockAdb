@@ -45,6 +45,8 @@ data class PushMessage(
             "Add a data pair, a title or a body first — an empty push message tests nothing."
         }
         require(data.keys.none { it.isBlank() }) { "A data key is blank. Give every value a key." }
+        // The send is found again by this ID; a second one would replace it, and the verdict with it.
+        require(MESSAGE_ID !in data) { "$MESSAGE_ID is set by Spock ADB for each send. Remove it from the data." }
     }
 
     companion object {
@@ -140,10 +142,11 @@ internal object PushBroadcast {
     private const val BROADCAST = "@@spock-broadcast"
     private const val LOG = "@@spock-log"
     private const val HISTORY = "@@spock-history"
-    private val MARKERS = listOf(UID, DEBUGGABLE, RUN_AS, RECEIVERS, BROADCAST, LOG, HISTORY)
+    private const val SDK = "@@spock-sdk"
+    private val MARKERS = listOf(UID, DEBUGGABLE, RUN_AS, SDK, RECEIVERS, BROADCAST, LOG, HISTORY)
 
-    /** How much of the broadcast history to keep after the line naming this send's message ID. */
-    private const val HISTORY_LINES = 60
+    /** Android 14, whose broadcast queue skips a receiver without logging why. */
+    private const val SILENT_SKIP_SDK = 34
 
     /** A receiver's state in the broadcast history, as Android 14's queue prints it. */
     private val RECEIVER_STATE = Regex("""^\s*(DELIVERED|SKIPPED|FAILURE|TIMEOUT)\b""")
@@ -167,6 +170,7 @@ internal object PushBroadcast {
         }
         return listOf(
             accessCommand(packageName),
+            "echo $SDK; getprop ro.build.version.sdk",
             "echo $RECEIVERS; cmd package query-receivers --brief -a ${PushMessage.ACTION} -p $pkg 2>&1",
             "u=\$(am get-current-user 2>/dev/null)",
             // As the app when run-as answers with its uid; plain, as root, otherwise.
@@ -176,8 +180,10 @@ internal object PushBroadcast {
             "\"\$@\" am broadcast --user \"\${u:-0}\" -a ${PushMessage.ACTION} -p $pkg " +
                 "-f $INCLUDE_STOPPED_PACKAGES $extras 2>&1",
             "echo $LOG; logcat -d -T \"\$t\" '*:W' 2>&1",
+            // From this send's record to the next one, however long its extras run: a fixed line
+            // count cut a multi-line payload off before the receiver's state.
             "echo $HISTORY; dumpsys activity broadcasts history 2>&1 | " +
-                "grep -F -A $HISTORY_LINES ${ShellQuote.quote("${PushMessage.MESSAGE_ID}=$messageId")}",
+                "sed -n ${ShellQuote.quote("/${PushMessage.MESSAGE_ID}=$messageId/,/Historical Broadcast/p")}",
         ).joinToString("; ")
     }
 
@@ -197,8 +203,18 @@ internal object PushBroadcast {
      * log alone reported refusals as deliveries. The broadcast history does record it, per
      * receiver, next to the extras that carry this send's message ID. Earlier releases log the
      * denial, and their history does not name a per-receiver state, so there the log decides.
+     *
+     * A clean log is evidence of delivery only there. On Android 14 and later, or when the
+     * release is unknown or the shell stopped answering ([timedOut]) before the record was read,
+     * no recorded state means UNCONFIRMED — never ACCEPTED.
      */
-    fun parse(device: String, packageName: String, messageId: String, output: String): PushDelivery {
+    fun parse(
+        device: String,
+        packageName: String,
+        messageId: String,
+        output: String,
+        timedOut: Boolean = false,
+    ): PushDelivery {
         val sections = sections(output)
         val access = access(sections)
         val broadcast = sections[BROADCAST].orEmpty()
@@ -223,10 +239,14 @@ internal object PushBroadcast {
                 history.lines().firstOrNull { it.trim().startsWith("reason:") }?.trim()
                     ?: "the device recorded it as ${states.first()}",
             )
-            log == null || log.contains("logcat:") -> delivery(PushDelivery.Outcome.UNCONFIRMED)
-            else -> delivery(PushDelivery.Outcome.ACCEPTED)
+            timedOut || log == null || log.contains("logcat:") -> delivery(PushDelivery.Outcome.UNCONFIRMED)
+            logRecordsRefusals(sections[SDK]) -> delivery(PushDelivery.Outcome.ACCEPTED)
+            else -> delivery(PushDelivery.Outcome.UNCONFIRMED)
         }
     }
+
+    private fun logRecordsRefusals(sdk: String?): Boolean =
+        sdk?.trim()?.toIntOrNull()?.let { it < SILENT_SKIP_SDK } ?: false
 
     /** This send's record: from the line naming its message ID to the next history entry. */
     private fun historyEntry(section: String, messageId: String): String {
@@ -298,18 +318,20 @@ internal fun IDevice.sendPushMessage(
 ): PushDelivery {
     message.requireSendable()
     val receiver = ShellOutputReceiver()
-    try {
+    val timedOut = try {
         executeShellCommand(
             PushBroadcast.command(packageName, message, messageId),
             receiver,
             PushBroadcast.TIMEOUT_SECONDS,
             TimeUnit.SECONDS,
         )
+        false
     } catch (ignored: ShellCommandUnresponsiveException) {
         // What arrived is still read: a broadcast that completed before the log read stalled
         // comes back UNCONFIRMED rather than as an error the device never reported.
+        true
     }
-    return PushBroadcast.parse(displayName(), packageName, messageId, receiver.toString())
+    return PushBroadcast.parse(displayName(), packageName, messageId, receiver.toString(), timedOut)
 }
 
 /** Whether this device's shell can deliver push messages at all. Blocks: call off the EDT. */
