@@ -259,6 +259,11 @@
 
 ### Fixed
 
+- **Process death restores the screen under test after a Spock launch or restart.** Launch and
+  restart started the app with a bare `am start -n`, while the relaunch after process death used the
+  launcher icon's intent. Android restores a task only when the two match, so it pushed a new
+  launcher activity on top instead. Every start now uses the launcher icon's intent. An app whose
+  task was first opened from a deep link still gets a new launcher activity.
 - **The UI Tree and the MCP Server tab squeezed their parts into a short docking slot**, so the
   tree showed two rows and header text overlapped the controls under it. Below a minimum height
   they now scroll instead.

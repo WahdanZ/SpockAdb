@@ -31,21 +31,16 @@ fun IDevice.isAppInstall(applicationID: String?): Boolean {
     return !shellOutputReceiver.toString().isEmpty()
 }
 
-fun IDevice.startActivity(activity: String) {
-    executeShellCommand(
-        "am start -n ${ShellQuote.quote(activity)}",
-        ShellOutputReceiver(),
-        15L,
-        TimeUnit.SECONDS,
-    )
-}
-
 /**
- * Starts [activity] the way the launcher icon does, so an app whose task still exists is brought
- * back to the front — with its top activity recreated from saved state after process death —
- * instead of having a fresh launcher activity pushed on top, which is what `am start -n` alone does.
+ * Starts [activity] the way the launcher icon does: `MAIN` + `LAUNCHER`, not a bare `am start -n`.
+ *
+ * Android brings an existing task back to the front only when the new intent matches the one that
+ * started it. Every start Spock makes — launch, restart, the relaunch after process death — goes
+ * through here, so they all match each other and the launcher. When launch used a bare `-n` and the
+ * process-death relaunch used `MAIN` + `LAUNCHER`, the two never matched: Android pushed a fresh
+ * launcher activity on top instead of recreating the screen under test from saved state.
  */
-fun IDevice.resumeFromLauncher(activity: String) {
+fun IDevice.startActivity(activity: String) {
     executeShellCommand(
         "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n ${ShellQuote.quote(activity)}",
         ShellOutputReceiver(),
