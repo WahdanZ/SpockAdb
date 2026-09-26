@@ -100,6 +100,8 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
  *   the project.
  * @param pinned the [QuickAction] names pinned to the Quick actions row, in the order shown.
  *   Order is the whole point, so this is a list rather than the set it would otherwise be.
+ * @param followStudioDevice selects the device chosen in Android Studio's run-target selector
+ *   whenever that choice changes, so the device is picked once for running and debugging alike.
  */
 data class AppSetting(
     val selectedDevice: String? = "",
@@ -107,6 +109,7 @@ data class AppSetting(
     val httpProxy: String = "",
     val httpProxyHistory: List<String> = emptyList(),
     val pinned: List<String> = emptyList(),
+    val followStudioDevice: Boolean = true,
 )
 enum class SpockAction {
     APP_INFO,

@@ -274,23 +274,27 @@ class LogcatPanel(
      * it, from the next line on — the lines already read stay, since they are still true.
      */
     fun setTarget(connected: ConnectedDevice?, packageName: String?) {
-        if (connected?.serialNumber == device?.serialNumber) {
-            val target = connected ?: return
-            if (packageName != null && packageName != app.packageName && stream?.isRunning == true) {
-                resolveApp(target)
-            }
+        val sameDevice = connected?.serialNumber == device?.serialNumber
+        val sameApp = packageName == null || packageName == app.packageName
+        if (sameDevice && (connected == null || sameApp)) return
+        if (sameDevice && stream?.isRunning == true) {
+            resolveApp(connected ?: return)
             return
         }
-        stop()
-        device = connected
-        // Everything held was about the previous device: its PIDs mean nothing here, and its
-        // lines would sit in the same buffer with nothing on screen saying where they came from.
-        app = AppProcesses.UNKNOWN
-        buffer.clear()
-        incoming.clear()
-        view.clear()
+        if (!sameDevice) {
+            stop()
+            device = connected
+            // Everything held was about the previous device: its PIDs mean nothing here, and its
+            // lines would sit in the same buffer with nothing on screen saying where they came from.
+            buffer.clear()
+            incoming.clear()
+            view.clear()
+            refreshDetails()
+        }
+        // Not streaming, the app is only named, so the status says which app App will show
+        // rather than that there is none; its processes are looked up when streaming starts.
+        app = packageName?.let { AppProcesses(AppProcesses.State.UNKNOWN, packageName = it) } ?: AppProcesses.UNKNOWN
         applyFilter()
-        refreshDetails()
         updateStatus()
     }
 

@@ -63,6 +63,9 @@
                     id="Spock Logcat"
                     icon="AllIcons.Debugger.Console"
                     factoryClass="spock.adb.logcat.SpockLogcatToolWindow"/>
+        <!-- The device and app every Spock surface acts on, visible with every tool window hidden. -->
+        <statusBarWidgetFactory id="SpockAdb.Context"
+                                implementation="spock.adb.context.SpockContextWidgetFactory"/>
     </extensions>
 
     <applicationListeners>

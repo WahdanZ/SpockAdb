@@ -1,5 +1,7 @@
 package spock.adb.context
 
+import com.intellij.execution.ExecutionTargetListener
+import com.intellij.execution.ExecutionTargetManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -74,10 +76,30 @@ class SpockSelection(private val project: Project) : Disposable {
 
     private var disposed = false
 
+    /**
+     * The device Android Studio's run target named when last read, connected or not. Its
+     * choice is followed when it *changes*, so a device picked here stays picked until the
+     * developer picks another one there.
+     */
+    private var studioSerial: String? = null
+
     init {
         // The observer is called on the EDT with the current list, and again on every change.
         SpockAdbService.getInstance(project).controller.observeDevices { devices -> onDevices(devices) }
+        project.messageBus.connect(this).subscribe(
+            ExecutionTargetManager.TOPIC,
+            ExecutionTargetListener { readStudioTarget(force = true) },
+        )
     }
+
+    /** Whether the device chosen in Android Studio's run-target selector is selected here too. */
+    var followsStudio: Boolean
+        get() = AppSettingService.getInstance().state.followStudioDevice
+        set(value) {
+            val service = AppSettingService.getInstance()
+            service.loadState(service.state.copy(followStudioDevice = value))
+            if (value) readStudioTarget(force = true)
+        }
 
     /**
      * Calls [listener] on every change until [parent] is disposed, and once now with what is
@@ -129,6 +151,32 @@ class SpockSelection(private val project: Project) : Disposable {
         val same = next != null && next.serialNumber == snapshot.device?.serialNumber
         snapshot = snapshot.copy(devices = devices)
         applyDevice(next, keepApp = same, extra = setOf(Change.DEVICES))
+        // A device Android Studio was told to run on may have just finished booting.
+        readStudioTarget(force = false)
+    }
+
+    /**
+     * Selects the device Android Studio's run target names, when following it and it changed.
+     *
+     * @param force follows it even when it is the one read last time: the target was just
+     *   chosen again, or following was just switched on.
+     */
+    private fun readStudioTarget(force: Boolean) {
+        if (disposed || !followsStudio) return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val serials = StudioRunTarget.runningSerials(project)
+            ApplicationManager.getApplication().invokeLater({
+                if (disposed || !followsStudio) return@invokeLater
+                val named = serials.firstNotNullOfOrNull { serial ->
+                    snapshot.devices.firstOrNull { it.serialNumber == serial }
+                }
+                val changed = force || named?.serialNumber != studioSerial
+                studioSerial = named?.serialNumber
+                if (named != null && changed && named.serialNumber != snapshot.device?.serialNumber) {
+                    applyDevice(named, keepApp = false, extra = emptySet())
+                }
+            }) { project.isDisposed }
+        }
     }
 
     /**

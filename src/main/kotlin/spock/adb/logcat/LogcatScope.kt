@@ -51,7 +51,11 @@ enum class LogcatScope(val label: String, val description: String) {
             AppProcesses.State.RESOLVING -> "reading the app's process IDs…"
             AppProcesses.State.NOT_RUNNING -> "the app is not running, so it has no logs of its own"
             AppProcesses.State.FAILED -> "the app's process IDs could not be read from the device"
-            else -> "no app is selected, so there is nothing to scope to"
+            else -> if (app.packageName.isNotBlank()) {
+                "${app.packageName}'s process IDs are read when streaming starts"
+            } else {
+                "no app is selected, so there is nothing to scope to"
+            }
         }
     }
 }
