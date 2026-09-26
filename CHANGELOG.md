@@ -239,6 +239,9 @@
 
 ### Fixed
 
+- **The UI Tree and the MCP Server tab squeezed their parts into a short docking slot**, so the
+  tree showed two rows and header text overlapped the controls under it. Below a minimum height
+  they now scroll instead.
 - **The Shell tab said "No device selected." under "Runs on <device>"** until a command was run,
   when the device arrived after the tab was built. The stale line is now cleared.
 - **Open Logcat, Open UI Inspector, Open MCP Server Panel and Open Devices opened the tool window

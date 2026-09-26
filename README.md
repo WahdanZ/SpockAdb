@@ -221,6 +221,10 @@ Problems come first, ranked; a part that cannot be read is reported in place and
 
 Filter by category and severity, select an event for its detail and the tab it came from, and select two events to **Copy Range** or **Export** everything between them into a bug report. Device log times are moved onto the host's clock with a measured offset, so an action and the log line it caused appear in the order they happened. The history is bounded and says when the oldest events were dropped. Agents read the same list with `android_get_debug_timeline`.
 
+<p align="center">
+  <img src="images/timeline.png" alt="Spock Logcat › Timeline: lifecycle, actions, a crash with its detail, and the process restarting" width="92%">
+</p>
+
 ---
 
 <a id="ui-inspector"></a>
@@ -245,7 +249,7 @@ Spock ADB can also detect common accessibility problems such as:
 **Missing labels · Duplicate labels · Touch targets below 48dp**
 
 <p align="center">
-  <img src="images/ui-inspector.png" alt="Spock Screen › UI Tree: a Compose screen with its test tags, text and interaction state" width="50%">
+  <img src="images/ui-inspector.png" alt="Spock Screen › UI Tree: a Compose screen with an element selected — its unique selector, copy-as links and Jump to Source" width="55%">
 </p>
 
 ---
@@ -300,7 +304,7 @@ Element actions refuse to guess between look-alike targets, can wait for the scr
 Sensitive or destructive operations can require approval, and MCP activity remains visible inside the IDE. The status bar shows the server's state — a green dot while it runs, amber when an agent is driving a different device from the one you selected — and a click starts or stops it, connects a client, or opens the agent activity.
 
 <p align="center">
-  <img src="images/mcp-server.png" alt="MCP server: state, transports, connect and token controls, and the agent activity log" width="88%">
+  <img src="images/mcp-server.png" alt="MCP server tab: running, the last client, and each agent call with its access level, result and duration" width="88%">
 </p>
 
 See [MCP documentation](docs/MCP.md) for setup, the complete tool list, and safety details.
