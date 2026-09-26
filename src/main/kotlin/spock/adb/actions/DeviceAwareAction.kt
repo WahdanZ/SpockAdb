@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
 import spock.adb.SpockAdbService
 import spock.adb.command.GetApplicationIDCommand
+import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 
 /**
@@ -52,8 +53,13 @@ abstract class DeviceAwareAction(
         val project = event.project ?: return
         SpockAdbService.getInstance(project).controller.connectedDevices { devices ->
             val usable = devices.filter { it.info.isUsable }
+            val selected = selection(project)?.device?.serialNumber
             when {
                 usable.isEmpty() -> notify(project, "No Android device is ready.")
+                // The device chosen for the whole project, when it is ready: asking again which
+                // device, with the answer already on screen, was the question this removes.
+                usable.any { it.serialNumber == selected } ->
+                    perform(project, usable.first { it.serialNumber == selected })
                 usable.size == 1 -> perform(project, usable.single())
                 else -> chooseDevice(project, usable)
             }
@@ -79,7 +85,15 @@ abstract class DeviceAwareAction(
     }
 
     protected fun applicationId(project: Project): String? =
-        runCatching { GetApplicationIDCommand.resolve(project) }.getOrNull()
+        selection(project)?.app
+            ?: runCatching { GetApplicationIDCommand.resolve(project) }.getOrNull()
+
+    /**
+     * What the tool window chose, when it has been built. Never creates the selection: `update()`
+     * runs constantly, and must not be what starts reading devices.
+     */
+    private fun selection(project: Project): SpockSelection.Snapshot? =
+        project.getServiceIfCreated(SpockSelection::class.java)?.snapshot
 
     /** Cached device view; `update()` must stay cheap and must not start ADB. */
     private fun lastKnownDevices(project: Project): List<ConnectedDevice> =

@@ -84,11 +84,9 @@ abstract class OpenTabAction(private val tabName: String) : AnAction() {
         val project = event.project ?: return
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID) ?: return
 
-        toolWindow.activate {
-            toolWindow.contentManager.contents
-                .firstOrNull { it.displayName == tabName }
-                ?.let { toolWindow.contentManager.setSelectedContent(it) }
-        }
+        // The window has one content, the shell, and the tabs are inside it: looking the tab up
+        // as content found nothing, so these actions opened the window on whatever tab it had.
+        toolWindow.activate { spock.adb.SpockAdbShell.find(project)?.selectTab(tabName) }
     }
 
     private companion object {
@@ -98,7 +96,7 @@ abstract class OpenTabAction(private val tabName: String) : AnAction() {
 
 class OpenLogcatAction : OpenTabAction("Logcat")
 class OpenCommandCenterAction : OpenTabAction("Commands")
-class OpenDevicesAction : OpenTabAction("Devices")
+class OpenDevicesAction : OpenTabAction("Device")
 class OpenMcpPanelAction : OpenTabAction("MCP Server")
 class OpenAssistantAction : OpenTabAction("Assistant")
 class OpenUiInspectorAction : OpenTabAction("UI Inspector")

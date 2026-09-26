@@ -13,6 +13,7 @@ import spock.adb.assistant.AssistantPanel
 import spock.adb.assistant.AssistantPrefill
 import spock.adb.backgroundwork.BackgroundWorkPanel
 import spock.adb.commandcenter.CommandCenterPanel
+import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.diagnostics.DiagnosePanel
 import spock.adb.logcat.LogcatPanel
@@ -23,8 +24,6 @@ import spock.adb.storage.AppStoragePanel
 import spock.adb.ui.TabStrip
 import spock.adb.uitree.UiInspectorPanel
 import java.awt.BorderLayout
-import java.awt.event.ItemEvent
-import javax.swing.DefaultComboBoxModel
 import javax.swing.JPanel
 
 /**
@@ -47,7 +46,7 @@ class SpockAdbShell(
 
     private var disposed = false
 
-    private val header = ToolWindowHeader(project) { !disposed && !project.isDisposed }
+    private val header = ToolWindowHeader(project, parentDisposable)
     private val statusBar = ActionStatusBar()
 
     /**
@@ -86,7 +85,9 @@ class SpockAdbShell(
      */
     private val assistant = if (AssistantFeature.TAB_VISIBLE) AssistantPanel(project) else null
 
-    private var connected: List<ConnectedDevice> = emptyList()
+    private val selection = SpockSelection.getInstance(project)
+
+    /** The device the tabs were last told about, so a reconnect is not announced as a change. */
     private var selectedDevice: ConnectedDevice? = null
 
     private lateinit var controller: AdbController
@@ -158,72 +159,28 @@ class SpockAdbShell(
 
         controller.onResult { result -> statusBar.show(result) }
         header.settingsButton.addActionListener { devices.showActionSettings() }
-        header.refreshButton.addActionListener {
-            statusBar.working("Reading the device list…")
-            controller.refresh()
-        }
-        header.deviceCombo.addItemListener { event ->
-            // A combo box fires DESELECTED then SELECTED, and reports index -1 when the model
-            // is emptied. Indexing straight into the list threw ArrayIndexOutOfBoundsException
-            // whenever the last device disconnected.
-            if (event.stateChange == ItemEvent.SELECTED) {
-                selectDevice(connected.getOrNull(header.deviceCombo.selectedIndex))
+        header.refreshButton.addActionListener { statusBar.working("Reading the device list…") }
+        // A change of app refused because of unapplied edits puts the selection back, so every
+        // view names the app the Storage tab is still showing. Later rather than now: the refusal
+        // arrives while the selection is still telling its listeners about the change.
+        storage.onAppKept = { kept ->
+            if (kept != null) {
+                ApplicationManager.getApplication().invokeLater({ selection.selectApp(kept) }) { disposed }
             }
         }
-        header.onAppChosen = { packageName -> selectApp(packageName) }
-        // A change of app refused because of unapplied edits has to put the header back, or the
-        // header would name an app the Storage tab is not showing.
-        storage.onAppKept = { kept -> if (kept != null) selectApp(kept) }
 
+        selection.addListener(parentDisposable) { snapshot, changes ->
+            if (SpockSelection.Change.DEVICE in changes) selectDevice(snapshot.device)
+            if (SpockSelection.Change.APP in changes) snapshot.app?.let(::selectApp)
+        }
         watchAgentTarget()
         listenForToolWindow()
-        observeDevices()
     }
 
     // ---------------------------------------------------------------- device
 
-    private fun observeDevices() {
-        controller.observeDevices { list ->
-            connected = list
-
-            // Match on serial rather than instance identity: ddmlib hands out a new IDevice
-            // after a reconnect, so identity comparison silently reset the selection. Falls
-            // back to the serial persisted from the previous session, then to the first device
-            // that is actually usable, so the plugin does not default to an offline one.
-            val preferred = selectedDevice?.serialNumber ?: persistedSerial()
-            val next = list.firstOrNull { it.serialNumber == preferred }
-                ?: list.firstOrNull { it.info.isUsable }
-                ?: list.firstOrNull()
-
-            if (list.isEmpty()) {
-                // An empty dropdown with no explanation is indistinguishable from a broken
-                // plugin. Say so, and say what to do about it.
-                header.deviceCombo.model = DefaultComboBoxModel(arrayOf(NO_DEVICES))
-                header.deviceCombo.isEnabled = false
-                header.setDevice(
-                    null,
-                    hint = "Connect a device or start an emulator, then press Refresh. " +
-                        "If a device is attached, check idea.log for ADB errors.",
-                )
-            } else {
-                header.deviceCombo.isEnabled = true
-                // The name and the Android version only: the serial and the architecture are in
-                // the tooltip, where they do not push the name out of a docked tool window.
-                header.deviceCombo.model = DefaultComboBoxModel(list.map { it.info.shortLabel() }.toTypedArray())
-                next?.let { header.deviceCombo.selectedIndex = list.indexOf(it) }
-            }
-            // Swapping the model fires no SELECTED event when the chosen index is 0 — a single
-            // device, first load, a reconnect — so the item listener cannot be relied on here.
-            selectDevice(next, listChanged = true)
-        }
-    }
-
-    private fun selectDevice(device: ConnectedDevice?, listChanged: Boolean = false) {
-        val sameDevice = device != null && device.serialNumber == selectedDevice?.serialNumber
+    private fun selectDevice(device: ConnectedDevice?) {
         selectedDevice = device
-        rememberSelectedDevice()
-        if (device != null || listChanged) header.setDevice(device, sameDevice = sameDevice)
-
         devices.setDevice(device)
         diagnose.setDevice(device)
         storage.setDevice(device)
@@ -234,36 +191,23 @@ class SpockAdbShell(
         refreshAgentTarget()
     }
 
-    /**
-     * The app every tab and every action uses.
-     *
-     * Told to the controller rather than to each tab: the controller is where an action
-     * resolved the project's app module for itself, which is what made the header a label.
-     */
+    /** The app every tab and every action uses, as chosen in [SpockSelection]. */
     private fun selectApp(packageName: String) {
-        controller.selectedApp = packageName
         storage.setApp(packageName)
         backgroundWork.setApp(packageName)
         diagnose.setApp(packageName)
         devices.setApp()
     }
 
-    private fun persistedSerial(): String? =
-        AppSettingService.getInstance().state.selectedDevice?.takeIf { it.isNotBlank() }
-
-    private fun rememberSelectedDevice() {
-        val service = AppSettingService.getInstance()
-        val current = service.state
-        val serial = selectedDevice?.serialNumber
-        if (current.selectedDevice != serial) {
-            service.loadState(current.copy(selectedDevice = serial))
-        }
-    }
-
     /** Brings the Diagnose tab forward and runs it: the Diagnose Current Screen action. */
     fun diagnoseCurrentScreen() {
         tabs.select(DIAGNOSE_TAB)
         diagnose.diagnose()
+    }
+
+    /** Brings the tab titled [title] forward, for the actions that open one. */
+    fun selectTab(title: String) {
+        tabs.select(title)
     }
 
     // ---------------------------------------------------------------- agents
@@ -300,7 +244,7 @@ class SpockAdbShell(
                         // dropdown that came up empty — because ADB had not started yet, or a
                         // device was plugged in afterwards — could only be recovered by
                         // reopening the project.
-                        controller.refresh()
+                        selection.refresh()
                         devices.onShown()
                     }
                 },
@@ -318,7 +262,6 @@ class SpockAdbShell(
                 ?.firstNotNullOfOrNull { it.component as? SpockAdbShell }
 
         private const val TOOL_WINDOW_ID = "Spock ADB"
-        private const val NO_DEVICES = "No devices connected"
         private const val ASSISTANT_TAB = "Assistant"
         private const val BACKGROUND_WORK_TAB = "Background Work"
         private const val STORAGE_TAB = "Storage"
