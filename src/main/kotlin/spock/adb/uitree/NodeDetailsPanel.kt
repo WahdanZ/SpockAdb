@@ -11,9 +11,11 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
+import spock.adb.ui.VerticallyScrollablePanel
 import spock.adb.ui.WrapLayout
 import java.awt.BorderLayout
 import java.awt.Component
+import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
@@ -22,6 +24,7 @@ import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTable
+import javax.swing.ScrollPaneConstants
 import javax.swing.table.AbstractTableModel
 
 /**
@@ -38,7 +41,13 @@ internal class NodeDetailsPanel(
 ) : JPanel(BorderLayout()) {
 
     private val model = PropertiesModel()
-    private val table = JBTable(model).apply {
+
+    // Laid out at its full height inside the pane's one scroll, rather than in a scroll of its
+    // own: under the selector, Source line and hint, an inner scroll pane was left one row high.
+    private val table = object : JBTable(model) {
+        override fun getPreferredSize(): Dimension =
+            super.getPreferredSize().let { Dimension(it.width, maxOf(it.height, rowHeight * MIN_VISIBLE_ROWS)) }
+    }.apply {
         setShowGrid(false)
         tableHeader = null
         emptyText.text = "Select an element to see its properties"
@@ -82,14 +91,23 @@ internal class NodeDetailsPanel(
             selectorPanel.add(it)
         }
 
+        val content = VerticallyScrollablePanel(BorderLayout()).apply {
+            add(
+                JPanel(BorderLayout()).apply {
+                    add(selectorPanel, BorderLayout.NORTH)
+                    add(hint, BorderLayout.SOUTH)
+                },
+                BorderLayout.NORTH,
+            )
+            add(table, BorderLayout.CENTER)
+        }
         add(
-            JPanel(BorderLayout()).apply {
-                add(selectorPanel, BorderLayout.NORTH)
-                add(hint, BorderLayout.SOUTH)
+            JBScrollPane(content).apply {
+                border = JBUI.Borders.empty()
+                horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
             },
-            BorderLayout.NORTH,
+            BorderLayout.CENTER,
         )
-        add(JBScrollPane(table), BorderLayout.CENTER)
         show(null, null, null)
     }
 
@@ -99,9 +117,10 @@ internal class NodeDetailsPanel(
      */
     fun show(node: UiNode?, observation: UiObservation?, tree: UiTree?, visibility: NodeVisibility? = null) {
         model.show(node?.let { NodeProperties.of(it, observation?.densityDpi, visibility, tree) }.orEmpty())
-        hint.isVisible = node != null && !node.isInteractive
-
         val framework = tree?.framework ?: UiFramework.UNKNOWN
+        hint.isVisible = node != null && !node.isInteractive
+        hint.text = NodeProperties.notInteractiveHint(framework)
+
         suggestion = node?.let { SelectorSuggestion.forNode(it, framework) }
         selectorPanel.isVisible = node != null
         showSelector(node, tree)
@@ -195,5 +214,6 @@ internal class NodeDetailsPanel(
         const val GAP = 4
         const val LINK_GAP = 12
         const val NAME_COLUMN_WIDTH = 140
+        const val MIN_VISIBLE_ROWS = 3
     }
 }

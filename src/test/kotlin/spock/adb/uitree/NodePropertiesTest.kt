@@ -78,6 +78,12 @@ class NodePropertiesTest {
     }
 
     @Test
+    fun `the not-interactive hint only talks about Compose where Compose is`() {
+        assertEquals(NodeProperties.NOT_INTERACTIVE_VIEWS_HINT, NodeProperties.notInteractiveHint(UiFramework.VIEWS))
+        assertEquals(NodeProperties.NOT_INTERACTIVE_HINT, NodeProperties.notInteractiveHint(UiFramework.UNKNOWN))
+    }
+
+    @Test
     fun `class reads as its short name, then the full one`() {
         assertEquals("Button · android.widget.Button", NodeProperties.classText("android.widget.Button"))
         assertEquals("Button", NodeProperties.classText("Button"))

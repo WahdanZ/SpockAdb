@@ -192,6 +192,8 @@
   screen or how many elements share them, and which one the suggested selector uses. The class
   reads as its short name first, and the section adds the package, what TalkBack reads when it
   differs from the text, and whether the field is a password. Missing identifiers are greyed.
+  The Properties tab now scrolls as one piece, so the table is no longer squeezed to a single row
+  under the selector, and the "not interactive" hint no longer blames Compose on a Views screen.
 - **The Scheduler tab scrolls.** Docked in a short slot, the device conditions, status line and
   job and alarm tables now scroll together instead of squeezing the tables to a row or two.
 - **The tool window is split by what each part is for** ([#139](https://github.com/WahdanZ/SpockAdb/issues/139)).

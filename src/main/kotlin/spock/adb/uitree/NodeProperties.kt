@@ -20,6 +20,13 @@ internal object NodeProperties {
         "Not interactive. In Compose the click handler usually sits on an ancestor, " +
             "so the tappable element may be this node's parent."
 
+    const val NOT_INTERACTIVE_VIEWS_HINT =
+        "Not interactive. The click listener is on another View, most often a parent row or container."
+
+    /** The Compose explanation only where Compose is: on a Views screen it pointed at the wrong cause. */
+    fun notInteractiveHint(framework: UiFramework): String =
+        if (framework == UiFramework.VIEWS) NOT_INTERACTIVE_VIEWS_HINT else NOT_INTERACTIVE_HINT
+
     const val NONE = "—"
     private const val BASELINE_DPI = 160.0
 
