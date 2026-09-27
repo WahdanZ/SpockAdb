@@ -187,6 +187,11 @@
 - **App back stack shows the stack.** The popup lists the app's activities top first and numbered,
   with each one's state (`RESUMED` in green) and the fragments it holds indented under it. The
   selected row is highlighted, hovering shows the full class name, and Enter opens the code.
+- **UI tree properties say how well each identifier finds the element.** Test tag (View id on a
+  Views screen), text and content description each show whether they are unique on the captured
+  screen or how many elements share them, and which one the suggested selector uses. The class
+  reads as its short name first, and the section adds the package, what TalkBack reads when it
+  differs from the text, and whether the field is a password. Missing identifiers are greyed.
 - **The Scheduler tab scrolls.** Docked in a short slot, the device conditions, status line and
   job and alarm tables now scroll together instead of squeezing the tables to a row or two.
 - **The tool window is split by what each part is for** ([#139](https://github.com/WahdanZ/SpockAdb/issues/139)).

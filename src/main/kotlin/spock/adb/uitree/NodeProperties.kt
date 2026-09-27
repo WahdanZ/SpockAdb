@@ -20,22 +20,20 @@ internal object NodeProperties {
         "Not interactive. In Compose the click handler usually sits on an ancestor, " +
             "so the tappable element may be this node's parent."
 
-    private const val NONE = "—"
+    const val NONE = "—"
     private const val BASELINE_DPI = 160.0
 
-    /** @param visibility where [node] is relative to the capture's viewport, when that was worked out. */
-    fun of(node: UiNode, densityDpi: Int?, visibility: NodeVisibility? = null): List<PropertySection> = listOf(
-        PropertySection(
-            "Identity",
-            listOf(
-                row("Class", node.className),
-                row("Test tag", node.testTag.orEmpty()),
-                row("Text", node.text),
-                row("Content description", node.contentDescription),
-                row("Resource id", node.resourceId),
-                row("Children", node.children.size.toString()),
-            ),
-        ),
+    /**
+     * @param visibility where [node] is relative to the capture's viewport, when that was worked out.
+     * @param tree the capture [node] is from, for how many other elements share each identifier.
+     */
+    fun of(
+        node: UiNode,
+        densityDpi: Int?,
+        visibility: NodeVisibility? = null,
+        tree: UiTree? = null,
+    ): List<PropertySection> = listOf(
+        PropertySection("Identity", identity(node, tree)),
         PropertySection(
             "Geometry",
             listOf(
@@ -55,9 +53,60 @@ internal object NodeProperties {
                 row("Focusable", pair(node.focusable, node.focused, "focused", "not focused")),
                 row("Checkable", pair(node.checkable, node.checked, "checked", "not checked")),
                 row("Selected", yesNo(node.selected)),
+                row("Password field", yesNo(node.password)),
             ),
         ),
     )
+
+    /**
+     * What the element is and what it can be found by, each identifier with how many elements on
+     * the captured screen share it and whether the suggested selector uses it: a text that is
+     * on three buttons identifies none of them.
+     */
+    private fun identity(node: UiNode, tree: UiTree?): List<PropertySection.Property> {
+        val framework = tree?.framework ?: UiFramework.UNKNOWN
+        val basis = SelectorSuggestion.forNode(node, framework)?.basis
+        val nodes = tree?.nodes()?.toList()
+
+        fun identifier(name: String, value: String, uses: SelectorSuggestion.Basis, of: (UiNode) -> String?) =
+            if (value.isBlank()) {
+                row(name, value)
+            } else {
+                row(name, value + notes(nodes?.count { of(it) == value }, basis == uses))
+            }
+
+        // On a Views screen the resource id is the View id; calling it a test tag would mislead.
+        val tagName = if (framework == UiFramework.VIEWS) "View id" else "Test tag"
+        val spoken = node.accessibleLabel.takeIf { it.isNotBlank() && it != node.text && it != node.contentDescription }
+        return listOfNotNull(
+            row("Class", classText(node.className)),
+            identifier(tagName, node.testTag.orEmpty(), SelectorSuggestion.Basis.TEST_TAG) { it.testTag },
+            identifier("Text", node.text, SelectorSuggestion.Basis.TEXT) { it.text },
+            identifier("Content description", node.contentDescription, SelectorSuggestion.Basis.CONTENT_DESCRIPTION) {
+                it.contentDescription
+            },
+            spoken?.let { row("Accessible label", it) },
+            row("Resource id", node.resourceId),
+            row("Package", node.packageName),
+            row("Children", node.children.size.toString()),
+        )
+    }
+
+    /** `Button · android.widget.Button`: the short name to scan by, the full one to search for. */
+    fun classText(className: String): String {
+        val short = className.substringAfterLast('.')
+        return if (short == className || short.isBlank()) className else "$short · $className"
+    }
+
+    /** ` · unique on screen · selector`, ` · 3 on screen`, or nothing when the screen is unknown. */
+    fun notes(count: Int?, usedBySelector: Boolean): String = buildString {
+        when {
+            count == null -> Unit
+            count <= 1 -> append(" · unique on screen")
+            else -> append(" · $count on screen")
+        }
+        if (usedBySelector) append(" · selector")
+    }
 
     /** [px] in dp at [densityDpi], or null when the density is unknown or not a density. */
     fun pxToDp(px: Int, densityDpi: Int?): Double? =

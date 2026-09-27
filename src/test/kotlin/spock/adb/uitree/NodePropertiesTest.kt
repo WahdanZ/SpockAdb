@@ -42,8 +42,8 @@ class NodePropertiesTest {
         val values = sections.flatMap { it.rows }.associate { it.name to it.value }
 
         assertEquals(listOf("Identity", "Geometry", "State"), sections.map { it.title })
-        assertEquals("android.view.View", values["Class"])
-        assertEquals("checkout_continue", values["Test tag"])
+        assertEquals("View · android.view.View", values["Class"])
+        assertEquals("checkout_continue · selector", values["Test tag"])
         assertEquals("—", values["Text"])
         assertEquals("—", values["Content description"])
         assertEquals("com.example.compose:id/checkout_continue", values["Resource id"])
@@ -54,6 +54,33 @@ class NodePropertiesTest {
         assertEquals("yes", values["Clickable"])
         assertEquals("yes, not focused", values["Focusable"])
         assertEquals("no", values["Checkable"])
+    }
+
+    @Test
+    fun `identity counts each identifier on screen and marks the one the selector uses`() {
+        val tree = UiTreeParser.parse(
+            checkNotNull(javaClass.getResourceAsStream("/uidumps/compose-material3.xml")).bufferedReader().readText(),
+        )
+        val button = tree.nodes().first { it.testTag == "checkout_continue" }
+
+        val identity = NodeProperties.of(button, 420, tree = tree).single { it.title == "Identity" }.rows
+            .associate { it.name to it.value }
+
+        assertEquals("checkout_continue · unique on screen · selector", identity["Test tag"])
+        assertEquals("com.example.compose", identity["Package"])
+    }
+
+    @Test
+    fun `a shared identifier says how many elements share it`() {
+        assertEquals(" · 3 on screen", NodeProperties.notes(3, usedBySelector = false))
+        assertEquals(" · unique on screen · selector", NodeProperties.notes(1, usedBySelector = true))
+        assertEquals("", NodeProperties.notes(null, usedBySelector = false))
+    }
+
+    @Test
+    fun `class reads as its short name, then the full one`() {
+        assertEquals("Button · android.widget.Button", NodeProperties.classText("android.widget.Button"))
+        assertEquals("Button", NodeProperties.classText("Button"))
     }
 
     @Test

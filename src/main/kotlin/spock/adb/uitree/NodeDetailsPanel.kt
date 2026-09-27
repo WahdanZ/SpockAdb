@@ -98,7 +98,7 @@ internal class NodeDetailsPanel(
      * [visibility] is where [node] is relative to the capture's viewport.
      */
     fun show(node: UiNode?, observation: UiObservation?, tree: UiTree?, visibility: NodeVisibility? = null) {
-        model.show(node?.let { NodeProperties.of(it, observation?.densityDpi, visibility) }.orEmpty())
+        model.show(node?.let { NodeProperties.of(it, observation?.densityDpi, visibility, tree) }.orEmpty())
         hint.isVisible = node != null && !node.isInteractive
 
         val framework = tree?.framework ?: UiFramework.UNKNOWN
@@ -182,6 +182,8 @@ internal class NodeDetailsPanel(
             val attributes = when {
                 heading -> SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES
                 column == 0 -> SimpleTextAttributes.GRAYED_ATTRIBUTES
+                // An identifier the element does not have reads as absent, not as a value.
+                value == NodeProperties.NONE -> SimpleTextAttributes.GRAYED_ATTRIBUTES
                 else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
             }
             // Device-supplied values, appended as a fragment so they are never read as markup.
