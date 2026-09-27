@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Debug Recipes: reusable debugging scenarios for agents.** `android_run_recipe` runs a named,
+  multi-step scenario — tool calls, waits, checks on what they return, and screenshots as capture
+  points — and reports every step as passed, failed, skipped or not run. Four ship with the plugin:
+  `process_death`, `deep_link`, `restart_keeps_state` and `job_in_doze`. A failed step stops the
+  recipe unless it is marked to continue, and restore steps — taking the device out of Doze — run
+  afterwards, after a cancel too, whenever the step they undo went through. Each step is an ordinary tool call: it respects the tool switches, a
+  destructive step still asks you, and it shows in the Activity tab and the Debug Timeline under
+  the client `recipe:<id>`. `android_list_recipes` describes each recipe and its parameters. The
+  sample app's **Debug Recipes** screen is a fixture for all four.
 - **Autocomplete, with docs, in the ADB Command Center.** Typing a command now shows what can
   come next: commands such as `pm`, `am`, `cmd`, `dumpsys`, `settings`, `input` and `logcat`,
   their subcommands and flags, key codes, and the selected device's installed packages wherever a
@@ -250,6 +259,11 @@
 
 ### Fixed
 
+- **Process death restores the screen under test after a Spock launch or restart.** Launch and
+  restart started the app with a bare `am start -n`, while the relaunch after process death used the
+  launcher icon's intent. Android restores a task only when the two match, so it pushed a new
+  launcher activity on top instead. Every start now uses the launcher icon's intent. An app whose
+  task was first opened from a deep link still gets a new launcher activity.
 - **The UI Tree and the MCP Server tab squeezed their parts into a short docking slot**, so the
   tree showed two rows and header text overlapped the controls under it. Below a minimum height
   they now scroll instead.

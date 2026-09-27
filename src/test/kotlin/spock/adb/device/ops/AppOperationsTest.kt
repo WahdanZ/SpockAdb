@@ -23,7 +23,20 @@ class AppOperationsTest {
         val activity = AppOperations(device).launch(PACKAGE)
 
         assertEquals("$PACKAGE/.MainActivity", activity)
-        assertTrue(commands.any { it.startsWith("am start -n") }, commands.toString())
+        assertTrue(commands.any { it.startsWith(LAUNCHER_START) }, commands.toString())
+    }
+
+    @Test
+    fun `launch and the process-death relaunch send the same intent`() {
+        // Android restores an existing task only when the relaunch matches the intent that started
+        // it. A bare `am start -n` launch followed by a MAIN + LAUNCHER relaunch never matched, so
+        // process death pushed a new launcher activity instead of recreating the screen under test.
+        val (device, commands) = scriptedDevice()
+
+        AppOperations(device).launch(PACKAGE)
+
+        val launch = commands.single { it.startsWith("am start") }
+        assertEquals("$LAUNCHER_START '$PACKAGE/.MainActivity'", launch)
     }
 
     @Test
@@ -56,7 +69,7 @@ class AppOperationsTest {
         AppOperations(device).restart(PACKAGE)
 
         val stopped = commands.indexOfFirst { it.startsWith("am force-stop") }
-        val started = commands.indexOfFirst { it.startsWith("am start -n") }
+        val started = commands.indexOfFirst { it.startsWith(LAUNCHER_START) }
         assertTrue(stopped in 0 until started, "expected a force-stop before the start: $commands")
     }
 
@@ -67,7 +80,7 @@ class AppOperationsTest {
         AppOperations(device).clearDataAndRestart(PACKAGE)
 
         val cleared = commands.indexOfFirst { it.startsWith("pm clear") }
-        val started = commands.indexOfFirst { it.startsWith("am start -n") }
+        val started = commands.indexOfFirst { it.startsWith(LAUNCHER_START) }
         assertTrue(cleared in 0 until started, "expected a clear before the start: $commands")
     }
 
@@ -115,3 +128,6 @@ class AppOperationsTest {
         assertTrue(commands.none { it.startsWith("pm clear") }, "a cache clear may never wipe data: $commands")
     }
 }
+
+/** How every Spock start begins: the launcher icon's intent, so a relaunch matches it. */
+private const val LAUNCHER_START = "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n"

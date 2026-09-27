@@ -281,12 +281,12 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-67 tools, in three levels.
+69 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (28) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline` |
-| **Safe action** (31) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts` |
+| **Read-only** (29) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline`, `android_list_recipes` |
+| **Safe action** (32) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts`, `android_run_recipe` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
 Rules that hold regardless of what a client asks for:
@@ -980,6 +980,51 @@ gone, for up to about eight seconds, and the result gives the pid before and aft
 will not die — a foreground service, picture-in-picture — is reported as a failure and nothing is
 relaunched. It is a **safe action**: it touches only the app under test, and the relaunch
 restores it.
+
+### Debug Recipes: `android_list_recipes` and `android_run_recipe`
+
+A recipe is a debugging scenario developers otherwise click through by hand, written down once as
+an ordered list of calls to the tools above, pauses, and checks on what those calls return.
+`android_list_recipes` describes each one — its parameters, its steps, and which steps will ask
+you to confirm — and `android_run_recipe` runs one and reports every step.
+
+| Recipe | What it does | Parameters |
+|---|---|---|
+| `process_death` | Notes the screen in front, kills the process in the background and relaunches it, then checks the same activity came back — and that `expectText` is still on screen, when given. | `packageName`, `expectText` |
+| `deep_link` | Opens a URI and checks the activity it landed on and the text it shows. | `uri` (required), `packageName`, `expectActivity`, `expectText` |
+| `restart_keeps_state` | Checks `expectText` is on screen, force-stops and relaunches the app, and checks it is back. Passes only for state the app persists itself: a restart drops saved instance state. | `expectText` (required), `packageName` |
+| `job_in_doze` | Checks the job is scheduled, forces deep Doze, runs the job now, and reads the app's log and the job afterwards. Restores the device out of Doze whatever happened. | `jobId` (required), `namespace`, `packageName` |
+
+```json
+{"recipe": "deep_link", "params": {"uri": "spocksample://recipe/42", "expectText": "Recipe item 42"}}
+```
+
+The result opens with a verdict — `PASSED`, `FAILED` or `CANCELLED` — and then one line per step:
+`PASSED`, `FAILED`, `SKIPPED` (a step that needs a parameter you did not give) or `NOT RUN`, with
+what the tool said. Screenshots taken as capture points follow the text, in step order. The call
+is an error unless every step passed.
+
+- **A failed step stops the recipe**, unless the recipe marks it to continue: reading the log
+  afterwards is informational, forcing Doze is not. The call still fails either way.
+- **Restore steps run after a failure and after a cancel**, because that is exactly when a device
+  is most likely to be left in forced Doze. A cancel over stdio interrupts the request's thread,
+  which would make every later ADB call fail at once, so restore runs with the interrupt set aside.
+  A restore step only undoes a step that passed: `job_in_doze` resets device conditions only if
+  forcing Doze went through, so a typo in `jobId` does not wipe a battery override or standby
+  bucket you set yourself. `"restore": false` skips them, and the report says so.
+- **Over HTTP, a recipe gets 20 seconds.** HTTP cannot cancel a call, so no new step starts after
+  that, restore still runs, and the report says the run was cut short. Use stdio to run the longer
+  recipes in full.
+- **Every step is an ordinary tool call.** It goes through the same enable switch, runs against
+  the same device, and appears in the Activity tab and the Debug Timeline as its own row, with
+  the client `recipe:<id>`. A step whose tool is switched off is refused, and a destructive step
+  asks you exactly as it would if an agent had called it directly — so `android_run_recipe` is a
+  safe action: it adds sequencing, never privilege. A recipe cannot run a recipe.
+- **`deviceSerial`** given to `android_run_recipe` is passed to every step.
+
+The recipes are plain data in `spock.adb.recipe`, with no UI in them, and a test checks every
+step against the tool it calls, so renaming a tool or argument cannot quietly break one. The
+sample app's **Debug Recipes** screen is a fixture for all four.
 
 ### `android_select_project`
 

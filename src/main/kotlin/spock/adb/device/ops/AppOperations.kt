@@ -10,7 +10,6 @@ import spock.adb.getDefaultActivityForApplication
 import spock.adb.isAppInstall
 import spock.adb.parser.ActivityParser
 import spock.adb.pidsOf
-import spock.adb.resumeFromLauncher
 import spock.adb.startActivity
 import java.util.concurrent.TimeUnit
 
@@ -160,7 +159,7 @@ class AppOperations(
 
         val activity = device.getDefaultActivityForApplication(packageName)
         if (activity.isBlank()) error("'$packageName' declares no launchable activity.")
-        device.resumeFromLauncher(activity)
+        device.startActivity(activity)
         return ProcessDeath(before, activity, awaitProcess(packageName))
     }
 
