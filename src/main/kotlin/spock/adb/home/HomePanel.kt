@@ -29,6 +29,7 @@ import spock.adb.command.GetApplicationPermission
 import spock.adb.command.Network
 import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
+import spock.adb.logcat.SpockLogcatToolWindow
 import spock.adb.premission.CheckBoxDialog
 import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.ColumnsLayout
@@ -95,6 +96,8 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
     private val enabled = mutableMapOf<SpockAction, Boolean>()
 
     private lateinit var permissionSection: CollapsibleSection
+    private lateinit var sendSection: CollapsibleSection
+    private lateinit var deviceSection: CollapsibleSection
     private lateinit var developerSection: JComponent
 
     /** Reads the app and the screen again a moment after an action, which is when they change. */
@@ -170,13 +173,20 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
 
     // ---------------------------------------------------------------- layout
 
+    /**
+     * The screen first, since a debugging session starts from what is in front of the developer;
+     * then the app, what it may do, what can be sent to it, and — folded — the device itself.
+     */
     private fun buildLayout(): JComponent = VerticallyScrollablePanel(ColumnsLayout()).apply {
         border = JBUI.Borders.empty(GAP)
-        add(section("App", "home.app", appContent(), AllIcons.Nodes.Module))
         add(section("This screen", "home.screen", screenCard, AllIcons.General.InspectionsEye))
+        add(section("App", "home.app", appContent(), AllIcons.Nodes.Module))
         permissionSection = section("Permissions", "home.permissions", permissionContent(), AllIcons.Actions.Lightning)
         add(permissionSection)
-        add(section("Device", "home.device", deviceContent(), AllIcons.General.Settings, expanded = false))
+        sendSection = section("Send to app", "home.send", sendContent(), AllIcons.Actions.Execute)
+        add(sendSection)
+        deviceSection = section("Device", "home.device", deviceContent(), AllIcons.General.Settings, expanded = false)
+        add(deviceSection)
     }
 
     private fun appContent(): JPanel = JPanel(BorderLayout()).apply {
@@ -186,7 +196,8 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
         add(toolbar.component, BorderLayout.NORTH)
         add(appInfoCard, BorderLayout.CENTER)
         add(
-            JPanel(FlowLayout(FlowLayout.LEFT, 0, JBUI.scale(GAP))).apply {
+            JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(GAP * 2), JBUI.scale(GAP))).apply {
+                add(ActionLink("Debug timeline ›") { SpockLogcatToolWindow.openTimeline(project) })
                 add(ActionLink("Background work ›") { onBackgroundWork() })
             },
             BorderLayout.SOUTH,
@@ -237,6 +248,12 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
         }
         developerSection = subheading("Developer options", developerOptions)
         add(developerSection)
+    }
+
+    /** Text, deep links and push messages: what reaches the app, as opposed to the device. */
+    private fun sendContent(): JPanel = JPanel().apply {
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        border = JBUI.Borders.empty(GAP, 0)
         inputRow = fieldRow("Text", inputField, inputButton)
         deepLinkRow = fieldRow("Deep link", deepLinkField, deepLinkButton)
         add(inputRow)
@@ -311,6 +328,13 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
         inputRow.isVisible = isOn(SpockAction.INPUT)
         deepLinkRow.isVisible = isOn(SpockAction.DEEP_LINK)
         pushMessageRow.isVisible = isOn(SpockAction.PUSH_MESSAGE)
+        // A heading over nothing is noise: a section goes when everything in it is switched off.
+        sendSection.setSectionVisible(
+            isOn(SpockAction.INPUT) || isOn(SpockAction.DEEP_LINK) || isOn(SpockAction.PUSH_MESSAGE),
+        )
+        deviceSection.setSectionVisible(
+            isOn(SpockAction.TOGGLE_NETWORK) || isOn(SpockAction.HTTP_PROXY) || isOn(SpockAction.DEVELOPER_OPTIONS),
+        )
         revalidate()
         repaint()
     }

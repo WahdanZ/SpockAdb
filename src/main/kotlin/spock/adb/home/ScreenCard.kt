@@ -43,7 +43,7 @@ internal class ScreenCard : JPanel() {
         toolTipText = "Diagnose the current screen, then copy the report — logs and URLs redacted — " +
             "ready to paste into an AI assistant"
     }
-    val diagnoseButton = JButton("Diagnose").apply {
+    val diagnoseButton = JButton("Diagnose", AllIcons.Actions.Find).apply {
         toolTipText = "Read the screen, app, logs, UI, permissions and background work in one place"
     }
 
@@ -68,7 +68,8 @@ internal class ScreenCard : JPanel() {
             },
         )
         add(flow(appStackLink, allStackLink))
-        add(flow(copyForAiButton, diagnoseButton))
+        // Diagnose first: it is where a debugging session starts, and the copy is Diagnose too.
+        add(flow(diagnoseButton, copyForAiButton))
         show(null)
     }
 

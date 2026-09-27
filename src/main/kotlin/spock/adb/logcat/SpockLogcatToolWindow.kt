@@ -72,5 +72,14 @@ class SpockLogcatToolWindow : ToolWindowFactory {
                     ?.let(then)
             }
         }
+
+        /** Opens the window on its Debug Timeline tab. */
+        fun openTimeline(project: Project) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ID) ?: return
+            toolWindow.activate {
+                val contents = toolWindow.contentManager
+                contents.contents.firstOrNull { it.displayName == TIMELINE }?.let(contents::setSelectedContent)
+            }
+        }
     }
 }

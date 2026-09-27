@@ -178,6 +178,12 @@
 
 ### Changed
 
+- **Home starts from the screen.** **This screen** is now the first section, with **Diagnose**
+  ahead of **Copy screen for AI**, and the App section links to the **Debug timeline**. Text,
+  deep links and push messages have their own **Send to app** section instead of sitting in the
+  folded Device section. On a fresh install, the Wi-Fi and mobile data toggles and developer
+  options start hidden, since the device and emulator already offer them. Turn them back on from
+  **Choose Actions Shown on Home…**. Existing settings are unchanged.
 - **The tool window is split by what each part is for** ([#139](https://github.com/WahdanZ/SpockAdb/issues/139)).
   One window with eight tabs meant the log and the button that produced it, or the UI tree and
   the code it points into, took turns on screen. Now:

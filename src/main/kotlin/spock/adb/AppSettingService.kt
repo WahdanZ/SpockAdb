@@ -16,7 +16,7 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
 
     init {
         val list = SpockAction.values().map {
-            ListItem(it.name.replace("_", " "), true)
+            ListItem(it.name.replace("_", " "), it !in HIDDEN_ON_FIRST_RUN)
         }
         localData = AppSetting(null, list)
     }
@@ -177,6 +177,13 @@ internal fun proxyHistoryWith(
     if (trimmed.isEmpty()) return existing
     return (listOf(trimmed) + existing.filterNot { it.equals(trimmed, ignoreCase = true) }).take(max)
 }
+
+/**
+ * Switched off on a fresh install: the device's quick settings and the emulator's own controls
+ * do these as well, and Home is kept for what they do not. One click in "Choose Actions Shown
+ * on Home…" brings them back. Settings already stored keep whatever they say.
+ */
+internal val HIDDEN_ON_FIRST_RUN = setOf(SpockAction.TOGGLE_NETWORK, SpockAction.DEVELOPER_OPTIONS)
 
 /** Enough to cover the proxies one developer switches between; not a log of everything ever typed. */
 internal const val MAX_REMEMBERED_PROXIES = 8

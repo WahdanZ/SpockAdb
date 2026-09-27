@@ -166,4 +166,23 @@ class AppSettingServiceTest {
     fun `a blank proxy is not remembered`() {
         assertEquals(listOf("a:1"), proxyHistoryWith(listOf("a:1"), "   "))
     }
+
+    @Test
+    fun `a fresh install hides only the network toggles and developer options`() {
+        val hidden = service.state.list.filterNot { it.isSelected }.map { it.name }.toSet()
+
+        assertEquals(setOf("TOGGLE NETWORK", "DEVELOPER OPTIONS"), hidden)
+    }
+
+    @Test
+    fun `stored settings that show the network toggles keep them`() {
+        val stored = AppSetting(list = listOf(ListItem("TOGGLE NETWORK", true), ListItem("DEVELOPER OPTIONS", true)))
+
+        val service = service.apply { loadState(stored) }
+
+        assertTrue(
+            service.state.list.filter { it.name in setOf("TOGGLE NETWORK", "DEVELOPER OPTIONS") }.all { it.isSelected },
+            "an existing user's choice must survive the new first-run default",
+        )
+    }
 }
