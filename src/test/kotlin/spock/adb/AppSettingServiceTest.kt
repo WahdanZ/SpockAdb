@@ -168,20 +168,20 @@ class AppSettingServiceTest {
     }
 
     @Test
-    fun `a fresh install hides only the network toggles and developer options`() {
+    fun `a fresh install hides only developer options`() {
         val hidden = service.state.list.filterNot { it.isSelected }.map { it.name }.toSet()
 
-        assertEquals(setOf("TOGGLE NETWORK", "DEVELOPER OPTIONS"), hidden)
+        assertEquals(setOf("DEVELOPER OPTIONS"), hidden)
     }
 
     @Test
-    fun `stored settings that show the network toggles keep them`() {
-        val stored = AppSetting(list = listOf(ListItem("TOGGLE NETWORK", true), ListItem("DEVELOPER OPTIONS", true)))
+    fun `stored settings that show developer options keep them`() {
+        val stored = AppSetting(list = listOf(ListItem("DEVELOPER OPTIONS", true)))
 
         val service = service.apply { loadState(stored) }
 
         assertTrue(
-            service.state.list.filter { it.name in setOf("TOGGLE NETWORK", "DEVELOPER OPTIONS") }.all { it.isSelected },
+            service.state.list.single { it.name == "DEVELOPER OPTIONS" }.isSelected,
             "an existing user's choice must survive the new first-run default",
         )
     }

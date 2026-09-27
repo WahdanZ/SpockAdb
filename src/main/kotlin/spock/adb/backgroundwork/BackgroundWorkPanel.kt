@@ -35,6 +35,7 @@ import spock.adb.parser.ScheduledJob
 import spock.adb.timeline.DebugTimelineService
 import spock.adb.timeline.TimelineCategory
 import spock.adb.timeline.TimelineSeverity
+import spock.adb.ui.MinHeightScrollPane
 import java.awt.BorderLayout
 import java.awt.Font
 import java.awt.datatransfer.StringSelection
@@ -114,8 +115,17 @@ class BackgroundWorkPanel(
             showDetails()
         }
 
-        setToolbar(header())
-        setContent(body())
+        // The device conditions, status line and tables scroll together below a floor, rather
+        // than squeezing the tables to a row each in a short docking slot; see [MinHeightScrollPane].
+        setContent(
+            MinHeightScrollPane(
+                JPanel(BorderLayout()).apply {
+                    add(header(), BorderLayout.NORTH)
+                    add(body(), BorderLayout.CENTER)
+                },
+                MIN_HEIGHT,
+            ),
+        )
     }
 
     fun setDevice(connected: ConnectedDevice?) {
@@ -391,6 +401,7 @@ class BackgroundWorkPanel(
         val ALARM_COLUMNS = arrayOf("Type", "Tag", "Next trigger", "Repeats", "Exact")
 
         private const val GAP = 6
+        private const val MIN_HEIGHT = 620
         private const val LISTS_PROPORTION = 0.6f
         private const val DETAILS_PROPORTION = 0.65f
 

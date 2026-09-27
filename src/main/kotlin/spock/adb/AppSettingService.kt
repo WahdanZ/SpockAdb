@@ -179,11 +179,11 @@ internal fun proxyHistoryWith(
 }
 
 /**
- * Switched off on a fresh install: the device's quick settings and the emulator's own controls
- * do these as well, and Home is kept for what they do not. One click in "Choose Actions Shown
- * on Home…" brings them back. Settings already stored keep whatever they say.
+ * Switched off on a fresh install: the device's own developer options do the same, and Home is
+ * kept for what they do not. One click in "Choose Actions Shown on Home…" brings them back.
+ * Settings already stored keep whatever they say.
  */
-internal val HIDDEN_ON_FIRST_RUN = setOf(SpockAction.TOGGLE_NETWORK, SpockAction.DEVELOPER_OPTIONS)
+internal val HIDDEN_ON_FIRST_RUN = setOf(SpockAction.DEVELOPER_OPTIONS)
 
 /** Enough to cover the proxies one developer switches between; not a log of everything ever typed. */
 internal const val MAX_REMEMBERED_PROXIES = 8
