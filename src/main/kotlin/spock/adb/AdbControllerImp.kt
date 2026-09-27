@@ -17,7 +17,6 @@ import spock.adb.command.*
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.DebugBridgeProvider
 import spock.adb.device.DeviceLister
-import spock.adb.models.ActivityData
 import spock.adb.models.BackStackData
 import spock.adb.models.FragmentData
 import spock.adb.models.FragmentRow
@@ -26,8 +25,11 @@ import spock.adb.premission.ListItem
 import spock.adb.timeline.DebugTimelineService
 import spock.adb.ui.ActivityStackList
 import spock.adb.ui.ActivityStackRow
+import spock.adb.ui.AppBackStackList
+import spock.adb.ui.AppBackStackRow
 import spock.adb.ui.className
 import spock.adb.ui.toActivityStackRows
+import spock.adb.ui.toAppBackStackRows
 
 
 class AdbControllerImp(
@@ -219,42 +221,41 @@ class AdbControllerImp(
         // ADB must run on a background thread — wrap everything in execute {}
         execute {
             val applicationID = getApplicationID(device)
-            val activitiesClass: List<ActivityData> =
-                GetApplicationBackStackCommand().execute(applicationID, project, device)
-            val activitiesList = activitiesClass.map { listOf(it.activity) + it.fragment }.flatten().toMutableList()
-
+            val rows = GetApplicationBackStackCommand().execute(applicationID, project, device)
+                .toAppBackStackRows(applicationID)
             // Popup creation and display must happen on the EDT
+            ApplicationManager.getApplication().invokeLater { showAppBackStackPopup(applicationID, rows) }
+        }
+    }
+
+    /** The selected app's activities, top first, each with its state and the fragments it holds. */
+    private fun showAppBackStackPopup(applicationID: String, rows: List<AppBackStackRow>) {
+        if (rows.isEmpty()) {
+            showError("No activities of $applicationID are running")
+            return
+        }
+        PopupChooserBuilder(AppBackStackList(rows))
+            .setTitle("App Back Stack · $applicationID")
+            .setItemChosenCallback(com.intellij.util.Consumer { row: AppBackStackRow -> openClass(row.className) })
+            .createPopup()
+            .showCenteredInCurrentWindow(project)
+    }
+
+    /**
+     * Opens [className] in the editor. A fragment is usually printed by its simple name, which
+     * only the short-name cache can resolve; a qualified name goes through the project scope.
+     */
+    private fun openClass(className: String) {
+        execute {
+            val psiClass = com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
+                if (className.contains('.')) {
+                    className.psiClassByNameFromProjct(project)
+                } else {
+                    className.psiClassByNameFromCache(project)
+                }
+            }
             ApplicationManager.getApplication().invokeLater {
-                JBPopupFactory.getInstance()
-                    .createPopupChooserBuilder(activitiesList)
-                    .setTitle("Activities")
-                    .setRenderer(javax.swing.ListCellRenderer<String> { _, value, _, _, _ ->
-                        var title = value.toString()
-                        title = if (!value.toString().contains('.'))
-                            "  |--$title (Fragment)"
-                        else
-                            (title.split('.').lastOrNull() ?: "") + "(Activity)"
-                        val label = JBLabel(title)
-                        label.border = JBUI.Borders.empty(5, 10, 5, 20)
-                        label
-                    })
-                    .setItemChosenCallback { current ->
-                        // Item chosen callback runs on EDT; dispatch PSI lookup to background
-                        execute {
-                            val psiClass = com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
-                                if (current.contains('.'))
-                                    current.psiClassByNameFromProjct(project)
-                                else
-                                    current.psiClassByNameFromCache(project)
-                            }
-                            ApplicationManager.getApplication().invokeLater {
-                                psiClass?.openIn(project)
-                                    ?: showError("class $current Not Found")
-                            }
-                        }
-                    }
-                    .createPopup()
-                    .showCenteredInCurrentWindow(project)
+                psiClass?.openIn(project) ?: showError("class $className Not Found")
             }
         }
     }

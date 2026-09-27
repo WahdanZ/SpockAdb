@@ -184,6 +184,9 @@
   folded Device section, which keeps the Wi-Fi and mobile data switches and the proxy. On a fresh
   install, developer options start hidden, since the device already offers them. Turn them back
   on from **Choose Actions Shown on Home…**. Existing settings are unchanged.
+- **App back stack shows the stack.** The popup lists the app's activities top first and numbered,
+  with each one's state (`RESUMED` in green) and the fragments it holds indented under it. The
+  selected row is highlighted, hovering shows the full class name, and Enter opens the code.
 - **The Scheduler tab scrolls.** Docked in a short slot, the device conditions, status line and
   job and alarm tables now scroll together instead of squeezing the tables to a row or two.
 - **The tool window is split by what each part is for** ([#139](https://github.com/WahdanZ/SpockAdb/issues/139)).
@@ -267,6 +270,9 @@
 
 ### Fixed
 
+- **App back stack showed no fragments, and garbled some activity names.** Fragments were looked
+  for on the `Active Fragments` heading line, so none were found. An activity declared outside the
+  app's package, such as `com.other.LoginActivity`, was shown as `com.example.appcom.other.LoginActivity`.
 - **Process death restores the screen under test after a Spock launch or restart.** Launch and
   restart started the app with a bare `am start -n`, while the relaunch after process death used the
   launcher icon's intent. Android restores a task only when the two match, so it pushed a new

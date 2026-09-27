@@ -4,53 +4,47 @@ import spock.adb.models.ActivityData
 
 /**
  * Parses `dumpsys activity <package>` output into the activity/fragment stack of one app.
+ *
+ * The dump is read one `ACTIVITY` block at a time, and each block's fragments are read with
+ * [FragmentDumpParser]'s rules. The previous version looked for a fragment name on the same line
+ * as `Active Fragments:`, which is a heading on a line of its own, so the popup never showed a
+ * fragment; and it joined the component's package and class by deleting the `/`, which turned an
+ * activity declared outside the app's package into `com.example.appcom.other.Activity`.
  */
 object ApplicationBackStackParser {
 
-    private val currentActiveActivity = Regex("([A-Z])\\w+=true")
-    private val activityRegex = Regex(" {2}ACTIVITY.*")
-    private val fragmentRegex = Regex("[a-zA-Z1-9]+\\{[a-z0-9}]")
-    private val removedFragmentRegex = Regex("#1: REMOVE [a-zA-Z1-9]+\\{[a-z0-9}]")
+    private const val ACTIVITY = "ACTIVITY "
+    private val trueFlag = Regex("([A-Z])\\w+=true")
 
+    /** The app's activities, most recent first. */
     fun parse(bulkActivitiesData: String): List<ActivityData> {
-        val tasks = mutableListOf<ActivityData>()
         val lines = bulkActivitiesData.lines()
-
-        lines.forEachIndexed { index, line ->
-            if (line.contains(activityRegex)) {
-                val status = currentActiveActivity
-                    .find(lines.getOrNull(index + 2).orEmpty())
-                    ?.value
-                    ?.substringBefore('=')
-                    .orEmpty()
-                val activityName = line.split(" ").find { it.contains("/") }?.replace("/", "")
-                if (activityName != null) {
-                    tasks.add(ActivityData(activity = activityName, fragment = emptyList(), status = status))
-                }
-            }
-
-            // Fragment lines are always nested under an ACTIVITY line. A malformed or
-            // truncated dump can put one first, so never assume `tasks` is non-empty.
-            if (line.contains(fragmentRegex) && tasks.isNotEmpty()) {
-                val task = tasks.last()
-
-                if (line.contains("Active Fragments:") && !line.contains("NavHostFragment")) {
-                    val current = fragmentRegex.find(line)?.value?.substringBefore('{').orEmpty()
-                    tasks[tasks.lastIndex] = task.copy(fragment = task.fragment + current)
-                }
-
-                val removedFragment = removedFragmentRegex.find(line)
-                    ?.value
-                    ?.substringBefore('{')
-                    ?.substringAfterLast("REMOVE ")
-                if (removedFragment != null) {
-                    tasks[tasks.lastIndex] = tasks.last().copy(
-                        fragment = tasks.last().fragment + removedFragment,
-                    )
-                }
-            }
-        }
-
-        return tasks.reversed()
+        val starts = lines.indices.filter { lines[it].trim().startsWith(ACTIVITY) }
+        return starts.mapIndexedNotNull { i, start ->
+            val block = lines.subList(start, starts.getOrElse(i + 1) { lines.size })
+            val component = block.first().trim().split(' ').firstOrNull { '/' in it }
+                ?: return@mapIndexedNotNull null
+            ActivityData(
+                activity = className(component),
+                fragments = FragmentDumpParser.fragmentsOfActivity(block),
+                status = status(block),
+            )
+        }.reversed()
     }
+
+    /**
+     * `com.example.app/.Main` → `com.example.app.Main`; `com.example.app/com.other.Main` →
+     * `com.other.Main`. The short form is only used when the class is in the package.
+     */
+    internal fun className(component: String): String {
+        val pkg = component.substringBefore('/')
+        val cls = component.substringAfter('/')
+        return if (cls.startsWith('.')) pkg + cls else cls
+    }
+
+    /** The first flag set to true on the block's `mResumed=` line: `Resumed`, `Stopped`… */
+    private fun status(block: List<String>): String = block
+        .firstOrNull { "mResumed=" in it }
+        ?.let { trueFlag.find(it)?.value?.substringBefore('=') }
+        .orEmpty()
 }

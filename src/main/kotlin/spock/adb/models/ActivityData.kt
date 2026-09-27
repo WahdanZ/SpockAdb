@@ -1,6 +1,15 @@
 package spock.adb.models
 
-data class ActivityData(val activity: String, val fragment: List<String>, val status: String = "")
+/**
+ * One activity of an app's own back stack: [activity] fully qualified, the fragments it has added
+ * as they nest on screen, and the first lifecycle flag `dumpsys` reports true (`Resumed`,
+ * `Stopped`…), blank when none is.
+ */
+data class ActivityData(
+    val activity: String,
+    val fragments: List<FragmentData> = emptyList(),
+    val status: String = "",
+)
 
 /**
  * One task in the device's activity back stack.

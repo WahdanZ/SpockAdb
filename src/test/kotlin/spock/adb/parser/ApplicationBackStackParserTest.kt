@@ -83,4 +83,37 @@ class ApplicationBackStackParserTest {
     fun `returns empty list for empty output`() {
         assertTrue(ApplicationBackStackParser.parse("").isEmpty())
     }
+
+    /**
+     * `dumpsys activity spock.adb.sample` on an API 34 emulator at Home → List → Detail: the
+     * fragments sit under their own activity, and the framework's ReportFragment is not one.
+     */
+    @Test
+    fun `reads each activity's fragments from a real dump`() {
+        val dump = requireNotNull(javaClass.getResource("/dumpsys/fragments-api34-sample-navigation.txt")).readText()
+
+        val stack = ApplicationBackStackParser.parse(dump)
+
+        assertEquals(
+            listOf("spock.adb.sample.fragments.NavigationActivity", "spock.adb.sample.MainActivity"),
+            stack.map { it.activity },
+        )
+        assertEquals(listOf("Resumed", "Stopped"), stack.map { it.status })
+        val top = stack.first().fragments.single()
+        assertEquals("DetailFragment", top.fragment)
+        assertEquals(listOf("ChildFragment"), top.innerFragments.map { it.fragment })
+        assertTrue(stack.last().fragments.isEmpty(), "MainActivity adds no androidx fragments")
+    }
+
+    @Test
+    fun `keeps an activity declared outside the app's package whole`() {
+        // Regression: the component's `/` was deleted, giving `com.example.appcom.other.ui.Login`.
+        val dump = """
+            |  ACTIVITY com.example.app/com.other.ui.LoginActivity aaa pid=1234
+            |    Local Activity 0000 State:
+            |      mResumed=true mStopped=false
+        """.trimMargin()
+
+        assertEquals("com.other.ui.LoginActivity", ApplicationBackStackParser.parse(dump).single().activity)
+    }
 }

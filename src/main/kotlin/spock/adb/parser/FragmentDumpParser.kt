@@ -29,9 +29,14 @@ object FragmentDumpParser {
 
     fun parse(dumpsys: String): List<FragmentData> {
         val activity = foregroundActivity(dumpsys.lines()) ?: return emptyList()
-        val start = activity.indexOfFirst { it.trim().startsWith(FRAGMENT_ACTIVITY) }
+        return fragmentsOfActivity(activity)
+    }
+
+    /** The fragments added by one `ACTIVITY` block of the dump, its header line first. */
+    internal fun fragmentsOfActivity(block: List<String>): List<FragmentData> {
+        val start = block.indexOfFirst { it.trim().startsWith(FRAGMENT_ACTIVITY) }
         if (start < 0) return emptyList()
-        return fragmentsOf(activity.subList(start + 1, activity.size))
+        return fragmentsOf(block.subList(start + 1, block.size))
     }
 
     /**
