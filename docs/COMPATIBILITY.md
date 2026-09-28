@@ -14,6 +14,11 @@ is. Every claim below is produced by `./gradlew verifyPlugin`, not by inspection
 - `untilBuild` is left open so new IDE releases do not require a republish.
 - Compiled against Android Studio 2025.1.1.14 (platform 251), Java 17, Kotlin 2.2.
 
+> **That table is the answer for most readers.** Everything below it explains how the range
+> was decided and the mistakes it fixes — read it if you're changing `sinceBuild`, publishing
+> a release, or debugging a verifier finding. It isn't required reading to install or use the
+> plugin.
+
 ## Why the Marketplace served 1.0.2 for four years
 
 Until 4.0.0, searching for the plugin in any current Android Studio or IntelliJ IDEA

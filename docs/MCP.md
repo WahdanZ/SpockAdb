@@ -215,9 +215,9 @@ gated by `DestructiveActionConfirmation` in the tool window, an agent-driven one
 caller in the way that caller can answer; the shared layer does the device work and never
 decides whether it was allowed.
 
-`ToolRegistry` is deliberately shared: a future in-plugin AI assistant uses the same tool
-definitions and the same safety levels rather than a parallel implementation. Two
-implementations would drift, and the one that drifted would be the one enforcing safety.
+`ToolRegistry` is deliberately shared: the in-plugin AI assistant (see [AI.md](AI.md)) uses
+the same tool definitions and the same safety levels rather than a parallel implementation.
+Two implementations would drift, and the one that drifted would be the one enforcing safety.
 
 ### How stdio reaches a plugin
 
