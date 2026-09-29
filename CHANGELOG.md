@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [4.0.7] - 2026-09-29
+
 ### Added
 
 - **Debug Recipes: reusable debugging scenarios for agents.** `android_run_recipe` runs a named,
@@ -184,7 +186,6 @@
   folded Device section, which keeps the Wi-Fi and mobile data switches and the proxy. On a fresh
   install, developer options start hidden, since the device already offers them. Turn them back
   on from **Choose Actions Shown on Home…**. Existing settings are unchanged.
-  Rows switched off there are no longer read from the device either.
 - **App back stack shows the stack.** The popup lists the app's activities top first and numbered,
   with each one's state (`RESUMED` in green) and the fragments it holds indented under it. The
   selected row is highlighted, hovering shows the full class name, and Enter opens the code.
@@ -354,6 +355,7 @@
   keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
   rather than hiding what was captured.
 
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.6...HEAD
 ## [4.0.6] - 2026-09-22
 
 ### Added
@@ -397,7 +399,6 @@
   larger than that arrived at the parser cut off mid-element. Both now run one capture, which is
   parsed rather than shown raw and so has nothing to cap.
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...HEAD
 ## [4.0.5] - 2026-09-22
 
 ### Added
@@ -1254,7 +1255,8 @@
 - Enable and Disable Permissions of your application
 - Kill or Restart Application
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.6...HEAD
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.7...HEAD
+[4.0.7]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.6...v4.0.7
 [4.0.6]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...v4.0.6
 [4.0.5]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.4...v4.0.5
 [4.0.4]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.3...v4.0.4
