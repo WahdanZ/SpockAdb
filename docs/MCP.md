@@ -483,9 +483,13 @@ the View-level fix does not exist there.
 
 `android_get_ui_tree` returns the semantics tree as a structure rather than raw XML: class,
 test tag, text, content description, bounds, and whether each node is clickable, enabled,
-scrollable, checked or selected. Pass `interactiveOnly` to see only what can be acted on.
+scrollable, checked or selected. Pass `interactiveOnly` to see only what can be acted on, or
+`meaningfulOnly` to see that plus everything with text or a content description, in screen order,
+so each control keeps the label beside it. Each interactive node ends in `center=[x,y]`, the point
+`android_tap_element` taps: the centre of the part in view, so a row half scrolled out of its list
+is not pressed under the list's edge. A node outside the viewport gets none.
 
-Agents should not drive `android_tap` from those bounds by hand. Prefer the element-addressed
+Agents should not drive `android_tap` from those bounds or centres by hand. Prefer the element-addressed
 tools — `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`,
 `android_input_text_into_element` — which resolve the element from semantics and derive the tap
 point from the matched node themselves. `android_tap` remains the fallback for a screen that

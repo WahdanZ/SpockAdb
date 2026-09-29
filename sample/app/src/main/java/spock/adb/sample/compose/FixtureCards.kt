@@ -266,7 +266,9 @@ internal object Fixtures {
                 listOf(call("""android_find_ui_element {testTag: "half_visible"}"""), call("android_get_ui_tree {}")),
                 "One match, partly in the viewport, cut at its scroll container's edge; how much is out of view is " +
                     "unknown. The tree marks it [partly in viewport, clipped by scroll container] and its text " +
-                    "[may be clipped by scroll container]; nothing else in the card is marked.",
+                    "[may be clipped by scroll container]; nothing else in the card is marked. Its tree line " +
+                    "ends in center=[x,y] inside the part in view, y above the scroll container's bottom edge: " +
+                    "the point android_tap_element taps.",
             ),
             Check(
                 listOf(call("""android_tap_element {testTag: "half_visible"}""")),
