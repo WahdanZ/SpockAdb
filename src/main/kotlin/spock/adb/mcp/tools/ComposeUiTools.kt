@@ -155,7 +155,7 @@ internal object UiTreeReader {
      * nearest clickable ancestor instead), disabled (they refuse it), or with nothing in view.
      */
     private fun UiNode.tapRegion(visibility: Map<UiNode, NodeVisibility>?): UiNode.Bounds? {
-        if (!isPressable || !bounds.hasArea) return null
+        if (!isTapTarget || !bounds.hasArea) return null
         val seen = visibility?.get(this) ?: return bounds
         return when (seen.presence) {
             Presence.VIEWPORT_UNKNOWN -> bounds
@@ -164,9 +164,9 @@ internal object UiTreeReader {
         }
     }
 
-    /** Enabled, and a tap or long press lands on it rather than on an ancestor. */
-    private val UiNode.isPressable: Boolean
-        get() = (clickable || longClickable) && enabled
+    /** Enabled, and a tap lands on it rather than on an ancestor. */
+    private val UiNode.isTapTarget: Boolean
+        get() = clickable && enabled
 
     /** Resolves the selector arguments every element tool accepts. */
     fun JsonObject.toSelector(interactiveOnly: Boolean = false) = UiSelector(

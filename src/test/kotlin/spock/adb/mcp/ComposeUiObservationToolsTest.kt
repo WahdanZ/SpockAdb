@@ -217,6 +217,7 @@ class ComposeUiObservationToolsTest {
         // A scroll container or a checkable that is not clickable is not where android_tap_element taps.
         assertFalse(lines.single { "ScrollView" in it }.contains("center="), lines.toString())
         assertFalse(lines.single { "CheckBox" in it }.contains("center="), lines.toString())
+        assertFalse(lines.single { "testTag=hold" in it }.contains("center="), "long-clickable only: $lines")
         assertFalse(lines.single { "Pay" in it }.contains("center="), "disabled: $lines")
         assertTrue(lines.single { "testTag=card" in it }.contains("center=[540,500]"), lines.toString())
     }
@@ -344,7 +345,7 @@ class ComposeUiObservationToolsTest {
             </hierarchy>
         """.trimIndent()
 
-        /** A clickable card holding its label, a scroll container, a bare checkable and a disabled button. */
+        /** A labelled clickable card, a list, a bare checkable, a long-press-only view and a disabled button. */
         val CONTROLS = """
             <hierarchy rotation="0">
               <node class="android.widget.FrameLayout" package="p" bounds="[0,0][1080,2400]">
@@ -357,6 +358,8 @@ class ComposeUiObservationToolsTest {
                   </node>
                   <node class="android.widget.CheckBox" resource-id="agree" package="p"
                         checkable="true" enabled="true" bounds="[0,700][200,800]" />
+                  <node class="android.view.View" resource-id="hold" package="p"
+                        long-clickable="true" enabled="true" bounds="[400,700][600,800]" />
                   <node class="android.widget.Button" text="Pay" package="p"
                         clickable="true" enabled="false" bounds="[0,900][300,1000]" />
                 </node>
