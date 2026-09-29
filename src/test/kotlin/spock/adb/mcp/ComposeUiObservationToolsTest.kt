@@ -211,6 +211,34 @@ class ComposeUiObservationToolsTest {
     }
 
     @Test
+    fun `only what a tap would land on gets a centre`() {
+        val lines = Screen(xml = CONTROLS).run(GetUiTreeTool()).lines()
+
+        // A scroll container or a checkable that is not clickable is not where android_tap_element taps.
+        assertFalse(lines.single { "ScrollView" in it }.contains("center="), lines.toString())
+        assertFalse(lines.single { "CheckBox" in it }.contains("center="), lines.toString())
+        assertFalse(lines.single { "Pay" in it }.contains("center="), "disabled: $lines")
+        assertTrue(lines.single { "testTag=card" in it }.contains("center=[540,500]"), lines.toString())
+    }
+
+    @Test
+    fun `interactiveOnly lists each row once, not again under its list`() {
+        val text = Screen(xml = CLICKABLE_LIST).run(GetUiTreeTool(), args("interactiveOnly" to true))
+
+        listOf("Row 1", "Row 5", "Row 9").forEach { row ->
+            assertEquals(1, text.lines().count { row in it }, text)
+        }
+    }
+
+    @Test
+    fun `meaningfulOnly lists a label inside a control once`() {
+        val text = Screen(xml = CONTROLS).run(GetUiTreeTool(), args("meaningfulOnly" to true))
+
+        assertEquals(1, text.lines().count { "Open card" in it }, text)
+        assertTrue(text.lines().any { it.startsWith("  View testTag=card clickable") }, text)
+    }
+
+    @Test
     fun `finding an element does not add tap points`() {
         val text = Screen().run(FindUiElementTool(), byTag("save"))
 
@@ -225,7 +253,10 @@ class ComposeUiObservationToolsTest {
         val listed = lines.drop(heading + 1)
         val switch = listed.indexOfFirst { "recomp_ticking" in it }
 
-        assertEquals("  Switch testTag=recomp_ticking checked=true [100,300][300,400] center=[200,350]", listed[switch])
+        assertEquals(
+            "  Switch testTag=recomp_ticking clickable checked=true [100,300][300,400] center=[200,350]",
+            listed[switch],
+        )
         assertEquals("  TextView text=\"Ticking\" [320,320][600,380]", listed[switch + 1], text)
         assertTrue(listed.any { "Recomposition fixture" in it }, text)
         assertFalse(listed.any { "FrameLayout" in it || it.trim().startsWith("View ") }, text)
@@ -303,11 +334,31 @@ class ComposeUiObservationToolsTest {
                         bounds="[0,100][1080,200]" />
                   <node class="android.view.View" package="p" bounds="[0,300][1080,400]">
                     <node class="android.widget.Switch" resource-id="recomp_ticking" package="p"
-                          checkable="true" checked="true" clickable="false" enabled="true"
+                          checkable="true" checked="true" clickable="true" enabled="true"
                           bounds="[100,300][300,400]" />
                     <node class="android.widget.TextView" text="Ticking" package="p" enabled="true"
                           bounds="[320,320][600,380]" />
                   </node>
+                </node>
+              </node>
+            </hierarchy>
+        """.trimIndent()
+
+        /** A clickable card holding its label, a scroll container, a bare checkable and a disabled button. */
+        val CONTROLS = """
+            <hierarchy rotation="0">
+              <node class="android.widget.FrameLayout" package="p" bounds="[0,0][1080,2400]">
+                <node class="android.widget.ScrollView" resource-id="list" package="p"
+                      scrollable="true" enabled="true" bounds="[0,0][1080,1500]">
+                  <node class="android.view.View" resource-id="card" package="p"
+                        clickable="true" enabled="true" bounds="[0,400][1080,600]">
+                    <node class="android.widget.TextView" text="Open card" package="p"
+                          enabled="true" bounds="[40,450][600,550]" />
+                  </node>
+                  <node class="android.widget.CheckBox" resource-id="agree" package="p"
+                        checkable="true" enabled="true" bounds="[0,700][200,800]" />
+                  <node class="android.widget.Button" text="Pay" package="p"
+                        clickable="true" enabled="false" bounds="[0,900][300,1000]" />
                 </node>
               </node>
             </hierarchy>

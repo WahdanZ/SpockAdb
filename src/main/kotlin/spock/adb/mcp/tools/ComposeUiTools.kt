@@ -93,8 +93,8 @@ internal object UiTreeReader {
      * @param visibility each node's place in the viewport. Only a node not plainly in it gets a
      *   marker, such as `[outside viewport]` or `[62% in viewport]`, so a screen that is all in
      *   view costs nothing extra.
-     * @param withCenter give each interactive node `center=[x,y]`, the point
-     *   `android_tap_element` would tap; see [tapPoint].
+     * @param withCenter give each enabled clickable node `center=[x,y]`, the point
+     *   `android_tap_element` would tap.
      */
     fun UiNode.render(
         depth: Int = 0,
@@ -103,18 +103,7 @@ internal object UiTreeReader {
         withCenter: Boolean = false,
     ): String = buildString {
         append("  ".repeat(depth))
-        append(shortClassName())
-        testTag?.let { append(" testTag=").append(it) }
-        text.takeIf { it.isNotBlank() }?.let { append(" text=\"").append(it).append('"') }
-        contentDescription.takeIf { it.isNotBlank() }?.let { append(" desc=\"").append(it).append('"') }
-        if (clickable) append(" clickable")
-        if (scrollable) append(" scrollable")
-        if (checkable) append(" checked=").append(checked)
-        if (!enabled) append(" DISABLED")
-        if (selected) append(" selected")
-        append(' ').append(bounds)
-        append(centerNote(withCenter, visibility))
-        visibility?.get(this@render)?.marker()?.let { append(" [").append(it).append(']') }
+        append(line(visibility, withCenter))
 
         when {
             children.isEmpty() -> Unit
@@ -130,19 +119,43 @@ internal object UiTreeReader {
         }
     }
 
+    /**
+     * This node alone, on one line and without its children, for a flat listing where a node's
+     * descendants are listed in their own right. See [render] for the parameters.
+     */
+    fun UiNode.line(
+        visibility: Map<UiNode, NodeVisibility>? = null,
+        withCenter: Boolean = false,
+    ): String = buildString {
+        append(shortClassName())
+        testTag?.let { append(" testTag=").append(it) }
+        text.takeIf { it.isNotBlank() }?.let { append(" text=\"").append(it).append('"') }
+        contentDescription.takeIf { it.isNotBlank() }?.let { append(" desc=\"").append(it).append('"') }
+        if (clickable) append(" clickable")
+        if (scrollable) append(" scrollable")
+        if (checkable) append(" checked=").append(checked)
+        if (!enabled) append(" DISABLED")
+        if (selected) append(" selected")
+        append(' ').append(bounds)
+        append(centerNote(withCenter, visibility))
+        visibility?.get(this@line)?.marker()?.let { append(" [").append(it).append(']') }
+    }
+
     private fun UiNode.shortClassName(): String = className.substringAfterLast('.')
 
-    /** ` center=[x,y]` when asked for and there is a [tapPoint], so [render] stays one line per field. */
+    /** ` center=[x,y]` when asked for and there is a [tapRegion], so [line] stays one line per field. */
     private fun UiNode.centerNote(withCenter: Boolean, visibility: Map<UiNode, NodeVisibility>?): String =
-        if (withCenter) tapPoint(visibility)?.let { " center=[${it.centerX},${it.centerY}]" }.orEmpty() else ""
+        if (withCenter) tapRegion(visibility)?.let { " center=[${it.centerX},${it.centerY}]" }.orEmpty() else ""
 
     /**
      * The region whose centre `android_tap_element` taps: the part in view, so a control half
      * scrolled out of its list is not pressed under the list's edge. Without a viewport it is the
-     * whole bounds, as it is for the tap. Null for what is not interactive or has nothing in view.
+     * whole bounds, as it is for the tap. Null for anything the element tools would not press
+     * there: a node that is not clickable, only scrollable or checkable (a tap lands on its
+     * nearest clickable ancestor instead), disabled (they refuse it), or with nothing in view.
      */
-    private fun UiNode.tapPoint(visibility: Map<UiNode, NodeVisibility>?): UiNode.Bounds? {
-        if (!isInteractive || !bounds.hasArea) return null
+    private fun UiNode.tapRegion(visibility: Map<UiNode, NodeVisibility>?): UiNode.Bounds? {
+        if (!isPressable || !bounds.hasArea) return null
         val seen = visibility?.get(this) ?: return bounds
         return when (seen.presence) {
             Presence.VIEWPORT_UNKNOWN -> bounds
@@ -150,6 +163,10 @@ internal object UiTreeReader {
             Presence.OUTSIDE_VIEWPORT, Presence.ZERO_AREA -> null
         }
     }
+
+    /** Enabled, and a tap or long press lands on it rather than on an ancestor. */
+    private val UiNode.isPressable: Boolean
+        get() = (clickable || longClickable) && enabled
 
     /** Resolves the selector arguments every element tool accepts. */
     fun JsonObject.toSelector(interactiveOnly: Boolean = false) = UiSelector(
@@ -185,7 +202,7 @@ class GetUiTreeTool : AdbTool {
             "selected. Use this before interacting: match elements semantically rather than " +
             "guessing coordinates from a screenshot. On a Compose screen this is the composable " +
             "tree as Compose publishes it: merged semantics, with Modifier.testTag values as testTag. " +
-            "Interactive nodes carry center=[x,y], the point android_tap_element taps (the centre of " +
+            "Enabled clickable nodes carry center=[x,y], the point android_tap_element taps (the centre of " +
             "the part in view); prefer the element tools over tapping coordinates."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
@@ -227,10 +244,13 @@ class GetUiTreeTool : AdbTool {
     private val UiNode.isLabelled: Boolean
         get() = text.isNotBlank() || contentDescription.isNotBlank()
 
-    /** A flat listing under [heading], in screen order, each node with its tap point. */
+    /**
+     * A flat listing under [heading], in screen order, each node on its own line with its tap
+     * point. Never the subtree: a matched descendant is listed in its own right, and only once.
+     */
     private fun list(heading: String, nodes: Sequence<UiNode>, visibility: Map<UiNode, NodeVisibility>): String =
         with(UiTreeReader) {
-            heading + "\n" + nodes.joinToString("\n") { "  " + it.render(visibility = visibility, withCenter = true) }
+            heading + "\n" + nodes.joinToString("\n") { "  " + it.line(visibility, withCenter = true) }
         }
 }
 
