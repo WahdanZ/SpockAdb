@@ -184,6 +184,7 @@
   folded Device section, which keeps the Wi-Fi and mobile data switches and the proxy. On a fresh
   install, developer options start hidden, since the device already offers them. Turn them back
   on from **Choose Actions Shown on Home…**. Existing settings are unchanged.
+  Rows switched off there are no longer read from the device either.
 - **App back stack shows the stack.** The popup lists the app's activities top first and numbered,
   with each one's state (`RESUMED` in green) and the fragments it holds indented under it. The
   selected row is highlighted, hovering shows the full class name, and Enter opens the code.

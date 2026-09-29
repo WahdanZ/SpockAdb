@@ -165,6 +165,8 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
             val next = service.state.copy(list = list)
             service.loadState(next)
             applySettings(next)
+            // A row just switched on has never been read: it would show its defaults, not the device.
+            refreshDevice()
         }
         dialog.setLocationRelativeTo(null)
         dialog.pack()
@@ -345,10 +347,13 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
 
     /** The device's own state: network, proxy, developer options. */
     private fun refreshDevice() {
-        httpProxyRow.refresh()
-        wifiRow.refresh()
-        mobileDataRow.refresh()
-        developerOptions.refresh()
+        val wanted = DeviceRead.wanted(::isOn)
+        if (DeviceRead.PROXY in wanted) httpProxyRow.refresh()
+        if (DeviceRead.NETWORK in wanted) {
+            wifiRow.refresh()
+            mobileDataRow.refresh()
+        }
+        if (DeviceRead.DEVELOPER_OPTIONS in wanted) developerOptions.refresh()
     }
 
     /** The app's state and the screen it is on. */
@@ -409,5 +414,22 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
     private companion object {
         const val GAP = 4
         const val AFTER_ACTION_MS = 1200
+    }
+}
+
+/**
+ * The device reads Home makes, each only while the settings dialog shows the row it fills.
+ *
+ * Developer options start hidden on a fresh install, and reading them anyway meant several
+ * `settings get` round trips on every device switch for controls nobody could see.
+ */
+internal enum class DeviceRead(val gate: SpockAction) {
+    PROXY(SpockAction.HTTP_PROXY),
+    NETWORK(SpockAction.TOGGLE_NETWORK),
+    DEVELOPER_OPTIONS(SpockAction.DEVELOPER_OPTIONS),
+    ;
+
+    companion object {
+        fun wanted(isOn: (SpockAction) -> Boolean): Set<DeviceRead> = entries.filterTo(mutableSetOf()) { isOn(it.gate) }
     }
 }
