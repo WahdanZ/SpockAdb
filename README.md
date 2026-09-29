@@ -72,7 +72,7 @@ Spock ADB brings those workflows into the IDE and keeps one selected **device + 
   <img src="images/spock-adb-overview.png" alt="Spock ADB: Spock Screen and Spock ADB Home on the left, Spock Logcat at the bottom, device, app and MCP state in the status bar" width="92%">
 </p>
 <p align="center">
-  <img src="images/home.png" alt="Spock ADB Home: the app, its lifecycle toolbar and the screen it is on" width="36%">
+  <img src="images/home.png" alt="Spock ADB Home: the screen it is on, the app and its lifecycle toolbar" width="36%">
   <img src="images/spock-actions.png" alt="Spock Actions popup with pinned and all actions" width="30%">
 </p>
 <p align="center">
@@ -112,15 +112,17 @@ Workflows that normally require **several commands, copy/paste operations, PID l
 
 The first tab of the **Spock ADB** window answers the questions you would otherwise run a command for, and puts the actions you use most in one row.
 
-- **App** — version, process and UID, with **Restart**, **Attach debugger**, **Force stop** and **Process death** in a toolbar. **Clear cache**, **Clear data** and **Uninstall** sit behind **⋯**, never one click from Restart.
-- **This screen** — the resumed activity and the app's fragments, read live, as links to their source; **App back stack**, **All activities**, **Diagnose**, and **Copy screen for AI**, which diagnoses and copies the redacted report in one click.
+- **This screen** — the resumed activity and the app's fragments, read live, as links to their source; **Diagnose**, and **Copy screen for AI**, which diagnoses and copies the redacted report in one click. **App back stack** lists the app's activities top first, each with its state and the fragments it holds; **All activities** shows every task on the device.
+- **App** — version, process and UID, with **Restart**, **Attach debugger**, **Force stop** and **Process death** in a toolbar. **Clear cache**, **Clear data** and **Uninstall** sit behind **⋯**, never one click from Restart. Links jump to the **Debug timeline** and **Background work**.
 - **Permissions** — how many are granted, with **Manage…**, **Grant all** and **Revoke all…**.
-- **Device** — Wi-Fi and mobile data, HTTP proxy, developer options (Don't keep activities, Show taps, layout bounds, animation scales), text input, deep links and push messages. Folded until you need it.
+- **Send to app** — text input, deep links and push messages.
+- **Device** — Wi-Fi and mobile data, HTTP proxy, and developer options (Don't keep activities, Show taps, layout bounds, animation scales), which start hidden on a fresh install. Folded until you need it.
 
 The device and app it acts on are the ones in the status bar: they follow Android Studio's run target by default, and a click changes them for every Spock window at once.
 
 <p align="center">
-  <img src="images/home.png" alt="Spock ADB Home: app, lifecycle actions and current screen" width="45%">
+  <img src="images/home.png" alt="Spock ADB Home: current screen, app, permissions and Send to app" width="45%">
+  <img src="images/app-back-stack.png" alt="App back stack: the app's activities top first, each with its state and the fragments under it" width="45%">
 </p>
 
 ---
