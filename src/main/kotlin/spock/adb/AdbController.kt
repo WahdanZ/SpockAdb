@@ -86,6 +86,12 @@ interface AdbController {
     fun setAnimatorDurationScale(scale: String, device: IDevice)
 
     /**
+     * Sets all three scales to 1×, then calls [onDone] on the EDT, so a re-read comes after the
+     * writes.
+     */
+    fun resetAnimationScales(device: IDevice, onDone: () -> Unit = {})
+
+    /**
      * Toggles [network], then calls [onDone] on the EDT.
      *
      * The callback is what lets the row that shows the state read the device back rather than

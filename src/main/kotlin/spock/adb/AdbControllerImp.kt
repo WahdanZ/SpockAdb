@@ -544,8 +544,7 @@ class AdbControllerImp(
 
     ) {
         execute {
-            val result = WindowAnimatorScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+            showAnimationScaleWrite(WindowAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
@@ -555,8 +554,7 @@ class AdbControllerImp(
 
     ) {
         execute {
-            val result = TransitionAnimatorScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+            showAnimationScaleWrite(TransitionAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
@@ -566,10 +564,28 @@ class AdbControllerImp(
 
     ) {
         execute {
-            val result = AnimatorDurationScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+            showAnimationScaleWrite(AnimatorDurationScaleCommand().execute(scale, project, device))
         }
     }
+
+    override fun resetAnimationScales(device: IDevice, onDone: () -> Unit) {
+        execute(onDone) {
+            val refused = SetAllAnimationScalesCommand().execute(DEFAULT_SCALE, project, device)
+                .filterNot { it.took }
+            if (refused.isEmpty()) {
+                showSuccess("Animation scales reset to 1\u00d7")
+            } else {
+                showError(refused.joinToString("\n") { it.message })
+            }
+        }
+    }
+
+    /**
+     * Reports what the device holds after the write, not what was sent — `settings put` exits 0
+     * either way. A value the device did not keep is an error.
+     */
+    private fun showAnimationScaleWrite(write: AnimationScaleWrite) =
+        if (write.took) showSuccess(write.message) else showError(write.message)
 
     override fun toggleNetwork(
         device: IDevice,

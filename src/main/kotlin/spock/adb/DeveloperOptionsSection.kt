@@ -95,12 +95,10 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
             withDevice { target -> controller.openDeveloperOptions(target) }
         }
         resetScales.addActionListener {
-            withDevice { device ->
-                controller.setWindowAnimatorScale(DEFAULT_SCALE, device)
-                controller.setTransitionAnimatorScale(DEFAULT_SCALE, device)
-                controller.setAnimatorDurationScale(DEFAULT_SCALE, device)
-                refresh()
-            }
+            // One task for the three writes, and the re-read only once it has finished: three
+            // separate writes and a read started beside them let the dropdowns show the values
+            // from before the reset.
+            withDevice { device -> controller.resetAnimationScales(device) { refresh() } }
         }
         addListeners()
     }
