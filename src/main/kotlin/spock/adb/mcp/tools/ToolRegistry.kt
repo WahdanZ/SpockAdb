@@ -54,6 +54,8 @@ object ToolRegistry {
         SetChargerTool(),
         ResetBatteryTool(),
         ResetDeviceConditionsTool(),
+        // Developer options an agent needs for reliable UI automation
+        SetAnimationsTool(),
         // The triage bundle: one round-trip instead of four, all describing the same moment.
         DebugContextTool(),
         // The same report with every section and a screenshot: the Diagnose tab, for agents.
