@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -113,7 +114,8 @@ class AnimationScalesTest {
     fun `all three are written in the order the settings screen lists them`() {
         val fake = FakeSettingsDevice()
 
-        val writes = fake.device.setAllAnimationScales("0.0")
+        val result = fake.device.setAllAnimationScales("0.0")
+        val writes = result.writes
 
         assertEquals(
             listOf(
@@ -125,6 +127,29 @@ class AnimationScalesTest {
         )
         assertEquals(AnimationScale.entries, writes.map { it.scale })
         assertTrue(writes.all { it.took })
+        assertTrue(result.tookAll)
+    }
+
+    @Test
+    fun `a scale that throws stops the run and keeps the writes made before it`() {
+        val fake = FakeSettingsDevice()
+        every {
+            fake.device.executeShellCommand(
+                match { it.contains(AnimationScale.TRANSITION.key) },
+                any(),
+                any(),
+                any<TimeUnit>(),
+            )
+        } throws IOException("device offline")
+
+        val result = fake.device.setAllAnimationScales("0.0")
+
+        assertEquals(listOf(AnimationScale.WINDOW), result.writes.map { it.scale })
+        assertEquals("1.0", result.writes.single().before)
+        assertEquals(AnimationScale.TRANSITION, result.failed)
+        assertFalse(result.tookAll)
+        assertTrue(result.failureMessage!!.contains("device offline"), result.failureMessage)
+        assertFalse(fake.commands.any { it.contains(AnimationScale.DURATION.key) }, fake.commands.toString())
     }
 
     @Test

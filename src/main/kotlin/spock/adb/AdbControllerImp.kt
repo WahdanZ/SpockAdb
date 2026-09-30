@@ -540,42 +540,43 @@ class AdbControllerImp(
 
     override fun setWindowAnimatorScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
+        execute(onDone) {
             showAnimationScaleWrite(WindowAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
     override fun setTransitionAnimatorScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
+        execute(onDone) {
             showAnimationScaleWrite(TransitionAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
     override fun setAnimatorDurationScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
+        execute(onDone) {
             showAnimationScaleWrite(AnimatorDurationScaleCommand().execute(scale, project, device))
         }
     }
 
     override fun resetAnimationScales(device: IDevice, onDone: () -> Unit) {
         execute(onDone) {
-            val refused = SetAllAnimationScalesCommand().execute(DEFAULT_SCALE, project, device)
-                .filterNot { it.took }
-            if (refused.isEmpty()) {
+            val result = SetAllAnimationScalesCommand().execute(DEFAULT_SCALE, project, device)
+            if (result.tookAll) {
                 showSuccess("Animation scales reset to 1\u00d7")
             } else {
-                showError(refused.joinToString("\n") { it.message })
+                val problems = result.writes.filterNot { it.took }.map { it.message } +
+                    listOfNotNull(result.failureMessage)
+                showError(problems.joinToString("\n"))
             }
         }
     }

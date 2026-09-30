@@ -974,7 +974,12 @@ since this tool can only set all three to one value.
 It is a **safe action**: it is exactly what the Developer options animation dropdowns in the tool
 window do, it changes nothing an app stores, and calling it again undoes it. A change made here is
 not pushed into an open Developer options section; its dropdowns show the new value on their next
-refresh.
+refresh. The scales are stored settings: they survive a reboot, and neither
+`android_reset_device_conditions` nor closing the project puts them back, so restore them yourself.
+
+If a shell call fails part-way — the device disconnects, or `adb` times out — the tool stops there
+and returns an error that still lists the scales it had already changed, with their previous
+values and how to restore them, and names the scale whose state is now unknown.
 
 ### `android_simulate_process_death`
 

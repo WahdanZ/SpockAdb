@@ -72,7 +72,8 @@ How to behave around them:
   `reason` must say which typed tool you considered and why it does not fit.
 - **Leave the device as you found it.** Undo what you changed: `android_clear_http_proxy` after
   `android_set_http_proxy`, `android_reset_device_conditions` after Doze, buckets or battery
-  changes, `android_set_animations` back to the value it reported. `android_get_device_conditions` lists what Spock changed and has not reset.
+  changes, `android_set_animations` back to the value it reported.
+  `android_get_device_conditions` lists what Spock changed and has not reset.
 
 ## Finding and acting on UI elements
 

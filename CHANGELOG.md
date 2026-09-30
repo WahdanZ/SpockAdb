@@ -14,8 +14,9 @@
 ### Fixed
 
 - **Animation scale changes report what the device holds.** Choosing a scale in Developer options
-  used to announce it as set without checking; it is now read back, and a device that did not take
-  it is reported as an error. **Reset animation scales** now re-reads after its writes finish, so
+  used to announce it as set without checking; it is now read back, a device that did not take
+  it is reported as an error, and the dropdown re-reads so a refused value does not stay on show.
+  **Reset animation scales** now re-reads after its writes finish, so
   the dropdowns no longer show the values from before the reset.
 
 ## [4.0.7] - 2026-09-29

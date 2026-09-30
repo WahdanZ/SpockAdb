@@ -180,17 +180,18 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
 
     @Suppress("UNUSED_PARAMETER")
     private fun onWindowScale(event: ActionEvent) = withDevice { device ->
-        controller?.setWindowAnimatorScale(windowScale.selectedItem as String, device)
+        // Re-read afterwards, so a value the device refused does not stay on show.
+        controller?.setWindowAnimatorScale(windowScale.selectedItem as String, device) { refresh() }
     }
 
     @Suppress("UNUSED_PARAMETER")
     private fun onTransitionScale(event: ActionEvent) = withDevice { device ->
-        controller?.setTransitionAnimatorScale(transitionScale.selectedItem as String, device)
+        controller?.setTransitionAnimatorScale(transitionScale.selectedItem as String, device) { refresh() }
     }
 
     @Suppress("UNUSED_PARAMETER")
     private fun onDurationScale(event: ActionEvent) = withDevice { device ->
-        controller?.setAnimatorDurationScale(durationScale.selectedItem as String, device)
+        controller?.setAnimatorDurationScale(durationScale.selectedItem as String, device) { refresh() }
     }
 
     private inline fun withDevice(block: (com.android.ddmlib.IDevice) -> Unit) {

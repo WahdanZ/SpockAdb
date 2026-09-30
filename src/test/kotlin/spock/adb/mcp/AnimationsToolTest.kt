@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import spock.adb.mcp.tools.SetAnimationsTool
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -27,6 +28,8 @@ class AnimationsToolTest {
             DURATION to "1.0",
         ),
         private val refused: Set<String> = emptySet(),
+        /** Settings whose every shell call throws, as a device dropping off mid-call does. */
+        private val unresponsive: Set<String> = emptySet(),
     ) {
         val target = FakeToolContext.device("emulator-5554")
         val context = FakeToolContext(available = listOf(target))
@@ -38,6 +41,9 @@ class AnimationsToolTest {
                 target.device.executeShellCommand(capture(command), capture(receiver), any(), any<TimeUnit>())
             } answers {
                 val words = command.captured.split(' ')
+                if (unresponsive.any { command.captured.contains(it) }) {
+                    throw IOException("device 'emulator-5554' not found")
+                }
                 val out = when {
                     command.captured.startsWith("settings get global ") -> settings[words.last()] ?: "null"
                     command.captured.startsWith("settings put global ") -> {
@@ -131,6 +137,32 @@ class AnimationsToolTest {
         val result = fake.run("""{"scale":"0"}""")
 
         assertTrue(result.text().contains("To restore: android_set_animations with scale 1."), result.text())
+    }
+
+    @Test
+    fun `a failure part-way still reports the scale already changed and how to restore it`() {
+        val fake = FakeDevice(unresponsive = setOf(TRANSITION))
+
+        val result = fake.run("""{"scale":"0"}""")
+
+        assertTrue(result.isError, result.text())
+        assertEquals("0.0", fake.settings[WINDOW], "the first write did happen")
+        assertEquals("1.0", fake.settings[DURATION], "nothing is tried after the failure")
+        assertTrue(result.text().contains("$WINDOW: 1× → Off"), result.text())
+        assertTrue(result.text().contains("Transition animation scale could not be set"), result.text())
+        assertTrue(result.text().contains("not found"), "the cause is carried through: ${result.text()}")
+        assertTrue(result.text().contains("android_set_animations with scale 1"), result.text())
+        assertTrue(fake.context.confirmations.isEmpty())
+    }
+
+    @Test
+    fun `a failure on the first scale says nothing was changed`() {
+        val fake = FakeDevice(unresponsive = setOf(WINDOW))
+
+        val result = fake.run("""{"scale":"0"}""")
+
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("Nothing was changed before it."), result.text())
     }
 
     @Test

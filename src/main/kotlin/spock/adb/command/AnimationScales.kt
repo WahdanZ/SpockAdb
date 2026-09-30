@@ -1,6 +1,7 @@
 package spock.adb.command
 
 import com.android.ddmlib.IDevice
+import com.intellij.openapi.progress.ProcessCanceledException
 import spock.adb.ShellOutputReceiver
 import spock.adb.ShellQuote
 import spock.adb.scaleText
@@ -29,7 +30,10 @@ data class AnimationScaleWrite(
     val before: String?,
     val after: String?,
 ) {
-    /** Compared as numbers: a device that stores "0" for "0.0" has taken it. */
+    /**
+     * Compared as numbers: a device that stores "0" for "0.0" has taken it. Float `==` is safe
+     * here because both sides parse the same short decimal literals, so equal text is equal bits.
+     */
     val took: Boolean
         get() = requested.toFloatOrNull()?.let { it == after?.toFloatOrNull() } == true
 
@@ -77,6 +81,54 @@ internal fun IDevice.setAnimationScale(scale: AnimationScale, value: String): An
     return AnimationScaleWrite(scale, value, before, readAnimationScale(scale))
 }
 
-/** All three scales set to [value], in the order the settings screen lists them. */
-internal fun IDevice.setAllAnimationScales(value: String): List<AnimationScaleWrite> =
-    AnimationScale.entries.map { setAnimationScale(it, value) }
+/**
+ * What [setAllAnimationScales] did before it finished or stopped.
+ *
+ * A failure part-way through must not discard the writes already made: the first scale can be
+ * Off while the second threw, and a caller told only about the exception would believe nothing
+ * changed — and lose the value to restore.
+ *
+ * @param writes the scales written and read back, in order.
+ * @param failed the scale whose shell call threw, after which nothing more was tried.
+ */
+data class AnimationScaleWrites(
+    val writes: List<AnimationScaleWrite>,
+    val failed: AnimationScale? = null,
+    val failure: Exception? = null,
+) {
+    val tookAll: Boolean get() = failed == null && writes.all { it.took }
+
+    /**
+     * Why [failed] is unknown. The shell call that threw may have been the write or either read,
+     * so the value it holds is not claimed either way.
+     */
+    val failureMessage: String?
+        get() = failed?.let {
+            val reason = failure?.message?.takeIf { message -> message.isNotBlank() }
+                ?: failure?.javaClass?.simpleName
+            "${it.label} could not be set or read back ($reason); what it holds now is unknown, " +
+                "and the scales after it were not tried."
+        }
+}
+
+/**
+ * All three scales set to [value], in the order the settings screen lists them. Stops at the
+ * first scale whose shell call throws, and returns what was done before it.
+ *
+ * Catches every exception, not the four ddmlib declares: whatever ends the run — including a
+ * runtime exception from a device that has gone — must not discard the writes already made.
+ */
+@Suppress("TooGenericExceptionCaught")
+internal fun IDevice.setAllAnimationScales(value: String): AnimationScaleWrites {
+    val writes = mutableListOf<AnimationScaleWrite>()
+    for (scale in AnimationScale.entries) {
+        try {
+            writes += setAnimationScale(scale, value)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: Exception) {
+            return AnimationScaleWrites(writes, scale, e)
+        }
+    }
+    return AnimationScaleWrites(writes)
+}

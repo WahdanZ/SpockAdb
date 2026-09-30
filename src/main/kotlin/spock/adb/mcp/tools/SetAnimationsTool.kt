@@ -39,15 +39,19 @@ class SetAnimationsTool : AdbTool {
         val entry = animationScaleEntry(raw, SCALES)
             ?: return ToolResult.error("Unknown scale '$raw'. Use one of: ${ARGUMENTS.joinToString()}.")
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val writes = runCatching { device.setAllAnimationScales(entry) }
-            .getOrElse { return ToolResult.error(it.message ?: "Could not set the animation scales.") }
+        // Straight to the device rather than through SetAllAnimationScalesCommand: commands take
+        // a Project, which a tool context need not have, and the value is validated above.
+        val result = device.setAllAnimationScales(entry)
+        val writes = result.writes
 
         val lines = writes.map {
             "${it.scale.key}: ${describeAnimationScale(it.before)} → ${describeAnimationScale(it.after)}"
         }
-        val text = (writes.filterNot { it.took }.map { it.message } + lines + restoreHint(writes))
-            .joinToString("\n")
-        return if (writes.all { it.took }) ToolResult.text(text) else ToolResult.error(text)
+        // A failure part-way still reports the scales already changed, and how to put them back.
+        val hint = if (writes.isEmpty()) "Nothing was changed before it." else restoreHint(writes)
+        val problems = listOfNotNull(result.failureMessage) + writes.filterNot { it.took }.map { it.message }
+        val text = (problems + lines + hint).joinToString("\n")
+        return if (result.tookAll) ToolResult.text(text) else ToolResult.error(text)
     }
 
     /** How to put back what was there, which one call can only do when all three matched. */
