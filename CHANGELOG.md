@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`android_set_animations`: animations off for agents, without a confirmation.** It sets the
+  window, transition and animator-duration scales together, reads them back, and reports the
+  previous values so they can be restored. Before this, agents had to ask for `settings put`
+  through `android_run_adb_command`, which needs approval every call. It is the same as the
+  Developer options dropdowns. The sample app's **Animations** screen shows what the app sees.
+  (Part of [#149](https://github.com/WahdanZ/SpockAdb/issues/149).)
+
+### Fixed
+
+- **Animation scale changes report what the device holds.** Choosing a scale in Developer options
+  used to announce it as set without checking; it is now read back, a device that did not take
+  it is reported as an error, and the dropdown re-reads so a refused value does not stay on show.
+  **Reset animation scales** now re-reads after its writes finish, so
+  the dropdowns no longer show the values from before the reset.
+
 ## [4.0.7] - 2026-09-29
 
 ### Added

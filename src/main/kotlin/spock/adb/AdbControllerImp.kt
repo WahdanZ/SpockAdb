@@ -540,36 +540,53 @@ class AdbControllerImp(
 
     override fun setWindowAnimatorScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
-            val result = WindowAnimatorScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+        execute(onDone) {
+            showAnimationScaleWrite(WindowAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
     override fun setTransitionAnimatorScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
-            val result = TransitionAnimatorScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+        execute(onDone) {
+            showAnimationScaleWrite(TransitionAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
     override fun setAnimatorDurationScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
-            val result = AnimatorDurationScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+        execute(onDone) {
+            showAnimationScaleWrite(AnimatorDurationScaleCommand().execute(scale, project, device))
         }
     }
+
+    override fun resetAnimationScales(device: IDevice, onDone: () -> Unit) {
+        execute(onDone) {
+            val result = SetAllAnimationScalesCommand().execute(DEFAULT_SCALE, project, device)
+            if (result.tookAll) {
+                showSuccess("Animation scales reset to 1\u00d7")
+            } else {
+                val problems = result.writes.filterNot { it.took }.map { it.message } +
+                    listOfNotNull(result.failureMessage)
+                showError(problems.joinToString("\n"))
+            }
+        }
+    }
+
+    /**
+     * Reports what the device holds after the write, not what was sent — `settings put` exits 0
+     * either way. A value the device did not keep is an error.
+     */
+    private fun showAnimationScaleWrite(write: AnimationScaleWrite) =
+        if (write.took) showSuccess(write.message) else showError(write.message)
 
     override fun toggleNetwork(
         device: IDevice,

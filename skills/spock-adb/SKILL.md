@@ -72,7 +72,8 @@ How to behave around them:
   `reason` must say which typed tool you considered and why it does not fit.
 - **Leave the device as you found it.** Undo what you changed: `android_clear_http_proxy` after
   `android_set_http_proxy`, `android_reset_device_conditions` after Doze, buckets or battery
-  changes. `android_get_device_conditions` lists what Spock changed and has not reset.
+  changes, `android_set_animations` back to the value it reported.
+  `android_get_device_conditions` lists what Spock changed and has not reset.
 
 ## Finding and acting on UI elements
 
@@ -90,6 +91,8 @@ How to behave around them:
   INCONCLUSIVE instead of leaving you to guess.
 - Wait with `android_wait_for_element` (`until`: `visible`, `gone`, `enabled`, `checked`, …)
   rather than sleeping and re-reading.
+- Before a multi-step element-driven flow, call `android_set_animations` with `scale` 0, so each
+  action lands on a settled screen. When done, restore the previous value it reported.
 
 ## Playbooks
 

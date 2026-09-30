@@ -281,12 +281,12 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-69 tools, in three levels.
+70 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
 | **Read-only** (29) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline`, `android_list_recipes` |
-| **Safe action** (32) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts`, `android_run_recipe` |
+| **Safe action** (33) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts`, `android_run_recipe`, `android_set_animations` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
 Rules that hold regardless of what a client asks for:
@@ -955,6 +955,31 @@ Every change is tracked, whether an agent made it or the Background Work tab did
 banner until the change is reset, and the last project to close resets every device that is still
 online. A device that is offline then keeps its state; a reboot clears Doze and the battery
 override.
+
+### `android_set_animations`
+
+Sets the window, transition and animator-duration scales to one value, with
+`settings put global window_animation_scale|transition_animation_scale|animator_duration_scale`.
+`scale` is one of 0, 0.5, 1, 1.5, 2, 5 and 10; 0 turns animations off, which is the usual first
+step before driving a screen with the element and wait tools, so a tap is not checked against a
+screen still sliding into place.
+
+Each scale is read before and after the write. `settings put` exits 0 whether or not the device
+keeps the value, so the result is built from the read-back: one line per setting with its previous
+and new value, and an error if any of them did not take. A setting never written reads as
+`null` and is shown as "not set (1×)", which is how Android animates it. When all three previous
+values were the same, the result says which `scale` restores them; when they differed, it says so,
+since this tool can only set all three to one value.
+
+It is a **safe action**: it is exactly what the Developer options animation dropdowns in the tool
+window do, it changes nothing an app stores, and calling it again undoes it. A change made here is
+not pushed into an open Developer options section; its dropdowns show the new value on their next
+refresh. The scales are stored settings: they survive a reboot, and neither
+`android_reset_device_conditions` nor closing the project puts them back, so restore them yourself.
+
+If a shell call fails part-way — the device disconnects, or `adb` times out — the tool stops there
+and returns an error that still lists the scales it had already changed, with their previous
+values and how to restore them, and names the scale whose state is now unknown.
 
 ### `android_simulate_process_death`
 

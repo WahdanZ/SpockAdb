@@ -89,6 +89,7 @@
         <activity android:name=".background.BackgroundWorkActivity" android:exported="false" />
         <activity android:name=".ProcessDeathActivity" android:exported="false" />
         <activity android:name=".PushActivity" android:exported="false" />
+        <activity android:name=".AnimationsActivity" android:exported="false" />
 
         <service
             android:name=".background.SampleJobService"

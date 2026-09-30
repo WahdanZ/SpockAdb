@@ -81,9 +81,20 @@ interface AdbController {
     fun enableDisableDontKeepActivities(device: IDevice)
     fun enableDisableShowTaps(device: IDevice)
     fun enableDisableShowLayoutBounds(device: IDevice)
-    fun setWindowAnimatorScale(scale: String, device: IDevice)
-    fun setTransitionAnimatorScale(scale: String, device: IDevice)
-    fun setAnimatorDurationScale(scale: String, device: IDevice)
+
+    /**
+     * The three single-scale writes, each read back. [onDone] runs on the EDT afterwards, so the
+     * dropdown can re-read and not keep showing a value the device refused.
+     */
+    fun setWindowAnimatorScale(scale: String, device: IDevice, onDone: () -> Unit = {})
+    fun setTransitionAnimatorScale(scale: String, device: IDevice, onDone: () -> Unit = {})
+    fun setAnimatorDurationScale(scale: String, device: IDevice, onDone: () -> Unit = {})
+
+    /**
+     * Sets all three scales to 1×, then calls [onDone] on the EDT, so a re-read comes after the
+     * writes.
+     */
+    fun resetAnimationScales(device: IDevice, onDone: () -> Unit = {})
 
     /**
      * Toggles [network], then calls [onDone] on the EDT.
