@@ -36,6 +36,12 @@ interface ToolContext {
      */
     fun requireDevice(serialOverride: String? = null): ConnectedDevice
 
+    /**
+     * The target this call acts on, for code that works on any platform. Android only until the
+     * iOS simulator backend registers its own targets; until then this is [requireDevice].
+     */
+    fun requireTarget(idOverride: String? = null): DeviceTarget = DeviceTarget.Android(requireDevice(idOverride))
+
     /** Persists the agent's device choice for subsequent calls. */
     fun selectDevice(serial: String): ConnectedDevice
 
@@ -64,7 +70,11 @@ interface ToolContext {
      * Returns false when declined. Implementations must block until the developer answers
      * and must never default to true — an unattended IDE denies rather than approves.
      */
-    fun confirmDestructive(toolName: String, summary: String, device: ConnectedDevice): Boolean
+    fun confirmDestructive(toolName: String, summary: String, target: DeviceTarget): Boolean
+
+    /** [confirmDestructive] for an Android device, which is what every tool so far acts on. */
+    fun confirmDestructive(toolName: String, summary: String, device: ConnectedDevice): Boolean =
+        confirmDestructive(toolName, summary, DeviceTarget.Android(device))
 
     /** The application ID of the open project's app module, when it can be resolved. */
     fun projectApplicationId(): String?
