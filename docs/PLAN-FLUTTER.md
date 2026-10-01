@@ -1,7 +1,7 @@
 # Spock ADB for Flutter apps
 
 Status: draft v2 · 2026-10-01 · lands in the **plugin** via the `epic/flutter` branch (epic #153), then `master`, before the standalone app.
-Replaces the v1 draft in the `standalone` branch. Review findings are tagged **[FR#]**.
+Replaces the v1 draft in the `standalone` branch. Review findings are tagged **[FR#]** and summarised in the appendix at the end.
 
 ## Positioning — the device half, not the widget half
 
@@ -158,3 +158,26 @@ First release (P0 + P1) after **~1.5 weeks**.
 - Flutter plugin source (DTD use): https://github.com/flutter/flutter-intellij
 - DTD ConnectedApp service: https://github.com/dart-lang/sdk/issues/60540
 - Official skills: https://github.com/flutter/agent-plugins
+
+## Appendix: review findings referenced
+
+The v1 review lives outside the repo; these are the findings this plan cites.
+
+| Tag | Finding |
+|---|---|
+| FR1 | DDS owns the VM Service connection; Spock must coexist with `flutter run` / `flutter attach`, not grab the URI first |
+| FR2 | MCP tool context and the diagnostics probe are Android-bound (`IDevice`) |
+| FR4 | Jank is only meaningful in profile builds; the frame budget comes from the display refresh rate |
+| FR5 | Flutter semantics already reach Android accessibility; `Semantics(identifier:)` maps to the resource-id |
+| FR8 | VM Service discovery from logs or ports is fragile |
+| FR9 | A VM Service token means code execution: never store or log it |
+| FR10 | `structuredErrors`, `trackRebuildDirtyWidgets` and the HTTP profile have side effects on the app |
+| FR11 | Inspector API names and object groups change between Flutter versions |
+| FR12 | Isolate selection, and paused isolates that would hang calls |
+| FR15 | MCP safety classes and tool-count growth |
+| FR16 | `simctl` limits (what it can't grant, read or automate) |
+| FR17 | WebSocket client threading, message fragments and timeouts |
+| FR18 | Timeline clocks (device vs host) and the timeline schema |
+| FR20 | Phase ordering |
+| FR21 | Test strategy gaps |
+| FR22 | Flavors, add-to-app and multi-view apps |
