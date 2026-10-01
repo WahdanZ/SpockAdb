@@ -17,8 +17,9 @@ class _LayoutScreenState extends State<LayoutScreen> {
   Widget build(BuildContext context) {
     return FixtureScaffold(
       title: 'Layout overflow',
-      note: 'Show overflow → "A RenderFlex overflowed by … pixels on the right" in logs, '
-          'Flutter.Error on the VM Service, and the yellow-black stripe on screen.',
+      note: 'Show overflow → the yellow-black stripe on screen and "A RenderFlex overflowed by … '
+          'pixels on the right". Debug builds report it to the VM Service as Flutter.Error only, '
+          'not to logcat.',
       children: [
         IdButton(
           id: 'layout_toggle',

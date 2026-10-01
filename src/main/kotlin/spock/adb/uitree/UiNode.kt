@@ -119,9 +119,10 @@ data class UiTree(
 
     /**
      * True when the screen is one drawn surface that publishes nothing: no node has text, a
-     * description or an action, and a single leaf covers most of the screen. That is a Flutter
-     * app whose semantics are off, a game, a video or a map — all of them invisible to element
-     * tools, which should say so rather than report an empty screen.
+     * description or an action, and a single leaf below the root covers most of the screen. That
+     * is a Flutter app whose semantics are off, a game, a video or a map — all of them invisible
+     * to element tools, which should say so rather than report an empty screen. A root with
+     * nothing under it is not one: it is a window caught being set up or torn down.
      */
     val isOpaqueSurface: Boolean
         get() {
@@ -130,7 +131,7 @@ data class UiTree(
             val publishes = nodes.any { it.isInteractive || it.text.isNotBlank() || it.contentDescription.isNotBlank() }
             if (publishes) return false
             val screen = root.bounds.width.toLong() * root.bounds.height
-            return screen > 0 && nodes.any {
+            return screen > 0 && nodes.drop(1).any {
                 it.children.isEmpty() && it.bounds.width.toLong() * it.bounds.height * 2 >= screen
             }
         }
@@ -154,10 +155,11 @@ data class UiTree(
 
 /** What an agent is told when [UiTree.isOpaqueSurface]: why the tree is empty, and what to try. */
 const val OPAQUE_SURFACE_NOTE =
-    "This screen publishes no accessibility nodes: it is one drawn surface. For a Flutter app, " +
-        "semantics may be off — they turn on when an accessibility service connects, so capture " +
-        "again, or call SemanticsBinding.instance.ensureSemantics() in debug builds. Games, video " +
-        "and maps look the same. Element tools cannot see inside it; use a screenshot."
+    "This screen publishes no accessibility nodes: it is one drawn surface. It may have been " +
+        "captured mid-transition, so capture again first. If it stays this way: a Flutter app may " +
+        "have semantics off — they turn on when an accessibility service connects, or call " +
+        "SemanticsBinding.instance.ensureSemantics() in debug builds — and games, video and maps " +
+        "look the same. Element tools cannot see inside it; use a screenshot."
 
 /**
  * How the visible screen is built.

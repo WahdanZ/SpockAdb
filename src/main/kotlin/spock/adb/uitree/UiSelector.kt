@@ -166,16 +166,34 @@ object UiTreeSearch {
     /**
      * The nearest ancestor-or-self that [action] can land on, before any policy checks.
      *
-     * Failing that, the node's only eligible descendant inside its bounds. Flutter's
-     * `Semantics(identifier:)` around a button publishes the identifier on an unlabelled,
-     * non-clickable wrapper and the button as its child, so the control an agent names by
-     * its resource id is one level down. More than one such descendant is not one control.
+     * Failing that, the control a Flutter `Semantics(identifier:)` wraps: see [wrappedControl].
      */
     private fun eligibleTarget(tree: UiTree, node: UiNode, action: Action): UiNode? =
         (listOf(node) + ancestorsOf(tree, node)).firstOrNull { it.accepts(action) }
-            ?: node.flatten().drop(1)
-                .filter { it.accepts(action) && node.bounds.contains(it.bounds) }
-                .singleOrNull()
+            ?: wrappedControl(node, action)
+
+    /**
+     * Flutter's `Semantics(identifier:)` around a button publishes the identifier on an
+     * unlabelled, non-clickable wrapper and the button as its child, so the control an agent
+     * names by its resource id is below the node it matched.
+     *
+     * Only that shape: [node] says nothing of its own, each node from it down to the control has
+     * exactly one child, all inside its bounds, and nothing else under it takes [action]. A
+     * labelled card holding its one delete button, or a form holding one field beside its
+     * label, is a container, not the control.
+     */
+    private fun wrappedControl(node: UiNode, action: Action): UiNode? {
+        if (node.text.isNotBlank() || node.contentDescription.isNotBlank()) return null
+        var current = node
+        while (current.children.size == 1) {
+            current = current.children.single()
+            if (!node.bounds.contains(current.bounds)) return null
+            if (current.accepts(action)) {
+                return current.takeIf { current.flatten().drop(1).none { it.accepts(action) } }
+            }
+        }
+        return null
+    }
 
     fun actionTarget(
         tree: UiTree,

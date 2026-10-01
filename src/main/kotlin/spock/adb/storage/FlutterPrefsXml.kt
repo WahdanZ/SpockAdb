@@ -5,7 +5,6 @@ import com.google.gson.JsonParser
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.io.InvalidClassException
 import java.io.ObjectInputFilter
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
@@ -48,8 +47,16 @@ internal object FlutterPrefsXml : PrefsFormat {
     /** Android's `Base64.DEFAULT`, which the plugin uses: 76-character lines, each ending in `\n`. */
     private const val BASE64_LINE = 76
 
-    /** Ints are stored as long, so an int edit is written as one; float and set do not exist in Dart. */
-    override val types = listOf(
+    /**
+     * What any key in this file can hold. Which of them a given key takes is decided per key in
+     * [encoded]: a `flutter.` key holds what Dart can — no float or set, and an int is written as
+     * the long Dart reads — and a native key holds what SharedPreferences can, never a double or
+     * a string list.
+     */
+    override val types = SharedPrefsXml.types + PrefType.DOUBLE + PrefType.STRING_LIST
+
+    /** What a `flutter.` key can hold; an int is accepted and written as a long. */
+    private val DART_TYPES = listOf(
         PrefType.BOOLEAN,
         PrefType.INT,
         PrefType.LONG,
@@ -64,12 +71,15 @@ internal object FlutterPrefsXml : PrefsFormat {
         val stored = SharedPrefsXml.read(original).associateBy { it.key }
         val decoded = stored.mapValues { (_, item) -> decoded(item) }
         val encoded = changes.map { change ->
-            require(decoded[change.key] !is PrefItem.Opaque || stored[change.key] is PrefItem.Opaque) {
-                "'${change.key}' holds a value this editor cannot read, so it is left as it is."
-            }
             when (change) {
+                // A value this editor cannot decode is still a value the developer may delete.
                 is PrefChange.Remove -> change
-                is PrefChange.Put -> PrefChange.Put(change.key, encoded(change.key, change.value, stored[change.key]))
+                is PrefChange.Put -> {
+                    require(decoded[change.key] !is PrefItem.Opaque || stored[change.key] is PrefItem.Opaque) {
+                        "'${change.key}' holds a value this editor cannot read, so it is left as it is."
+                    }
+                    PrefChange.Put(change.key, encoded(change.key, change.value, stored[change.key]))
+                }
             }
         }
         return SharedPrefsXml.write(original, encoded)
@@ -93,31 +103,37 @@ internal object FlutterPrefsXml : PrefsFormat {
         }
     }
 
+    /**
+     * [value] as the plugin stores it under [key]. A native key's value is written as it is, and
+     * [SharedPrefsXml] checks it as it would in any other file.
+     */
     private fun encoded(key: String, value: PrefValue, stored: PrefItem?): PrefValue {
-        val forDart = key.startsWith(KEY_PREFIX)
+        if (!key.startsWith(KEY_PREFIX)) {
+            require(value !is PrefValue.DoubleValue && value !is PrefValue.StringListValue) {
+                "Only flutter. keys hold a ${value.type.label} in this file; '$key' belongs to the app's " +
+                    "native code, which can store: ${SharedPrefsXml.types.joinToString()}."
+            }
+            return value
+        }
         return when (value) {
             is PrefValue.IntValue -> PrefValue.LongValue(value.value.toLong())
-            is PrefValue.DoubleValue -> {
-                require(forDart) { "Only flutter. keys hold doubles in this file." }
-                PrefValue.StringValue(DOUBLE_PREFIX + value.value)
-            }
+            is PrefValue.DoubleValue -> PrefValue.StringValue(DOUBLE_PREFIX + value.value)
             is PrefValue.StringListValue -> {
-                require(forDart) { "Only flutter. keys hold string lists in this file." }
                 val wasJson = ((stored as? PrefItem.Typed)?.value as? PrefValue.StringValue)
                     ?.value?.startsWith(JSON_LIST_PREFIX) == true
                 PrefValue.StringValue(if (wasJson) jsonEncoded(value.values) else serializedEncoded(value.values))
             }
             is PrefValue.StringValue -> {
                 // Flutter would read such a string back as a double or a list, not as the text.
-                require(!forDart || MARKERS.none { value.value.startsWith(it) }) {
+                require(MARKERS.none { value.value.startsWith(it) }) {
                     "A string under a flutter. key cannot start with the plugin's type marker."
                 }
                 value
             }
             is PrefValue.BooleanValue, is PrefValue.LongValue -> value
             else -> throw IllegalArgumentException(
-                "Flutter's SharedPreferences cannot store a ${value.type.label}. " +
-                    "It can store: ${types.joinToString()}.",
+                "A flutter. key cannot hold a ${value.type.label}: Dart has no such type. " +
+                    "It can hold: ${DART_TYPES.joinToString()}.",
             )
         }
     }
@@ -140,20 +156,27 @@ internal object FlutterPrefsXml : PrefsFormat {
      * exactly those two classes, so a crafted file on the device cannot make the IDE instantiate
      * anything else.
      */
-    private fun serializedList(base64: String): List<String>? = try {
-        val bytes = Base64.getMimeDecoder().decode(base64)
-        ObjectInputStream(ByteArrayInputStream(bytes)).use { stream ->
-            stream.objectInputFilter = LIST_FILTER
-            (stream.readObject() as? ArrayList<*>)?.map { it as? String ?: return null }
+    // The stream is whatever the file holds, and a malformed one fails inside ArrayList and
+    // ObjectInputStream with whichever runtime exception it reaches first. Any of them means
+    // this one value cannot be read; none should cost the rest of the file.
+    @Suppress("TooGenericExceptionCaught")
+    private fun serializedList(base64: String): List<String>? {
+        if (base64.length > LIST_MAX_BASE64_CHARS) return null
+        return try {
+            // Strict: the plugin's line breaks are the only thing that is not base64. A lenient
+            // decoder would skip anything else and decode what is left as if it were the value.
+            val bytes = Base64.getDecoder().decode(base64.filterNot(Char::isWhitespace))
+            ObjectInputStream(ByteArrayInputStream(bytes)).use { stream ->
+                stream.objectInputFilter = listFilter(bytes.size)
+                (stream.readObject() as? ArrayList<*>)?.map { it as? String ?: return null }
+            }
+        } catch (_: IOException) {
+            null
+        } catch (_: ClassNotFoundException) {
+            null
+        } catch (_: RuntimeException) {
+            null
         }
-    } catch (_: IOException) {
-        null
-    } catch (_: ClassNotFoundException) {
-        null
-    } catch (_: IllegalArgumentException) {
-        null
-    } catch (_: InvalidClassException) {
-        null
     }
 
     private fun serializedEncoded(values: List<String>): String {
@@ -168,12 +191,30 @@ internal object FlutterPrefsXml : PrefsFormat {
     private val LIST_CLASSES = setOf(ArrayList::class.java, String::class.java, Array<Any>::class.java)
     private const val LIST_MAX_DEPTH = 2L
 
-    private val LIST_FILTER = ObjectInputFilter { info ->
-        val type = info.serialClass()
-        when {
-            info.depth() > LIST_MAX_DEPTH -> ObjectInputFilter.Status.REJECTED
-            type == null || type in LIST_CLASSES -> ObjectInputFilter.Status.ALLOWED
-            else -> ObjectInputFilter.Status.REJECTED
+    /** More than a preferences list holds, and few enough that allocating them costs nothing. */
+    private const val LIST_MAX_ELEMENTS = 100_000
+
+    /** The file-size limit App Storage reads and writes: no list in a file can be longer. */
+    private const val LIST_MAX_BASE64_CHARS = 8 * 1024 * 1024
+
+    /**
+     * Only an `ArrayList` of strings, and nothing the stream does not pay for. `ArrayList` takes
+     * its element count from the stream and allocates it before reading a single element, so a
+     * few dozen bytes could otherwise declare 400 million of them. Every element, reference and
+     * byte costs at least one byte of [streamSize], which bounds them all.
+     */
+    private fun listFilter(streamSize: Int): ObjectInputFilter {
+        val maxElements = minOf(streamSize, LIST_MAX_ELEMENTS).toLong()
+        return ObjectInputFilter { info ->
+            val type = info.serialClass()
+            when {
+                info.depth() > LIST_MAX_DEPTH -> ObjectInputFilter.Status.REJECTED
+                info.arrayLength() > maxElements -> ObjectInputFilter.Status.REJECTED
+                info.references() > streamSize -> ObjectInputFilter.Status.REJECTED
+                info.streamBytes() > streamSize -> ObjectInputFilter.Status.REJECTED
+                type == null || type in LIST_CLASSES -> ObjectInputFilter.Status.ALLOWED
+                else -> ObjectInputFilter.Status.REJECTED
+            }
         }
     }
 }

@@ -45,6 +45,27 @@ class FlutterBuildTest {
         assertEquals(FlutterBuild.RELEASE, FlutterBuild.of(aotListing, debuggable = false))
     }
 
+    /**
+     * An App Bundle install: base.apk holds the assets, and the engine and the AOT snapshot sit
+     * in the ABI split. The listing runs over every APK, so what is in a split is seen too.
+     */
+    @Test
+    fun `a split APK install is read across its splits`() {
+        // `unzip -l` of each APK in turn, before the grep: the split's archive header included.
+        val splitListing = """
+            Archive:  /data/app/~~a1/spock.adb.spock_flutter_sample-b2/base.apk
+                 2398  1981-01-01 01:01   assets/flutter_assets/AssetManifest.bin
+                 8264  1981-01-01 01:01   classes.dex
+            Archive:  /data/app/~~a1/spock.adb.spock_flutter_sample-b2/split_config.arm64_v8a.apk
+              6619200  1981-01-01 01:01   lib/arm64-v8a/libapp.so
+             11206032  1981-01-01 01:01   lib/arm64-v8a/libflutter.so
+        """.trimIndent()
+        assertEquals(FlutterBuild.RELEASE, FlutterBuild.of(splitListing, debuggable = false))
+        // Forced debuggable, a release build cannot be told from a profile one.
+        assertEquals(FlutterBuild.PROFILE, FlutterBuild.of(splitListing, debuggable = true))
+        assertTrue(FlutterBuild.listingCommand("com.example.app").contains("pm path 'com.example.app'"))
+    }
+
     @Test
     fun `no engine is not a Flutter app, whatever else the listing says`() {
         assertNull(FlutterBuild.of("", debuggable = true))
@@ -65,7 +86,7 @@ class FlutterBuildTest {
 
     @Test
     fun `AppInfo carries the Flutter build`() {
-        val info = AppInfo.parse("spock.adb.spock_flutter_sample", debuggableDumpsys, "4242", debugListing)
+        val info = AppInfo.parse("spock.adb.spock_flutter_sample", debuggableDumpsys, "4242", FlutterBuild.DEBUG)
         assertEquals(FlutterBuild.DEBUG, info.flutter)
         assertNull(AppInfo.parse("spock.adb.spock_flutter_sample", debuggableDumpsys, "4242").flutter)
     }

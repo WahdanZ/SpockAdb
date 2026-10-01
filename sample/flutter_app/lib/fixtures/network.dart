@@ -22,12 +22,15 @@ class _NetworkScreenState extends State<NetworkScreen> {
     try {
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
       debugPrint('HTTP ${response.statusCode} GET $url');
+      if (!mounted) return;
       setState(() => _result = 'HTTP ${response.statusCode}\n${_firstLine(response.body)}');
     } on SocketException catch (e) {
       debugPrint('HTTP failed GET $url: $e');
+      if (!mounted) return;
       setState(() => _result = 'Failed: ${e.message}');
     } on Exception catch (e) {
       debugPrint('HTTP failed GET $url: $e');
+      if (!mounted) return;
       setState(() => _result = 'Failed: $e');
     }
   }
