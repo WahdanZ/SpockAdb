@@ -73,13 +73,26 @@ Each phase is tagged **(must)** or **(should)** for priority.
 - **Gate:** `./gradlew test detekt verifyPlugin` green on all supported IDEs; no behaviour change.
 
 ### P4 — VM Service client + Flutter session (must) · ~4 days
-- [ ] `VmServiceClient`: one reader, dispatch by request id, fragment accumulation, events fanned out on a dedicated executor, per-method timeouts [FR17].
-- [ ] `FlutterSession` per project: discovery DTD → pasted URI → direct URI read-only [FR1, FR8]; filter by the selected app's package (flavors) [FR22].
-- [ ] Isolate selection: the one exposing `ext.flutter.*`; ask when several; re-select on `IsolateStart`/`ServiceExtensionAdded` after hot restart; return "app is paused in the debugger" instead of hanging [FR12].
-- [ ] Side effects: `structuredErrors` is already **on** by default in mobile debug builds (P0), so only subscribe to the `Extension` stream for `Flutter.Error` — never toggle it; enable `httpEnableTimelineLogging` on connect; disable what Spock enabled on disconnect [FR10].
-- [ ] Token redaction everywhere [FR9].
-- [ ] Tests: hand-written fake WebSocket server (test-only), recorded VM Service JSON per supported Flutter stable [FR21].
-- [ ] All calls on pooled threads; UI via `invokeLater` (plugin rules).
+
+#### P4a — client, session, pasted and logcat discovery (this PR)
+Library and tests only: no UI, no MCP tool, no IDE discovery.
+- [x] `VmServiceClient` (`spock.adb.flutter.vmservice`): JDK `WebSocket` + Gson, one reader, dispatch by request id, fragment accumulation, events fanned out on a dedicated executor, per-call timeouts (5 s default, longer on request), `close()` fails pending calls, connection loss reported to listeners [FR17].
+- [x] `FlutterSession`: connect from a candidate; discovery from a pasted URI (`VmServiceUri` reads `flutter run`'s `http`/`ws` forms, `https`/`wss`, DevTools `?uri=` / `#/?uri=` links, a console or logcat line; loopback only) and from logcat (`LogcatDiscovery`: the app's `Dart VM service is listening on` / `Observatory listening on` line, `adb forward` to the device port, removed on close) — a **direct** URI, so read-only: the session makes no writes through it [FR1, FR8].
+- [x] Isolate selection: the isolate behind a `_flutter.listViews` view, else the one with `ext.flutter.inspector.structuredErrors`, else any `ext.flutter.*`; several → `IsolateSelection.Ambiguous` and `selectIsolate(id)`; re-select on `IsolateStart`/`IsolateExit`/`ServiceExtensionAdded` after hot restart; a paused isolate is `IsolateSelection.Paused` ("paused in the debugger") instead of a hanging call [FR12].
+- [x] Side effects: `structuredErrors` is read on connect and followed through `Flutter.ServiceExtensionStateChanged` — never set; `httpEnableTimelineLogging` read, enabled if off on each new UI isolate, and switched off on close only where Spock switched it on [FR10]. Bool results read both as JSON booleans (dart:io) and `"true"`/`"false"` strings (Flutter).
+- [x] History: events DDS replays on subscribe are marked `history` (timestamp before the connection) and repeats are dropped by a bounded LRU.
+- [x] Token redaction in the library [FR9]: `VmServiceUri` never prints its token; `Redaction` scrubs addresses from text, error messages and every event (including stdout bytes and the `connectedVmServiceUri` / `activeDevToolsServerAddress` state changes). P5 still has to apply it wherever it stores or shows events (timeline, audit).
+- [x] Tests: hand-written RFC 6455 fake server (test-only), VM Service JSON fixtures in the Flutter 3.22.2 shapes from the spike, recorded logcat lines [FR21].
+- [x] Blocking work on the caller's thread (callers use pooled threads); events on the client's own thread; nothing on the EDT.
+- [ ] Fixtures recorded from each further supported Flutter stable (only 3.22 shapes so far).
+- **Gate:** `./gradlew test detekt` green; a device check by the lead with `FlutterSessionLiveCheck` (`SPOCK_VM_SERVICE_URI=<flutter run address> ./gradlew test --tests spock.adb.flutter.FlutterSessionLiveCheck --rerun -i`) against the P0 sample with `flutter run` attached, hot reload still working.
+
+#### P4b — IDE discovery — needs spike S12
+DTD on newer SDKs; the Flutter IntelliJ plugin's running-app state on older ones; optional `<depends optional="true">` on the Dart/Flutter plugins.
+- [ ] Read the DTD URI from the Dart plugin; list running apps through DTD `ConnectedApp`; take their DDS URI [FR1, FR8].
+- [ ] Older SDKs (no `ConnectedApp`, e.g. 3.22): read the running app from the Flutter plugin's state.
+- [ ] `FlutterSession` per project: discovery order DTD → pasted URI → direct URI (read-only, with a warning and a Disconnect button); filter by the selected app's package (flavors) [FR22].
+- [ ] UI via `invokeLater` once there is UI (plugin rules).
 - **Gate:** connects to the P0 sample on Android and iOS sim through DTD with `flutter run` attached; hot reload in the IDE still works while connected.
 
 ### P5 — Cross-layer Diagnose + Timeline (must) · ~7 days
