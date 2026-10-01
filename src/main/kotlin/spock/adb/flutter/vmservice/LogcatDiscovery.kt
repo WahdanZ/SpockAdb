@@ -2,6 +2,7 @@ package spock.adb.flutter.vmservice
 
 import com.android.ddmlib.AdbCommandRejectedException
 import com.android.ddmlib.IDevice
+import com.android.ddmlib.ShellCommandUnresponsiveException
 import com.intellij.openapi.diagnostic.Logger
 import spock.adb.ShellOutputReceiver
 import spock.adb.logcat.LogcatParser
@@ -52,11 +53,14 @@ object LogcatVmServiceParser {
  */
 class LogcatDiscovery(private val device: IDevice, private val packageName: String) : VmServiceDiscovery {
 
+    /** @throws VmServiceException when adb cannot read the app's pids or logcat. */
     override fun discover(): List<VmServiceCandidate> {
-        val pids = device.pidsOf(packageName, SHELL_SECONDS).mapNotNull { it.toIntOrNull() }.toSet()
+        val pids = adb("list the processes of $packageName") {
+            device.pidsOf(packageName, SHELL_SECONDS).mapNotNull { it.toIntOrNull() }.toSet()
+        }
         if (pids.isEmpty()) return emptyList()
         val receiver = ShellOutputReceiver()
-        device.executeShellCommand(LOGCAT_COMMAND, receiver, SHELL_SECONDS, TimeUnit.SECONDS)
+        adb("read logcat") { device.executeShellCommand(LOGCAT_COMMAND, receiver, SHELL_SECONDS, TimeUnit.SECONDS) }
         val found = LogcatVmServiceParser.latest(receiver.toString(), pids) ?: return emptyList()
         return listOf(ForwardedCandidate(device, found.uri))
     }
@@ -90,20 +94,11 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
             }
         }
 
-        private fun forward(): Int {
+        private fun forward(): Int = adb("forward device port ${deviceUri.port}") {
             val port = freeLocalPort()
-            val problem: Exception = try {
-                device.createForward(port, deviceUri.port)
-                localPort = port
-                return port
-            } catch (e: IOException) {
-                e
-            } catch (e: AdbCommandRejectedException) {
-                e
-            } catch (e: AdbTimeoutException) {
-                e
-            }
-            throw VmServiceException("Could not forward device port ${deviceUri.port}: ${problem.message}", problem)
+            device.createForward(port, deviceUri.port)
+            localPort = port
+            port
         }
 
         /** A port nothing on the host listens on now; adb takes it a moment later. */
@@ -113,6 +108,25 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
 
     private companion object {
         const val SHELL_SECONDS = 10L
+
+        /**
+         * Runs an adb step, turning ddmlib's failures into a [VmServiceException] saying [what]
+         * failed, so a caller handles one exception type for discovery and connection alike.
+         */
+        inline fun <T> adb(what: String, step: () -> T): T {
+            val problem: Exception = try {
+                return step()
+            } catch (e: IOException) {
+                e
+            } catch (e: AdbCommandRejectedException) {
+                e
+            } catch (e: ShellCommandUnresponsiveException) {
+                e
+            } catch (e: AdbTimeoutException) {
+                e
+            }
+            throw VmServiceException("Could not $what: ${problem.message ?: problem.javaClass.simpleName}", problem)
+        }
 
         /** Only the `flutter` tag: the engine announces there, and the whole buffer can be megabytes. */
         const val LOGCAT_COMMAND = "logcat -d -v threadtime -s flutter"
