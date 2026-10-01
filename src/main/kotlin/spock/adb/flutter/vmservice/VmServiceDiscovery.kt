@@ -2,6 +2,9 @@ package spock.adb.flutter.vmservice
 
 /** Where a VM Service address came from. */
 enum class VmServiceSource(val label: String) {
+    /** Listed by a Dart Tooling Daemon for the project: DDS's address, which `flutter run` shares. */
+    DTD("Dart Tooling Daemon"),
+
     /** Pasted by the developer: `flutter run`'s address or a DevTools link. */
     PASTED("pasted"),
 
