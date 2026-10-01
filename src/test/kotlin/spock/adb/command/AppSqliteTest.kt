@@ -141,6 +141,34 @@ class AppSqliteTest {
         assertTrue(AppSqlite.shown("a.db", SqliteTables.NoTables).second.contains("no tables"))
     }
 
+    @Test
+    fun `a database is recognised by its header on the device, before any size check or download`() {
+        val command = StorageTree.readFileCommand("com.example.app", "databases/big.db")
+        val header = command.indexOf("head -c 16")
+        assertTrue(header in 0 until command.indexOf("wc -c"), command)
+        assertTrue(header < command.indexOf("base64 \"\$f\"; echo"), command)
+        assertTrue(command.contains("U1FMaXRlIGZvcm1hdCAzAA=="), command)
+        assertTrue(StorageTree.readFileCommand("com.example.app", "-x.db").contains("./-x.db"))
+    }
+
+    @Test
+    fun `the device's word that a file is a database is taken without the file`() {
+        val sqlite = device { "rc=${StorageTree.STATUS_SQLITE}\n" }.readAppFile("com.example.app", "databases/big.db")
+        assertEquals(AppFileContent.Sqlite, sqlite)
+
+        val text = device { "aGk=\nrc=0\n" }.readAppFile("com.example.app", "files/a.txt")
+        assertEquals("hi", ((text as AppFileContent.Bytes).bytes).decodeToString())
+    }
+
+    @Test
+    fun `while the tables are read the view says so, and a failure replaces it`() {
+        assertEquals("SQLite database — reading tables…", AppSqlite.READING)
+        val (text, status) = AppSqlite.failed("databases/notes.db", IllegalStateException("Error: database is locked"))
+        assertTrue(text.startsWith("SQLite database — could not read its tables.\n"), text)
+        assertTrue(text.endsWith("Error: database is locked"), text)
+        assertEquals("Error: database is locked", status)
+    }
+
     private val request = AppSqliteRequest("com.example.app", "databases/notes.db")
     private val project = mockk<Project>(relaxed = true)
 

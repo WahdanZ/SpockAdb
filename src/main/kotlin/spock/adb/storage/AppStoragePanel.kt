@@ -23,6 +23,7 @@ import com.intellij.util.ui.JBUI
 import spock.adb.DestructiveActionConfirmation
 import spock.adb.LatestRequest
 import spock.adb.command.AppDirectoryRequest
+import spock.adb.command.AppFileContent
 import spock.adb.command.AppFileRequest
 import spock.adb.command.AppSqlite
 import spock.adb.command.AppSqliteCommand
@@ -367,28 +368,34 @@ class AppStoragePanel(
         val read = AppFileRequest(packageName, entry.path)
         background({
             // Decoding a box or dumping a large file is real work, so it happens here, off the EDT.
-            val bytes = ReadAppFileCommand().execute(read, project, target.device)
-            bytes to StorageFileView.render(entry.path, bytes)
+            // Null for a database: the device recognised it, or it came down small enough to see.
+            when (val content = ReadAppFileCommand().execute(read, project, target.device)) {
+                AppFileContent.Sqlite -> null
+                is AppFileContent.Bytes -> content.bytes.takeUnless(StorageFileView::isSqlite)
+                    ?.let { it.size to StorageFileView.render(entry.path, it) }
+            }
         }) { result ->
             if (!reads.isLatest(request)) return@background
             result
-                .onSuccess { (bytes, text) ->
-                    source.text = text
-                    source.caretPosition = 0
-                    status("${entry.path}, ${bytes.size} bytes. Read-only: only preference files can be written.")
-                    if (StorageFileView.isSqlite(bytes)) {
-                        // A SQLite file's tables are read on the device; the hex dump stays up until they arrive.
-                        status("Reading the tables of ${entry.path}…")
-                        val sqlite = AppSqliteRequest(packageName, entry.path)
-                        background({ AppSqliteCommand().execute(sqlite, project, target.device) }) { tables ->
-                            if (!reads.isLatest(request)) return@background
-                            tables.onSuccess {
-                                val (text, said) = AppSqlite.shown(entry.path, it)
-                                source.text = text
-                                source.caretPosition = 0
-                                status(said)
-                            }.onFailure { status(it.message ?: "Could not read the tables of ${entry.path}.") }
+                .onSuccess { shown ->
+                    if (shown != null) {
+                        source.text = shown.second
+                        source.caretPosition = 0
+                        status("${entry.path}, ${shown.first} bytes. Read-only: only preference files can be written.")
+                        return@onSuccess
+                    }
+                    // A database's tables are read on the device; the file itself never comes down.
+                    source.text = AppSqlite.READING
+                    status("Reading the tables of ${entry.path}…")
+                    val sqlite = AppSqliteRequest(packageName, entry.path)
+                    background({ AppSqliteCommand().execute(sqlite, project, target.device) }) { tables ->
+                        if (!reads.isLatest(request)) return@background
+                        val (text, said) = tables.fold({ AppSqlite.shown(entry.path, it) }) {
+                            AppSqlite.failed(entry.path, it)
                         }
+                        source.text = text
+                        source.caretPosition = 0
+                        status(said)
                     }
                 }
                 .onFailure { status(it.message ?: "Could not read ${entry.path}.") }

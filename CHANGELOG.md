@@ -15,7 +15,8 @@
   - **Logcat** has a *Flutter* view.
   - **App Storage** shows a Hive box (`*.hive`) as a key/type/value table and a SQLite database
     as its tables, row counts and first rows (read on the device with `sqlite3`, where it
-    exists). Any other binary file is a hex dump instead of garbled text. All read-only.
+    exists, so a database of any size is shown without downloading it, and a table that cannot
+    be read says why). Any other binary file is a hex dump instead of garbled text. All read-only.
   - **Element tools** tap a Flutter button by its `Semantics(identifier:)`, and say so when a
     screen is one drawn surface with nothing to find.
   - `sample/flutter_app` is a Flutter fixture app for all of it.

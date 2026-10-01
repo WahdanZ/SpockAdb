@@ -76,6 +76,15 @@ internal object AppSqlite {
         "SQLite database. This device has no sqlite3 command, so its tables cannot be read here. " +
             "Emulators have it; on a phone, pull the file and open it on your computer."
 
+    /** What the view shows while the tables are read, in place of the file it never downloads. */
+    const val READING = "SQLite database — reading tables…"
+
+    /** What replaces [READING] when the tables could not be read, and the status line with it. */
+    fun failed(path: String, failure: Throwable): Pair<String, String> {
+        val message = failure.message ?: "Could not read the tables of $path."
+        return "SQLite database — could not read its tables.\n\n$message" to message
+    }
+
     /** What the view shows for [tables] of the database at [path], and what the status line says. */
     fun shown(path: String, tables: SqliteTables): Pair<String, String> = when (tables) {
         SqliteTables.NoSqlite -> NO_SQLITE_MESSAGE to "$path: this device has no sqlite3 to read it with."
