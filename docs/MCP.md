@@ -782,6 +782,12 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
 - `app_lifecycle` — its process starting and dying, crashes and ANRs;
 - `log` — warnings and errors the app's own process logged, one event per log call with any stack
   trace in the detail;
+- `flutter_error`, `flutter_frame`, `navigation`, `http` — from a Flutter app's Dart VM Service
+  while Spock is connected to it: framework errors (`Flutter.Error`: layout overflows, `build()`
+  and gesture errors, with the rendered report in the detail), frames over the display's budget
+  (a warning in profile builds, info in debug where frame times are not representative), the
+  route `Navigator` reported (on a pop, the route that was removed), and failed `dart:io` HTTP
+  requests (a 4xx is a warning; a 5xx or no response an error);
 - `spock_action`, `storage`, `background_work`, `device_condition` — what the tool window did;
 - `device` — devices connecting and disconnecting, and recording starting;
 - `mcp` — tool calls, this one excepted;
@@ -789,7 +795,9 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
 
 Device events (`activity`, `app_lifecycle`, `log`) are recorded only while the Spock ADB tool window
 has a device and app selected and **Record device events** is on. The first line of the result
-says what was being recorded, so an empty answer is not mistaken for a quiet app.
+says what was being recorded, so an empty answer is not mistaken for a quiet app. Flutter events
+carry the time the app stamped them, moved onto the host's clock like log lines; a slow frame is
+placed by its own start time, since the engine reports frame timings in batches.
 
 | Argument | Default | Meaning |
 |---|---|---|

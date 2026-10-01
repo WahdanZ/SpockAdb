@@ -72,6 +72,23 @@ class DebugTimelineToolTest {
     }
 
     @Test
+    fun `the Flutter categories are in the schema and can be asked for`() {
+        val names = tool.inputSchema.getAsJsonObject("properties").getAsJsonObject("categories")
+            .getAsJsonObject("items").getAsJsonArray("enum").map { it.asString }
+        assertTrue(names.containsAll(listOf("flutter_error", "flutter_frame", "navigation", "http")), "$names")
+
+        val withRoute = DebugTimeline().apply {
+            record(TimelineEvent(now - 5_000, TimelineCategory.NAVIGATION, TimelineSeverity.INFO, "Navigator: /items"))
+            record(TimelineEvent(now - 4_000, TimelineCategory.HTTP, TimelineSeverity.ERROR, "GET / failed"))
+        }
+        val arguments = JsonObject().apply { add("categories", JsonArray().apply { add("navigation") }) }
+        val text = tool.answer(withRoute, "on", arguments, now).text()
+
+        assertTrue(text.contains("Navigator: /items"))
+        assertFalse(text.contains("GET / failed"))
+    }
+
+    @Test
     fun `the limit keeps the most recent`() {
         val arguments = JsonObject().apply { addProperty("limit", 1) }
         val text = tool.answer(timeline, "off — Record device events is switched off", arguments, now).text()

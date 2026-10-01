@@ -31,6 +31,10 @@ enum class TimelineCategory(val label: String) {
     DEVICE_CONDITION("Conditions"),
     DEVICE("Device"),
     LOG("Log"),
+    FLUTTER_ERROR("Flutter"),
+    FLUTTER_FRAME("Frame"),
+    NAVIGATION("Navigation"),
+    HTTP("HTTP"),
     MCP("Agent"),
     MARKER("Marker"),
     ;

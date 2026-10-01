@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
+import spock.adb.timeline.TimelineCategory
 import java.io.File
 
 /**
@@ -19,12 +20,18 @@ class SkillToolNamesTest {
 
     private val registered = ToolRegistry.all().map { it.name }.toSet()
 
+    /**
+     * `android_get_debug_timeline`'s category values share the `flutter_` prefix (`flutter_error`,
+     * `flutter_frame`) and are documented next to it; they are argument values, not tools.
+     */
+    private val categoryValues = TimelineCategory.entries.map { it.name.lowercase() }.toSet()
+
     @Test
     fun `every documented tool name is a registered tool`() {
         val stale = DOCUMENTS.flatMap { file ->
             TOOL_NAME.findAll(file.readText())
                 .map { it.value }
-                .filter { it !in registered }
+                .filter { it !in registered && it !in categoryValues }
                 .distinct()
                 .map { "${file.path}: $it" }
                 .toList()
