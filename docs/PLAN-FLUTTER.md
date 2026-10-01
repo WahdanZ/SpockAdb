@@ -33,7 +33,7 @@ Decision: **no `spock_flutter` companion package in v1.** Its main job (tap/type
 | Finding the running app | **DTD from the Dart plugin** (`DartToolingDaemonService`), optional `<depends optional="true">Dart</depends>` | DTD lists every running app's **DDS** URI, so Spock never fights `flutter run` for the VM Service [FR1, FR8]. Fallback: pasted URI. |
 | Direct device URI (logcat / `log show`) | Read-only last resort, with a warning and a **Disconnect** button | Connecting first blocks DDS and breaks `flutter attach` [FR1]. |
 | VM Service transport | JDK `java.net.http.WebSocket`, Gson | No new runtime dependency [FR17]. |
-| Flutter widgets for agents on Android | Existing `android_*` UI tools + doc: use `Semantics(identifier:)` (maps to resource-id) | Free, zero app changes [FR5]. |
+| Flutter widgets for agents on Android | Existing `android_*` UI tools + doc: use `Semantics(identifier:)` (maps to resource-id) | Free: no plugin protocol; the app adds `Semantics(identifier:)` [FR5]. |
 | Build modes | debug = all; profile = frames, logs, timeline, app control; release = app control only | [FR4] |
 | iOS in v1 | Simulator only, macOS only, **MCP tools only** (no tool-window UI yet) | The viewer is built around `IDevice`; UI comes after demand [FR16]. |
 | Tokens | Never stored; redacted in history, audit, timeline, logs; loopback `ws://` only | A VM Service token allows code execution [FR9]. |
