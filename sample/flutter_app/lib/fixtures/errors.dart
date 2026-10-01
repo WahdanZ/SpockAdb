@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +9,30 @@ const nativeChannel = MethodChannel('spock.sample/native');
 
 /// Never registered on either platform, so every call is a MissingPluginException.
 const missingChannel = MethodChannel('spock.sample/not_registered');
+
+/// Marker line the custom handler prints, so a log search can tell it from Flutter's own output.
+const customOnErrorMarker = 'SPOCK_SAMPLE custom FlutterError.onError';
+
+FlutterExceptionHandler? _savedOnError;
+
+/// Whether [setCustomOnError] has replaced Flutter's error handler.
+bool get customOnErrorInstalled => _savedOnError != null;
+
+/// Stands in for an app that routes framework errors to a crash reporter (Crashlytics, Sentry):
+/// the handler never calls [FlutterError.presentError], so no `Flutter.Error` event is posted and
+/// nothing reaches logcat except this one line. Stays installed across screens (so the overflow
+/// screen can be tested too) until switched off or the app restarts.
+void setCustomOnError(bool install) {
+  if (install == customOnErrorInstalled) return;
+  if (install) {
+    _savedOnError = FlutterError.onError;
+    FlutterError.onError = (details) =>
+        debugPrint('$customOnErrorMarker: ${details.exceptionAsString().split('\n').first}');
+  } else {
+    FlutterError.onError = _savedOnError;
+    _savedOnError = null;
+  }
+}
 
 /// Each button produces one kind of failure, left uncaught so it reaches the logs the way it
 /// would in a real app.
@@ -27,6 +52,15 @@ class _ErrorsScreenState extends State<ErrorsScreen> {
       title: 'Errors and plugin failures',
       note: 'Each button logs one failure. "Native crash" kills the app on purpose.',
       children: [
+        Semantics(
+          identifier: 'error_custom_on_error',
+          child: SwitchListTile(
+            title: const Text('Custom FlutterError.onError'),
+            subtitle: const Text('Like a crash reporter: no Flutter.Error, one marker line in the log'),
+            value: customOnErrorInstalled,
+            onChanged: (value) => setState(() => setCustomOnError(value)),
+          ),
+        ),
         IdButton(
           id: 'error_gesture',
           label: 'Throw in a tap handler',
