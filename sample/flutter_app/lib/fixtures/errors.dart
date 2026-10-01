@@ -50,7 +50,8 @@ class _ErrorsScreenState extends State<ErrorsScreen> {
   Widget build(BuildContext context) {
     return FixtureScaffold(
       title: 'Errors and plugin failures',
-      note: 'Each button logs one failure. "Native crash" kills the app on purpose.',
+      note: 'Each button logs one failure. "TODO() in a channel handler" (Android) and "Native crash" '
+          'kill the app on purpose.',
       children: [
         Semantics(
           identifier: 'error_custom_on_error',
@@ -85,6 +86,16 @@ class _ErrorsScreenState extends State<ErrorsScreen> {
           id: 'error_channel_handler',
           label: 'Exception in a channel handler',
           onPressed: () => nativeChannel.invokeMethod<void>('throwInHandler'),
+        ),
+        IdButton(
+          id: 'error_channel_checked',
+          label: 'Checked exception in a channel handler',
+          onPressed: () => nativeChannel.invokeMethod<void>('throwChecked'),
+        ),
+        IdButton(
+          id: 'error_channel_todo',
+          label: 'TODO() in a channel handler',
+          onPressed: () => nativeChannel.invokeMethod<void>('throwTodo'),
         ),
         IdButton(
           id: 'error_build',

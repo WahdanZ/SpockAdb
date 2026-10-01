@@ -20,9 +20,11 @@ import UserNotifications
             result(FlutterError(code: "SAMPLE_ERROR", message: "Sample PlatformException from iOS", details: nil))
           case "crash":
             fatalError("Sample native crash from the Flutter fixture app")
-          case "throwInHandler":
-            // Android only: a Swift handler cannot throw, and an Objective-C exception here is
-            // not caught by Flutter, so it would be a second crash fixture rather than this one.
+          case "throwInHandler", "throwChecked", "throwTodo":
+            // Android only: these exercise how the Android embedding treats a RuntimeException, a
+            // checked exception and a java.lang.Error thrown in a handler. A Swift handler cannot
+            // throw, and an Objective-C exception here is not caught by Flutter, so it would be a
+            // second crash fixture rather than these.
             result(FlutterMethodNotImplemented)
           default:
             result(FlutterMethodNotImplemented)
