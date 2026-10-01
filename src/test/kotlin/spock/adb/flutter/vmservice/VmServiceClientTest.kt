@@ -21,11 +21,13 @@ import java.util.concurrent.TimeUnit
 class VmServiceClientTest {
 
     private val vm = FakeVmService()
-    private val client by lazy { VmServiceClient.connect(VmServiceUri.parse(vm.uri)) }
+    private val clientDelegate = lazy { VmServiceClient.connect(VmServiceUri.parse(vm.uri)) }
+    private val client by clientDelegate
 
     @AfterEach
     fun tearDown() {
-        client.close()
+        // A test that never used the client must not open one just to close it.
+        if (clientDelegate.isInitialized()) client.close()
         vm.close()
     }
 

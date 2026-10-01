@@ -129,14 +129,18 @@ class FakeWebSocketServer(private val onText: (String) -> Unit) : AutoCloseable 
             MessageDigest.getInstance("SHA-1").digest((key + WEBSOCKET_GUID).toByteArray(Charsets.US_ASCII)),
         )
         val out = connection.getOutputStream()
-        out.write(
-            (
-                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
-                    "Sec-WebSocket-Accept: $accept\r\n\r\n"
-                ).toByteArray(Charsets.US_ASCII),
-        )
-        out.flush()
-        output = out
+        // Set before the 101 goes out, and under the frame lock: the client may send its first
+        // request, and a test push a reply, the moment the handshake is answered.
+        synchronized(this) {
+            output = out
+            out.write(
+                (
+                    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
+                        "Sec-WebSocket-Accept: $accept\r\n\r\n"
+                    ).toByteArray(Charsets.US_ASCII),
+            )
+            out.flush()
+        }
         readFrames(input)
     }
 
