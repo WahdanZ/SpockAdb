@@ -30,7 +30,9 @@ class IdButton extends StatelessWidget {
 
   final String id;
   final String label;
-  final VoidCallback onPressed;
+
+  /// Null disables the button.
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
