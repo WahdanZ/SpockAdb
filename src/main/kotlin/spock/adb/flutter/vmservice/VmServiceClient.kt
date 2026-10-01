@@ -131,6 +131,10 @@ class VmServiceClient private constructor(
      * receive their arguments as strings, so [params] are strings. An extension runs on the
      * isolate's own event loop: on an isolate paused in the debugger it does not answer, which
      * is why callers check the pause state first and why the timeout matters.
+     *
+     * The two extensions that answer with the VM Service's or DevTools' address
+     * ([Redaction.ADDRESS_EXTENSIONS]) have that `value` redacted. Other results are returned as
+     * they came: a caller that keeps or shows one scrubs it (P5).
      */
     fun callServiceExtension(
         method: String,
@@ -140,7 +144,7 @@ class VmServiceClient private constructor(
     ): JsonObject {
         val body = jsonOf("isolateId" to isolateId)
         params.forEach { (key, value) -> body.addProperty(key, value) }
-        return call(method, body, timeoutMs)
+        return Redaction.scrubExtensionResult(method, call(method, body, timeoutMs))
     }
 
     /**
@@ -217,7 +221,8 @@ class VmServiceClient private constructor(
         }
         val code = (error.get("code") as? JsonPrimitive)?.takeIf { it.isNumber }?.asInt ?: 0
         val text = Redaction.scrub(error.string("message") ?: "error")
-        call.future.completeExceptionally(VmServiceRpcException(call.method, code, text, error.get("data")))
+        val data = error.get("data")?.let(Redaction::scrubJson)
+        call.future.completeExceptionally(VmServiceRpcException(call.method, code, text, data))
     }
 
     private fun dispatchEvent(message: JsonObject) {

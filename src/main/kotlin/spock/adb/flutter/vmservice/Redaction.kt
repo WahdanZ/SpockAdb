@@ -13,6 +13,11 @@ import java.util.Base64
  * run code in the app [FR9]. The app itself hands it out: Flutter reports
  * `ext.flutter.connectedVmServiceUri` and `ext.flutter.activeDevToolsServerAddress` in
  * `Flutter.ServiceExtensionStateChanged` events, and the engine prints the address to stdout.
+ *
+ * Only a path right after a loopback (or unspecified, `0.0.0.0`/`[::]`) host and a port is taken
+ * for a token — the only place the VM Service serves — so `https://api.example.com/Zm9v=` in an
+ * app's log stays as it is. The address is found raw, with or without its scheme, and
+ * percent-encoded once or twice, as DevTools links carry it.
  */
 object Redaction {
 
@@ -26,17 +31,52 @@ object Redaction {
 
     private const val STATE_CHANGED = "Flutter.ServiceExtensionStateChanged"
 
-    /** `scheme://host:port/<token>=` — the path segment right after the authority. */
-    private val TOKEN_SEGMENT = Regex("""(://[^/\s"'<>]+/)[A-Za-z0-9_\-]+=+(?![A-Za-z0-9_\-=])""")
+    /** A separator raw or percent-encoded, once or twice: `:`, `%3A`, `%253A`. */
+    private const val PERCENT = "%(?:25){0,2}"
+    private const val COLON = "(?::|${PERCENT}3[Aa])"
+    private const val SLASH = "(?:/|${PERCENT}2[Ff])"
+    private const val EQUALS = "(?:=|${PERCENT}3[Dd])"
+    private const val OPEN = """(?:\[|${PERCENT}5[Bb])"""
+    private const val CLOSE = "(?:]|${PERCENT}5[Dd])"
+    private const val IPV6 = "$OPEN(?:$COLON${COLON}1?|0(?:${COLON}0){6}${COLON}[01])$CLOSE"
+    private const val HOST = """(?:127\.0\.0\.1|0\.0\.0\.0|[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]|$IPV6)"""
+    private const val SCHEME = """[A-Za-z][A-Za-z0-9+.\-]*$COLON$SLASH$SLASH"""
 
-    /** The same segment inside a percent-encoded DevTools `uri=`: `%2F<token>%3D%2F`. */
-    private val ENCODED_TOKEN_SEGMENT = Regex("""(?i)(%3A%2F%2F[^%\s&#]+(?:%3A\d+)?%2F)[A-Za-z0-9_\-]+(?:%3D)+""")
+    /** Scheme (or none, but then not inside a longer name), host, port, slash. */
+    private const val AUTHORITY = """(?:$SCHEME|(?<![A-Za-z0-9.\-]))$HOST$COLON\d{1,5}$SLASH"""
+
+    /**
+     * The auth code: base64url, padded (`=` or `%3D`), at least 8 characters. Unpadded, it must
+     * hold a capital or a digit, which random base64 does and DevTools page names (`inspector`,
+     * `devtools`) do not.
+     */
+    private const val TOKEN =
+        """(?:[A-Za-z0-9_\-]{8,}(?:$EQUALS)+|(?=[a-z_\-]*[A-Z0-9])[A-Za-z0-9_\-]{8,}(?![A-Za-z0-9_\-]))"""
+
+    private val TOKEN_SEGMENT = Regex("($AUTHORITY)$TOKEN")
+
+    /** A DevTools `uri=` value, read again decoded: an encoding the pattern misses is still caught. */
+    private val URI_PARAM = Regex("""([?&#]uri=)([^&#\s"'<>]+)""")
+
+    /** Without one of these, no address the pattern knows can be in the text. */
+    private val HINTS = listOf("127.0.0.1", "0.0.0.0", "localhost", "::", "%3A", "%253A", "%25253A", "0:0:0:0")
 
     /** [text] with every VM Service auth code replaced by [PLACEHOLDER]. */
     fun scrub(text: String): String {
-        if (!text.contains("://") && !text.contains("%2F", ignoreCase = true)) return text
+        if (HINTS.none { text.contains(it, ignoreCase = true) }) return text
         val plain = TOKEN_SEGMENT.replace(text) { it.groupValues[1] + PLACEHOLDER }
-        return ENCODED_TOKEN_SEGMENT.replace(plain) { it.groupValues[1] + PLACEHOLDER }
+        if (!plain.contains("uri=")) return plain
+        return URI_PARAM.replace(plain) { match ->
+            val decoded = VmServiceUri.decodePercent(VmServiceUri.decodePercent(match.groupValues[2]))
+            val scrubbed = TOKEN_SEGMENT.replace(decoded) { it.groupValues[1] + PLACEHOLDER }
+            if (scrubbed == decoded) match.value else match.groupValues[1] + scrubbed
+        }
+    }
+
+    /** A copy of [element] with [scrub] applied to every string in it: error `data`, results. */
+    fun scrubJson(element: JsonElement): JsonElement {
+        if (element is JsonPrimitive) return if (element.isString) JsonPrimitive(scrub(element.asString)) else element
+        return element.deepCopy().also(::scrubStrings)
     }
 
     /**
@@ -49,6 +89,15 @@ object Redaction {
         scrubAddressExtension(event)
         scrubWriteBytes(event)
         return event
+    }
+
+    /**
+     * Replaces the `value` of an [ADDRESS_EXTENSIONS] call's result: the extension answers with
+     * the address itself.
+     */
+    fun scrubExtensionResult(method: String, result: JsonObject): JsonObject {
+        if (method in ADDRESS_EXTENSIONS && result.has("value")) result.addProperty("value", PLACEHOLDER)
+        return result
     }
 
     private fun scrubAddressExtension(event: JsonObject) {

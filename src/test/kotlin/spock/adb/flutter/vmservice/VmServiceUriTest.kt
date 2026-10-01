@@ -59,6 +59,38 @@ class VmServiceUriTest {
     }
 
     @Test
+    fun `of several URLs on a line, the one with an auth code wins`() {
+        assertEquals(
+            expected,
+            ws(
+                "The Flutter DevTools debugger and profiler is available at: http://127.0.0.1:9100/ " +
+                    "and the VM Service at http://127.0.0.1:50300/HXKQJZK_Rkw=/",
+            ),
+        )
+        assertEquals(expected, ws("https://pub.dev/ then http://127.0.0.1:50300/HXKQJZK_Rkw=/"))
+    }
+
+    @Test
+    fun `devtools is a page, not an auth code`() {
+        assertEquals("ws://127.0.0.1:50300/ws", ws("http://127.0.0.1:50300/devtools/"))
+    }
+
+    @Test
+    fun `a uri parameter is percent-decoded, twice if need be, and a plus stays a plus`() {
+        assertEquals(expected, ws("http://127.0.0.1:9100/?uri=ws%253A%252F%252F127.0.0.1%253A50300%252FHXKQJZK_Rkw%253D%252Fws"))
+        assertEquals("a+b=/ü%zz%4", VmServiceUri.decodePercent("a+b%3D%2F%C3%BC%zz%4"))
+    }
+
+    @Test
+    fun `an address refused for its form never echoes its path`() {
+        listOf("ftp://10.0.0.2:21/HXKQJZK_Rkw=/", "http://127.0.0.1:50300/HXKQ.JZK=/", "http://127.0.0.1/HXKQJZK_Rkw=/")
+            .forEach { address ->
+                val error = assertThrows<IllegalArgumentException>(address) { VmServiceUri.parse(address) }
+                assertFalse(error.message!!.contains("HXKQ"), error.message)
+            }
+    }
+
+    @Test
     fun `IPv6 loopback and localhost are loopback too`() {
         assertEquals("ws://[::1]:50300/HXKQJZK_Rkw=/ws", ws("http://[::1]:50300/HXKQJZK_Rkw=/"))
         assertEquals("ws://localhost:50300/HXKQJZK_Rkw=/ws", ws("http://LOCALHOST:50300/HXKQJZK_Rkw=/"))

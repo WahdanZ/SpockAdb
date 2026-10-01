@@ -74,6 +74,25 @@ class VmServiceClientTest {
     }
 
     @Test
+    fun `an error's data and an address extension's answer never carry the token`() {
+        vm.on("ext.flutter.broken") {
+            FakeVmService.Reply.Error(-32_000, "failed at http://127.0.0.1:50300/HXKQJZK_Rkw=/")
+        }
+        vm.on("ext.flutter.connectedVmServiceUri") {
+            FakeVmService.Reply.Result(JsonObject().apply { addProperty("value", "http://127.0.0.1:50300/HXKQJZK_Rkw=/") })
+        }
+        vm.on("withData") { FakeVmService.Reply.Error(-32_000, "boom", data = "see ws://localhost:50300/HXKQJZK_Rkw=/ws") }
+
+        val error = assertThrows<VmServiceRpcException> { client.call("withData") }
+        val extension = assertThrows<VmServiceRpcException> { client.call("ext.flutter.broken") }
+        val uri = client.callServiceExtension("ext.flutter.connectedVmServiceUri", "isolates/1111")
+
+        assertFalse(error.data.toString().contains("HXKQJZK"), error.data.toString())
+        assertFalse(extension.message!!.contains("HXKQJZK"), extension.message)
+        assertEquals("<redacted>", uri.get("value").asString)
+    }
+
+    @Test
     fun `a call with no answer times out, and a late answer is dropped`() {
         vm.on("slow") { FakeVmService.Reply.None }
         val error = assertThrows<VmServiceTimeoutException> { client.call("slow", timeoutMs = 200) }

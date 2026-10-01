@@ -17,7 +17,7 @@ class FakeVmService : AutoCloseable {
 
     sealed interface Reply {
         data class Result(val result: JsonObject) : Reply
-        data class Error(val code: Int, val message: String) : Reply
+        data class Error(val code: Int, val message: String, val data: String? = null) : Reply
 
         /** Answer later with [FakeVmService.reply], or never. */
         object None : Reply
@@ -107,6 +107,7 @@ class FakeVmService : AutoCloseable {
                         JsonObject().apply {
                             addProperty("code", reply.code)
                             addProperty("message", reply.message)
+                            reply.data?.let { add("data", JsonObject().apply { addProperty("details", it) }) }
                         },
                     )
                 }.toString(),
