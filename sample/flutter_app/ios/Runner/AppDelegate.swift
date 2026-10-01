@@ -17,6 +17,10 @@ import UIKit
             result(FlutterError(code: "SAMPLE_ERROR", message: "Sample PlatformException from iOS", details: nil))
           case "crash":
             fatalError("Sample native crash from the Flutter fixture app")
+          case "throwInHandler":
+            // Android only: a Swift handler cannot throw, and an Objective-C exception here is
+            // not caught by Flutter, so it would be a second crash fixture rather than this one.
+            result(FlutterMethodNotImplemented)
           default:
             result(FlutterMethodNotImplemented)
           }
