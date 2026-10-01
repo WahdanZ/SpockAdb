@@ -27,10 +27,12 @@ import spock.adb.PushMessageRow
 import spock.adb.SpockAction
 import spock.adb.command.GetApplicationPermission
 import spock.adb.command.Network
+import spock.adb.command.RuntimePermission
 import spock.adb.compat.DebuggerSupport
 import spock.adb.device.ConnectedDevice
 import spock.adb.logcat.SpockLogcatToolWindow
 import spock.adb.premission.CheckBoxDialog
+import spock.adb.premission.ListItem
 import spock.adb.ui.CollapsibleSection
 import spock.adb.ui.ColumnsLayout
 import spock.adb.ui.VerticallyScrollablePanel
@@ -382,8 +384,29 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
 
     private fun managePermissions() {
         val target = device ?: return
-        controller.getApplicationPermissions(target.device) { list ->
-            val dialog = CheckBoxDialog(list) { item ->
+        controller.getApplicationPermissions(target.device) { permissions ->
+            val byName = permissions.associateBy { it.name }
+            // Denied and answered by the user: the ones a reset makes Android prompt for again.
+            val resettable = permissions.filter { !it.granted && (it.userFixed || it.userSet) }.map { it.name }.toSet()
+            // The labels are what the device said when the dialog opened. After an Ask again the
+            // summary line is read again, but the open dialog's row keeps its old label.
+            val dialog = CheckBoxDialog(
+                permissions.map { ListItem(it.name, it.granted) },
+                label = { item -> permissionLabel(byName[item.name]) ?: item.name },
+                rowMenu = { item ->
+                    if (item.name in resettable) {
+                        listOf(
+                            "Ask again (keeps app data)" to {
+                                controller.resetPermissionPrompt(target.device, item.name) {
+                                    refreshPermissionSummary()
+                                }
+                            },
+                        )
+                    } else {
+                        emptyList()
+                    }
+                },
+            ) { item ->
                 // Every change is read back: the count above is about to be wrong.
                 if (item.isSelected) {
                     controller.grantPermission(target.device, item) { refreshPermissionSummary() }
@@ -394,6 +417,14 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
             dialog.pack()
             dialog.isVisible = true
         }
+    }
+
+    /** Says whether a denied permission will still be asked for — the box alone cannot. */
+    private fun permissionLabel(permission: RuntimePermission?): String? = when {
+        permission == null -> null
+        permission.granted -> permission.name
+        permission.wontAskAgain -> "${permission.name} — denied, won't ask again (right-click to reset)"
+        else -> "${permission.name} — denied, will ask"
     }
 
     private fun grantAll() {

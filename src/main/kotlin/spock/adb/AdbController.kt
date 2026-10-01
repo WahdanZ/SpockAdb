@@ -8,6 +8,7 @@ import spock.adb.command.Network
 import spock.adb.command.NetworkState
 import spock.adb.command.PushDelivery
 import spock.adb.command.PushMessage
+import spock.adb.command.RuntimePermission
 import spock.adb.command.ShellAccess
 import spock.adb.command.WifiStatus
 import spock.adb.device.ConnectedDevice
@@ -61,7 +62,7 @@ interface AdbController {
      */
     fun clearAppCache(device: IDevice)
     fun uninstallApp(device: IDevice)
-    fun getApplicationPermissions(device: IDevice, block: (devices: List<ListItem>) -> Unit)
+    fun getApplicationPermissions(device: IDevice, block: (permissions: List<RuntimePermission>) -> Unit)
 
     /**
      * Grants or revokes every runtime permission, then calls [onDone] on the EDT.
@@ -76,6 +77,16 @@ interface AdbController {
     )
 
     fun revokePermission(device: IDevice, listItem: ListItem, onDone: () -> Unit = {})
+
+    /**
+     * Makes the app's next request for [permission] show the prompt again, then calls [onDone]
+     * on the EDT.
+     *
+     * Clears the `USER_SET` and `USER_FIXED` flags with `pm clear-permission-flags` and reads the
+     * package back, reporting success only when they are gone. The app's data is left alone —
+     * Clear data was the only reset before, and it took the login and the database with it.
+     */
+    fun resetPermissionPrompt(device: IDevice, permission: String, onDone: () -> Unit = {})
     fun grantPermission(device: IDevice, listItem: ListItem, onDone: () -> Unit = {})
     fun connectDeviceOverIp(ip: String)
     fun enableDisableDontKeepActivities(device: IDevice)
@@ -143,10 +154,14 @@ interface AdbController {
  * The tab offered Grant all and Revoke all with no way to see what the app had, so the answer
  * to "did that take?" was to open the dialog and read a list.
  */
-data class PermissionSummary(val granted: Int, val denied: Int) {
+data class PermissionSummary(val granted: Int, val denied: Int, val wontAskAgain: Int = 0) {
     val total: Int get() = granted + denied
 
-    fun describe(): String = if (total == 0) "No runtime permissions" else "$granted granted / $denied denied"
+    fun describe(): String = when {
+        total == 0 -> "No runtime permissions"
+        wontAskAgain > 0 -> "$granted granted / $denied denied ($wontAskAgain won't ask again)"
+        else -> "$granted granted / $denied denied"
+    }
 }
 
 /**

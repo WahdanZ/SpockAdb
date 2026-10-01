@@ -93,7 +93,9 @@ class ScreenDiagnosis(val report: JsonObject) {
         return when {
             total == 0 -> "no runtime permissions"
             denied == null || denied.size() == 0 -> "all $total runtime permission(s) granted"
-            else -> "${permissions.int("granted") ?: 0} of $total granted; denied: " + denied.joinText()
+            else -> "${permissions.int("granted") ?: 0} of $total granted; denied: " + denied.joinText() +
+                permissions.array("wontAskAgain")?.takeIf { it.size() > 0 }
+                    ?.let { " (won't ask again: ${it.joinText()})" }.orEmpty()
         }
     }
 
