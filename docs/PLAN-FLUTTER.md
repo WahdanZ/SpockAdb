@@ -90,7 +90,7 @@ Order ships value early: P1 needs no VM Service and can release on its own.
   - Correlation: a Dart error next to a native crash or a `MissingPluginException` within the same window is reported as one likely problem.
 - [ ] Timeline: new categories `FLUTTER_ERROR`, `FLUTTER_FRAME` (jank only), `HTTP`; place by event timestamp + `DeviceClock` offset on Android, host time on the simulator; update the `android_get_debug_timeline` schema and `docs/MCP.md` [FR18].
 - [ ] New MCP tool: `flutter_app_status` only (connected?, URI source, build mode, isolate, Flutter version). Everything else rides existing tools.
-- **Gate:** every P0 fixture screen yields its expected top `LikelyProblem` on Android **and** iOS sim; timeline export round-trips.
+- **Gate:** every P0 fixture screen yields its expected top `LikelyProblem` on Android; timeline export round-trips. The iOS simulator half of this gate moves to P6, which builds the iOS target.
 
 ### P6 — iOS simulator backend, MCP only (P0) · ~6 days [FR16]
 - [ ] `SimctlBridge` (macOS only; hidden elsewhere), `simctl list -j` parsing, Xcode version in diagnostics.
@@ -103,10 +103,11 @@ Order ships value early: P1 needs no VM Service and can release on its own.
 | `ios_set_appearance`, `ios_set_location` — each with a paired reset | SAFE_ACTION |
 | `ios_revoke_permission` (kills the app), `ios_uninstall_app` | DESTRUCTIVE (default deny) |
 
+- [ ] Diagnose on an iOS simulator target: the P5 Flutter sections (errors, frames, rebuilds, HTTP) run for an `IosSimTarget` with a live session, with no Android-only sections.
 - [ ] Document: notifications and camera can't be pre-granted by `simctl`; system alerts are UIKit and need a manual tap.
 - [ ] Register `ios_*` tools only on macOS with Xcode present, to keep the tool list short [FR15].
 - [ ] Update `ToolRegistry`, `ToolSafetyTest`, `McpSmokeTest`, `ReadmeToolCountTest`, `SkillToolNamesTest`, tool counts in `README.md` and `docs/MCP.md` (CLAUDE.md checklist step 8).
-- **Gate:** every tool exercised against a booted simulator with the P0 sample; `FakeToolContext` gains an iOS target for the destructive-deny loop [FR21].
+- **Gate:** every tool exercised against a booted simulator with the P0 sample; Diagnose on an iOS simulator target yields each P0 fixture screen's expected top `LikelyProblem` (moved from P5); `FakeToolContext` gains an iOS target for the destructive-deny loop [FR21].
 
 ### P7 — Docs + agent setup (P1) · ~2 days
 - [ ] `docs/FLUTTER.md`: what Spock adds vs Flutter plugin vs Dart MCP; how to run **Spock MCP + Dart MCP together** (who does widgets, who does device/OS).
