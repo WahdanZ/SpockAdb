@@ -7,7 +7,13 @@ enum class FlutterBuild(val label: String) {
     /** JIT: `flutter_assets/kernel_blob.bin`, no `libapp.so`. The VM Service and the inspector are there. */
     DEBUG("debug"),
 
-    /** AOT and debuggable (Flutter's profile build type starts from debug). VM Service, no inspector. */
+    /**
+     * AOT and debuggable (Flutter's profile build type starts from debug). VM Service, no inspector.
+     *
+     * Told from [RELEASE] by the package's `DEBUGGABLE` flag alone — the AOT snapshot looks the
+     * same in both — so a release build made debuggable, `isDebuggable = true` on the release
+     * build type, reads as profile.
+     */
     PROFILE("profile"),
 
     /** AOT and not debuggable. */
@@ -26,7 +32,10 @@ enum class FlutterBuild(val label: String) {
                 "grep -E '$FLUTTER_FILES'"
         }
 
-        /** Null when [listing] has no Flutter engine: a native app, or a device without `unzip`. */
+        /**
+         * Null when [listing] has no Flutter engine: a native app, or a device without `unzip`.
+         * Profile and release differ only in [debuggable]; see [PROFILE].
+         */
         fun of(listing: String, debuggable: Boolean): FlutterBuild? {
             if (!ENGINE.containsMatchIn(listing)) return null
             return when {
