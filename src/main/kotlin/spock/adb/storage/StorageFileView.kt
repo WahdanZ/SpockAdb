@@ -23,7 +23,7 @@ object StorageFileView {
 
     /** The text to show for every kind except [Kind.SQLITE], which needs the device to read it. */
     fun render(path: String, bytes: ByteArray): String = when (kindOf(path, bytes)) {
-        Kind.HIVE -> hive(HiveBox.read(bytes))
+        Kind.HIVE -> hiveOrHex(bytes)
         Kind.TEXT -> printable(bytes.decodeToString())
         Kind.SQLITE, Kind.BINARY -> hexDump(bytes)
     }
@@ -67,6 +67,16 @@ object StorageFileView {
      */
     fun printable(text: String): String = buildString(text.length) {
         text.replace("\r\n", "\n").forEach { append(if (it.isISOControl() && it != '\n' && it != '\t') '�' else it) }
+    }
+
+    /**
+     * A file whose name says Hive but whose first frame does not hold up is not a Hive box, or
+     * not one this can read — an encrypted one fails here too; its bytes say more than "0 keys".
+     */
+    private fun hiveOrHex(bytes: ByteArray): String {
+        val box = HiveBox.read(bytes)
+        if (box.frames > 0 || box.stoppedEarly == null) return hive(box)
+        return "Not readable as a Hive box: ${box.stoppedEarly}.\n" + hexDump(bytes)
     }
 
     /**

@@ -54,6 +54,19 @@ class StorageFileViewTest {
     }
 
     @Test
+    fun `a hive file that is not a Hive box falls back to its bytes`() {
+        val shown = StorageFileView.render("app_flutter/notes.hive", "not a box at all".toByteArray())
+        val note = "Not readable as a Hive box: a frame with an impossible length at byte 0.\n"
+        assertTrue(shown.startsWith(note), shown)
+        assertTrue(shown.contains("Binary file · 16 bytes"), shown)
+    }
+
+    @Test
+    fun `an empty hive file is an empty box`() {
+        assertTrue(StorageFileView.render("app_flutter/empty.hive", ByteArray(0)).startsWith("Hive box · 0 keys"))
+    }
+
+    @Test
     fun `a long binary file shows its first block and says so`() {
         val dump = StorageFileView.hexDump(ByteArray(5000), limit = 32)
         assertTrue(dump.startsWith("Binary file · 5000 bytes (first 32 shown)"), dump)
