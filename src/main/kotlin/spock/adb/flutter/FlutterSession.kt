@@ -218,11 +218,15 @@ class FlutterSession(
         }
     }
 
+    /**
+     * The isolate's set-up comes before the state says Connected: whoever acts on that state —
+     * Diagnose reading [structuredErrorsEnabled] — must find the session ready, not half read.
+     */
     private fun adopt(isolate: FlutterIsolate) {
         if (uiIsolate?.id != isolate.id) structuredErrorsEnabled = null
         uiIsolate = isolate
-        setState(SessionState.Connected(isolate.id))
         setUp(isolate)
+        setState(SessionState.Connected(isolate.id))
     }
 
     /** Per-isolate work, each step once per isolate: extensions register a few at a time. */
