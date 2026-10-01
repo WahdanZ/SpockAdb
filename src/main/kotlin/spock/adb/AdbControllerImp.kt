@@ -30,6 +30,7 @@ import spock.adb.ui.AppBackStackRow
 import spock.adb.ui.className
 import spock.adb.ui.toActivityStackRows
 import spock.adb.ui.toAppBackStackRows
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 class AdbControllerImp(
@@ -416,7 +417,7 @@ class AdbControllerImp(
 
     override fun getApplicationPermissions(
         device: IDevice,
-        block: (devices: List<ListItem>) -> Unit,
+        block: (permissions: List<RuntimePermission>) -> Unit,
     ) {
         execute {
             val applicationID = getApplicationID(device)
@@ -444,6 +445,7 @@ class AdbControllerImp(
         execute(onDone) {
             val applicationID = getApplicationID(device)
             val permissions = GetApplicationPermission().execute(applicationID, project, device)
+                .map { ListItem(it.name, it.granted) }
             if (permissions.isEmpty()) {
                 error("This application does not declare any runtime permissions.")
             }
@@ -485,7 +487,7 @@ class AdbControllerImp(
         execute(onDone) {
             val applicationID = getApplicationID(device)
             RevokePermissionCommand().execute(applicationID, listItem, project, device)
-            showSuccess("permission $listItem revoked")
+            showSuccess("permission ${listItem.name} revoked")
         }
     }
 
@@ -497,7 +499,20 @@ class AdbControllerImp(
         execute(onDone) {
             val applicationID = getApplicationID(device)
             GrantPermissionCommand().execute(applicationID, listItem, project, device)
-            showSuccess("permission $listItem granted")
+            showSuccess("permission ${listItem.name} granted")
+        }
+    }
+
+    override fun resetPermissionPrompt(
+        device: IDevice,
+        permission: String,
+        onDone: (reset: Boolean) -> Unit,
+    ) {
+        // Written on the pooled thread, read in onDone once execute has handed it to the EDT.
+        val reset = AtomicBoolean(false)
+        execute({ onDone(reset.get()) }) {
+            showSuccess(ResetPermissionPromptCommand().execute(getApplicationID(device) to permission, project, device))
+            reset.set(true)
         }
     }
 
@@ -601,8 +616,9 @@ class AdbControllerImp(
         read(block) {
             val permissions = GetApplicationPermission().execute(getApplicationID(device), project, device)
             PermissionSummary(
-                granted = permissions.count { it.isSelected },
-                denied = permissions.count { !it.isSelected },
+                granted = permissions.count { it.granted },
+                denied = permissions.count { !it.granted },
+                wontAskAgain = permissions.count { it.wontAskAgain },
             )
         }
 

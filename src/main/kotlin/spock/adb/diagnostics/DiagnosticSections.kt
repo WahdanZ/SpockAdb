@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import spock.adb.command.DeviceConditionTracker
 import spock.adb.command.GetApplicationPermission
+import spock.adb.command.RuntimePermission
 import spock.adb.command.StandbyBucket
 import spock.adb.command.deviceConditions
 import spock.adb.command.pendingAlarms
@@ -13,7 +14,6 @@ import spock.adb.device.ops.AppNotInstalledException
 import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.diagnostics.LikelyProblem.Severity
-import spock.adb.premission.ListItem
 import spock.adb.uitree.AccessibilityAudit
 import spock.adb.uitree.UiTree
 
@@ -368,6 +368,10 @@ object DeviceConditionsSection : DiagnosticSection {
  * A denied permission is not a fault — the user may have said no, and the app should cope — so
  * it is reported as information: the line an agent needs before it concludes the camera preview
  * is black because of a bug in the preview.
+ *
+ * Denied permissions the system will no longer prompt for (`USER_FIXED`) are listed again under
+ * `wontAskAgain`, only when there are any: for those, `requestPermissions()` answers denied with
+ * no dialog, which looks like the app never asked at all.
  */
 object PermissionsSection : DiagnosticSection {
     override val id = "permissions"
@@ -384,13 +388,23 @@ object PermissionsSection : DiagnosticSection {
         return summarise(GetApplicationPermission.parse(dump))
     }
 
-    fun summarise(permissions: List<ListItem>): SectionReport {
-        val denied = permissions.filterNot { it.isSelected }.map { it.name.substringAfterLast('.') }
+    fun summarise(permissions: List<RuntimePermission>): SectionReport {
+        val denied = permissions.filterNot { it.granted }.map { it.name.substringAfterLast('.') }
+        val wontAskAgain = permissions.filter { it.wontAskAgain }.map { it.name.substringAfterLast('.') }
         val data = JsonObject().apply {
             addProperty("runtime", permissions.size)
             addProperty("granted", permissions.size - denied.size)
             add("denied", JsonArray().apply { denied.take(MAX_NAMES).forEach(::add) })
             if (denied.size > MAX_NAMES) addProperty("moreDenied", denied.size - MAX_NAMES)
+            if (wontAskAgain.isNotEmpty()) {
+                add("wontAskAgain", JsonArray().apply { wontAskAgain.take(MAX_NAMES).forEach(::add) })
+            }
+            if (wontAskAgain.size > MAX_NAMES) addProperty("moreWontAskAgain", wontAskAgain.size - MAX_NAMES)
+        }
+        val fixed = if (wontAskAgain.isEmpty()) {
+            ""
+        } else {
+            "; ${wontAskAgain.size} won't ask again: " + DiagnosticShell.clip(wontAskAgain.joinToString(", "))
         }
         val problems = if (denied.isEmpty()) {
             emptyList()
@@ -400,7 +414,7 @@ object PermissionsSection : DiagnosticSection {
                     "permission",
                     Severity.INFO,
                     "${denied.size} runtime permission(s) denied: " +
-                        DiagnosticShell.clip(denied.joinToString(", ")),
+                        DiagnosticShell.clip(denied.joinToString(", ")) + fixed,
                     section = id,
                 ),
             )

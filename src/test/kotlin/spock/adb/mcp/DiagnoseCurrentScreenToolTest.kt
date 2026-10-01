@@ -99,6 +99,8 @@ class DiagnoseCurrentScreenToolTest {
         val permissions = report["permissions"].asJsonObject
         assertEquals(1, permissions["granted"].asInt)
         assertEquals("CAMERA", permissions["denied"].asJsonArray.single().asString)
+        // CAMERA carries USER_SET only: denied once, so the system will still ask.
+        assertFalse(permissions.has("wontAskAgain"), permissions.toString())
     }
 
     @Test
