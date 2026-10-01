@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
 import spock.adb.ShellQuote
 import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterBuildCache
 import java.util.concurrent.TimeUnit
 
 /**
@@ -41,16 +42,17 @@ data class AppInfo(
          * found by name rather than by position — the order and the neighbours of these lines
          * have both changed across releases.
          */
-        fun parse(packageName: String, dumpsys: String, pidof: String, apkListing: String = ""): AppInfo = AppInfo(
-            packageName = packageName,
-            versionName = dumpsys.field("versionName"),
-            versionCode = dumpsys.field("versionCode"),
-            // appId is the package's own UID. A bare `uid=` also appears, but under permission
-            // entries, where it belongs to the permission's declarer rather than to this app.
-            uid = dumpsys.field("appId"),
-            pid = pidof.trim().split(Regex("\\s+")).firstOrNull { it.toIntOrNull() != null },
-            flutter = FlutterBuild.of(apkListing, FlutterBuild.isDebuggable(dumpsys)),
-        )
+        fun parse(packageName: String, dumpsys: String, pidof: String, flutter: FlutterBuild? = null): AppInfo =
+            AppInfo(
+                packageName = packageName,
+                versionName = dumpsys.field("versionName"),
+                versionCode = dumpsys.field("versionCode"),
+                // appId is the package's own UID. A bare `uid=` also appears, but under permission
+                // entries, where it belongs to the permission's declarer rather than to this app.
+                uid = dumpsys.field("appId"),
+                pid = pidof.trim().split(Regex("\\s+")).firstOrNull { it.toIntOrNull() != null },
+                flutter = flutter,
+            )
 
         /** The value of `name=value` on whichever line carries it, or null when none does. */
         private fun String.field(name: String): String? = lineSequence()
@@ -64,10 +66,12 @@ data class AppInfo(
 }
 
 /**
- * Reads [AppInfo] for one package. Three shell round trips: `dumpsys` has no pid, and only the
- * APK's contents say whether it is a Flutter app.
+ * Reads [AppInfo] for one package. Two shell round trips, since `dumpsys` has no pid, and a
+ * third once per install: only the APK's contents say whether it is a Flutter app.
  */
-class AppInfoCommand : Command<String, AppInfo> {
+class AppInfoCommand(
+    private val flutterBuilds: FlutterBuildCache = FlutterBuildCache.shared,
+) : Command<String, AppInfo> {
 
     override fun execute(p: String, project: Project, device: IDevice): AppInfo {
         ShellQuote.requireValidComponent(p, "Package name")
@@ -75,12 +79,12 @@ class AppInfoCommand : Command<String, AppInfo> {
         // names, so an unquoted package containing one is expanded by the shell before `pidof`
         // ever sees it — and answers for whatever process that expansion happened to name.
         val quoted = ShellQuote.quote(p)
-        return AppInfo.parse(
-            p,
-            device.shell("dumpsys package $quoted"),
-            device.shell("pidof $quoted"),
-            device.shell(FlutterBuild.listingCommand(p)),
-        )
+        val dumpsys = device.shell("dumpsys package $quoted")
+        // Best effort: a listing that fails or times out leaves the card without the Flutter label.
+        val flutter = flutterBuilds.detect(device.serialNumber, p, dumpsys) {
+            device.shell(FlutterBuild.listingCommand(p))
+        }
+        return AppInfo.parse(p, dumpsys, device.shell("pidof $quoted"), flutter)
     }
 
     private fun IDevice.shell(command: String): String {

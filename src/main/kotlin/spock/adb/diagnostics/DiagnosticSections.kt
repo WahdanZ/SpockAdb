@@ -14,6 +14,7 @@ import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.diagnostics.LikelyProblem.Severity
 import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterBuildCache
 import spock.adb.premission.ListItem
 import spock.adb.uitree.AccessibilityAudit
 import spock.adb.uitree.OPAQUE_SURFACE_NOTE
@@ -175,12 +176,16 @@ object AppSection : DiagnosticSection {
         return SectionReport(data, problems)
     }
 
-    /** One `unzip -l` for every app; `dumpsys` only for a Flutter one, to tell profile from release. */
+    /**
+     * Best effort, and one `unzip -l` per install rather than per report: a `dumpsys` or a
+     * listing that fails or times out leaves the section without the Flutter fields.
+     */
     private fun flutterBuild(probe: DiagnosticProbe, app: String): FlutterBuild? {
-        val listing = DiagnosticShell.run(probe.device, FlutterBuild.listingCommand(app))
-        if (FlutterBuild.of(listing, debuggable = false) == null) return null
-        val dumpsys = DiagnosticShell.run(probe.device, "dumpsys package ${ShellQuote.quote(app)}")
-        return FlutterBuild.of(listing, FlutterBuild.isDebuggable(dumpsys))
+        val dumpsys = runCatching { DiagnosticShell.run(probe.device, "dumpsys package ${ShellQuote.quote(app)}") }
+            .getOrNull() ?: return null
+        return FlutterBuildCache.shared.detect(probe.serialNumber, app, dumpsys) {
+            DiagnosticShell.run(probe.device, FlutterBuild.listingCommand(app))
+        }
     }
 
     /**

@@ -65,7 +65,7 @@ class FlutterBuildTest {
 
     @Test
     fun `AppInfo carries the Flutter build`() {
-        val info = AppInfo.parse("spock.adb.spock_flutter_sample", debuggableDumpsys, "4242", debugListing)
+        val info = AppInfo.parse("spock.adb.spock_flutter_sample", debuggableDumpsys, "4242", FlutterBuild.DEBUG)
         assertEquals(FlutterBuild.DEBUG, info.flutter)
         assertNull(AppInfo.parse("spock.adb.spock_flutter_sample", debuggableDumpsys, "4242").flutter)
     }
