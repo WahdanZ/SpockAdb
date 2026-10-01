@@ -9,7 +9,9 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.CancellationSignal
+import spock.adb.device.DeviceTarget
 import spock.adb.mcp.tools.CancellableToolContext
+import spock.adb.mcp.tools.UncancellableToolContext
 import spock.adb.mcp.tools.confirmDestructive
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -80,6 +82,17 @@ class CancellableToolContextTest {
         assertEquals("app", base.selectedProject)
         assertFalse(context.confirmDestructive("android_clear_app_data", "summary", base.devices().first()))
         assertEquals(listOf("android_clear_app_data"), base.confirmations)
+        assertEquals(listOf(DeviceTarget.Android(base.devices().first())), base.confirmationTargets)
+    }
+
+    @Test
+    fun `the uncancellable context confirms on the base, as an Android target`() {
+        val base = FakeToolContext()
+        val device = base.devices().first()
+
+        assertFalse(UncancellableToolContext(base).confirmDestructive("android_clear_app_data", "summary", device))
+        assertEquals(listOf("android_clear_app_data"), base.confirmations)
+        assertEquals(listOf(DeviceTarget.Android(device)), base.confirmationTargets)
     }
 
     /** A context that is [base] apart from what a test overrides. */
