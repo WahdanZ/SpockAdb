@@ -47,3 +47,17 @@ flutter test
 
 Device checklist (manual): launch on an Android emulator and an iOS simulator; open every hub
 entry; open both deep links; write and read back storage.
+
+## VM Service probe
+
+`tool/vm_service_probe.dart` is the spike probe behind `docs/FLUTTER-SPIKE.md`; it is not part of
+the app. With the app running under `flutter run`, pass it the `ws://` URI that `flutter run --machine`
+reports as `app.debugPort` → `wsUri` (the DDS URI):
+
+```bash
+dart run tool/vm_service_probe.dart ws://127.0.0.1:<port>/<token>=/ws [listen-seconds]
+```
+
+It lists every Flutter isolate (skipping paused ones), the extensions Spock relies on, the DDS
+version (or "direct VM, no DDS"), and counts the events it hears, split into replayed history
+(before it connected) and live ones. It never prints the token. `dart analyze tool/` checks it.
