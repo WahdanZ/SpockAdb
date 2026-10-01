@@ -30,6 +30,7 @@ import spock.adb.ui.AppBackStackRow
 import spock.adb.ui.className
 import spock.adb.ui.toActivityStackRows
 import spock.adb.ui.toAppBackStackRows
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 class AdbControllerImp(
@@ -505,10 +506,13 @@ class AdbControllerImp(
     override fun resetPermissionPrompt(
         device: IDevice,
         permission: String,
-        onDone: () -> Unit,
+        onDone: (reset: Boolean) -> Unit,
     ) {
-        execute(onDone) {
+        // Written on the pooled thread, read in onDone once execute has handed it to the EDT.
+        val reset = AtomicBoolean(false)
+        execute({ onDone(reset.get()) }) {
             showSuccess(ResetPermissionPromptCommand().execute(getApplicationID(device) to permission, project, device))
+            reset.set(true)
         }
     }
 

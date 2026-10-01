@@ -399,6 +399,7 @@ object PermissionsSection : DiagnosticSection {
             if (wontAskAgain.isNotEmpty()) {
                 add("wontAskAgain", JsonArray().apply { wontAskAgain.take(MAX_NAMES).forEach(::add) })
             }
+            if (wontAskAgain.size > MAX_NAMES) addProperty("moreWontAskAgain", wontAskAgain.size - MAX_NAMES)
         }
         val fixed = if (wontAskAgain.isEmpty()) {
             ""

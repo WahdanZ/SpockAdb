@@ -50,15 +50,26 @@ class ResetPermissionPromptCommand : Command<Pair<String, String>, String> {
  */
 internal object ResetPermissionPrompt {
 
-    /** The reason it failed, or null when the permission no longer carries either flag. */
+    /**
+     * The reason it failed, or null when the permission is denied and carries neither flag.
+     *
+     * A granted permission is a failure too: nothing will prompt for it, so "will be asked for
+     * again" would not be true.
+     */
     fun failureOf(output: String, after: RuntimePermission?, permission: String): String? = when {
         after == null -> "$permission is not a runtime permission of this app"
+        after.granted -> "$permission is granted; there is no prompt to reset"
         !after.userFixed && !after.userSet -> null
         output.contains("unknown command", ignoreCase = true) ->
             "This device's package manager has no clear-permission-flags command"
         else -> {
             val said = output.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
-            "The device still marks $permission as won't ask again" + said?.let { ": $it" }.orEmpty()
+            val still = if (after.userFixed) {
+                "The device still marks $permission as won't ask again"
+            } else {
+                "The device still has the USER_SET flag on $permission"
+            }
+            still + said?.let { ": $it" }.orEmpty()
         }
     }
 }

@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -58,12 +59,22 @@ class ResetPermissionPromptTest {
     }
 
     @Test
-    fun `USER_SET left behind is not a reset either`() {
-        assertNotNull(ResetPermissionPrompt.failureOf("", RuntimePermission(camera, false, true, false), camera))
+    fun `USER_SET left behind is not a reset either, and is named for what it is`() {
+        val failure = ResetPermissionPrompt.failureOf("", RuntimePermission(camera, false, true, false), camera)
+
+        assertTrue(failure!!.contains("still has the USER_SET flag"), failure)
+        assertFalse(failure.contains("won't ask again"), failure)
     }
 
     @Test
-    fun `what the device said is passed on`() {
+    fun `a granted permission has no prompt to reset`() {
+        val failure = ResetPermissionPrompt.failureOf("", RuntimePermission(camera, true, false, false), camera)
+
+        assertTrue(failure!!.contains("is granted; there is no prompt to reset"), failure)
+    }
+
+    @Test
+    fun `only the first line of what the device said is passed on`() {
         val failure = ResetPermissionPrompt.failureOf(
             "\nException occurred while executing 'clear-permission-flags':\nSecurityException: nope",
             RuntimePermission(camera, false, true, true),
@@ -71,6 +82,7 @@ class ResetPermissionPromptTest {
         )
 
         assertTrue(failure!!.endsWith(": Exception occurred while executing 'clear-permission-flags':"), failure)
+        assertFalse(failure.contains("SecurityException"), failure)
     }
 
     @Test

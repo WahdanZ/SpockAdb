@@ -103,6 +103,9 @@ class CheckBoxDialog(
         jList.repaint(jList.getCellBounds(index, index)) // Repaint cell
     }
 
+    /** Paints every row again, for a caller whose [label] has changed its answer. */
+    fun refreshRows() = jList.repaint()
+
     private fun onCancel() {
         dispose()
     }

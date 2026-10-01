@@ -68,13 +68,19 @@ class GetApplicationPermission : Command<String, List<RuntimePermission>> {
         fun parse(dumpsys: String): List<RuntimePermission> {
             val found = linkedMapOf<String, RuntimePermission>()
             var inside = false
+            // Set when the first block ends, so a permission only a later user holds is not added.
+            var done = false
 
             dumpsys.lineSequence().map { it.trim() }.forEach { line ->
                 when {
+                    done -> Unit
                     line == RUNTIME_MARKER -> inside = true
                     // Any other section heading, or the next user, ends the block.
                     !inside -> Unit
-                    line.endsWith("permissions:") || line.startsWith("User ") -> inside = false
+                    line.endsWith("permissions:") || line.startsWith("User ") -> {
+                        inside = false
+                        done = true
+                    }
                     else -> entry(line)?.let { found.putIfAbsent(it.name, it) }
                 }
             }

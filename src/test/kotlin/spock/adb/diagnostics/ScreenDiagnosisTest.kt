@@ -139,4 +139,14 @@ class ScreenDiagnosisTest {
         assertFalse(section.data.has("wontAskAgain"), section.data.toString())
         assertFalse(section.problems.single().summary.contains("won't ask again"))
     }
+
+    @Test
+    fun `a long won't-ask-again list is capped and counts the rest`() {
+        val section = PermissionsSection.summarise(
+            (1..15).map { RuntimePermission("android.permission.P$it", granted = false, userFixed = true) },
+        )
+
+        assertEquals(12, section.data["wontAskAgain"].asJsonArray.size())
+        assertEquals(3, section.data["moreWontAskAgain"].asInt)
+    }
 }

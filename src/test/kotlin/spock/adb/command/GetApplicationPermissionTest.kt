@@ -163,4 +163,19 @@ class GetApplicationPermissionTest {
         assertFalse(camera.userSet)
         assertFalse(camera.userFixed)
     }
+
+    @Test
+    fun `a permission only a later user holds is not reported`() {
+        val workProfile = """
+            User 0: ceDataInode=1 installed=true
+              runtime permissions:
+                android.permission.CAMERA: granted=false, flags=[ ]
+            User 10: ceDataInode=2 installed=true
+              runtime permissions:
+                android.permission.CAMERA: granted=true, flags=[ ]
+                android.permission.READ_CONTACTS: granted=true, flags=[ ]
+        """.trimIndent()
+
+        assertEquals(listOf("android.permission.CAMERA"), GetApplicationPermission.parse(workProfile).map { it.name })
+    }
 }

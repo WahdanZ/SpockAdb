@@ -80,13 +80,13 @@ interface AdbController {
 
     /**
      * Makes the app's next request for [permission] show the prompt again, then calls [onDone]
-     * on the EDT.
+     * on the EDT with whether it did.
      *
      * Clears the `USER_SET` and `USER_FIXED` flags with `pm clear-permission-flags` and reads the
      * package back, reporting success only when they are gone. The app's data is left alone —
      * Clear data was the only reset before, and it took the login and the database with it.
      */
-    fun resetPermissionPrompt(device: IDevice, permission: String, onDone: () -> Unit = {})
+    fun resetPermissionPrompt(device: IDevice, permission: String, onDone: (reset: Boolean) -> Unit = {})
     fun grantPermission(device: IDevice, listItem: ListItem, onDone: () -> Unit = {})
     fun connectDeviceOverIp(ip: String)
     fun enableDisableDontKeepActivities(device: IDevice)
