@@ -172,6 +172,22 @@ class AppStorageToolsTest {
     }
 
     @Test
+    fun `a string list is refused outside Flutter's own file, before anyone is asked`() {
+        val context = context()
+        val before = storage.files.getValue(PREFS)
+
+        val result = SetAppPreferenceTool().execute(
+            args("file" to PREFS, "key" to "tags", "type" to "string_list", "value" to "[\"a\"]"),
+            context,
+        )
+
+        assertTrue(result.isError && result.text().contains("cannot store a string list"), result.text())
+        assertTrue(context.confirmations.isEmpty())
+        assertTrue(storage.pushed.isEmpty())
+        assertTrue(before.contentEquals(storage.files.getValue(PREFS)))
+    }
+
+    @Test
     fun `encrypted preferences are never offered for editing`() {
         storage.files[PREFS] = """
             <map>
