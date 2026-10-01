@@ -1,0 +1,8 @@
+{
+  "type": "Event",
+  "kind": "Extension",
+  "isolate": {"type": "@Isolate", "id": "isolates/1111", "name": "main", "number": "1111", "isSystemIsolate": false},
+  "timestamp": 1727776801000,
+  "extensionKind": "Flutter.ServiceExtensionStateChanged",
+  "extensionData": {"extension": "ext.flutter.connectedVmServiceUri", "value": "http://127.0.0.1:50300/HXKQJZK_Rkw=/"}
+}

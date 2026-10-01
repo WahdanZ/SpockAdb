@@ -1,0 +1,8 @@
+{
+  "type": "Event",
+  "kind": "Extension",
+  "isolate": {"type": "@Isolate", "id": "isolates/1111", "name": "main", "number": "1111", "isSystemIsolate": false},
+  "timestamp": 1727776802000,
+  "extensionKind": "Flutter.Frame",
+  "extensionData": {"number": 42, "startTime": 1727776801990000, "elapsed": 9100, "build": 3400, "raster": 5200, "vsyncOverhead": 500}
+}

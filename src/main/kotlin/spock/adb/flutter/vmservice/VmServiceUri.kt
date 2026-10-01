@@ -1,0 +1,120 @@
+package spock.adb.flutter.vmservice
+
+import java.net.URI
+import java.net.URISyntaxException
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+
+/**
+ * A Dart VM Service address, normalised to the WebSocket form a client connects to:
+ * `ws://127.0.0.1:<port>/<token>=/ws`.
+ *
+ * The token in the path is the only thing that guards the VM Service, and the VM Service can
+ * evaluate code in the app [FR9]. So the address is accepted on loopback only, and nothing this
+ * class prints contains the token: [toString] is [redacted]. Only [webSocketUri] carries it, and
+ * that is for the WebSocket handshake, not for display.
+ */
+class VmServiceUri private constructor(
+    val host: String,
+    val port: Int,
+    private val token: String,
+    val secure: Boolean,
+) {
+
+    /** The address to open the WebSocket on. Carries the token: never log or show it. */
+    val webSocketUri: URI
+        get() = URI.create("${scheme()}://${hostForUri()}:$port/${tokenSegment(token)}ws")
+
+    /** The same VM Service seen on another port, as after an `adb forward` to the host. */
+    fun withPort(newPort: Int): VmServiceUri = VmServiceUri(LOOPBACK_V4, newPort, token, secure)
+
+    /** `ws://127.0.0.1:<port>/<redacted>/ws`; the form for logs, history and the UI. */
+    fun redacted(): String {
+        val segment = if (token.isEmpty()) "" else "${Redaction.PLACEHOLDER}/"
+        return "${scheme()}://${hostForUri()}:$port/${segment}ws"
+    }
+
+    override fun toString(): String = redacted()
+
+    override fun equals(other: Any?): Boolean =
+        other is VmServiceUri && other.host == host && other.port == port && other.token == token &&
+            other.secure == secure
+
+    override fun hashCode(): Int = listOf(host, port, token, secure).hashCode()
+
+    private fun scheme() = if (secure) "wss" else "ws"
+
+    private fun hostForUri() = if (host.contains(':')) "[$host]" else host
+
+    companion object {
+        private const val LOOPBACK_V4 = "127.0.0.1"
+        private const val MAX_PORT = 65_535
+        private val LOOPBACK_HOSTS = setOf(LOOPBACK_V4, "::1", "0:0:0:0:0:0:0:1", "localhost")
+
+        /** The first URL in a pasted line: `flutter run` and logcat print one inside a sentence. */
+        private val URL_IN_TEXT = Regex("""(?i)\b(?:https?|wss?)://[^\s"'<>]+""")
+
+        /** DevTools carries the VM Service address as `uri=`, in the query or after `#/?`. */
+        private val URI_PARAM = Regex("""[?&]uri=([^&#\s]+)""")
+
+        /** A VM Service auth code: base64url, padded with `=` (Dart encodes 8 random bytes). */
+        private val TOKEN = Regex("""[A-Za-z0-9_\-]+=*""")
+
+        /**
+         * Reads any form a developer is likely to paste — `flutter run`'s `http://127.0.0.1:P/T=/`
+         * (with or without the trailing slash), its `ws://…/T=/ws`, `https`/`wss`, a logcat line
+         * with the address inside it, or a DevTools link with the address in `?uri=` or `#/?uri=`.
+         *
+         * @throws IllegalArgumentException with a message fit to show, when [text] holds no VM
+         * Service address or one that is not on this machine's loopback.
+         */
+        fun parse(text: String): VmServiceUri {
+            val url = URL_IN_TEXT.find(text.trim())?.value?.trimEnd('.', ',', ')', ';')
+                ?: throw IllegalArgumentException("No VM Service address found. Paste the http:// or ws:// URI.")
+            val inner = URI_PARAM.find(url)?.groupValues?.get(1)?.let(::decodeParam)
+            return fromUrl(inner ?: url)
+        }
+
+        /** [parse], or null instead of an exception. */
+        fun parseOrNull(text: String): VmServiceUri? = try {
+            parse(text)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+
+        private fun fromUrl(url: String): VmServiceUri {
+            val uri = try {
+                URI(url)
+            } catch (_: URISyntaxException) {
+                throw IllegalArgumentException("Not a VM Service address: ${Redaction.scrub(url)}")
+            }
+            val scheme = uri.scheme?.lowercase()
+            val secure = scheme == "https" || scheme == "wss"
+            require(scheme in setOf("http", "https", "ws", "wss")) {
+                "Not a VM Service address (scheme ${uri.scheme}): ${Redaction.scrub(url)}"
+            }
+            val host = uri.host?.removePrefix("[")?.removeSuffix("]")?.lowercase()
+            require(host != null && host in LOOPBACK_HOSTS) {
+                "Refusing a VM Service on ${host ?: "an unknown host"}: only 127.0.0.1, ::1 or localhost is " +
+                    "accepted, because the address grants code execution in the app. Forward the port to " +
+                    "this machine first."
+            }
+            require(uri.port in 1..MAX_PORT) { "The VM Service address has no port: ${Redaction.scrub(url)}" }
+            return VmServiceUri(host, uri.port, tokenOf(uri, url), secure)
+        }
+
+        /** The first path segment, unless it is the `ws` endpoint of an address with no auth code. */
+        private fun tokenOf(uri: URI, url: String): String {
+            val first = uri.rawPath.orEmpty().split('/').firstOrNull { it.isNotEmpty() } ?: return ""
+            if (first == "ws") return ""
+            require(TOKEN.matches(first)) { "Not a VM Service address: ${Redaction.scrub(url)}" }
+            return first
+        }
+
+        private fun tokenSegment(token: String) = if (token.isEmpty()) "" else "$token/"
+
+        /** A DevTools `uri=` is usually percent-encoded, but `flutter run` prints it raw. */
+        private fun decodeParam(value: String): String =
+            if (value.contains('%')) URLDecoder.decode(value, StandardCharsets.UTF_8) else value
+    }
+}
