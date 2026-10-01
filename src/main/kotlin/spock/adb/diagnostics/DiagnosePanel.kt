@@ -242,7 +242,7 @@ class DiagnosePanel(
      */
     private fun collect(target: ConnectedDevice, app: String?): Pair<JsonObject, ByteArray?> {
         val shot = runCatching { ScreenshotOperations(target.device).capture() }
-        val probe = DiagnosticProbe(
+        val probe = AndroidProbe(
             device = target.device,
             serialNumber = target.serialNumber,
             packageName = app,

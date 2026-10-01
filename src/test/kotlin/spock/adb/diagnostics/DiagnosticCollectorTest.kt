@@ -16,7 +16,7 @@ import spock.adb.diagnostics.LikelyProblem.Severity
  */
 class DiagnosticCollectorTest {
 
-    private val probe = DiagnosticProbe(mockk<IDevice>(relaxed = true), "emulator-5554", "com.example.app")
+    private val probe = AndroidProbe(mockk<IDevice>(relaxed = true), "emulator-5554", "com.example.app")
 
     private fun section(
         id: String,
@@ -24,10 +24,10 @@ class DiagnosticCollectorTest {
         problems: List<LikelyProblem> = emptyList(),
         detail: DetailRef? = DetailRef("android_get_$id"),
         failure: Throwable? = null,
-    ) = object : DiagnosticSection {
+    ) = object : DiagnosticSection<AndroidProbe> {
         override val id = id
         override val detail = detail
-        override fun collect(probe: DiagnosticProbe): SectionReport {
+        override fun collect(probe: AndroidProbe): SectionReport {
             failure?.let { throw it }
             return SectionReport(data, problems)
         }
@@ -87,10 +87,10 @@ class DiagnosticCollectorTest {
     @Test
     fun `sections past the time budget are skipped and say so`() {
         var now = 0L
-        val slow = object : DiagnosticSection {
+        val slow = object : DiagnosticSection<AndroidProbe> {
             override val id = "slow"
             override val detail: DetailRef? = null
-            override fun collect(probe: DiagnosticProbe): SectionReport {
+            override fun collect(probe: AndroidProbe): SectionReport {
                 now += 10
                 return SectionReport(JsonObject())
             }
@@ -129,10 +129,10 @@ class DiagnosticCollectorTest {
     }
 
     /** The real logs section's id and detail, without its device read. */
-    private object LogsSectionStub : DiagnosticSection {
+    private object LogsSectionStub : DiagnosticSection<AndroidProbe> {
         override val id = LogsSection.id
         override val detail = LogsSection.detail
-        override fun collect(probe: DiagnosticProbe) = SectionReport(JsonObject())
+        override fun collect(probe: AndroidProbe) = SectionReport(JsonObject())
     }
 
     @Test

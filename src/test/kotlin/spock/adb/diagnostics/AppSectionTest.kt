@@ -38,7 +38,7 @@ class AppSectionTest {
     private val commands = mutableListOf<String>()
 
     /** A probe whose APK listing answers with [listed], or times out when it is null. */
-    private fun probe(listed: String?, packageDump: String = dumpsys): DiagnosticProbe {
+    private fun probe(listed: String?, packageDump: String = dumpsys): AndroidProbe {
         val device = mockk<IDevice>(relaxed = true)
         val command = slot<String>()
         val receiver = slot<IShellOutputReceiver>()
@@ -58,7 +58,7 @@ class AppSectionTest {
             receiver.captured.flush()
         }
         // A serial of its own, so no other test's answer is remembered for this one.
-        return DiagnosticProbe(device, "emulator-${UUID.randomUUID()}", pkg)
+        return AndroidProbe(device, "emulator-${UUID.randomUUID()}", pkg)
     }
 
     @Test
