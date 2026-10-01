@@ -732,7 +732,9 @@ other warnings and errors — each distinct one once, with a count. Query string
 from URLs and credentials are redacted, as they are for the Assistant. From the rest: the app
 not running, another app in the foreground, accessibility faults, failing or blocked jobs, Doze,
 a rationed standby bucket, device conditions Spock changed and has not reset, and — as
-information, not a fault — runtime permissions the user denied.
+information, not a fault — runtime permissions the user denied. The `permissions` section adds a
+`wontAskAgain` array, only when it is non-empty, naming the denied permissions the system will no
+longer prompt for (`USER_FIXED`): for those, `requestPermissions()` returns denied with no dialog.
 
 **Choosing sections.** `include` takes `screen`, `app`, `logs`, `ui`, `backgroundWork`,
 `deviceConditions` and `permissions`; all are on by default. `screenshot` is opt-in, attached as an image, because

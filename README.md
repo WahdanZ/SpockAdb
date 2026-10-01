@@ -114,7 +114,7 @@ The first tab of the **Spock ADB** window answers the questions you would otherw
 
 - **This screen** — the resumed activity and the app's fragments, read live, as links to their source; **Diagnose**, and **Copy screen for AI**, which diagnoses and copies the redacted report in one click. **App back stack** lists the app's activities top first, each with its state and the fragments it holds; **All activities** shows every task on the device.
 - **App** — version, process and UID, with **Restart**, **Attach debugger**, **Force stop** and **Process death** in a toolbar. **Clear cache**, **Clear data** and **Uninstall** sit behind **⋯**, never one click from Restart. Links jump to the **Debug timeline** and **Background work**.
-- **Permissions** — how many are granted, with **Manage…**, **Grant all** and **Revoke all…**.
+- **Permissions** — how many are granted and which won't be asked again, with **Manage…**, **Grant all** and **Revoke all…**.
 - **Send to app** — text input, deep links and push messages.
 - **Device** — Wi-Fi and mobile data, HTTP proxy, and developer options (Don't keep activities, Show taps, layout bounds, animation scales), which start hidden on a fresh install. Folded until you need it.
 

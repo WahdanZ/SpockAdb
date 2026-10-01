@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- **See when a permission won't be asked again, and reset it without clearing data.** Home ›
+  Permissions › **Manage…** now shows each runtime permission as granted, *denied — will ask*, or
+  *denied — won't ask again* (the `USER_FIXED` flag Android sets after two denials, or "Don't ask
+  again" before Android 11). Right-click a denied permission and choose **Ask again** to clear the
+  flag with `pm clear-permission-flags`; Spock reads the package back and reports success only
+  when the flag is actually gone, and the app's data is left alone. The summary line counts the
+  ones that won't be asked again, and `android_diagnose_current_screen` lists them in its
+  `permissions` section. The sample app's **Permissions** screen has a CAMERA-only request for
+  trying the whole cycle ([#146](https://github.com/WahdanZ/SpockAdb/issues/146)).
+
+### Fixed
+
+- **The grant and revoke balloons name the permission.** Granting or revoking one permission from
+  **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
+  revoked` instead of the permission's name.
+
 ## [4.0.7] - 2026-09-29
 
 ### Added
