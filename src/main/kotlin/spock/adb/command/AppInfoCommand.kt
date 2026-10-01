@@ -4,6 +4,7 @@ import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.ShellOutputReceiver
 import spock.adb.ShellQuote
+import spock.adb.flutter.FlutterBuild
 import java.util.concurrent.TimeUnit
 
 /**
@@ -21,6 +22,8 @@ data class AppInfo(
     val uid: String?,
     /** The process id, or null when the app is not running. */
     val pid: String?,
+    /** How the app was built when it is a Flutter app; null for a native one. */
+    val flutter: FlutterBuild? = null,
 ) {
     val isRunning: Boolean get() = pid != null
 
@@ -38,7 +41,7 @@ data class AppInfo(
          * found by name rather than by position — the order and the neighbours of these lines
          * have both changed across releases.
          */
-        fun parse(packageName: String, dumpsys: String, pidof: String): AppInfo = AppInfo(
+        fun parse(packageName: String, dumpsys: String, pidof: String, apkListing: String = ""): AppInfo = AppInfo(
             packageName = packageName,
             versionName = dumpsys.field("versionName"),
             versionCode = dumpsys.field("versionCode"),
@@ -46,6 +49,7 @@ data class AppInfo(
             // entries, where it belongs to the permission's declarer rather than to this app.
             uid = dumpsys.field("appId"),
             pid = pidof.trim().split(Regex("\\s+")).firstOrNull { it.toIntOrNull() != null },
+            flutter = FlutterBuild.of(apkListing, FlutterBuild.isDebuggable(dumpsys)),
         )
 
         /** The value of `name=value` on whichever line carries it, or null when none does. */
@@ -59,7 +63,10 @@ data class AppInfo(
     }
 }
 
-/** Reads [AppInfo] for one package. Two shell round trips, because `dumpsys` has no pid. */
+/**
+ * Reads [AppInfo] for one package. Three shell round trips: `dumpsys` has no pid, and only the
+ * APK's contents say whether it is a Flutter app.
+ */
 class AppInfoCommand : Command<String, AppInfo> {
 
     override fun execute(p: String, project: Project, device: IDevice): AppInfo {
@@ -68,7 +75,12 @@ class AppInfoCommand : Command<String, AppInfo> {
         // names, so an unquoted package containing one is expanded by the shell before `pidof`
         // ever sees it — and answers for whatever process that expansion happened to name.
         val quoted = ShellQuote.quote(p)
-        return AppInfo.parse(p, device.shell("dumpsys package $quoted"), device.shell("pidof $quoted"))
+        return AppInfo.parse(
+            p,
+            device.shell("dumpsys package $quoted"),
+            device.shell("pidof $quoted"),
+            device.shell(FlutterBuild.listingCommand(p)),
+        )
     }
 
     private fun IDevice.shell(command: String): String {
