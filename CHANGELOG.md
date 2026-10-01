@@ -12,6 +12,11 @@
   - **Diagnose** reports each unhandled Dart exception once, tells a missing plugin and a
     platform channel error apart, and says that Flutter's framework errors (overflow, `build()`)
     are not in logcat for a debug build. **Timeline** titles drop the engine's source prefix.
+  - **Diagnose** no longer blames a missing plugin when a native channel handler threw. A checked
+    exception in a handler (Kotlin throws them undeclared) makes Android's `DartMessenger` reply
+    with nothing, which Dart reads as `MissingPluginException` though the plugin is there; the
+    report now names the method, the channel and the exception the handler threw, so the fix is
+    looked for in the handler rather than in plugin registration.
   - **Logcat** has a *Flutter* view.
   - **App Storage** shows a Hive box (`*.hive`) as a key/type/value table and a SQLite database
     as its tables, row counts and first rows (read on the device with `sqlite3`, where it

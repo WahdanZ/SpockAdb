@@ -2,6 +2,7 @@ package spock.adb.diagnostics
 
 import spock.adb.diagnostics.LikelyProblem.Severity
 import spock.adb.logcat.LogcatRedactor
+import spock.adb.timeline.DeviceClock
 
 /**
  * Turns a window of `logcat -v threadtime` into a handful of one-line problems.
@@ -122,6 +123,12 @@ object LogProblemExtractor {
          */
         private var flutterBurst: Pair<String, String>? = null
 
+        /**
+         * DartMessenger's "Uncaught exception in binary message listener", by pid, already
+         * reported on its own: a `MissingPluginException` right after it takes its place.
+         */
+        private val channelFailures = mutableMapOf<String, ChannelFailure>()
+
         fun report(key: String, type: String, severity: Severity, summary: String, at: String): Accumulator {
             // Redacted whole, then clipped: a clip can cut a token short of the length its
             // redaction rule needs, and leave the part it kept in plain sight.
@@ -160,8 +167,10 @@ object LogProblemExtractor {
             flushPending()
             flutterBurst = line.pid to line.time
             val exception = line.message.substringAfter(FLUTTER_UNHANDLED_MARKER).trim()
+            val missingPlugin = exception.startsWith("MissingPluginException")
+            if (missingPlugin && channelHandlerFailed(line, exception)) return
             val (type, summary) = when {
-                exception.startsWith("MissingPluginException") ->
+                missingPlugin ->
                     TYPE_FLUTTER_PLUGIN to "Flutter plugin not registered: " +
                         exception.removePrefix("MissingPluginException(").removeSuffix(")")
                 exception.startsWith("PlatformException") ->
@@ -169,6 +178,40 @@ object LogProblemExtractor {
                 else -> TYPE_EXCEPTION to "Unhandled Dart exception: $exception"
             }
             report("flutter:${normalise(exception)}", type, Severity.ERROR, summary, line.time)
+        }
+
+        /**
+         * A checked exception thrown in a platform channel handler is caught by DartMessenger,
+         * which logs "Uncaught exception in binary message listener" and replies with nothing —
+         * and an empty reply is what Dart reads as a `MissingPluginException`, though the plugin
+         * is there (spike S8). Within [CHANNEL_FAILURE_WINDOW_MS] in the same process, the two are
+         * one problem: the handler threw. True when [exception] was reported that way.
+         */
+        private fun channelHandlerFailed(line: Line, exception: String): Boolean {
+            val failure = channelFailures.remove(line.pid) ?: return false
+            val elapsed = elapsedMs(failure.time, line.time) ?: return false
+            if (elapsed !in 0..CHANNEL_FAILURE_WINDOW_MS) return false
+            retract(failure.key)
+            val call = NO_IMPLEMENTATION.find(exception)
+                ?.let { "for ${it.groupValues[1]} on ${it.groupValues[2]} " }
+                .orEmpty()
+            val summary = "Platform channel handler ${call}threw ${failure.exception ?: "an exception"}"
+            report("channel:${normalise(summary)}", TYPE_FLUTTER_PLUGIN, Severity.ERROR, summary, line.time)
+            return true
+        }
+
+        /** Takes back one occurrence of a problem that turned out to be part of another. */
+        private fun retract(key: String) {
+            val acc = found[key] ?: return
+            acc.count--
+            if (acc.count <= 0) found.remove(key)
+        }
+
+        /** Keeps [key] for [channelHandlerFailed] when [listener] is DartMessenger's failure line. */
+        private fun rememberChannelFailure(listener: Line?, at: Line, exception: String?, key: String) {
+            if (listener?.tag == DART_MESSENGER && listener.message.startsWith(LISTENER_FAILURE)) {
+                channelFailures[at.pid] = ChannelFailure(at.time, exception, key)
+            }
         }
 
         /**
@@ -258,25 +301,17 @@ object LogProblemExtractor {
                 else -> Severity.WARNING
             }
             val context = previous?.message?.takeIf { it.isNotBlank() }?.let { "$it — " }.orEmpty()
-            report(
-                "exc:${line.tag}:${normalise(className + (previous?.message ?: ""))}",
-                type,
-                severity,
-                "${line.tag}: ${(context + line.message).trim()}",
-                line.time,
-            )
+            val key = "exc:${line.tag}:${normalise(className + (previous?.message ?: ""))}"
+            report(key, type, severity, "${line.tag}: ${(context + line.message).trim()}", line.time)
+            rememberChannelFailure(previous, line, line.message.trim(), key)
         }
 
         private fun reportPlain(line: Line) {
             val severity = if (line.level in ERROR_LEVELS) Severity.ERROR else Severity.WARNING
             val type = if (line.tag == STRICT_MODE) TYPE_STRICT_MODE else TYPE_LOG
-            report(
-                "log:${line.level}:${line.tag}:${normalise(line.message)}",
-                type,
-                severity,
-                "${line.tag}: ${line.message.trim()}",
-                line.time,
-            )
+            val key = "log:${line.level}:${line.tag}:${normalise(line.message)}"
+            report(key, type, severity, "${line.tag}: ${line.message.trim()}", line.time)
+            rememberChannelFailure(line, line, null, key)
         }
     }
 
@@ -310,7 +345,7 @@ object LogProblemExtractor {
     }
 
     /** `/payment (api.example.com)`: the path is what a developer greps for, the host disambiguates. */
-    private fun describeUrl(url: String): String {
+    internal fun describeUrl(url: String): String {
         val match = URL_PARTS.matchEntire(url) ?: return url
         // `user:pass@host` loses its `://` here, and with it the shape the redactor recognises.
         val host = match.groupValues[1].substringAfterLast('@')
@@ -319,7 +354,7 @@ object LogProblemExtractor {
     }
 
     /** Query strings are where tokens and personal data ride along; the path is enough. */
-    private fun stripQuery(url: String): String = url.substringBefore('?').substringBefore('#')
+    internal fun stripQuery(url: String): String = url.substringBefore('?').substringBefore('#')
 
     private fun networkException(className: String): String? =
         NETWORK_EXCEPTIONS.firstOrNull { className.endsWith(it) }
@@ -343,6 +378,18 @@ object LogProblemExtractor {
         var lastSeen: String? = null
     }
 
+    /** A channel handler's exception as DartMessenger logged it, and the problem it became. */
+    private class ChannelFailure(val time: String, val exception: String?, val key: String)
+
+    /**
+     * Milliseconds from one `threadtime` stamp to another, or null when either is unreadable.
+     * The stamps carry no year; a leap year reads every one, and only short gaps are compared.
+     */
+    private fun elapsedMs(from: String, to: String): Long? {
+        val start = DeviceClock.wallClockMillis(from, ANY_LEAP_YEAR) ?: return null
+        return DeviceClock.wallClockMillis(to, ANY_LEAP_YEAR)?.minus(start)
+    }
+
     const val SECTION = "logs"
 
     const val TYPE_CRASH = "crash"
@@ -363,6 +410,22 @@ object LogProblemExtractor {
     /** What the engine prefixes, after `[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] `. */
     private const val FLUTTER_UNHANDLED_MARKER = "Unhandled Exception:"
     private val FLUTTER_UNHANDLED = Regex("""^\[ERROR:flutter/[^\]]*] Unhandled Exception:""")
+
+    private const val DART_MESSENGER = "DartMessenger"
+    private const val LISTENER_FAILURE = "Uncaught exception in binary message listener"
+
+    /**
+     * How long after DartMessenger's failure a `MissingPluginException` still belongs to it. The
+     * empty reply goes straight back to Dart, so on a device the two are milliseconds apart; two
+     * seconds leaves room for a loaded emulator without pairing unrelated calls.
+     */
+    private const val CHANNEL_FAILURE_WINDOW_MS = 2_000L
+
+    /** `MissingPluginException(No implementation found for method M on channel C)`. */
+    private val NO_IMPLEMENTATION = Regex("""No implementation found for method (\S+) on channel (.+?)\)?$""")
+
+    /** So that `02-29` parses. */
+    private const val ANY_LEAP_YEAR = 2024
 
     /** What follows a PlatformException's message: `null` details, then `null)` or a native exception. */
     private val PLATFORM_ERROR_TAIL = Regex(""", null, (?:null\)|[\w.$]+(?::.*)?)$""")
