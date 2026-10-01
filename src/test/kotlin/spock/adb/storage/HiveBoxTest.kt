@@ -21,9 +21,9 @@ class HiveBoxTest {
 
         assertEquals(
             listOf(
-                HiveBox.Entry("font_scale", "double", "1.2"),
-                HiveBox.Entry("onboarded", "bool", "true"),
-                HiveBox.Entry("theme", "string", "dark"),
+                HiveBox.Entry("\"font_scale\"", "double", "1.2"),
+                HiveBox.Entry("\"onboarded\"", "bool", "true"),
+                HiveBox.Entry("\"theme\"", "string", "dark"),
             ),
             box.entries,
         )
@@ -34,7 +34,7 @@ class HiveBoxTest {
     @Test
     fun `a deletion frame removes the key`() {
         val box = HiveBox.read(device + frame(stringKey("theme")))
-        assertEquals(listOf("font_scale", "onboarded"), box.entries.map { it.key })
+        assertEquals(listOf("\"font_scale\"", "\"onboarded\""), box.entries.map { it.key })
     }
 
     @Test
@@ -44,7 +44,7 @@ class HiveBoxTest {
             frame(intKey(2), byteArrayOf(1) + double(42.0))
         val box = HiveBox.read(bytes)
 
-        assertEquals(listOf("2", "7", "user"), box.entries.map { it.key })
+        assertEquals(listOf("2", "7", "\"user\""), box.entries.map { it.key })
         assertEquals(HiveBox.Entry("2", "int", "42"), box.entries[0])
         assertEquals(HiveBox.Entry("7", "string list", "[\"a\", \"b\"]"), box.entries[1])
         assertEquals("custom (type 8)", box.entries[2].type)
@@ -72,7 +72,7 @@ class HiveBoxTest {
         val text = StorageFileView.render("app_flutter/settings.hive", device)
         val heading = "Hive box · 3 keys (6 records in the file; the newest per key wins) · read-only"
         assertTrue(text.startsWith(heading), text)
-        assertTrue(text.contains("font_scale  double  1.2"), text)
+        assertTrue(text.contains("\"font_scale\"  double  1.2"), text)
     }
 
     @Test
@@ -92,7 +92,7 @@ class HiveBoxTest {
             assertEquals(2, box.frames, case)
             assertNull(box.stoppedEarly, case)
             assertTrue(box.entries.any { it.value.startsWith("undecodable frame at byte 0") }, "$case: ${box.entries}")
-            assertTrue(box.entries.contains(HiveBox.Entry("after", "bool", "true")), "$case: ${box.entries}")
+            assertTrue(box.entries.contains(HiveBox.Entry("\"after\"", "bool", "true")), "$case: ${box.entries}")
         }
     }
 
@@ -131,8 +131,8 @@ class HiveBoxTest {
 
         assertEquals(
             listOf(
-                HiveBox.Entry("l", "list", "[<custom (type 8), not decoded>, … (1 more, not decoded)]"),
-                HiveBox.Entry("z", "bool", "true"),
+                HiveBox.Entry("\"l\"", "list", "[<custom (type 8), not decoded>, … (1 more, not decoded)]"),
+                HiveBox.Entry("\"z\"", "bool", "true"),
             ),
             box.entries,
         )
@@ -162,11 +162,32 @@ class HiveBoxTest {
             frame(stringKey("refs"), hiveList)
         val entries = HiveBox.read(bytes).entries.associateBy { it.key }
 
-        assertEquals(HiveBox.Entry("größe", "string", "ü"), entries["größe"])
-        assertEquals(HiveBox.Entry("seen", "DateTime (UTC)", "2026-09-21T14:13:20Z"), entries["seen"])
-        assertEquals(HiveBox.Entry("read", "DateTime", "2026-09-21T14:13:20Z"), entries["read"])
-        assertEquals(HiveBox.Entry("big", "BigInt", "12345678901234567890"), entries["big"])
-        assertEquals(HiveBox.Entry("refs", "HiveList", "box users: [3, k]"), entries["refs"])
+        assertEquals(HiveBox.Entry("\"größe\"", "string", "ü"), entries["\"größe\""])
+        assertEquals(HiveBox.Entry("\"seen\"", "DateTime (UTC)", "2026-09-21T14:13:20Z"), entries["\"seen\""])
+        assertEquals(HiveBox.Entry("\"read\"", "DateTime", "2026-09-21T14:13:20Z"), entries["\"read\""])
+        assertEquals(HiveBox.Entry("\"big\"", "BigInt", "12345678901234567890"), entries["\"big\""])
+        assertEquals(HiveBox.Entry("\"refs\"", "HiveList", "box users: [3, \"k\"]"), entries["\"refs\""])
+    }
+
+    @Test
+    fun `int keys sort by value and a string key is quoted, so 5 and "5" differ`() {
+        val bytes = frame(intKey(10), byteArrayOf(0)) +
+            frame(stringKey("5"), byteArrayOf(0)) +
+            frame(intKey(2), byteArrayOf(0)) +
+            frame(intKey(5), byteArrayOf(0))
+        assertEquals(listOf("2", "5", "10", "\"5\""), HiveBox.read(bytes).entries.map { it.key })
+    }
+
+    @Test
+    fun `control characters are escaped and a long value is cut`() {
+        val bytes = frame(stringKey("a\nb"), byteArrayOf(4) + str("one\ntwo\u0007 \\")) +
+            frame(stringKey("long"), byteArrayOf(4) + str("x".repeat(500))) +
+            frame(stringKey("items"), byteArrayOf(9) + int(1) + str("q\"\r"))
+        val entries = HiveBox.read(bytes).entries.associateBy { it.key }
+
+        assertEquals("one\\ntwo\\u0007 \\\\", entries["\"a\\nb\""]?.value, entries.keys.toString())
+        assertEquals("x".repeat(200) + "…", entries["\"long\""]?.value)
+        assertEquals("[\"q\\\"\\r\"]", entries["\"items\""]?.value)
     }
 
     /** A key byte, then a mix of plausible type ids, small counts and noise. */

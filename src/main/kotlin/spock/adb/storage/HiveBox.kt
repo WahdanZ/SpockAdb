@@ -71,10 +71,35 @@ object HiveBox {
             frames++
             offset += length
         }
-        val ordered = live.entries
-            .sortedWith(compareBy({ it.key !is HiveKey.Numeric }, { it.key.label }))
-            .map { it.value }
+        val ordered = live.entries.sortedWith(compareBy(HiveKey.ORDER) { it.key }).map { it.value }
         return Box(ordered, frames, stopped)
+    }
+
+    /**
+     * A string as one line of the table: backslashes doubled and control characters written as
+     * escapes, so a newline in a value cannot pass for the next row.
+     */
+    internal fun escaped(value: String): String = buildString {
+        value.forEach { c ->
+            when {
+                c == '\\' -> append("\\\\")
+                c == '\n' -> append("\\n")
+                c == '\r' -> append("\\r")
+                c == '\t' -> append("\\t")
+                c.isISOControl() -> append("\\u%04x".format(c.code))
+                else -> append(c)
+            }
+        }
+    }
+
+    /** A string in quotes, so a string key or item reads apart from an int one. */
+    internal fun quoted(value: String): String = "\"" + escaped(clipped(value)).replace("\"", "\\\"") + "\""
+
+    /** At most [VALUE_LIMIT] characters, never splitting a surrogate pair. */
+    internal fun clipped(value: String): String {
+        if (value.length <= VALUE_LIMIT) return value
+        val end = if (value[VALUE_LIMIT - 1].isHighSurrogate()) VALUE_LIMIT - 1 else VALUE_LIMIT
+        return value.take(end) + "…"
     }
 
     /**
@@ -88,7 +113,9 @@ object HiveBox {
             key = reader.key()
             if (reader.hasRemaining) {
                 val value = reader.value()
-                live[key] = Entry(key.label, value.type, value.text)
+                // A string is raw text; everything else was built from escaped pieces.
+                val text = if (value.type == STRING_TYPE) escaped(clipped(value.text)) else clipped(value.text)
+                live[key] = Entry(key.label, value.type, text)
             } else {
                 live.remove(key)
             }
@@ -118,10 +145,15 @@ object HiveBox {
     /** Hive's own floor: the length and the checksum, with nothing between them. */
     private const val MIN_FRAME = LENGTH_BYTES + CRC_BYTES
     private const val UINT_MASK = 0xFFFF_FFFFL
+
+    /** Long enough for a token or a URL; a value longer than this is cut and marked. */
+    private const val VALUE_LIMIT = 200
+    internal const val STRING_TYPE = "string"
 }
 
 /** A frame's key, kept typed so int 5 and string "5" stay two keys, as they are to Hive. */
 private sealed interface HiveKey {
+    /** As the table shows it: an int bare, a string quoted. */
     val label: String
 
     data class Numeric(val value: Long) : HiveKey {
@@ -129,12 +161,30 @@ private sealed interface HiveKey {
     }
 
     data class Text(val value: String) : HiveKey {
-        override val label get() = value
+        override val label get() = HiveBox.quoted(value)
     }
 
     /** A frame whose key could not be read; it replaces nothing, so it is keyed by where it is. */
     data class Unreadable(val offset: Int) : HiveKey {
         override val label get() = "?"
+    }
+
+    companion object {
+        /** Hive's `defaultKeyComparator`: ints by value, then strings; unreadable frames last. */
+        val ORDER: Comparator<HiveKey> = compareBy<HiveKey> {
+            when (it) {
+                is Numeric -> 0
+                is Text -> 1
+                is Unreadable -> 2
+            }
+        }.thenComparator { a, b ->
+            when {
+                a is Numeric && b is Numeric -> a.value.compareTo(b.value)
+                a is Text && b is Text -> a.value.compareTo(b.value)
+                a is Unreadable && b is Unreadable -> a.offset.compareTo(b.offset)
+                else -> 0
+            }
+        }
     }
 }
 
@@ -182,7 +232,7 @@ private class HiveReader(private val frame: ByteBuffer) {
         INT -> HiveValue("int", int())
         DOUBLE -> HiveValue("double", frame.double.toString())
         BOOL -> HiveValue("bool", bool())
-        STRING -> HiveValue("string", utf8(u32()))
+        STRING -> HiveValue(HiveBox.STRING_TYPE, utf8(u32()))
         BYTE_LIST -> u32().let { size ->
             skip(size)
             HiveValue("bytes", "$size bytes")
@@ -194,7 +244,7 @@ private class HiveReader(private val frame: ByteBuffer) {
         INT_LIST -> HiveValue("int list", list(count(DOUBLE_BYTES)) { int() })
         DOUBLE_LIST -> HiveValue("double list", list(count(DOUBLE_BYTES)) { frame.double.toString() })
         BOOL_LIST -> HiveValue("bool list", list(count(1)) { bool() })
-        STRING_LIST -> HiveValue("string list", list(count(LENGTH_BYTES)) { quoted(utf8(u32())) })
+        STRING_LIST -> HiveValue("string list", list(count(LENGTH_BYTES)) { HiveBox.quoted(utf8(u32())) })
         LIST -> nested("list", depth, "[", "]") { items(count(1), depth) }
         MAP -> nested("map", depth, "{", "}") { pairs(count(2), depth) }
         HIVE_LIST -> hiveList()
@@ -207,7 +257,7 @@ private class HiveReader(private val frame: ByteBuffer) {
             val at = instant()
             HiveValue(if (bool() == "true") "DateTime (UTC)" else "DateTime", at)
         }
-        type == BIG_INT -> HiveValue("BigInt", utf8(byte().toLong()))
+        type == BIG_INT -> HiveValue("BigInt", HiveBox.escaped(utf8(byte().toLong())))
         type >= CUSTOM_TYPES -> opaque("custom (type ${type - CUSTOM_TYPES})", "written by a TypeAdapter")
         else -> opaque("type $type", "a type Hive reserves")
     }
@@ -246,14 +296,14 @@ private class HiveReader(private val frame: ByteBuffer) {
     /** A value inside a list or map: strings quoted so they read apart from numbers and markers. */
     private fun inner(item: HiveValue): String = when {
         item.opaque -> "<${item.type}, not decoded>"
-        item.type == "string" -> quoted(item.text)
+        item.type == HiveBox.STRING_TYPE -> HiveBox.quoted(item.text)
         else -> item.text
     }
 
     /** Hive objects held by key in another box: `u32 count · u8 name length · name · keys`. */
     private fun hiveList(): HiveValue {
         val count = count(2)
-        val box = latin1(byte())
+        val box = HiveBox.escaped(latin1(byte()))
         return HiveValue("HiveList", "box $box: " + list(count) { key().label })
     }
 
@@ -302,8 +352,6 @@ private class HiveReader(private val frame: ByteBuffer) {
     private fun fits(size: Long, what: String) {
         if (size > frame.remaining()) throw MalformedHive("$what would run past the frame")
     }
-
-    private fun quoted(value: String) = "\"$value\""
 
     /** The items of a list or map, joined, and whether the container was read to its end. */
     private class Joined(val text: String, val complete: Boolean) {
