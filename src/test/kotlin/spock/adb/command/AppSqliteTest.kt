@@ -40,7 +40,7 @@ class AppSqliteTest {
         assertTrue(command.contains("\"\"odd\"\""), command)
         assertTrue(command.startsWith("run-as 'com.example.app' sh -c "), command)
         assertTrue(command.contains("$mark 0"), command)
-        assertTrue(command.replace("'\\''", "'").contains("-separator ' | ' -nullvalue NULL"), command)
+        assertTrue(command.replace("'\\''", "'").contains("-quote -header -separator ' | '"), command)
         assertFalse(command.contains("echo '"), command)
     }
 

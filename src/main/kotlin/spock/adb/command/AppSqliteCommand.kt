@@ -124,13 +124,17 @@ internal object AppSqlite {
      * The mark is fresh for every read: a row is the app's data, and data can say anything,
      * but it cannot guess a random mark. Indexes rather than names keep a name off the shell's
      * `echo`, which would read its backslashes.
+     *
+     * `-quote` prints values as SQL literals: a BLOB as `X'…'` hex rather than raw bytes that
+     * garble the view and break its lines, and NULL apart from an empty string (`NULL` vs `''`).
+     * Checked on the emulator's sqlite3 3.39 against a 13 MB database of 96-byte blobs.
      */
     fun rowsCommand(packageName: String, path: String, tables: List<String>, mark: String): String {
         val perTable = tables.withIndex().joinToString(" ") { (index, table) ->
             val name = "\"" + table.replace("\"", "\"\"") + "\""
             val sql = "SELECT count(*) AS rows FROM $name; SELECT * FROM $name LIMIT $MAX_ROWS;"
             "printf '%s\\n' '$mark $index'; " +
-                "sqlite3 -readonly -header -separator ' | ' -nullvalue NULL \"\$f\" ${ShellQuote.quote(sql)} 2>&1; " +
+                "sqlite3 -readonly -quote -header -separator ' | ' \"\$f\" ${ShellQuote.quote(sql)} 2>&1; " +
                 "printf '%s\\n' \"$mark $index rc=\$?\";"
         }
         return RunAs.command(packageName, "f=${ShellQuote.quote(StorageTree.argument(path))}; $perTable echo rc=0")
