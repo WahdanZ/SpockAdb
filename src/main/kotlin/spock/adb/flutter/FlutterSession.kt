@@ -3,11 +3,13 @@ package spock.adb.flutter
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
 import spock.adb.flutter.vmservice.ExtensionResults
+import spock.adb.flutter.vmservice.HandedToDdsCandidate
 import spock.adb.flutter.vmservice.VmServiceCandidate
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceEvent
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.flutter.vmservice.VmServiceListener
+import spock.adb.flutter.vmservice.VmServiceRedirectException
 import spock.adb.flutter.vmservice.VmServiceRpcException
 import spock.adb.flutter.vmservice.VmServiceUri
 import spock.adb.flutter.vmservice.string
@@ -25,7 +27,8 @@ import java.util.concurrent.CopyOnWriteArrayList
  *   switching it would change where the app reports its errors for every other tool.
  * - `httpEnableTimelineLogging` is off by default (spike S4) and P5 needs it for HTTP failures, so
  *   it is switched on for each new UI isolate — and off again on [close], only where Spock was the
- *   one that switched it on. A [VmServiceCandidate.direct] connection makes no writes at all.
+ *   one that switched it on. A [VmServiceCandidate.direct] connection makes no writes at all —
+ *   unless the VM hands it to DDS on connect, which makes it a DDS connection like any other.
  */
 class FlutterSession(
     private val connector: (VmServiceUri) -> VmServiceClient = { VmServiceClient.connect(it) },
@@ -126,7 +129,7 @@ class FlutterSession(
         httpLoggingCheckedFor = null
         this.candidate = candidate
         val connected = try {
-            connector(candidate.open())
+            openFollowingDds(candidate)
         } catch (e: VmServiceException) {
             close()
             throw e
@@ -178,6 +181,19 @@ class FlutterSession(
         candidate = null
         uiIsolate = null
         if (state !is SessionState.Disconnected) setState(SessionState.Disconnected("closed by Spock"))
+    }
+
+    /**
+     * Once DDS owns the VM, the VM redirects a client of its own address to DDS — spike S9's
+     * "a direct client gets DDS" is dart:io following that redirect. The JDK's client does not
+     * follow it, so it is followed here, once; the connection is then DDS's, not direct.
+     */
+    private fun openFollowingDds(candidate: VmServiceCandidate): VmServiceClient = try {
+        connector(candidate.open())
+    } catch (e: VmServiceRedirectException) {
+        val handed = HandedToDdsCandidate(candidate, e.target)
+        this.candidate = handed
+        connector(handed.open())
     }
 
     private fun listen(connected: VmServiceClient, streamId: String) {

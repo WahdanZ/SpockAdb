@@ -7,6 +7,7 @@ import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
 import java.net.http.HttpClient
 import java.net.http.WebSocket
+import java.net.http.WebSocketHandshakeException
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
@@ -378,6 +379,9 @@ class VmServiceClient private constructor(
         private const val CLOSE_WAIT_MS = 1_000L
         private const val KEPT_BUFFER_CHARS = 1024 * 1024
 
+        /** Redirects a VM may answer an upgrade with: 301, 302, 303, 307, 308. */
+        private val REDIRECT_STATUSES = setOf(301, 302, 303, 307, 308)
+
         /** Streams whose events only inform: on overflow they go first. */
         private val DROPPABLE_STREAMS = setOf("Logging", "Stdout", "Stderr")
 
@@ -421,9 +425,34 @@ class VmServiceClient private constructor(
             handshake.thenAccept { it.abort() }
             handshake.cancel(true)
             client.shutdown("could not connect", sendClose = false)
+            redirectOf(uri, failure)?.let { throw VmServiceRedirectException(it, uri.redacted()) }
             // The cause is not chained: JDK messages may quote the address, token included.
             val detail = failure.message?.takeIf { it.isNotBlank() }?.let { " (${Redaction.scrub(it)})" }.orEmpty()
             throw VmServiceException("Could not connect to ${uri.redacted()}: ${failure.javaClass.simpleName}$detail")
+        }
+
+        /**
+         * Where a `3xx` answer to the upgrade points. Once DDS owns the VM, the VM's own address
+         * answers every upgrade with a `302` to DDS (Dart's `vmservice_server.dart`). The
+         * `Location` carries DDS's token, so it is read here and never put in a message.
+         *
+         * @throws VmServiceException when it points somewhere Spock does not connect to.
+         */
+        private fun redirectOf(uri: VmServiceUri, failure: Throwable): VmServiceUri? {
+            val handshake = generateSequence(failure) { it.cause }.filterIsInstance<WebSocketHandshakeException>()
+                .firstOrNull() ?: return null
+            val response = handshake.response ?: return null
+            if (response.statusCode() !in REDIRECT_STATUSES) return null
+            val location = response.headers().firstValue("Location").orElse(null) ?: return null
+            val resolved = try {
+                uri.webSocketUri.resolve(location).toString()
+            } catch (_: IllegalArgumentException) {
+                location
+            }
+            return VmServiceUri.parseOrNull(resolved) ?: throw VmServiceException(
+                "${uri.redacted()} hands its clients to an address that is not on this machine's loopback; " +
+                    "Spock does not follow it",
+            )
         }
 
         private fun jsonOf(vararg entries: Pair<String, String>): JsonObject =

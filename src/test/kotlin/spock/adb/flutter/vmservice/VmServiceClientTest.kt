@@ -242,6 +242,30 @@ class VmServiceClientTest {
     }
 
     @Test
+    fun `a VM that answers the upgrade with a redirect to DDS says where, keeping the token out of the message`() {
+        FakeVmService().use { dds ->
+            vm.server.redirectTo = "ws://127.0.0.1:${dds.server.port}/DdSToKeN123=/ws"
+
+            val error = assertThrows<VmServiceRedirectException> { VmServiceClient.connect(VmServiceUri.parse(vm.uri)) }
+
+            assertEquals("ws://127.0.0.1:${dds.server.port}/DdSToKeN123=/ws", error.target.webSocketUri.toString())
+            assertFalse(error.message!!.contains("DdSToKeN123"), error.message)
+            assertFalse(error.message!!.contains(FakeVmService.TOKEN), error.message)
+        }
+    }
+
+    @Test
+    fun `a redirect off loopback is refused, not followed`() {
+        vm.server.redirectTo = "http://10.0.2.2:5555/DdSToKeN123=/ws"
+
+        val error = assertThrows<VmServiceException> { VmServiceClient.connect(VmServiceUri.parse(vm.uri)) }
+
+        assertFalse(error is VmServiceRedirectException)
+        assertTrue(error.message!!.contains("not on this machine's loopback"), error.message)
+        assertFalse(error.message!!.contains("DdSToKeN123"), error.message)
+    }
+
+    @Test
     fun `malformed JSON, a binary frame and a ping from the server leave the connection working`() {
         client.getVM()
         vm.server.sendText("{not json")

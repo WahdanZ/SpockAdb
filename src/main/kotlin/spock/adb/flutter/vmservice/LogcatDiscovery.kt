@@ -45,9 +45,10 @@ object LogcatVmServiceParser {
  * Finds the VM Service of [packageName] from what the engine logged at startup.
  *
  * The address is the VM's own, not DDS's, so the candidate is [VmServiceCandidate.direct]: a
- * read-only last resort [FR1]. If the log buffer has rotated since the app started, nothing is
- * found. Opening the candidate forwards a free host port to the device port; releasing it
- * removes the forward.
+ * read-only last resort [FR1]. Once DDS owns the VM (`flutter run` attached), the VM answers a
+ * connection there with a redirect to DDS, which the session follows — and then it is a DDS
+ * connection. If the log buffer has rotated since the app started, nothing is found. Opening the
+ * candidate forwards a free host port to the device port; releasing it removes the forward.
  */
 class LogcatDiscovery(private val device: IDevice, private val packageName: String) : VmServiceDiscovery {
 

@@ -306,6 +306,27 @@ class FlutterSessionTest {
     }
 
     @Test
+    fun `a direct address the VM redirects to DDS is followed, and the connection is then DDS's`() {
+        FakeVmService().use { dds ->
+            vm.server.redirectTo = dds.uri
+            val candidate = tracking(ddsLikely = false)
+
+            session.connect(candidate)
+
+            assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
+            assertFalse(session.readOnly)
+            assertEquals(listOf("true"), dds.requestsFor(HTTP_LOGGING).filter { it.getAsJsonObject("params").has("enabled") }
+                .map { it.getAsJsonObject("params").get("enabled").asString })
+            assertTrue(vm.requests.isEmpty())
+
+            session.close()
+
+            assertFalse(dds.httpLogging)
+            assertEquals(1, candidate.released)
+        }
+    }
+
+    @Test
     fun `replayed events are marked as history and repeats are dropped`() {
         val older = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt - 2_000) }
         val old = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt - 1_000) }
