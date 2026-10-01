@@ -73,9 +73,9 @@ Each phase is tagged **(must)** or **(should)** for priority.
 - **Gate:** findings in `docs/FLUTTER-SPIKE.md`; this plan updated where an assumption failed.
 
 ### P3 — Target-neutral tool context (must) · ~3 days [FR2, FR15]
-- [ ] `sealed interface Target { AndroidTarget(ConnectedDevice), IosSimTarget(udid, name) }`; `ToolContext.requireTarget()`; `confirmDestructive(tool, summary, targetLabel)`. `requireDevice()` stays as a thin Android helper so existing tools don't change.
-- [ ] `DiagnosticProbe` → interface; current class becomes `AndroidProbe`. `SectionReport` / `LikelyProblem` unchanged.
-- [ ] `ToolSafetyTest`: namespace rule becomes `android_|ios_|flutter_`.
+- [x] `sealed interface DeviceTarget { Android(ConnectedDevice), IosSimulator(udid, name, runtime) }` (not `Target`, which clashes with Kotlin's annotation); `ToolContext.requireTarget()`; `confirmDestructive(tool, summary, target)`. `requireDevice()` stays as a thin Android helper so existing tools don't change.
+- [x] `DiagnosticProbe` → interface; current class becomes `AndroidProbe`. `SectionReport` / `LikelyProblem` unchanged.
+- [x] `ToolSafetyTest`: namespace rule becomes `android_|ios_|flutter_`.
 - **Gate:** `./gradlew test detekt verifyPlugin` green on all supported IDEs; no behaviour change.
 
 ### P4 — VM Service client + Flutter session (must) · ~4 days
@@ -121,6 +121,7 @@ Each phase is tagged **(must)** or **(should)** for priority.
 | `ios_revoke_permission` (kills the app), `ios_uninstall_app` | DESTRUCTIVE (default deny) |
 
 - [ ] Diagnose on an iOS simulator target: the P5 Flutter sections (errors, frames, rebuilds, HTTP) run for an `IosSimTarget` with a live session, with no Android-only sections.
+- [ ] DiagnosticCollector's `more` scoping (`APP_SCOPED_DETAILS`, `AppSection.id` → `filter`) is Android-specific: move it onto `DetailRef` before iOS sections reuse ids `app`/`logs` [review P3-4].
 - [ ] Document: notifications and camera can't be pre-granted by `simctl`; system alerts are UIKit and need a manual tap.
 - [ ] Register `ios_*` tools only on macOS with Xcode present, to keep the tool list short [FR15].
 - [ ] Update `ToolRegistry`, `ToolSafetyTest`, `McpSmokeTest`, `ReadmeToolCountTest`, `SkillToolNamesTest`, tool counts in `README.md` and `docs/MCP.md` (CLAUDE.md checklist step 8).

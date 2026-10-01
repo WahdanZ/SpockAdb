@@ -12,7 +12,7 @@ import com.google.gson.JsonObject
  * caller decides how to show it. That is what lets the tool, the Assistant and anything later
  * share one set of sections without dragging Swing into a device read.
  */
-interface DiagnosticSection {
+interface DiagnosticSection<in P : DiagnosticProbe> {
 
     /** Stable key in the output and in `include`. Clients bind to it. */
     val id: String
@@ -27,7 +27,7 @@ interface DiagnosticSection {
      * Reads and summarises. May throw: the collector reports the failure in place of this
      * section and carries on with the rest.
      */
-    fun collect(probe: DiagnosticProbe): SectionReport
+    fun collect(probe: P): SectionReport
 }
 
 /** What a section hands back: bounded data, and the problems it noticed. */
@@ -40,17 +40,29 @@ data class SectionReport(
 data class DetailRef(val tool: String, val arguments: JsonObject = JsonObject())
 
 /**
- * What every section reads from: one device, and the app the question is about.
+ * What a diagnosis is about: one target, and the app the question is about.
+ *
+ * Each platform has its own probe, because what a section reads differs — `dumpsys` and logcat
+ * on Android, `simctl` on the iOS simulator — and a section declares which one it needs. The
+ * collector only needs the app.
+ */
+interface DiagnosticProbe {
+    /** Null when no app is known — no project and none given. Sections then say so. */
+    val packageName: String?
+}
+
+/**
+ * An Android device, read over ADB.
  *
  * @param packageName null when no app is known — no project and none given. Sections that are
  *   about an app then say so rather than guessing one.
  */
-class DiagnosticProbe(
+class AndroidProbe(
     val device: IDevice,
     val serialNumber: String,
-    val packageName: String?,
+    override val packageName: String?,
     val logWindowLines: Int = DEFAULT_LOG_WINDOW_LINES,
-) {
+) : DiagnosticProbe {
     /**
      * Process ids of [packageName], read once and shared: the app section reports them and the
      * log section filters by them, and two reads a moment apart could disagree.

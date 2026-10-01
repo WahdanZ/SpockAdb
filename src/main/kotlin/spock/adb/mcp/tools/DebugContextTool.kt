@@ -1,8 +1,8 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
+import spock.adb.diagnostics.AndroidProbe
 import spock.adb.diagnostics.DiagnosticCollector
-import spock.adb.diagnostics.DiagnosticProbe
 import spock.adb.diagnostics.DiagnosticSection
 import spock.adb.diagnostics.DiagnosticSections
 import spock.adb.diagnostics.DiagnosticShell
@@ -86,7 +86,7 @@ class DebugContextTool : AdbTool {
     private fun summary(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
         val requested = arguments.optionalStringList("include")?.map { it.trim() }?.filter { it.isNotEmpty() }
-        val sections: List<DiagnosticSection> = when {
+        val sections: List<DiagnosticSection<AndroidProbe>> = when {
             requested.isNullOrEmpty() -> DiagnosticSections.ALL
             else -> DiagnosticSections.ALL.filter { section ->
                 requested.any { DiagnosticSections.byId(it) == section }
@@ -100,11 +100,11 @@ class DebugContextTool : AdbTool {
             )
         }
 
-        val probe = DiagnosticProbe(
+        val probe = AndroidProbe(
             device = device.device,
             serialNumber = device.serialNumber,
             packageName = with(LogcatReader) { arguments.logcatPackage(context) },
-            logWindowLines = arguments.optionalInt("maxLogcatLines", DiagnosticProbe.DEFAULT_LOG_WINDOW_LINES)
+            logWindowLines = arguments.optionalInt("maxLogcatLines", AndroidProbe.DEFAULT_LOG_WINDOW_LINES)
                 .coerceIn(1, MAX_LOGCAT_LINES),
         )
         val preamble = JsonObject().apply {

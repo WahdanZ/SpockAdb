@@ -24,13 +24,13 @@ class DiagnosticCollector(
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
 
-    fun collect(
-        sections: List<DiagnosticSection>,
-        probe: DiagnosticProbe,
+    fun <P : DiagnosticProbe> collect(
+        sections: List<DiagnosticSection<P>>,
+        probe: P,
         preamble: JsonObject = JsonObject(),
     ): JsonObject {
         val deadline = nanoTime() + budgetNanos
-        val reports = linkedMapOf<DiagnosticSection, SectionReport>()
+        val reports = linkedMapOf<DiagnosticSection<P>, SectionReport>()
         val errors = JsonObject()
 
         sections.forEach { section ->
@@ -74,7 +74,7 @@ class DiagnosticCollector(
         if (ranked.size > MAX_PROBLEMS) report.addProperty("moreProblems", ranked.size - MAX_PROBLEMS)
     }
 
-    private fun references(sections: List<DiagnosticSection>, probe: DiagnosticProbe): JsonObject {
+    private fun references(sections: List<DiagnosticSection<*>>, probe: DiagnosticProbe): JsonObject {
         val more = JsonObject()
         sections.forEach { section ->
             val detail = section.detail ?: return@forEach
@@ -87,7 +87,7 @@ class DiagnosticCollector(
     }
 
     /** Points the follow-up at the same app, so it describes what this report did. */
-    private fun scopedArguments(section: DiagnosticSection, detail: DetailRef, packageName: String?): JsonObject {
+    private fun scopedArguments(section: DiagnosticSection<*>, detail: DetailRef, packageName: String?): JsonObject {
         val arguments = detail.arguments.deepCopy()
         if (packageName != null && section.id in APP_SCOPED_DETAILS) {
             arguments.addProperty(if (section.id == AppSection.id) "filter" else "packageName", packageName)
