@@ -1,11 +1,22 @@
 package spock.adb.storage
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTimeout
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.io.ByteArrayOutputStream
+import java.io.ObjectOutputStream
+import java.nio.ByteBuffer
+import java.time.Duration
+import java.util.Base64
 
 class FlutterPrefsXmlTest {
+
+    private companion object {
+        /** The plugin's list marker: base64 of "This is the prefix for a list." */
+        const val LIST_MARKER = "VGhpcyBpcyB0aGUgcHJlZml4IGZvciBhIGxpc3Qu"
+    }
 
     /** Written by shared_preferences 2.3 on Android, from `sample/flutter_app`'s Storage screen. */
     private val device = """
@@ -224,6 +235,90 @@ class FlutterPrefsXmlTest {
         assertThrows<IllegalArgumentException> {
             FlutterPrefsXml.write(crafted.toByteArray(), listOf(PrefChange.Remove("flutter.recent_searches")))
         }
+    }
+
+    /** [device] with `flutter.recent_searches` holding [encoded] behind the list marker. */
+    private fun withList(encoded: String) = device.replace(
+        Regex("""(<string name="flutter.recent_searches">)[^<]*(</string>)"""),
+        "$1$LIST_MARKER$encoded$2",
+    )
+
+    private fun serialized(value: Any): ByteArray = ByteArrayOutputStream().also { out ->
+        ObjectOutputStream(out).use { it.writeObject(value) }
+    }.toByteArray()
+
+    private fun listItem(encoded: String) = read(withList(encoded))["flutter.recent_searches"]
+
+    private fun assertOpaque(encoded: String) {
+        val item = listItem(encoded)
+        assertTrue(item is PrefItem.Opaque, "$item")
+    }
+
+    /**
+     * The device's three-element list with its `size` field rewritten: a few dozen bytes that
+     * declare a list of [size] elements, which `ArrayList.readObject` allocates up front.
+     */
+    private fun declaringSize(size: Int): String {
+        val bytes = serialized(arrayListOf("adb", "flutter", "spock"))
+        // `xp` ends the class descriptor; the int after it is `size`, then the block holding capacity.
+        val head = byteArrayOf(0x78, 0x70, 0, 0, 0, 3, 0x77, 0x04)
+        val at = (0..bytes.size - head.size).first { i -> head.indices.all { bytes[i + it] == head[it] } }
+        ByteBuffer.wrap(bytes).putInt(at + 2, size)
+        return Base64.getEncoder().encodeToString(bytes)
+    }
+
+    @Test
+    fun `a list declaring a huge size is not allocated`() {
+        assertTimeout(Duration.ofSeconds(5)) {
+            assertOpaque(declaringSize(400_000_000))
+            assertOpaque(declaringSize(Int.MAX_VALUE - 8))
+        }
+    }
+
+    @Test
+    fun `a long list of strings still decodes`() {
+        val many = (1..5_000).map { "item $it" }
+        assertEquals(
+            PrefValue.StringListValue(many),
+            (listItem(Base64.getEncoder().encodeToString(serialized(ArrayList(many)))) as PrefItem.Typed).value,
+        )
+    }
+
+    @Test
+    fun `a list nested in a list is not decoded`() {
+        assertOpaque(Base64.getEncoder().encodeToString(serialized(arrayListOf(arrayListOf("a")))))
+        assertOpaque(Base64.getEncoder().encodeToString(serialized(arrayListOf(arrayOf<Any>("a")))))
+    }
+
+    @Test
+    fun `a list holding something other than a string is not decoded`() {
+        assertOpaque(Base64.getEncoder().encodeToString(serialized(arrayListOf<Any>("a", 1))))
+    }
+
+    @Test
+    fun `an array that is not an ArrayList is not decoded`() {
+        assertOpaque(Base64.getEncoder().encodeToString(serialized(arrayOf<Any>("a", "b"))))
+    }
+
+    @Test
+    fun `a truncated stream is not decoded`() {
+        val bytes = serialized(arrayListOf("adb", "flutter", "spock"))
+        assertOpaque(Base64.getEncoder().encodeToString(bytes.copyOf(bytes.size - 6)))
+    }
+
+    @Test
+    fun `base64 with anything but line breaks in it is not decoded`() {
+        val valid = Base64.getEncoder().encodeToString(serialized(arrayListOf("adb")))
+        // A lenient decoder skips the `*` and decodes the rest as if it were not there.
+        assertOpaque(valid.substring(0, 8) + "*" + valid.substring(8))
+        assertOpaque("not base64!")
+    }
+
+    @Test
+    fun `a JSON list that is not an array of strings is not decoded`() {
+        assertOpaque("![&quot;a&quot;,1]")
+        assertOpaque("!{}")
+        assertOpaque("![")
     }
 
     @Test

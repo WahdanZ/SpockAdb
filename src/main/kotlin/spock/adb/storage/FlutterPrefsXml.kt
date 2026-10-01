@@ -5,7 +5,6 @@ import com.google.gson.JsonParser
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.io.InvalidClassException
 import java.io.ObjectInputFilter
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
@@ -154,20 +153,27 @@ internal object FlutterPrefsXml : PrefsFormat {
      * exactly those two classes, so a crafted file on the device cannot make the IDE instantiate
      * anything else.
      */
-    private fun serializedList(base64: String): List<String>? = try {
-        val bytes = Base64.getMimeDecoder().decode(base64)
-        ObjectInputStream(ByteArrayInputStream(bytes)).use { stream ->
-            stream.objectInputFilter = LIST_FILTER
-            (stream.readObject() as? ArrayList<*>)?.map { it as? String ?: return null }
+    // The stream is whatever the file holds, and a malformed one fails inside ArrayList and
+    // ObjectInputStream with whichever runtime exception it reaches first. Any of them means
+    // this one value cannot be read; none should cost the rest of the file.
+    @Suppress("TooGenericExceptionCaught")
+    private fun serializedList(base64: String): List<String>? {
+        if (base64.length > LIST_MAX_BASE64_CHARS) return null
+        return try {
+            // Strict: the plugin's line breaks are the only thing that is not base64. A lenient
+            // decoder would skip anything else and decode what is left as if it were the value.
+            val bytes = Base64.getDecoder().decode(base64.filterNot(Char::isWhitespace))
+            ObjectInputStream(ByteArrayInputStream(bytes)).use { stream ->
+                stream.objectInputFilter = listFilter(bytes.size)
+                (stream.readObject() as? ArrayList<*>)?.map { it as? String ?: return null }
+            }
+        } catch (_: IOException) {
+            null
+        } catch (_: ClassNotFoundException) {
+            null
+        } catch (_: RuntimeException) {
+            null
         }
-    } catch (_: IOException) {
-        null
-    } catch (_: ClassNotFoundException) {
-        null
-    } catch (_: IllegalArgumentException) {
-        null
-    } catch (_: InvalidClassException) {
-        null
     }
 
     private fun serializedEncoded(values: List<String>): String {
@@ -182,12 +188,30 @@ internal object FlutterPrefsXml : PrefsFormat {
     private val LIST_CLASSES = setOf(ArrayList::class.java, String::class.java, Array<Any>::class.java)
     private const val LIST_MAX_DEPTH = 2L
 
-    private val LIST_FILTER = ObjectInputFilter { info ->
-        val type = info.serialClass()
-        when {
-            info.depth() > LIST_MAX_DEPTH -> ObjectInputFilter.Status.REJECTED
-            type == null || type in LIST_CLASSES -> ObjectInputFilter.Status.ALLOWED
-            else -> ObjectInputFilter.Status.REJECTED
+    /** More than a preferences list holds, and few enough that allocating them costs nothing. */
+    private const val LIST_MAX_ELEMENTS = 100_000
+
+    /** The file-size limit App Storage reads and writes: no list in a file can be longer. */
+    private const val LIST_MAX_BASE64_CHARS = 8 * 1024 * 1024
+
+    /**
+     * Only an `ArrayList` of strings, and nothing the stream does not pay for. `ArrayList` takes
+     * its element count from the stream and allocates it before reading a single element, so a
+     * few dozen bytes could otherwise declare 400 million of them. Every element, reference and
+     * byte costs at least one byte of [streamSize], which bounds them all.
+     */
+    private fun listFilter(streamSize: Int): ObjectInputFilter {
+        val maxElements = minOf(streamSize, LIST_MAX_ELEMENTS).toLong()
+        return ObjectInputFilter { info ->
+            val type = info.serialClass()
+            when {
+                info.depth() > LIST_MAX_DEPTH -> ObjectInputFilter.Status.REJECTED
+                info.arrayLength() > maxElements -> ObjectInputFilter.Status.REJECTED
+                info.references() > streamSize -> ObjectInputFilter.Status.REJECTED
+                info.streamBytes() > streamSize -> ObjectInputFilter.Status.REJECTED
+                type == null || type in LIST_CLASSES -> ObjectInputFilter.Status.ALLOWED
+                else -> ObjectInputFilter.Status.REJECTED
+            }
         }
     }
 }
