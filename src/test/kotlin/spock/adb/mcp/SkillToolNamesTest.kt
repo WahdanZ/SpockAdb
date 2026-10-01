@@ -74,8 +74,11 @@ class SkillToolNamesTest {
             File("docs/MCP.md"),
         )
 
-        /** Ends on a letter so `android_get_` in prose about a prefix is not taken for a name. */
-        val TOOL_NAME = Regex("""\bandroid_[a-z_]*[a-z]\b""")
+        /**
+         * Ends on a letter so `android_get_` in prose about a prefix is not taken for a name. Takes
+         * the `ios_` and `flutter_` prefixes too, so those tools are checked the day they are named.
+         */
+        val TOOL_NAME = Regex("""\b(?:android|ios|flutter)_[a-z_]*[a-z]\b""")
 
         const val MIN_TOOLS_IN_SKILL = 20
         const val DESTRUCTIVE_START = "<!-- destructive-tools -->"
