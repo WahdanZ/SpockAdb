@@ -1,12 +1,14 @@
 package spock.adb.storage
 
 import java.nio.ByteBuffer
-import java.nio.charset.CharacterCodingException
+import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
 
 /**
  * How the storage tree shows a file it cannot edit: decoded when the format is known, as text
  * when it is text, and as a hex dump otherwise — never as binary pushed through a text decoder.
+ *
+ * Everything here may take a while on a large file, so the panel calls it off the EDT.
  */
 object StorageFileView {
 
@@ -22,7 +24,7 @@ object StorageFileView {
     /** The text to show for every kind except [Kind.SQLITE], which needs the device to read it. */
     fun render(path: String, bytes: ByteArray): String = when (kindOf(path, bytes)) {
         Kind.HIVE -> hive(HiveBox.read(bytes))
-        Kind.TEXT -> bytes.decodeToString()
+        Kind.TEXT -> printable(bytes.decodeToString())
         Kind.SQLITE, Kind.BINARY -> hexDump(bytes)
     }
 
@@ -59,19 +61,27 @@ object StorageFileView {
     fun isSqlite(bytes: ByteArray): Boolean =
         bytes.size >= SQLITE_MAGIC.size && SQLITE_MAGIC.indices.all { bytes[it] == SQLITE_MAGIC[it] }
 
-    /** Valid UTF-8 with no NUL in the first block: what a text editor would open without complaint. */
+    /**
+     * Text with every control character but a tab or a line break replaced, so a stray escape
+     * sequence cannot rearrange what is on screen. Windows line ends become plain ones.
+     */
+    fun printable(text: String): String = buildString(text.length) {
+        text.replace("\r\n", "\n").forEach { append(if (it.isISOControl() && it != '\n' && it != '\t') '�' else it) }
+    }
+
+    /**
+     * What a text editor would open without complaint, judged on the first block only: valid
+     * UTF-8, and no control character but a tab or a line break. A character the block's end cuts
+     * in half is not held against it.
+     */
     private fun isText(bytes: ByteArray): Boolean {
         val head = bytes.copyOf(minOf(bytes.size, TEXT_SNIFF))
-        if (head.any { it == 0.toByte() }) return false
-        return try {
-            Charsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
-            true
-        } catch (_: CharacterCodingException) {
-            false
-        }
+        if (head.any { it in C0 && it !in TEXT_CONTROLS }) return false
+        val result = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(head), CharBuffer.allocate(head.size), head.size == bytes.size)
+        return !result.isError
     }
 
     private const val KEY = "key"
@@ -83,5 +93,7 @@ object StorageFileView {
     private const val HEX_COLUMN_WIDTH = HEX_ROW * 3 - 1
     private const val TEXT_SNIFF = 4096
     private val PRINTABLE = 0x20.toByte()..0x7e.toByte()
+    private val C0 = 0x00.toByte()..0x1f.toByte()
+    private val TEXT_CONTROLS = setOf('\t'.code.toByte(), '\n'.code.toByte(), '\r'.code.toByte())
     private val SQLITE_MAGIC = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
 }

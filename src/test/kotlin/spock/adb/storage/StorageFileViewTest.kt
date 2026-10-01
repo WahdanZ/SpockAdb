@@ -28,6 +28,32 @@ class StorageFileViewTest {
     }
 
     @Test
+    fun `a control character other than a tab or line break makes it binary`() {
+        val escape = "plain\u001b[2Jtext".toByteArray()
+        assertEquals(StorageFileView.Kind.BINARY, StorageFileView.kindOf("files/log.txt", escape))
+        assertEquals(StorageFileView.Kind.TEXT, StorageFileView.kindOf("files/a.txt", "a\tb\r\nc\n".toByteArray()))
+    }
+
+    @Test
+    fun `text is sniffed on its first block and sanitised when shown`() {
+        // Past the sniffed block: a control character and a byte that is not UTF-8.
+        val bytes = "a".repeat(5000).toByteArray() + byteArrayOf(0x1b, 0xC3.toByte(), 0x28) + "\r\nend".toByteArray()
+        assertEquals(StorageFileView.Kind.TEXT, StorageFileView.kindOf("files/a.txt", bytes))
+
+        val shown = StorageFileView.render("files/a.txt", bytes)
+        assertTrue(shown.endsWith("��(\nend"), shown.takeLast(10))
+    }
+
+    @Test
+    fun `a character cut in half by the end of the sniffed block is still text`() {
+        val bytes = ("a".repeat(4095) + "é").toByteArray()
+        assertEquals(4097, bytes.size)
+        assertEquals(StorageFileView.Kind.TEXT, StorageFileView.kindOf("files/a.txt", bytes))
+        // The same cut at the end of the file is a truncated character, not text.
+        assertEquals(StorageFileView.Kind.BINARY, StorageFileView.kindOf("files/b.txt", bytes.copyOf(4096)))
+    }
+
+    @Test
     fun `a long binary file shows its first block and says so`() {
         val dump = StorageFileView.hexDump(ByteArray(5000), limit = 32)
         assertTrue(dump.startsWith("Binary file · 5000 bytes (first 32 shown)"), dump)

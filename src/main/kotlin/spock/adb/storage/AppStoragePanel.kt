@@ -364,11 +364,15 @@ class AppStoragePanel(
         source.text = ""
         status("Reading ${entry.path}…")
         val read = AppFileRequest(packageName, entry.path)
-        background({ ReadAppFileCommand().execute(read, project, target.device) }) { result ->
+        background({
+            // Decoding a box or dumping a large file is real work, so it happens here, off the EDT.
+            val bytes = ReadAppFileCommand().execute(read, project, target.device)
+            bytes to StorageFileView.render(entry.path, bytes)
+        }) { result ->
             if (!reads.isLatest(request)) return@background
             result
-                .onSuccess { bytes ->
-                    source.text = StorageFileView.render(entry.path, bytes)
+                .onSuccess { (bytes, text) ->
+                    source.text = text
                     source.caretPosition = 0
                     status("${entry.path}, ${bytes.size} bytes. Read-only: only preference files can be written.")
                     if (StorageFileView.isSqlite(bytes)) {
