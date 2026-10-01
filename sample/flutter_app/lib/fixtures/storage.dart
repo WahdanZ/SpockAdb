@@ -52,6 +52,7 @@ class _StorageScreenState extends State<StorageScreen> {
     final keep = File(p.join((await getApplicationSupportDirectory()).path, 'must_survive_clear_cache.txt'));
     await keep.writeAsString('Clear Cache must not remove this file');
 
+    if (!mounted) return;
     setState(() {
       _result = 'prefs: username, launch_count=${prefs.getInt('launch_count')}, volume, dark_mode, recent_searches\n'
           'hive: ${docs.path}/settings.hive\n'
@@ -65,6 +66,7 @@ class _StorageScreenState extends State<StorageScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final keys = prefs.getKeys().toList()..sort();
+    if (!mounted) return;
     setState(() => _result = keys.map((key) => '$key = ${prefs.get(key)}').join('\n'));
   }
 
