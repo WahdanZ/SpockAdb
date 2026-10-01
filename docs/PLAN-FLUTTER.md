@@ -1,7 +1,7 @@
 # Spock ADB for Flutter apps
 
-Status: draft v2 · 2026-10-01 · lands in the **plugin** (`master`), before the standalone app.
-Replaces the v1 draft in the `standalone` branch. Review findings are tagged **[FR#]**.
+Status: draft v2 · 2026-10-01 · lands in the **plugin** via the `epic/flutter` branch (epic #153), then `master`, before the standalone app.
+Replaces the v1 draft in the `standalone` branch. Review findings are tagged **[FR#]** and summarised in the appendix at the end.
 
 ## Positioning — the device half, not the widget half
 
@@ -29,11 +29,11 @@ Decision: **no `spock_flutter` companion package in v1.** Its main job (tap/type
 
 | Question | Decision | Why / trade-off |
 |---|---|---|
-| Where | Plugin, `master`, normal PRs | Ships to existing users now. Standalone later reuses it. VS Code Flutter users wait. |
+| Where | Plugin, normal PRs into `epic/flutter`, then `master` | Ships to existing users now. Standalone later reuses it. VS Code Flutter users wait. |
 | Finding the running app | **DTD from the Dart plugin** (`DartToolingDaemonService`), optional `<depends optional="true">Dart</depends>` | DTD lists every running app's **DDS** URI, so Spock never fights `flutter run` for the VM Service [FR1, FR8]. Fallback: pasted URI. |
 | Direct device URI (logcat / `log show`) | Read-only last resort, with a warning and a **Disconnect** button | Connecting first blocks DDS and breaks `flutter attach` [FR1]. |
 | VM Service transport | JDK `java.net.http.WebSocket`, Gson | No new runtime dependency [FR17]. |
-| Flutter widgets for agents on Android | Existing `android_*` UI tools + doc: use `Semantics(identifier:)` (maps to resource-id) | Free, zero app changes [FR5]. |
+| Flutter widgets for agents on Android | Existing `android_*` UI tools + doc: use `Semantics(identifier:)` (maps to resource-id) | Free: no plugin protocol; the app adds `Semantics(identifier:)` [FR5]. |
 | Build modes | debug = all; profile = frames, logs, timeline, app control; release = app control only | [FR4] |
 | iOS in v1 | Simulator only, macOS only, **MCP tools only** (no tool-window UI yet) | The viewer is built around `IDevice`; UI comes after demand [FR16]. |
 | Tokens | Never stored; redacted in history, audit, timeline, logs; loopback `ws://` only | A VM Service token allows code execution [FR9]. |
@@ -41,13 +41,14 @@ Decision: **no `spock_flutter` companion package in v1.** Its main job (tap/type
 ## Phases
 
 Order ships value early: P1 needs no VM Service and can release on its own.
+Each phase is tagged **(must)** or **(should)** for priority.
 
-### P0 — Flutter sample fixture (P0) · ~3 days [FR20]
-- [ ] `sample/flutter_app`, **outside** the root Gradle build. Screens: login with `Semantics(identifier:)`, list → detail routes, layout overflow, deliberate exception, failing HTTP, `MissingPluginException` trigger, native permission request, push handler, SharedPreferences + Hive + sqflite writes, deep link.
-- [ ] Runs on Android emulator and iOS simulator via `flutter run`.
+### P0 — Flutter sample fixture (must) · ~3 days [FR20]
+- [x] `sample/flutter_app`, **outside** the root Gradle build. Screens: login with `Semantics(identifier:)`, list → detail routes, layout overflow, deliberate exception, failing HTTP, `MissingPluginException` trigger, native permission request, push handler, SharedPreferences + Hive + sqflite writes, deep link.
+- [x] Runs on Android emulator and iOS simulator via `flutter run`.
 - **Gate:** both platforms launch; checklist in `sample/flutter_app/README.md`.
 
-### P1 — Flutter-aware Android, no VM Service (P0) · ~4 days → can release as 4.1
+### P1 — Flutter-aware Android, no VM Service (must) · ~4 days → can release as 4.1
 - [x] Detect a Flutter app (`libflutter.so` in the APK / `io.flutter` in `dumpsys package`); show "Flutter · debug/profile/release" on the Home app card.
 - [x] App Storage: show SharedPreferences `flutter.` keys with decoded types; recognise Hive (`*.hive`) and sqflite (`*.db`) files.
   Seen in P0 (`FlutterSharedPreferences.xml`, shared_preferences 2.3): a double is stored as `<string>` with the Base64 prefix of "This is the prefix for Double." then `0.75`; a `List<String>` is the Base64 prefix of "This is the prefix for a list." followed by a Java-serialized `ArrayList`. Edits must write the same encoding back.
@@ -58,20 +59,20 @@ Order ships value early: P1 needs no VM Service and can release on its own.
 - [x] UI tree: when the screen is one `FlutterView` with no children, show a hint ("enable semantics: open the app with TalkBack once, or call `SemanticsBinding.ensureSemantics()` in debug") and note `Semantics(identifier:)`.
 - **Gate:** each P0 fixture screen shows the expected storage / log / UI-tree result; unit tests on recorded logcat and prefs fixtures.
 
-### P2 — Spike (P0) · ~3 days
+### P2 — Spike (must) · ~3 days
 - [ ] Read DTD URI from the Dart plugin; list apps through DTD `ConnectedApp`; connect to the DDS URI while `flutter run` is attached.
 - [ ] Test both orders: Spock first then `flutter attach`; `flutter run` first then Spock [FR1].
 - [ ] Confirm events on current Flutter stable: `Flutter.Error` (needs `structuredErrors`), `Flutter.Frame`, `Flutter.RebuiltWidgets`, `Flutter.Navigation`.
 - [ ] Confirm `simctl` behaviour: `push`, `privacy`, `get_app_container`, `io screenshot`, `ui appearance`, `location`.
 - **Gate:** findings in `docs/FLUTTER-SPIKE.md`; this plan updated where an assumption failed.
 
-### P3 — Target-neutral tool context (P0) · ~3 days [FR2, FR15]
+### P3 — Target-neutral tool context (must) · ~3 days [FR2, FR15]
 - [ ] `sealed interface Target { AndroidTarget(ConnectedDevice), IosSimTarget(udid, name) }`; `ToolContext.requireTarget()`; `confirmDestructive(tool, summary, targetLabel)`. `requireDevice()` stays as a thin Android helper so existing tools don't change.
 - [ ] `DiagnosticProbe` → interface; current class becomes `AndroidProbe`. `SectionReport` / `LikelyProblem` unchanged.
 - [ ] `ToolSafetyTest`: namespace rule becomes `android_|ios_|flutter_`.
 - **Gate:** `./gradlew test detekt verifyPlugin` green on all supported IDEs; no behaviour change.
 
-### P4 — VM Service client + Flutter session (P0) · ~4 days
+### P4 — VM Service client + Flutter session (must) · ~4 days
 - [ ] `VmServiceClient`: one reader, dispatch by request id, fragment accumulation, events fanned out on a dedicated executor, per-method timeouts [FR17].
 - [ ] `FlutterSession` per project: discovery DTD → pasted URI → direct URI read-only [FR1, FR8]; filter by the selected app's package (flavors) [FR22].
 - [ ] Isolate selection: the one exposing `ext.flutter.*`; ask when several; re-select on `IsolateStart`/`ServiceExtensionAdded` after hot restart; return "app is paused in the debugger" instead of hanging [FR12].
@@ -81,7 +82,7 @@ Order ships value early: P1 needs no VM Service and can release on its own.
 - [ ] All calls on pooled threads; UI via `invokeLater` (plugin rules).
 - **Gate:** connects to the P0 sample on Android and iOS sim through DTD with `flutter run` attached; hot reload in the IDE still works while connected.
 
-### P5 — Cross-layer Diagnose + Timeline (P0) · ~7 days
+### P5 — Cross-layer Diagnose + Timeline (must) · ~7 days
 - [ ] Diagnose gains Flutter sections **inside the existing report and tool** (`android_diagnose_current_screen`, Diagnose panel) when a session is live — no parallel Flutter tool:
   - Flutter errors (overflow, exceptions) from `Flutter.Error` — the only place debug builds report them (P0).
   - Frames: a problem only in **profile** builds, budget from `_flutter.getDisplayRefreshRate`; info-only in debug ("not representative") [FR4].
@@ -90,9 +91,9 @@ Order ships value early: P1 needs no VM Service and can release on its own.
   - Correlation: a Dart error next to a native crash or a `MissingPluginException` within the same window is reported as one likely problem.
 - [ ] Timeline: new categories `FLUTTER_ERROR`, `FLUTTER_FRAME` (jank only), `HTTP`; place by event timestamp + `DeviceClock` offset on Android, host time on the simulator; update the `android_get_debug_timeline` schema and `docs/MCP.md` [FR18].
 - [ ] New MCP tool: `flutter_app_status` only (connected?, URI source, build mode, isolate, Flutter version). Everything else rides existing tools.
-- **Gate:** every P0 fixture screen yields its expected top `LikelyProblem` on Android **and** iOS sim; timeline export round-trips.
+- **Gate:** every P0 fixture screen yields its expected top `LikelyProblem` on Android; timeline export round-trips. The iOS simulator half of this gate moves to P6, which builds the iOS target.
 
-### P6 — iOS simulator backend, MCP only (P0) · ~6 days [FR16]
+### P6 — iOS simulator backend, MCP only (must) · ~6 days [FR16]
 - [ ] `SimctlBridge` (macOS only; hidden elsewhere), `simctl list -j` parsing, Xcode version in diagnostics.
 - [ ] Tools and safety class:
 
@@ -103,12 +104,13 @@ Order ships value early: P1 needs no VM Service and can release on its own.
 | `ios_set_appearance`, `ios_set_location` — each with a paired reset | SAFE_ACTION |
 | `ios_revoke_permission` (kills the app), `ios_uninstall_app` | DESTRUCTIVE (default deny) |
 
+- [ ] Diagnose on an iOS simulator target: the P5 Flutter sections (errors, frames, rebuilds, HTTP) run for an `IosSimTarget` with a live session, with no Android-only sections.
 - [ ] Document: notifications and camera can't be pre-granted by `simctl`; system alerts are UIKit and need a manual tap.
 - [ ] Register `ios_*` tools only on macOS with Xcode present, to keep the tool list short [FR15].
 - [ ] Update `ToolRegistry`, `ToolSafetyTest`, `McpSmokeTest`, `ReadmeToolCountTest`, `SkillToolNamesTest`, tool counts in `README.md` and `docs/MCP.md` (CLAUDE.md checklist step 8).
-- **Gate:** every tool exercised against a booted simulator with the P0 sample; `FakeToolContext` gains an iOS target for the destructive-deny loop [FR21].
+- **Gate:** every tool exercised against a booted simulator with the P0 sample; Diagnose on an iOS simulator target yields each P0 fixture screen's expected top `LikelyProblem` (moved from P5); `FakeToolContext` gains an iOS target for the destructive-deny loop [FR21].
 
-### P7 — Docs + agent setup (P1) · ~2 days
+### P7 — Docs + agent setup (should) · ~2 days
 - [ ] `docs/FLUTTER.md`: what Spock adds vs Flutter plugin vs Dart MCP; how to run **Spock MCP + Dart MCP together** (who does widgets, who does device/OS).
 - [ ] `skills/spock-adb`: a Flutter section — when to call Spock tools vs Dart MCP tools; native dialog handling.
 - [ ] CHANGELOG under `[Unreleased]`.
@@ -156,3 +158,26 @@ First release (P0 + P1) after **~1.5 weeks**.
 - Flutter plugin source (DTD use): https://github.com/flutter/flutter-intellij
 - DTD ConnectedApp service: https://github.com/dart-lang/sdk/issues/60540
 - Official skills: https://github.com/flutter/agent-plugins
+
+## Appendix: review findings referenced
+
+The v1 review lives outside the repo; these are the findings this plan cites.
+
+| Tag | Finding |
+|---|---|
+| FR1 | DDS owns the VM Service connection; Spock must coexist with `flutter run` / `flutter attach`, not grab the URI first |
+| FR2 | MCP tool context and the diagnostics probe are Android-bound (`IDevice`) |
+| FR4 | Jank is only meaningful in profile builds; the frame budget comes from the display refresh rate |
+| FR5 | Flutter semantics already reach Android accessibility; `Semantics(identifier:)` maps to the resource-id |
+| FR8 | VM Service discovery from logs or ports is fragile |
+| FR9 | A VM Service token means code execution: never store or log it |
+| FR10 | `structuredErrors`, `trackRebuildDirtyWidgets` and the HTTP profile have side effects on the app |
+| FR11 | Inspector API names and object groups change between Flutter versions |
+| FR12 | Isolate selection, and paused isolates that would hang calls |
+| FR15 | MCP safety classes and tool-count growth |
+| FR16 | `simctl` limits (what it can't grant, read or automate) |
+| FR17 | WebSocket client threading, message fragments and timeouts |
+| FR18 | Timeline clocks (device vs host) and the timeline schema |
+| FR20 | Phase ordering |
+| FR21 | Test strategy gaps |
+| FR22 | Flavors, add-to-app and multi-view apps |

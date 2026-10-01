@@ -48,6 +48,11 @@ class _ErrorsScreenState extends State<ErrorsScreen> {
           onPressed: () => nativeChannel.invokeMethod<void>('platformError'),
         ),
         IdButton(
+          id: 'error_channel_handler',
+          label: 'Exception in a channel handler',
+          onPressed: () => nativeChannel.invokeMethod<void>('throwInHandler'),
+        ),
+        IdButton(
           id: 'error_build',
           label: _brokenBuild ? 'Fix the broken build' : 'Break build() (red screen)',
           onPressed: () => setState(() => _brokenBuild = !_brokenBuild),

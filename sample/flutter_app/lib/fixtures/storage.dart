@@ -23,6 +23,16 @@ class StorageScreen extends StatefulWidget {
 
 class _StorageScreenState extends State<StorageScreen> {
   String _result = 'Nothing written yet';
+  bool _writing = false;
+
+  Future<void> _write() async {
+    setState(() => _writing = true);
+    try {
+      await _writeAll();
+    } finally {
+      if (mounted) setState(() => _writing = false);
+    }
+  }
 
   Future<void> _writeAll() async {
     final prefs = await SharedPreferences.getInstance();
@@ -35,23 +45,31 @@ class _StorageScreenState extends State<StorageScreen> {
     final docs = await getApplicationDocumentsDirectory();
     Hive.init(docs.path);
     final box = await Hive.openBox<dynamic>('settings');
-    await box.putAll({'theme': 'dark', 'font_scale': 1.2, 'onboarded': true});
-    await box.close();
+    try {
+      await box.putAll({'theme': 'dark', 'font_scale': 1.2, 'onboarded': true});
+    } finally {
+      await box.close();
+    }
 
     final db = await openDatabase(
       p.join(await getDatabasesPath(), 'notes.db'),
       version: 1,
       onCreate: (db, _) => db.execute('CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT, created INTEGER)'),
     );
-    await db.insert('notes', {'body': 'Note ${DateTime.now()}', 'created': DateTime.now().millisecondsSinceEpoch});
-    final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM notes'));
-    await db.close();
+    final int? count;
+    try {
+      await db.insert('notes', {'body': 'Note ${DateTime.now()}', 'created': DateTime.now().millisecondsSinceEpoch});
+      count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM notes'));
+    } finally {
+      await db.close();
+    }
 
     final cache = File(p.join((await getTemporaryDirectory()).path, 'cached_image.bin'));
     await cache.writeAsBytes(List.filled(4096, 7));
     final keep = File(p.join((await getApplicationSupportDirectory()).path, 'must_survive_clear_cache.txt'));
     await keep.writeAsString('Clear Cache must not remove this file');
 
+    if (!mounted) return;
     setState(() {
       _result = 'prefs: username, launch_count=${prefs.getInt('launch_count')}, volume, dark_mode, recent_searches\n'
           'hive: ${docs.path}/settings.hive\n'
@@ -65,6 +83,7 @@ class _StorageScreenState extends State<StorageScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final keys = prefs.getKeys().toList()..sort();
+    if (!mounted) return;
     setState(() => _result = keys.map((key) => '$key = ${prefs.get(key)}').join('\n'));
   }
 
@@ -74,7 +93,11 @@ class _StorageScreenState extends State<StorageScreen> {
       title: 'Storage',
       note: 'Write, then open App Storage in Spock. Edit a value there, then Read back.',
       children: [
-        IdButton(id: 'storage_write', label: 'Write everything', onPressed: _writeAll),
+        IdButton(
+          id: 'storage_write',
+          label: _writing ? 'Writing…' : 'Write everything',
+          onPressed: _writing ? null : _write,
+        ),
         IdButton(id: 'storage_read', label: 'Read back prefs', onPressed: _readBack),
         ResultText(_result),
       ],

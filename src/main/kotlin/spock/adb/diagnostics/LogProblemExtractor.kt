@@ -138,11 +138,13 @@ object LogProblemExtractor {
 
         fun classify(line: Line) {
             val message = line.message
-            val inBurst = line.tag == FLUTTER && flutterBurst == (line.pid to line.time)
+            // A head first: a second exception in the same millisecond starts a burst of its own.
+            val flutterHead = line.tag == FLUTTER && FLUTTER_UNHANDLED.containsMatchIn(message)
+            val inBurst = !flutterHead && line.tag == FLUTTER && flutterBurst == (line.pid to line.time)
             if (!inBurst) flutterBurst = null
             when {
+                flutterHead -> flutterUnhandled(line)
                 inBurst -> Unit
-                line.tag == FLUTTER && FLUTTER_UNHANDLED.containsMatchIn(message) -> flutterUnhandled(line)
                 isStackFrame(message) -> stackFrame(line)
                 line.tag == ANDROID_RUNTIME -> runtime(line)
                 line.tag == ACTIVITY_MANAGER -> activityManager(line)
@@ -161,7 +163,7 @@ object LogProblemExtractor {
             val (type, summary) = when {
                 exception.startsWith("MissingPluginException") ->
                     TYPE_FLUTTER_PLUGIN to "Flutter plugin not registered: " +
-                        exception.removePrefix("MissingPluginException").trim('(', ')')
+                        exception.removePrefix("MissingPluginException(").removeSuffix(")")
                 exception.startsWith("PlatformException") ->
                     TYPE_FLUTTER_PLUGIN to "Platform channel returned an error: " + platformError(exception)
                 else -> TYPE_EXCEPTION to "Unhandled Dart exception: $exception"
@@ -169,10 +171,21 @@ object LogProblemExtractor {
             report("flutter:${normalise(exception)}", type, Severity.ERROR, summary, line.time)
         }
 
-        /** `PlatformException(CODE, message, details, stacktrace)` → `CODE — message`. */
+        /**
+         * `PlatformException(CODE, message, details, stacktrace)` → `CODE — message`.
+         *
+         * The message may itself hold `, `, so it ends where the fields after it begin: `details`
+         * is `null` in practice, and `stacktrace` is `null` or a native exception that runs on
+         * past this line. Anything else is shown whole after the code rather than cut short.
+         */
         private fun platformError(exception: String): String {
-            val parts = exception.removePrefix("PlatformException").trim('(', ')').split(", ", limit = 3)
-            return listOfNotNull(parts.getOrNull(0), parts.getOrNull(1)?.takeIf { it != "null" }).joinToString(" — ")
+            val fields = exception.removePrefix("PlatformException(")
+            val code = fields.substringBefore(", ")
+            val rest = fields.substringAfter(", ", missingDelimiterValue = "")
+            val message = PLATFORM_ERROR_TAIL.find(rest)?.let { rest.substring(0, it.range.first) }
+                ?: rest.removeSuffix(")")
+            return listOfNotNull(code.removeSuffix(")"), message.takeIf { it.isNotEmpty() && it != "null" })
+                .joinToString(" — ")
         }
 
         /** Stack frames carry nothing a one-line summary can use, except a network root cause. */
@@ -350,6 +363,9 @@ object LogProblemExtractor {
     /** What the engine prefixes, after `[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] `. */
     private const val FLUTTER_UNHANDLED_MARKER = "Unhandled Exception:"
     private val FLUTTER_UNHANDLED = Regex("""^\[ERROR:flutter/[^\]]*] Unhandled Exception:""")
+
+    /** What follows a PlatformException's message: `null` details, then `null)` or a native exception. */
+    private val PLATFORM_ERROR_TAIL = Regex(""", null, (?:null\)|[\w.$]+(?::.*)?)$""")
 
     private const val HTTP_CLIENT_ERROR = 400
     private const val HTTP_SERVER_ERROR = 500

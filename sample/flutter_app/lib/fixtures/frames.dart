@@ -77,8 +77,14 @@ class _RebuildStorm extends StatefulWidget {
 }
 
 class _RebuildStormState extends State<_RebuildStorm> with SingleTickerProviderStateMixin {
-  late final Ticker _ticker = createTicker((_) => setState(() => _count++))..start();
+  late final Ticker _ticker;
   int _count = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker((_) => setState(() => _count++))..start();
+  }
 
   @override
   void dispose() {

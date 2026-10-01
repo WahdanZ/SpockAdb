@@ -61,6 +61,11 @@ Route<dynamic>? generateRoute(RouteSettings settings) {
       builder: (_) => ItemDetailScreen(id: segments[1], ref: uri.queryParameters['ref']),
     );
   }
+  // A cold-start deep link to /item/42 is expanded to the initial routes /, /item, /item/42,
+  // so /item must resolve too: the stack is then Hub → Items → Item 42.
+  if (uri.path == '/item' || uri.path == '/items') {
+    return MaterialPageRoute(settings: settings, builder: (_) => const ItemListScreen());
+  }
   for (final fixture in fixtures) {
     if (uri.path == fixture.route) {
       return MaterialPageRoute(settings: settings, builder: fixture.builder);

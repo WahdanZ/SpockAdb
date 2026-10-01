@@ -234,4 +234,49 @@ class LogProblemExtractorTest {
         assertTrue(frames.isEmpty(), "$frames")
         assertTrue(problems.all { it.count == 1 }, "$problems")
     }
+
+    private fun flutterHead(exception: String) =
+        line(100, 'E', "flutter", "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: $exception")
+
+    private fun flutterSummary(exception: String) = extract(flutterHead(exception)).problems.single().summary
+
+    @Test
+    fun `a second unhandled exception in the same millisecond is its own problem`() {
+        val result = extract(
+            flutterHead("FormatException: first"),
+            line(100, 'E', "flutter", "#0      main (package:app/main.dart:1:1)"),
+            flutterHead("StateError: second"),
+            line(100, 'E', "flutter", "#0      main (package:app/main.dart:2:1)"),
+        )
+
+        assertEquals(
+            listOf("Unhandled Dart exception: FormatException: first", "Unhandled Dart exception: StateError: second"),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `a platform error's message keeps its commas`() {
+        assertEquals(
+            "Platform channel returned an error: AUTH_FAILED — Sign-in failed, try again later",
+            flutterSummary("PlatformException(AUTH_FAILED, Sign-in failed, try again later, null, null)"),
+        )
+        // The native stack trace starts on the head line and runs over the lines after it.
+        assertEquals(
+            "Platform channel returned an error: error — Boom, again",
+            flutterSummary("PlatformException(error, Boom, again, null, java.lang.IllegalStateException: Boom, again"),
+        )
+        assertEquals(
+            "Platform channel returned an error: NO_MESSAGE",
+            flutterSummary("PlatformException(NO_MESSAGE, null, null, null)"),
+        )
+    }
+
+    @Test
+    fun `a missing plugin's message keeps its own closing parenthesis`() {
+        assertEquals(
+            "Flutter plugin not registered: No implementation found for method ping on channel app/x (v2)",
+            flutterSummary("MissingPluginException(No implementation found for method ping on channel app/x (v2))"),
+        )
+    }
 }
