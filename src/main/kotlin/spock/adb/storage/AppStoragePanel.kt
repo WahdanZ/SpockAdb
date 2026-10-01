@@ -24,6 +24,8 @@ import spock.adb.DestructiveActionConfirmation
 import spock.adb.LatestRequest
 import spock.adb.command.AppDirectoryRequest
 import spock.adb.command.AppFileRequest
+import spock.adb.command.AppSqliteCommand
+import spock.adb.command.AppSqliteRequest
 import spock.adb.command.AppStorageChangedException
 import spock.adb.command.AppStorageFileRequest
 import spock.adb.command.AppStorageShell
@@ -366,9 +368,22 @@ class AppStoragePanel(
             if (!reads.isLatest(request)) return@background
             result
                 .onSuccess { bytes ->
-                    source.text = StoragePanelUi.asText(bytes)
+                    source.text = StorageFileView.render(entry.path, bytes)
                     source.caretPosition = 0
                     status("${entry.path}, ${bytes.size} bytes. Read-only: only preference files can be written.")
+                    if (StorageFileView.isSqlite(bytes)) {
+                        // A SQLite file's tables are read on the device; the hex dump stays up until they arrive.
+                        status("Reading the tables of ${entry.path}…")
+                        val sqlite = AppSqliteRequest(packageName, entry.path)
+                        background({ AppSqliteCommand().execute(sqlite, project, target.device) }) { tables ->
+                            if (!reads.isLatest(request)) return@background
+                            tables.onSuccess {
+                                source.text = it
+                                source.caretPosition = 0
+                                status("${entry.path}: tables read on the device, read-only.")
+                            }.onFailure { status(it.message ?: "Could not read the tables of ${entry.path}.") }
+                        }
+                    }
                 }
                 .onFailure { status(it.message ?: "Could not read ${entry.path}.") }
         }
