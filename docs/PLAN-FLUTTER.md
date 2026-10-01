@@ -67,9 +67,9 @@ Each phase is tagged **(must)** or **(should)** for priority.
 - **Gate:** findings in `docs/FLUTTER-SPIKE.md`; this plan updated where an assumption failed.
 
 ### P3 — Target-neutral tool context (must) · ~3 days [FR2, FR15]
-- [ ] `sealed interface Target { AndroidTarget(ConnectedDevice), IosSimTarget(udid, name) }`; `ToolContext.requireTarget()`; `confirmDestructive(tool, summary, targetLabel)`. `requireDevice()` stays as a thin Android helper so existing tools don't change.
-- [ ] `DiagnosticProbe` → interface; current class becomes `AndroidProbe`. `SectionReport` / `LikelyProblem` unchanged.
-- [ ] `ToolSafetyTest`: namespace rule becomes `android_|ios_|flutter_`.
+- [x] `sealed interface Target { AndroidTarget(ConnectedDevice), IosSimTarget(udid, name) }`; `ToolContext.requireTarget()`; `confirmDestructive(tool, summary, targetLabel)`. `requireDevice()` stays as a thin Android helper so existing tools don't change.
+- [x] `DiagnosticProbe` → interface; current class becomes `AndroidProbe`. `SectionReport` / `LikelyProblem` unchanged.
+- [x] `ToolSafetyTest`: namespace rule becomes `android_|ios_|flutter_`.
 - **Gate:** `./gradlew test detekt verifyPlugin` green on all supported IDEs; no behaviour change.
 
 ### P4 — VM Service client + Flutter session (must) · ~4 days
