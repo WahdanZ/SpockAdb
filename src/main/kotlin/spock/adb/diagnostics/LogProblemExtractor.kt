@@ -115,6 +115,13 @@ object LogProblemExtractor {
         /** A W/E line waiting to see whether an exception head follows it. */
         private var pending: Line? = null
 
+        /**
+         * The Flutter engine prints an unhandled Dart exception as one burst of `flutter` lines
+         * with one timestamp: the head, Dart frames, and for a PlatformException the native
+         * stack it carries. Everything after the head belongs to it, as `(pid, time)`.
+         */
+        private var flutterBurst: Pair<String, String>? = null
+
         fun report(key: String, type: String, severity: Severity, summary: String, at: String): Accumulator {
             // Redacted whole, then clipped: a clip can cut a token short of the length its
             // redaction rule needs, and leave the part it kept in plain sight.
@@ -131,12 +138,41 @@ object LogProblemExtractor {
 
         fun classify(line: Line) {
             val message = line.message
+            val inBurst = line.tag == FLUTTER && flutterBurst == (line.pid to line.time)
+            if (!inBurst) flutterBurst = null
             when {
+                inBurst -> Unit
+                line.tag == FLUTTER && FLUTTER_UNHANDLED.containsMatchIn(message) -> flutterUnhandled(line)
                 isStackFrame(message) -> stackFrame(line)
                 line.tag == ANDROID_RUNTIME -> runtime(line)
                 line.tag == ACTIVITY_MANAGER -> activityManager(line)
                 else -> appLine(line)
             }
+        }
+
+        /**
+         * `Unhandled Exception: …` from the Flutter engine. A missing plugin and an error a
+         * platform channel returned are told apart: they are fixed on the native side, not in Dart.
+         */
+        private fun flutterUnhandled(line: Line) {
+            flushPending()
+            flutterBurst = line.pid to line.time
+            val exception = line.message.substringAfter(FLUTTER_UNHANDLED_MARKER).trim()
+            val (type, summary) = when {
+                exception.startsWith("MissingPluginException") ->
+                    TYPE_FLUTTER_PLUGIN to "Flutter plugin not registered: " +
+                        exception.removePrefix("MissingPluginException").trim('(', ')')
+                exception.startsWith("PlatformException") ->
+                    TYPE_FLUTTER_PLUGIN to "Platform channel returned an error: " + platformError(exception)
+                else -> TYPE_EXCEPTION to "Unhandled Dart exception: $exception"
+            }
+            report("flutter:${normalise(exception)}", type, Severity.ERROR, summary, line.time)
+        }
+
+        /** `PlatformException(CODE, message, details, stacktrace)` → `CODE — message`. */
+        private fun platformError(exception: String): String {
+            val parts = exception.removePrefix("PlatformException").trim('(', ')').split(", ", limit = 3)
+            return listOfNotNull(parts.getOrNull(0), parts.getOrNull(1)?.takeIf { it != "null" }).joinToString(" — ")
         }
 
         /** Stack frames carry nothing a one-line summary can use, except a network root cause. */
@@ -303,9 +339,17 @@ object LogProblemExtractor {
     const val TYPE_STRICT_MODE = "strictMode"
     const val TYPE_LOG = "log"
 
+    /** A Flutter plugin that is missing, or a platform channel call that returned an error. */
+    const val TYPE_FLUTTER_PLUGIN = "flutterPlugin"
+
     private const val ANDROID_RUNTIME = "AndroidRuntime"
     private const val ACTIVITY_MANAGER = "ActivityManager"
     private const val STRICT_MODE = "StrictMode"
+    private const val FLUTTER = "flutter"
+
+    /** What the engine prefixes, after `[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] `. */
+    private const val FLUTTER_UNHANDLED_MARKER = "Unhandled Exception:"
+    private val FLUTTER_UNHANDLED = Regex("""^\[ERROR:flutter/[^\]]*] Unhandled Exception:""")
 
     private const val HTTP_CLIENT_ERROR = 400
     private const val HTTP_SERVER_ERROR = 500

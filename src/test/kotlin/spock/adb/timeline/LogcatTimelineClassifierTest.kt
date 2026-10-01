@@ -159,4 +159,22 @@ class LogcatTimelineClassifierTest {
             events.all { it.severity == TimelineSeverity.ERROR && it.category == TimelineCategory.APP_LIFECYCLE }
         )
     }
+
+    @Test
+    fun `a Flutter unhandled exception is one event, titled without the engine's source prefix`() {
+        val error = LogLevel.ERROR
+        val events = classifier().all(
+            entry(
+                "flutter",
+                "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: MissingPluginException(x)",
+                level = error,
+            ),
+            entry("flutter", "#0      MethodChannel._invokeMethod (package:flutter/src/services/…)", level = error),
+            entry("flutter", "<asynchronous suspension>", level = error),
+            entry("flutter", "", level = error),
+        )
+        assertEquals(1, events.size, "$events")
+        assertEquals("flutter: Unhandled Exception: MissingPluginException(x)", events.single().title)
+        assertTrue(events.single().detail.contains("<asynchronous suspension>"))
+    }
 }

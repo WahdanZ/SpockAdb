@@ -198,4 +198,40 @@ class LogProblemExtractorTest {
 
         assertEquals("anr", result.problems.single().type)
     }
+
+    /** Captured from `sample/flutter_app` (Errors screen) on an Android 14 emulator, Flutter 3.22. */
+    @Test
+    fun `Flutter's unhandled exceptions are one problem each, without their Dart frames`() {
+        val log = javaClass.getResource("/logcat/flutter-unhandled.txt")!!.readText()
+        val problems = LogProblemExtractor.extract(log, "spock.adb.spock_flutter_sample", listOf("14683")).problems
+
+        val summaries = problems.map { it.type to it.summary }
+        assertTrue(
+            LogProblemExtractor.TYPE_EXCEPTION to
+                "Unhandled Dart exception: FormatException: Sample unhandled async error" in summaries,
+            "$summaries",
+        )
+        assertTrue(
+            summaries.any { (type, summary) ->
+                type == LogProblemExtractor.TYPE_FLUTTER_PLUGIN && summary.startsWith(
+                    "Flutter plugin not registered: No implementation found for method ping on channel " +
+                        "spock.sample/not_registered",
+                )
+            },
+            "$summaries",
+        )
+        assertTrue(
+            LogProblemExtractor.TYPE_FLUTTER_PLUGIN to
+                "Platform channel returned an error: SAMPLE_ERROR — Sample PlatformException from Android" in summaries,
+            "$summaries",
+        )
+        // The native exception a channel handler threw: the Dart side, and the native side once.
+        assertTrue(
+            summaries.any { it.second.startsWith("Platform channel returned an error: error — Sample native crash") },
+            "$summaries",
+        )
+        val frames = summaries.filter { it.second.contains("#0 ") || it.second.contains("asynchronous suspension") }
+        assertTrue(frames.isEmpty(), "$frames")
+        assertTrue(problems.all { it.count == 1 }, "$problems")
+    }
 }

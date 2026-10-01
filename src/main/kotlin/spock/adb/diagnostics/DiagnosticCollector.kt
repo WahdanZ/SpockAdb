@@ -144,6 +144,7 @@ class DiagnosticCollector(
             LogProblemExtractor.TYPE_CRASH,
             LogProblemExtractor.TYPE_ANR,
             "process",
+            LogProblemExtractor.TYPE_FLUTTER_PLUGIN,
             LogProblemExtractor.TYPE_NETWORK,
             LogProblemExtractor.TYPE_EXCEPTION,
             "screen",
