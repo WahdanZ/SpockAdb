@@ -13,9 +13,9 @@ import java.util.concurrent.CompletionStage
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
@@ -30,22 +30,38 @@ import java.util.concurrent.atomic.AtomicReference
  * order. The WebSocket's own thread only reassembles messages and completes calls; events go to
  * [VmServiceListener]s on one dedicated thread, in the order they arrived, so a slow listener
  * delays other events but never an answer.
+ *
+ * A listener slower than the app can fill the event queue. Past [maxQueuedEvents] the oldest
+ * `Logging`, `Stdout` and `Stderr` events are dropped and counted in [droppedEventCount]; the
+ * events that drive state (`Isolate`, `Debug` and the rest) are never dropped.
  */
 class VmServiceClient private constructor(
     /** The redacted address, for messages. */
     private val label: String,
     private val defaultTimeoutMs: Long,
+    private val maxQueuedEvents: Int,
+    private val maxMessageChars: Int,
 ) : AutoCloseable {
 
     private class Pending(val method: String, val future: CompletableFuture<JsonObject>)
+
+    /** An event's delivery; [droppable] when the queue may shed it on overflow. */
+    private class EventTask(val droppable: Boolean, private val body: () -> Unit) : Runnable {
+        override fun run() = body()
+    }
 
     private val pending = ConcurrentHashMap<String, Pending>()
     private val nextId = AtomicLong()
     private val listeners = CopyOnWriteArrayList<VmServiceListener>()
     private val closedReason = AtomicReference<String?>(null)
-    private val events: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+    private val eventQueue = LinkedBlockingQueue<Runnable>()
+    private val events = ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, eventQueue) { runnable ->
         Thread(runnable, "Spock VM Service events").apply { isDaemon = true }
     }
+
+    /** Orders queueing an event against queueing the close, so no event follows `onClosed`. */
+    private val queueLock = Any()
+    private val dropped = AtomicLong()
 
     @Volatile
     private var socket: WebSocket? = null
@@ -58,6 +74,9 @@ class VmServiceClient private constructor(
 
     /** Why the connection ended, or null while it is open. */
     val closeReason: String? get() = closedReason.get()
+
+    /** `Logging`, `Stdout` and `Stderr` events dropped because the listeners fell behind. */
+    val droppedEventCount: Long get() = dropped.get()
 
     fun addListener(listener: VmServiceListener) {
         listeners += listener
@@ -95,6 +114,9 @@ class VmServiceClient private constructor(
     internal fun callAsync(method: String, params: JsonObject = JsonObject()): CompletableFuture<JsonObject> =
         start(method, params).second
 
+    /** Calls still waiting for an answer. */
+    internal val pendingCount: Int get() = pending.size
+
     fun getVM(): JsonObject = call("getVM")
 
     fun getIsolate(isolateId: String): JsonObject = call("getIsolate", jsonOf("isolateId" to isolateId))
@@ -119,6 +141,12 @@ class VmServiceClient private constructor(
         params.forEach { (key, value) -> body.addProperty(key, value) }
         return call(method, body, timeoutMs)
     }
+
+    /**
+     * Fails every call still waiting with [reason], leaving the connection open: whoever was
+     * waiting stops at once, and new calls go through.
+     */
+    internal fun failPendingCalls(reason: String) = failPending(VmServiceClosedException(reason))
 
     /** Fails every call still waiting, closes the socket and tells listeners. Safe to repeat. */
     override fun close() {
@@ -195,40 +223,87 @@ class VmServiceClient private constructor(
         val params = message.get("params") as? JsonObject ?: return
         val streamId = params.string("streamId") ?: return
         val event = params.get("event") as? JsonObject ?: return
-        submit {
-            val scrubbed = VmServiceEvent(streamId, Redaction.scrubEvent(event))
-            listeners.forEach { deliver(it, scrubbed) }
-        }
+        queueEvent(EventTask(streamId in DROPPABLE_STREAMS) { deliverEvent(streamId, event) })
     }
 
-    // A listener's bug must not cost the other listeners this event, nor stop the event thread.
-    // Exception, not RuntimeException: a Kotlin listener can throw a checked one undeclared.
+    // The event is scrubbed here, on the event thread, inside the guard: whatever the scrub or a
+    // listener throws costs this event, never the thread or the events after it. Exception, not
+    // RuntimeException: a Kotlin listener can throw a checked one undeclared.
     @Suppress("TooGenericExceptionCaught")
-    private fun deliver(listener: VmServiceListener, event: VmServiceEvent) {
-        try {
-            listener.onEvent(event)
+    private fun deliverEvent(streamId: String, raw: JsonObject) {
+        val event = try {
+            VmServiceEvent(streamId, Redaction.scrubEvent(raw))
         } catch (e: Exception) {
-            log.warn("VM Service listener failed on $event", e)
+            log.warn("Could not redact a $streamId event from $label; it is dropped", e)
+            return
+        }
+        listeners.forEach { listener ->
+            try {
+                listener.onEvent(event)
+            } catch (e: Exception) {
+                log.warn("VM Service listener failed on $event", e)
+            }
         }
     }
 
-    private fun submit(task: () -> Unit) {
+    @Suppress("TooGenericExceptionCaught")
+    private fun deliverClosed(reason: String) {
+        listeners.forEach { listener ->
+            try {
+                listener.onClosed(reason)
+            } catch (e: Exception) {
+                log.warn("VM Service listener failed on close", e)
+            }
+        }
+    }
+
+    /** Queues [task] unless the connection is closed, shedding a droppable event on overflow. */
+    private fun queueEvent(task: EventTask) {
+        synchronized(queueLock) {
+            if (closedReason.get() != null) return
+            if (eventQueue.size >= maxQueuedEvents && !makeRoom(task)) return
+            execute(task)
+        }
+    }
+
+    /** Drops the oldest droppable event; false when [incoming] is the one to drop. */
+    private fun makeRoom(incoming: EventTask): Boolean {
+        val oldest = eventQueue.firstOrNull { it is EventTask && it.droppable }
+        val room = when {
+            oldest != null && eventQueue.remove(oldest) -> true
+            incoming.droppable -> false
+            // Only state-driving events are queued: the queue goes over its bound rather than lose one.
+            else -> return true
+        }
+        if (dropped.incrementAndGet() == 1L) {
+            log.warn("VM Service listeners for $label fell $maxQueuedEvents events behind; dropping logs")
+        }
+        return room
+    }
+
+    private fun execute(task: Runnable) {
         try {
             events.execute(task)
         } catch (_: RejectedExecutionException) {
-            // Closed: events that arrive while the socket shuts are not delivered.
+            // The event thread is gone: the connection closed.
         }
+    }
+
+    private fun failPending(failure: VmServiceException) = pending.keys.toList().forEach { id ->
+        pending.remove(id)?.future?.completeExceptionally(failure)
     }
 
     private fun shutdown(reason: String, sendClose: Boolean) {
         if (!closedReason.compareAndSet(null, reason)) return
-        pending.keys.toList().forEach { id ->
-            pending.remove(id)?.future?.completeExceptionally(VmServiceClosedException(reason))
-        }
+        failPending(VmServiceClosedException(reason))
         val ws = socket
         if (sendClose && ws != null) closeSocket(ws)
-        submit { listeners.forEach { it.onClosed(reason) } }
-        events.shutdown()
+        if (!sendClose) ws?.abort()
+        // The close is the last task: queueEvent checks closedReason under the same lock.
+        synchronized(queueLock) {
+            execute { deliverClosed(reason) }
+            events.shutdown()
+        }
     }
 
     private fun closeSocket(ws: WebSocket) {
@@ -247,20 +322,35 @@ class VmServiceClient private constructor(
 
     private inner class Listener : WebSocket.Listener {
         /** Text frames of one message; the JDK may also split a single frame into several parts. */
-        private val buffer = StringBuilder()
+        private var buffer = StringBuilder()
 
         override fun onOpen(webSocket: WebSocket) {
+            // A handshake that finished after connect gave up: nobody holds this socket.
+            if (!isOpen) {
+                webSocket.abort()
+                return
+            }
             webSocket.request(1)
         }
 
         override fun onText(webSocket: WebSocket, data: CharSequence, last: Boolean): CompletionStage<*>? {
-            buffer.append(data)
-            if (last) {
-                val text = buffer.toString()
-                buffer.setLength(0)
-                onMessage(text)
+            try {
+                if (buffer.length + data.length > maxMessageChars) {
+                    buffer = StringBuilder()
+                    shutdown("a VM Service message was larger than $maxMessageChars characters", sendClose = true)
+                    return null
+                }
+                buffer.append(data)
+                if (last) {
+                    val text = buffer.toString()
+                    // A large message leaves a large buffer behind; most messages are small.
+                    if (buffer.capacity() > KEPT_BUFFER_CHARS) buffer = StringBuilder() else buffer.setLength(0)
+                    onMessage(text)
+                }
+            } finally {
+                // Whatever the message did, the reader goes on to the next one.
+                if (isOpen) webSocket.request(1)
             }
-            webSocket.request(1)
             return null
         }
 
@@ -279,7 +369,17 @@ class VmServiceClient private constructor(
         /** Most VM Service calls answer in milliseconds; a longer wait means a stuck isolate. */
         const val DEFAULT_TIMEOUT_MS = 5_000L
 
+        /** As many as DDS replays to a new subscriber, so one replay never overflows the queue. */
+        const val MAX_QUEUED_EVENTS = 10_000
+
+        /** No VM Service answer Spock asks for comes near this; a message past it is a fault. */
+        const val MAX_MESSAGE_CHARS = 64 * 1024 * 1024
+
         private const val CLOSE_WAIT_MS = 1_000L
+        private const val KEPT_BUFFER_CHARS = 1024 * 1024
+
+        /** Streams whose events only inform: on overflow they go first. */
+        private val DROPPABLE_STREAMS = setOf("Logging", "Stdout", "Stderr")
 
         private val log = Logger.getInstance(VmServiceClient::class.java)
 
@@ -298,13 +398,15 @@ class VmServiceClient private constructor(
             uri: VmServiceUri,
             timeoutMs: Long = DEFAULT_TIMEOUT_MS,
             connectTimeoutMs: Long = DEFAULT_TIMEOUT_MS,
+            maxQueuedEvents: Int = MAX_QUEUED_EVENTS,
+            maxMessageChars: Int = MAX_MESSAGE_CHARS,
         ): VmServiceClient {
-            val client = VmServiceClient(uri.redacted(), timeoutMs)
+            val client = VmServiceClient(uri.redacted(), timeoutMs, maxQueuedEvents, maxMessageChars)
+            val handshake = http.newWebSocketBuilder()
+                .connectTimeout(Duration.ofMillis(connectTimeoutMs))
+                .buildAsync(uri.webSocketUri, client.Listener())
             val failure: Throwable = try {
-                client.socket = http.newWebSocketBuilder()
-                    .connectTimeout(Duration.ofMillis(connectTimeoutMs))
-                    .buildAsync(uri.webSocketUri, client.Listener())
-                    .get(connectTimeoutMs, TimeUnit.MILLISECONDS)
+                client.socket = handshake.get(connectTimeoutMs, TimeUnit.MILLISECONDS)
                 return client
             } catch (e: ExecutionException) {
                 e.cause ?: e
@@ -314,6 +416,10 @@ class VmServiceClient private constructor(
                 Thread.currentThread().interrupt()
                 e
             }
+            // A handshake that completes after this gave up would leave a socket nobody holds —
+            // on a direct address one that keeps DDS from starting (spike S10).
+            handshake.thenAccept { it.abort() }
+            handshake.cancel(true)
             client.shutdown("could not connect", sendClose = false)
             // The cause is not chained: JDK messages may quote the address, token included.
             val detail = failure.message?.takeIf { it.isNotBlank() }?.let { " (${Redaction.scrub(it)})" }.orEmpty()

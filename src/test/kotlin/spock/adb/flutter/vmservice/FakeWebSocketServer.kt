@@ -37,6 +37,9 @@ class FakeWebSocketServer(private val onText: (String) -> Unit) : AutoCloseable 
     /** The request path of every handshake: the auth code is in it. */
     val handshakePaths = CopyOnWriteArrayList<String>()
 
+    /** The path of every request, upgrade or not. */
+    val requestPaths = CopyOnWriteArrayList<String>()
+
     /** False if a client frame ever arrived unmasked, which RFC 6455 forbids. */
     @Volatile
     var clientFramesMasked = true
@@ -44,11 +47,30 @@ class FakeWebSocketServer(private val onText: (String) -> Unit) : AutoCloseable 
 
     val closeFrameReceived = CountDownLatch(1)
 
+    /** Counted down each time a client connection ends, whichever side ended it. */
+    @Volatile
+    var connectionEnded = CountDownLatch(1)
+
+    /** How long to sit on a handshake before answering it, as a slow or stuck VM would. */
+    @Volatile
+    var handshakeDelayMs = 0L
+
+    /**
+     * Answers every request with a `302` to this address instead of upgrading, as the VM does
+     * on its own address once DDS has taken it over (Dart's `vmservice_server.dart`).
+     */
+    @Volatile
+    var redirectTo: String? = null
+
     init {
         thread(isDaemon = true, name = "fake-websocket-server") { acceptLoop() }
     }
 
     fun sendText(text: String) = sendFrame(OP_TEXT, text.toByteArray(Charsets.UTF_8), fin = true)
+
+    fun sendBinary(bytes: ByteArray) = sendFrame(OP_BINARY, bytes, fin = true)
+
+    fun sendPing(bytes: ByteArray = byteArrayOf(1, 2, 3)) = sendFrame(OP_PING, bytes, fin = true)
 
     /** [text] as [parts] frames: a text frame then continuation frames, FIN only on the last. */
     fun sendFragmented(text: String, parts: Int) {
@@ -114,6 +136,7 @@ class FakeWebSocketServer(private val onText: (String) -> Unit) : AutoCloseable 
                 // The client went away; wait for the next one.
             } finally {
                 accepted.close()
+                connectionEnded.countDown()
             }
         }
     }
@@ -121,14 +144,27 @@ class FakeWebSocketServer(private val onText: (String) -> Unit) : AutoCloseable 
     private fun serve(connection: Socket) {
         val input = DataInputStream(BufferedInputStream(connection.getInputStream()))
         val requestLines = generateSequence { readLine(input) }.takeWhile { it.isNotEmpty() }.toList()
-        handshakePaths += requestLines.first().split(' ')[1]
-        val key = requestLines.drop(1)
-            .map { it.split(':', limit = 2) }
-            .first { it[0].trim().equals("Sec-WebSocket-Key", ignoreCase = true) }[1].trim()
+        if (requestLines.isEmpty()) return
+        val path = requestLines.first().split(' ')[1]
+        requestPaths += path
+        val headers = requestLines.drop(1).map { it.split(':', limit = 2) }.filter { it.size == 2 }
+            .associate { it[0].trim().lowercase() to it[1].trim() }
+        val out = connection.getOutputStream()
+        redirectTo?.let { location ->
+            answer(out, "302 Found", "Location: $location")
+            return
+        }
+        val key = headers["sec-websocket-key"]
+        if (key == null) {
+            // dart:io's WebSocketTransformer on a request that is not an upgrade.
+            answer(out, "400 Bad Request")
+            return
+        }
+        handshakePaths += path
+        if (handshakeDelayMs > 0) Thread.sleep(handshakeDelayMs)
         val accept = Base64.getEncoder().encodeToString(
             MessageDigest.getInstance("SHA-1").digest((key + WEBSOCKET_GUID).toByteArray(Charsets.US_ASCII)),
         )
-        val out = connection.getOutputStream()
         // Set before the 101 goes out, and under the frame lock: the client may send its first
         // request, and a test push a reply, the moment the handshake is answered.
         synchronized(this) {
@@ -142,6 +178,12 @@ class FakeWebSocketServer(private val onText: (String) -> Unit) : AutoCloseable 
             out.flush()
         }
         readFrames(input)
+    }
+
+    private fun answer(out: OutputStream, status: String, header: String? = null) {
+        val headerLine = header?.let { "$it\r\n" }.orEmpty()
+        out.write("HTTP/1.1 $status\r\n${headerLine}Content-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+        out.flush()
     }
 
     private fun readFrames(input: DataInputStream) {
@@ -209,6 +251,7 @@ class FakeWebSocketServer(private val onText: (String) -> Unit) : AutoCloseable 
         const val LENGTH_MASK = 0x7F
         const val OP_CONTINUATION = 0x0
         const val OP_TEXT = 0x1
+        const val OP_BINARY = 0x2
         const val OP_CLOSE = 0x8
         const val OP_PING = 0x9
         const val OP_PONG = 0xA

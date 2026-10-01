@@ -240,4 +240,226 @@ class VmServiceClientTest {
         assertTrue(error.message!!.contains("ws://127.0.0.1:$freePort/<redacted>/ws"), error.message)
         assertFalse(error.message!!.contains("HXKQJZK"), error.message)
     }
+
+    @Test
+    fun `malformed JSON, a binary frame and a ping from the server leave the connection working`() {
+        client.getVM()
+        vm.server.sendText("{not json")
+        vm.server.sendBinary(byteArrayOf(0, 1, 2))
+        vm.server.sendPing()
+        vm.server.sendText("[1, 2]")
+        vm.server.sendText("""{"jsonrpc":"2.0","id":{"odd":true},"result":{}}""")
+
+        assertEquals("VM", client.getVM().get("type").asString)
+        assertTrue(client.isOpen)
+    }
+
+    @Test
+    fun `non-ASCII text split mid-character across frames is reassembled intact`() {
+        vm.on("unicode") { FakeVmService.Reply.None }
+        val pending = client.callAsync("unicode")
+        val id = vm.awaitRequests("unicode").single().get("id").asString
+        val text = "Grüße ✓ 漢字 🚀 ".repeat(400)
+
+        // 7 parts of a multi-byte text: the byte boundaries fall inside characters.
+        vm.server.sendFragmented(response(id).apply { add("result", result(text)) }.toString(), parts = 7)
+
+        assertEquals(text, pending.get(2, TimeUnit.SECONDS).get("value").asString)
+    }
+
+    @Test
+    fun `a message past the size cap closes the connection, saying why`() {
+        val capped = VmServiceClient.connect(VmServiceUri.parse(vm.uri), maxMessageChars = 1_000)
+        vm.on("huge") { FakeVmService.Reply.None }
+        val pending = capped.callAsync("huge")
+        vm.reply(vm.awaitRequests("huge").single().get("id").asString, result("x".repeat(2_000)))
+
+        val error = assertThrows<ExecutionException> { pending.get(2, TimeUnit.SECONDS) }
+        assertTrue(error.cause is VmServiceClosedException)
+        assertFalse(capped.isOpen)
+        assertTrue(capped.closeReason!!.contains("larger than 1000"), capped.closeReason)
+    }
+
+    @Test
+    fun `a full event queue sheds the oldest logs and never an isolate or debug event`() {
+        val small = VmServiceClient.connect(VmServiceUri.parse(vm.uri), maxQueuedEvents = 5)
+        val gate = CountDownLatch(1)
+        val received = CopyOnWriteArrayList<String>()
+        small.addListener(
+            object : VmServiceListener {
+                override fun onEvent(event: VmServiceEvent) {
+                    if (received.isEmpty()) gate.await(5, TimeUnit.SECONDS)
+                    received += "${event.streamId}-${event.timestamp}"
+                }
+            },
+        )
+        small.getVM()
+        fun event(kind: String, timestamp: Int) = JsonObject().apply {
+            addProperty("type", "Event")
+            addProperty("kind", kind)
+            addProperty("timestamp", timestamp)
+        }
+
+        // The first is taken at once and held at the gate; five queue up; the rest overflow.
+        (0 until 20).forEach { vm.pushEvent("Logging", event("Logging", it)) }
+        (0 until 3).forEach { vm.pushEvent("Debug", event("Resume", it)) }
+        eventually(message = "the overflow") { small.droppedEventCount == 17L }
+        gate.countDown()
+
+        eventually(message = "the queue to drain") { received.size == 6 }
+        assertEquals(
+            listOf("Logging-0", "Logging-18", "Logging-19", "Debug-0", "Debug-1", "Debug-2"),
+            received,
+        )
+        small.close()
+    }
+
+    @Test
+    fun `no event is delivered after onClosed`() {
+        val seen = CopyOnWriteArrayList<String>()
+        client.addListener(
+            object : VmServiceListener {
+                override fun onEvent(event: VmServiceEvent) {
+                    seen += "event"
+                }
+
+                override fun onClosed(reason: String) {
+                    seen += "closed"
+                }
+            },
+        )
+        client.getVM()
+        val pusher = Thread {
+            repeat(500) {
+                try {
+                    vm.pushEvent("Extension", fixture("event-frame.json"))
+                } catch (_: Exception) {
+                    return@Thread
+                }
+            }
+        }
+        pusher.start()
+        eventually(message = "events flowing") { seen.size > 20 }
+        client.close()
+        pusher.join(5_000)
+
+        eventually(message = "the close") { "closed" in seen }
+        Thread.sleep(200)
+        assertEquals("closed", seen.last())
+        assertEquals(1, seen.count { it == "closed" })
+    }
+
+    @Test
+    fun `failing the pending calls stops their callers and leaves the connection open`() {
+        vm.on("stuck") { FakeVmService.Reply.None }
+        val pending = client.callAsync("stuck")
+        vm.awaitRequests("stuck")
+
+        client.failPendingCalls("session closing")
+
+        val error = assertThrows<ExecutionException> { pending.get(2, TimeUnit.SECONDS) }
+        assertTrue(error.cause is VmServiceClosedException)
+        assertTrue(client.isOpen)
+        assertEquals("VM", client.getVM().get("type").asString)
+    }
+
+    @Test
+    fun `close racing many calls ends every one of them at once`() {
+        vm.on("slow") { FakeVmService.Reply.None }
+        client.getVM()
+        val outcomes = CopyOnWriteArrayList<String>()
+        val callers = (0 until 16).map { index ->
+            Thread {
+                repeat(20) {
+                    try {
+                        client.call(if (index % 2 == 0) "slow" else "getVM", timeoutMs = 10_000)
+                        outcomes += "answered"
+                    } catch (e: VmServiceClosedException) {
+                        outcomes += "closed"
+                        return@Thread
+                    } catch (e: VmServiceException) {
+                        outcomes += "other: ${e.javaClass.simpleName}"
+                        return@Thread
+                    }
+                }
+            }.apply { start() }
+        }
+        vm.awaitRequests("slow", count = 8)
+        val started = System.nanoTime()
+
+        client.close()
+        callers.forEach { it.join(3_000) }
+
+        assertTrue(callers.none { it.isAlive }, "a caller is still waiting")
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 3_000)
+        assertTrue(outcomes.none { it.startsWith("other") }, outcomes.toString())
+        assertEquals(16, outcomes.count { it == "closed" })
+        assertEquals(0, client.pendingCount)
+    }
+
+    @Test
+    fun `answers racing their timeouts leave no call behind and the connection working`() {
+        val replier = java.util.concurrent.Executors.newScheduledThreadPool(2)
+        vm.on("racy") { FakeVmService.Reply.None }
+        val outcomes = CopyOnWriteArrayList<String>()
+        try {
+            val callers = (0 until 8).map {
+                Thread {
+                    repeat(25) {
+                        val pending = client.callAsync("getVM")
+                        pending.get(2, TimeUnit.SECONDS)
+                        try {
+                            client.call("racy", timeoutMs = 20)
+                            outcomes += "answered"
+                        } catch (_: VmServiceTimeoutException) {
+                            outcomes += "timed out"
+                        }
+                    }
+                }.apply { start() }
+            }
+            val answered = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+            val feeder = Thread {
+                while (callers.any { it.isAlive }) {
+                    vm.requestsFor("racy").map { it.get("id").asString }.filter { answered.add(it) }.forEach { id ->
+                        replier.schedule({ vm.reply(id, result("late or not")) }, (id.toLong() % 40), TimeUnit.MILLISECONDS)
+                    }
+                    Thread.sleep(2)
+                }
+            }.apply { start() }
+            callers.forEach { it.join(30_000) }
+            feeder.join(5_000)
+        } finally {
+            replier.shutdown()
+            replier.awaitTermination(2, TimeUnit.SECONDS)
+        }
+
+        assertEquals(200, outcomes.size)
+        eventually(message = "no call left waiting") { client.pendingCount == 0 }
+        assertTrue(client.isOpen)
+        assertEquals("VM", client.getVM().get("type").asString)
+    }
+
+    @Test
+    fun `a handshake that completes after connect gave up does not leave a socket open`() {
+        vm.server.handshakeDelayMs = 600
+        val failure = java.util.concurrent.atomic.AtomicReference<Throwable>()
+        val connecting = Thread {
+            try {
+                VmServiceClient.connect(VmServiceUri.parse(vm.uri), connectTimeoutMs = 5_000)
+            } catch (e: VmServiceException) {
+                failure.set(e)
+            }
+        }
+        connecting.start()
+        eventually(message = "the handshake to start") { vm.server.handshakePaths.isNotEmpty() }
+
+        connecting.interrupt()
+        connecting.join(2_000)
+
+        assertTrue(failure.get() is VmServiceException, "connect should give up when interrupted")
+        assertTrue(
+            vm.server.connectionEnded.await(3, TimeUnit.SECONDS),
+            "the late handshake's socket is still open",
+        )
+    }
 }
