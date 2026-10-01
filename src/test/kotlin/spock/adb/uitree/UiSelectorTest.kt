@@ -294,4 +294,60 @@ class UiSelectorTest {
             UiTreeSearch.actionTarget(flutterLogin, content, UiTreeSearch.Action.TAP)
         }
     }
+
+    private val button = nodeWithText("").copy(clickable = true, bounds = UiNode.Bounds(10, 10, 90, 90))
+
+    /** [wrapper] as the matched node, under a plain root, tapped. */
+    private fun tapInside(wrapper: UiNode): UiNode {
+        val root = nodeWithText("").copy(bounds = UiNode.Bounds(0, 0, 1000, 1000), children = listOf(wrapper))
+        val screen = tree.copy(root = root)
+        return UiTreeSearch.actionTarget(screen, wrapper, UiTreeSearch.Action.TAP)
+    }
+
+    @Test
+    fun `an unlabelled wrapper reaches its button down a chain of single children`() {
+        val inner = nodeWithText("").copy(children = listOf(button))
+        assertTrue(button === tapInside(nodeWithText("").copy(resourceId = "submit", children = listOf(inner))))
+    }
+
+    @Test
+    fun `a labelled container does not hand a tap to the one control inside it`() {
+        // A card titled "Order 42" holding only its delete button: tapping the card is not deleting.
+        val card = nodeWithText("").copy(contentDescription = "Order 42", children = listOf(button))
+        assertThrows(IllegalArgumentException::class.java) { tapInside(card) }
+        val titled = card.copy(contentDescription = "", text = "Order 42")
+        assertThrows(IllegalArgumentException::class.java) { tapInside(titled) }
+    }
+
+    @Test
+    fun `a container whose one control sits beside other content is not that control`() {
+        // A form: a label and a field, or a list with one row among its decorations.
+        val fields = nodeWithText("").copy(children = listOf(button, nodeWithText("Email")))
+        val form = nodeWithText("").copy(children = listOf(fields))
+        assertThrows(IllegalArgumentException::class.java) { tapInside(form) }
+    }
+
+    @Test
+    fun `a wrapper whose button lies outside its bounds is not that button`() {
+        val wrapper = nodeWithText("").copy(
+            bounds = UiNode.Bounds(0, 0, 50, 50),
+            children = listOf(button),
+        )
+        assertThrows(IllegalArgumentException::class.java) { tapInside(wrapper) }
+    }
+
+    @Test
+    fun `a wrapper holding nested buttons is not one control`() {
+        val outer = button.copy(children = listOf(button.copy(bounds = UiNode.Bounds(20, 20, 80, 80))))
+        val wrapper = nodeWithText("").copy(children = listOf(outer))
+        assertThrows(IllegalArgumentException::class.java) { tapInside(wrapper) }
+    }
+
+    @Test
+    fun `a disabled button inside a wrapper is refused as disabled`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            tapInside(nodeWithText("").copy(children = listOf(button.copy(enabled = false))))
+        }
+        assertTrue(error.message!!.contains("disabled"), error.message)
+    }
 }
