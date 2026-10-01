@@ -30,7 +30,7 @@ import java.nio.charset.CodingErrorAction
  */
 internal object PreferencesProto : PrefsFormat {
 
-    override val types = PrefType.entries.toList()
+    override val types = PrefType.entries - PrefType.STRING_LIST
 
     private sealed interface Field {
         val key: String?
@@ -199,6 +199,8 @@ internal object PreferencesProto : PrefsFormat {
             is PrefValue.StringSetValue -> bytes(VALUE_STRING_SET, stringSetPayload(value, entry.unknownInSet))
             is PrefValue.DoubleValue -> fixed64Field(VALUE_DOUBLE, value.value.toRawBits())
             is PrefValue.BytesValue -> bytes(VALUE_BYTES, value.value)
+            // Refused by [types] before a write gets here.
+            is PrefValue.StringListValue -> throw IllegalArgumentException("DataStore cannot store a string list.")
         }
     }.toByteArray()
 
