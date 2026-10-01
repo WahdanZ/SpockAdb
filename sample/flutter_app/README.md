@@ -10,6 +10,9 @@ flutter run                 # debug: everything
 flutter run --profile       # profile: frame times mean something (Android device/emulator)
 ```
 
+The Android build uses Gradle 7.6.3 and AGP 7.3.0. If it fails with an unsupported Java version
+(JDK 21 or newer), point Flutter at a JDK 17: `flutter config --jdk-dir <path to JDK 17>`.
+
 Android package: `spock.adb.spock_flutter_sample`. iOS bundle id: `spock.adb.spockFlutterSample`
 (iOS bundle ids allow no underscores). Every control has `Semantics(identifier:)`,
 which Flutter publishes as the Android resource-id, so Spock's `android_*` element tools find it.
