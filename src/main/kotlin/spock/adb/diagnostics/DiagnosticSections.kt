@@ -16,6 +16,7 @@ import spock.adb.diagnostics.LikelyProblem.Severity
 import spock.adb.flutter.FlutterBuild
 import spock.adb.premission.ListItem
 import spock.adb.uitree.AccessibilityAudit
+import spock.adb.uitree.OPAQUE_SURFACE_NOTE
 import spock.adb.uitree.UiTree
 
 /** The sections this build knows, in the order a developer reads a bug report. */
@@ -232,6 +233,7 @@ object UiSection : DiagnosticSection {
             addProperty("composeTestTags", tree.testTagSupport.name.lowercase())
             addProperty("visibleNodes", nodes.size)
             addProperty("interactive", nodes.count { it.isInteractive })
+            if (tree.isOpaqueSurface) addProperty("note", OPAQUE_SURFACE_NOTE)
             nodes.firstOrNull { it.focused }
                 ?.let { addProperty("focused", DiagnosticShell.clip(it.label.ifBlank { it.className })) }
             add(

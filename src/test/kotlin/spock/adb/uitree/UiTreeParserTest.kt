@@ -1,6 +1,7 @@
 package spock.adb.uitree
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -167,5 +168,24 @@ class UiTreeParserTest {
 
         // The toolbar TextView sits outside the ComposeView; the inner one does not.
         assertEquals(UiFramework.HYBRID, UiTreeParser.parse(hybrid).framework)
+    }
+
+    private fun node(cls: String, bounds: String, extra: String = "", children: String = "") =
+        """<node index="0" text="" resource-id="" class="$cls" package="spock.adb.spock_flutter_sample" """ +
+            """content-desc="" checkable="false" checked="false" clickable="false" enabled="true" """ +
+            """focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" """ +
+            """selected="false" bounds="$bounds" $extra>$children</node>"""
+
+    @Test
+    fun `a screen that is one blank surface is opaque, a Flutter screen with semantics is not`() {
+        val surface = node("android.view.View", "[0,72][1080,2564]")
+        val content = node("android.widget.FrameLayout", "[0,0][1080,2636]", children = surface)
+        val blank = UiTreeParser.parse("<?xml version='1.0' ?><hierarchy rotation=\"0\">$content</hierarchy>")
+        assertTrue(blank.isOpaqueSurface)
+
+        val login = UiTreeParser.parse(
+            checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-login.xml")).bufferedReader().readText(),
+        )
+        assertFalse(login.isOpaqueSurface)
     }
 }
