@@ -59,26 +59,37 @@ class FlutterPrefsXmlTest {
         assertEquals(device, written)
     }
 
+    /** The raw string the file holds under `flutter.recent_searches`, before any decoding. */
+    private fun storedList(xml: String) =
+        (SharedPrefsXml.read(xml.toByteArray()).first { it.key == "flutter.recent_searches" } as PrefItem.Typed)
+            .value.text()
+
     /**
-     * The same serialized bytes and base64 the plugin produced. Whitespace is not compared:
-     * Android's XML writer indents the closing tag after a value ending in a newline, and both
-     * Base64 decoders skip it.
+     * The same serialized bytes and base64 the plugin produced, wrapped as Android's
+     * `Base64.DEFAULT` wraps it: 76-character lines, each ending in `\n`. The device's value also
+     * ends in the indentation Android's XML writer puts before the closing tag after a newline,
+     * which is layout, not part of what the plugin stored.
      */
     @Test
     fun `a list is written in the exact form the plugin writes`() {
-        val edited = FlutterPrefsXml.write(
-            device.replace("adb", "xyz").toByteArray(),
-            listOf(
-                PrefChange.Put("flutter.recent_searches", PrefValue.StringListValue(listOf("adb", "flutter", "spock")))
-            ),
+        val list = PrefValue.StringListValue(listOf("adb", "flutter", "spock"))
+        val other = String(
+            FlutterPrefsXml.write(
+                device.toByteArray(),
+                listOf(PrefChange.Put("flutter.recent_searches", PrefValue.StringListValue(listOf("xyz")))),
+            )
         )
-        fun stored(xml: String) = (
-            SharedPrefsXml.read(
-            xml.toByteArray()
-        ).first { it.key == "flutter.recent_searches" } as PrefItem.Typed
+        assertTrue(storedList(other) != storedList(device), "the edit below must be a real change")
+
+        val edited = String(
+            FlutterPrefsXml.write(other.toByteArray(), listOf(PrefChange.Put("flutter.recent_searches", list)))
         )
-            .value.text().filterNot(Char::isWhitespace)
-        assertEquals(stored(device), stored(String(edited)))
+
+        val written = storedList(edited)
+        assertEquals(storedList(device).trimEnd(' '), written)
+        val lines = written.removePrefix(LIST_MARKER).split("\n")
+        assertEquals(listOf(76, 36, 0), lines.map { it.length }, written)
+        assertEquals(list, valueOf(edited, "flutter.recent_searches"))
     }
 
     @Test
