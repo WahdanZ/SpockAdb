@@ -233,8 +233,26 @@ class FlutterPrefsXmlTest {
         val item = read(crafted)["flutter.recent_searches"]
         assertTrue(item is PrefItem.Opaque, "$item")
         assertThrows<IllegalArgumentException> {
-            FlutterPrefsXml.write(crafted.toByteArray(), listOf(PrefChange.Remove("flutter.recent_searches")))
+            FlutterPrefsXml.write(
+                crafted.toByteArray(),
+                listOf(PrefChange.Put("flutter.recent_searches", PrefValue.StringListValue(listOf("a")))),
+            )
         }
+    }
+
+    @Test
+    fun `a value that cannot be decoded can still be deleted`() {
+        val bigInteger = device.replace(
+            Regex("""(<string name="flutter.recent_searches">)[^<]*(</string>)"""),
+            "$1VGhpcyBpcyB0aGUgcHJlZml4IGZvciBCaWdJbnRlZ2Vy1234$2",
+        )
+        assertTrue(read(bigInteger)["flutter.recent_searches"] is PrefItem.Opaque)
+
+        val edited = String(
+            FlutterPrefsXml.write(bigInteger.toByteArray(), listOf(PrefChange.Remove("flutter.recent_searches")))
+        )
+
+        assertTrue(read(edited)["flutter.recent_searches"] == null, edited)
     }
 
     /** [device] with `flutter.recent_searches` holding [encoded] behind the list marker. */

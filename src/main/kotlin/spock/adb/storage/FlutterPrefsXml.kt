@@ -71,12 +71,15 @@ internal object FlutterPrefsXml : PrefsFormat {
         val stored = SharedPrefsXml.read(original).associateBy { it.key }
         val decoded = stored.mapValues { (_, item) -> decoded(item) }
         val encoded = changes.map { change ->
-            require(decoded[change.key] !is PrefItem.Opaque || stored[change.key] is PrefItem.Opaque) {
-                "'${change.key}' holds a value this editor cannot read, so it is left as it is."
-            }
             when (change) {
+                // A value this editor cannot decode is still a value the developer may delete.
                 is PrefChange.Remove -> change
-                is PrefChange.Put -> PrefChange.Put(change.key, encoded(change.key, change.value, stored[change.key]))
+                is PrefChange.Put -> {
+                    require(decoded[change.key] !is PrefItem.Opaque || stored[change.key] is PrefItem.Opaque) {
+                        "'${change.key}' holds a value this editor cannot read, so it is left as it is."
+                    }
+                    PrefChange.Put(change.key, encoded(change.key, change.value, stored[change.key]))
+                }
             }
         }
         return SharedPrefsXml.write(original, encoded)
