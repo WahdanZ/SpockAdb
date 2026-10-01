@@ -71,6 +71,23 @@ class AppSectionTest {
     }
 
     @Test
+    fun `only a debug build is said to send its framework errors to the VM Service`() {
+        val debug = AppSection.collect(probe(listed = debugListing)).data
+        assertEquals(AppSection.FLUTTER_ERRORS_NOTE, debug["flutterNote"].asString)
+
+        val aot = """
+              6619200  1981-01-01 01:01   lib/arm64-v8a/libapp.so
+             11206032  1981-01-01 01:01   lib/arm64-v8a/libflutter.so
+        """.trimIndent()
+        val profile = AppSection.collect(probe(listed = aot)).data
+        val release = AppSection.collect(probe(listed = aot, packageDump = dumpsys.replace("DEBUGGABLE ", ""))).data
+        assertEquals("profile", profile["flutter"].asString)
+        assertEquals("release", release["flutter"].asString)
+        assertFalse(profile.has("flutterNote"), "$profile")
+        assertFalse(release.has("flutterNote"), "$release")
+    }
+
+    @Test
     fun `the APK is listed once per install, not on every report`() {
         val probe = probe(listed = debugListing)
 

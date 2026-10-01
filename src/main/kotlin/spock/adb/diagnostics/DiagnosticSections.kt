@@ -156,10 +156,10 @@ object AppSection : DiagnosticSection {
             addProperty("packageName", app)
             addProperty("running", pids.isNotEmpty())
             add("pids", JsonArray().apply { pids.forEach(::add) })
-            flutter?.let {
-                addProperty("flutter", it.label)
-                addProperty("flutterNote", FLUTTER_ERRORS_NOTE)
-            }
+            flutter?.let { addProperty("flutter", it.label) }
+            // Structured errors are a debug-build behaviour: profile and release have no
+            // inspector to send them to, so for those builds there is nothing missing to explain.
+            if (flutter == FlutterBuild.DEBUG) addProperty("flutterNote", FLUTTER_ERRORS_NOTE)
         }
         val problems = if (pids.isEmpty()) {
             listOf(
