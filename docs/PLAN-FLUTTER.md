@@ -81,7 +81,7 @@ Each phase is tagged **(must)** or **(should)** for priority.
 ### P4 — VM Service client + Flutter session (must) · ~4 days
 - [ ] `VmServiceClient`: one reader, dispatch by request id, fragment accumulation, events fanned out on a dedicated executor, per-method timeouts [FR17].
 - [ ] `FlutterSession` per project, discovery by SDK [FR1, FR8]:
-  - a Flutter version with the DTD ConnectedApp service (to confirm in S12): DTD `ConnectedApp`;
+  - a Flutter version with the DTD ConnectedApp service (3.47.5 confirmed in S12; first version not pinned): read the DTD registry files (`~/Library/Application Support/Dart/dtd/<pid>`; Linux/Windows paths are S23), keep live pids, match `workspaceRoot` to the project, call `ConnectedApp.getVmServices`, match by device model and package in the returned name. Covers `flutter run` from a terminal; apps run from the IDE appear only if the Flutter plugin registers them with the IDE's DTD (S22);
   - older SDKs (Flutter 3.22 / Dart 3.4 has no `ConnectedApp`): the Flutter IntelliJ plugin's running-app state → the DDS URI named in the VM's refusal of the direct URI (plausible, to confirm in S9/S10) → pasted URI;
   - all SDKs: direct URI read-only as the last resort.
   Filter by the selected app's package (flavors) [FR22].
