@@ -44,7 +44,8 @@ class IdButton extends StatelessWidget {
   }
 }
 
-/// Last result line, shown under the buttons.
+/// Last result line, shown under the buttons. A plain [Text], so its words become the label of
+/// the `result` node in the accessibility tree.
 class ResultText extends StatelessWidget {
   const ResultText(this.text, {super.key});
 
@@ -56,7 +57,7 @@ class ResultText extends StatelessWidget {
       identifier: 'result',
       child: Padding(
         padding: const EdgeInsets.only(top: 12),
-        child: SelectableText(text, style: const TextStyle(fontFamily: 'monospace')),
+        child: Text(text, style: const TextStyle(fontFamily: 'monospace')),
       ),
     );
   }

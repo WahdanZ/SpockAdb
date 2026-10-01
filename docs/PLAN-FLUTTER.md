@@ -52,7 +52,9 @@ Order ships value early: P1 needs no VM Service and can release on its own.
 - [ ] App Storage: show SharedPreferences `flutter.` keys with decoded types; recognise Hive (`*.hive`) and sqflite (`*.db`) files.
   Seen in P0 (`FlutterSharedPreferences.xml`, shared_preferences 2.3): a double is stored as `<string>` with the Base64 prefix of "This is the prefix for Double." then `0.75`; a `List<String>` is the Base64 prefix of "This is the prefix for a list." followed by a Java-serialized `ArrayList`. Edits must write the same encoding back.
 - [ ] Logcat: a "Flutter" preset (`flutter` tag + app pid).
-- [ ] `LogProblemExtractor` / `LogcatTimelineClassifier`: `MissingPluginException`, `PlatformException`, Dart unhandled exception blocks, engine crashes (`libflutter.so` in tombstones).
+- [ ] `LogProblemExtractor` / `LogcatTimelineClassifier`: `MissingPluginException`, `PlatformException`, Dart unhandled exception blocks (`[ERROR:flutter/runtime/dart_vm_initializer.cc…] Unhandled Exception:`), engine crashes (`libflutter.so` in tombstones).
+  Seen in P0 (Flutter 3.22, debug, Android): **framework errors never reach logcat** — overflow, `build()` and tap-handler errors go only to the VM Service as `Flutter.Error`, because structured errors are on by default on mobile. Logcat sees only unhandled async errors. So P1 cannot report layout/build errors; Diagnose must say "Flutter framework errors need a VM Service connection (P4)" rather than "no errors".
+- [ ] Element tools: `Semantics(identifier:)` around a button makes **two** nodes — a parent with the resource-id but no label and `clickable=false`, and the button child with the label and `clickable=true`, same bounds (seen in P0). Treat an id node whose only child is a same-bounds clickable node as one element, so find-by-id reports the label and tapping isn't refused as "not clickable".
 - [ ] UI tree: when the screen is one `FlutterView` with no children, show a hint ("enable semantics: open the app with TalkBack once, or call `SemanticsBinding.ensureSemantics()` in debug") and note `Semantics(identifier:)`.
 - **Gate:** each P0 fixture screen shows the expected storage / log / UI-tree result; unit tests on recorded logcat and prefs fixtures.
 
@@ -73,7 +75,7 @@ Order ships value early: P1 needs no VM Service and can release on its own.
 - [ ] `VmServiceClient`: one reader, dispatch by request id, fragment accumulation, events fanned out on a dedicated executor, per-method timeouts [FR17].
 - [ ] `FlutterSession` per project: discovery DTD → pasted URI → direct URI read-only [FR1, FR8]; filter by the selected app's package (flavors) [FR22].
 - [ ] Isolate selection: the one exposing `ext.flutter.*`; ask when several; re-select on `IsolateStart`/`ServiceExtensionAdded` after hot restart; return "app is paused in the debugger" instead of hanging [FR12].
-- [ ] Side effects: record and restore `structuredErrors`; enable `httpEnableTimelineLogging` on connect; disable everything on disconnect [FR10].
+- [ ] Side effects: `structuredErrors` is already **on** by default in mobile debug builds (P0), so only subscribe to the `Extension` stream for `Flutter.Error` — never toggle it; enable `httpEnableTimelineLogging` on connect; disable what Spock enabled on disconnect [FR10].
 - [ ] Token redaction everywhere [FR9].
 - [ ] Tests: hand-written fake WebSocket server (test-only), recorded VM Service JSON per supported Flutter stable [FR21].
 - [ ] All calls on pooled threads; UI via `invokeLater` (plugin rules).
@@ -81,7 +83,7 @@ Order ships value early: P1 needs no VM Service and can release on its own.
 
 ### P5 — Cross-layer Diagnose + Timeline (P0) · ~7 days
 - [ ] Diagnose gains Flutter sections **inside the existing report and tool** (`android_diagnose_current_screen`, Diagnose panel) when a session is live — no parallel Flutter tool:
-  - Flutter errors (overflow, exceptions) from `Flutter.Error`.
+  - Flutter errors (overflow, exceptions) from `Flutter.Error` — the only place debug builds report them (P0).
   - Frames: a problem only in **profile** builds, budget from `_flutter.getDisplayRefreshRate`; info-only in debug ("not representative") [FR4].
   - Rebuild storm: a recording window like `GetRecompositionCountsTool`, accumulating `Flutter.RebuiltWidgets`, then switched off [FR10].
   - HTTP failures from `getHttpProfile` (paged by `updatedSince`); document that `cupertino_http` / `cronet_http` are invisible [FR10].
@@ -142,7 +144,7 @@ First release (P0 + P1) after **~1.5 weeks**.
 |---|---|
 | Dart plugin not installed (pure Android Studio) | Optional dependency; P1 still works; pasted URI fallback |
 | `DartToolingDaemonService` API changes across Dart plugin versions | Reflection-free thin adapter in the optional config file; `verifyPlugin` on all IDEs |
-| `structuredErrors` changes the user's `flutter run` console output | Restore the previous value on disconnect; note in docs [FR10] |
+| Framework errors are invisible without a VM Service connection | Diagnose says so explicitly instead of reporting "no errors" (P0 finding) |
 | Inspector / event names change between Flutter versions | Probe `extensionRPCs`; fixtures per supported stable [FR11] |
 | Tool count growth confuses agents | Only `flutter_app_status` + `ios_*` (macOS only) are new [FR15] |
 | `ToolContext` change breaks AS 232 compatibility | P3 is behaviour-neutral; `verifyPlugin` gate |

@@ -12,13 +12,21 @@ flutter run --profile       # profile: frame times mean something (Android devic
 
 Package / bundle id: `spock.adb.spock_flutter_sample`. Every control has `Semantics(identifier:)`,
 which Flutter publishes as the Android resource-id, so Spock's `android_*` element tools find it.
+Around a button that makes two nodes with the same bounds: the id on an unlabelled parent, the label
+and `clickable` on the child. Results (`result`) carry their text as the node's content-desc.
+
+Push from a shell without Spock (the receiver only accepts the app itself as sender):
+
+```bash
+adb shell run-as spock.adb.spock_flutter_sample am broadcast --user 0 -a com.google.android.c2dm.intent.RECEIVE -p spock.adb.spock_flutter_sample --es title Hello
+```
 
 | Spock feature | Where in the sample | What to look for |
 |---|---|---|
 | UI tree, `android_find_ui_element`, `android_tap_element` | *Login* | Resource-ids `login_email`, `login_password`, `login_submit`, `result`. *Remember me* and *Help* have no identifier on purpose |
 | Open Deep Link | *List → detail routes* | `spockflutter://open/item/42?ref=spock` opens *Item 42* with `ref=spock`. `spockflutter://open/nowhere` opens *No such route* |
-| Flutter errors in logs / Diagnose / Timeline | *Layout overflow* | *Show overflow* logs "A RenderFlex overflowed by … pixels" |
-| Log problem detection | *Errors and plugin failures* | One failure per button: tap-handler error, unhandled async error, `MissingPluginException`, `PlatformException(SAMPLE_ERROR)`, red screen from `build()`, and a native crash that kills the app |
+| Flutter errors in Diagnose / Timeline | *Layout overflow* | *Show overflow* draws the yellow-black stripe. In a debug build the error goes **only** to the VM Service (`Flutter.Error`), not logcat |
+| Log problem detection | *Errors and plugin failures* | One failure per button. In logcat (tag `flutter`): unhandled async error, `MissingPluginException`, `PlatformException(SAMPLE_ERROR)`; the native crash kills the app. VM Service only (`Flutter.Error`): tap-handler error and the red screen from `build()` |
 | Network, HTTP proxy, Wi-Fi toggle | *Network* | 200, 500, 404 and an unknown host through `dart:io` `HttpClient`, each logged as one line |
 | Native screens above Flutter, grant / revoke | *Native permission dialogs* | Camera, location and notifications open the system dialog; status refreshes on resume |
 | Push messages | *Push messages* | Android: `PushReceiver` stands in for Firebase, stores the message as `flutter.last_push`. iOS: a system banner after notifications are allowed |
