@@ -163,15 +163,19 @@ object UiTreeSearch {
 
     enum class Action { TAP, LONG_PRESS, TEXT_INPUT }
 
-    /** The nearest ancestor-or-self that [action] can land on, before any policy checks. */
+    /**
+     * The nearest ancestor-or-self that [action] can land on, before any policy checks.
+     *
+     * Failing that, the node's only eligible descendant inside its bounds. Flutter's
+     * `Semantics(identifier:)` around a button publishes the identifier on an unlabelled,
+     * non-clickable wrapper and the button as its child, so the control an agent names by
+     * its resource id is one level down. More than one such descendant is not one control.
+     */
     private fun eligibleTarget(tree: UiTree, node: UiNode, action: Action): UiNode? =
-        (listOf(node) + ancestorsOf(tree, node)).firstOrNull {
-            it.bounds.hasArea && when (action) {
-                Action.TAP -> it.clickable
-                Action.LONG_PRESS -> it.longClickable
-                Action.TEXT_INPUT -> it.focusable && it.className.endsWith("EditText")
-            }
-        }
+        (listOf(node) + ancestorsOf(tree, node)).firstOrNull { it.accepts(action) }
+            ?: node.flatten().drop(1)
+                .filter { it.accepts(action) && node.bounds.contains(it.bounds) }
+                .singleOrNull()
 
     fun actionTarget(
         tree: UiTree,
@@ -222,3 +226,12 @@ object UiTreeSearch {
         return path
     }
 }
+
+private fun UiNode.accepts(action: UiTreeSearch.Action): Boolean = bounds.hasArea && when (action) {
+    UiTreeSearch.Action.TAP -> clickable
+    UiTreeSearch.Action.LONG_PRESS -> longClickable
+    UiTreeSearch.Action.TEXT_INPUT -> focusable && className.endsWith("EditText")
+}
+
+private fun UiNode.Bounds.contains(other: UiNode.Bounds): Boolean =
+    other.left >= left && other.top >= top && other.right <= right && other.bottom <= bottom

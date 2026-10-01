@@ -259,4 +259,39 @@ class UiSelectorTest {
         password = false,
         children = emptyList(),
     )
+
+    /** Captured from sample/flutter_app's Login screen: Flutter 3.22, Android 14. */
+    private val flutterLogin = UiTreeParser.parse(
+        checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-login.xml")).bufferedReader().readText(),
+    )
+
+    @Test
+    fun `a Flutter Semantics identifier around a button taps the button inside it`() {
+        // The identifier sits on an unlabelled, non-clickable wrapper; the button is its child.
+        val wrapper = UiTreeSearch.findUnique(
+            flutterLogin,
+            UiSelector(testTag = "login_submit"),
+            UiTreeSearch.Action.TAP,
+        )!!
+        assertFalse(wrapper.clickable)
+
+        val target = UiTreeSearch.actionTarget(flutterLogin, wrapper, UiTreeSearch.Action.TAP)
+
+        assertTrue(target.clickable)
+        assertEquals("Sign in", target.contentDescription)
+    }
+
+    @Test
+    fun `a Flutter text field carries its identifier itself`() {
+        val field = UiTreeSearch.findOne(flutterLogin, UiSelector(testTag = "login_email"))!!
+        assertTrue(field === UiTreeSearch.actionTarget(flutterLogin, field, UiTreeSearch.Action.TEXT_INPUT))
+    }
+
+    @Test
+    fun `a wrapper holding several controls is not one control`() {
+        val content = flutterLogin.nodes().first { it.resourceId == "android:id/content" }
+        assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.actionTarget(flutterLogin, content, UiTreeSearch.Action.TAP)
+        }
+    }
 }
