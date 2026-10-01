@@ -24,6 +24,7 @@ import spock.adb.DestructiveActionConfirmation
 import spock.adb.LatestRequest
 import spock.adb.command.AppDirectoryRequest
 import spock.adb.command.AppFileRequest
+import spock.adb.command.AppSqlite
 import spock.adb.command.AppSqliteCommand
 import spock.adb.command.AppSqliteRequest
 import spock.adb.command.AppStorageChangedException
@@ -382,9 +383,10 @@ class AppStoragePanel(
                         background({ AppSqliteCommand().execute(sqlite, project, target.device) }) { tables ->
                             if (!reads.isLatest(request)) return@background
                             tables.onSuccess {
-                                source.text = it
+                                val (text, said) = AppSqlite.shown(entry.path, it)
+                                source.text = text
                                 source.caretPosition = 0
-                                status("${entry.path}: tables read on the device, read-only.")
+                                status(said)
                             }.onFailure { status(it.message ?: "Could not read the tables of ${entry.path}.") }
                         }
                     }

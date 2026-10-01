@@ -64,6 +64,12 @@ internal object StorageTree {
         return StorageEntry(path, isDirectory)
     }
 
+    /**
+     * [path] as an argument to a command that takes options. Paths are relative to the data
+     * directory, so a file named `-x` at its top would otherwise be read as an option.
+     */
+    fun argument(path: String): String = if (path.startsWith("-")) "./$path" else path
+
     private const val DIRECTORY_TAG = "d "
     private const val FILE_TAG = "f "
 }
