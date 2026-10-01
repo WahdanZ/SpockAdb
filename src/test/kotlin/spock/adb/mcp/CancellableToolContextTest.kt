@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.CancellationSignal
 import spock.adb.mcp.tools.CancellableToolContext
+import spock.adb.mcp.tools.confirmDestructive
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 

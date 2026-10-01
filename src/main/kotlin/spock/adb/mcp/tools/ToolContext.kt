@@ -40,6 +40,9 @@ interface ToolContext {
     /**
      * The target this call acts on, for code that works on any platform. Android only until the
      * iOS simulator backend registers its own targets; until then this is [requireDevice].
+     *
+     * A wrapper that overrides [requireDevice] must override this too: delegation by `by base`
+     * forwards this call to the base's [requireDevice], not the wrapper's.
      */
     fun requireTarget(idOverride: String? = null): DeviceTarget = DeviceTarget.Android(requireDevice(idOverride))
 
@@ -73,10 +76,6 @@ interface ToolContext {
      */
     fun confirmDestructive(toolName: String, summary: String, target: DeviceTarget): Boolean
 
-    /** [confirmDestructive] for an Android device, which is what every tool so far acts on. */
-    fun confirmDestructive(toolName: String, summary: String, device: ConnectedDevice): Boolean =
-        confirmDestructive(toolName, summary, DeviceTarget.Android(device))
-
     /** The application ID of the open project's app module, when it can be resolved. */
     fun projectApplicationId(): String?
 
@@ -100,6 +99,16 @@ interface ToolContext {
      */
     val canCancel: Boolean get() = true
 }
+
+/**
+ * [ToolContext.confirmDestructive] for an Android device, which is what every tool so far acts on.
+ *
+ * An extension rather than an interface member so that it always goes through the target
+ * overload: a member would be forwarded by `by base` delegation straight to the base, past a
+ * wrapper that overrides only the target overload.
+ */
+fun ToolContext.confirmDestructive(toolName: String, summary: String, device: ConnectedDevice): Boolean =
+    confirmDestructive(toolName, summary, DeviceTarget.Android(device))
 
 /** Convenience for the many tools that only need the ddmlib handle. */
 fun ToolContext.requireIDevice(serialOverride: String? = null): IDevice =

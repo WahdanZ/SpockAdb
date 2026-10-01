@@ -1,8 +1,11 @@
 package spock.adb.mcp
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.device.DeviceTarget
+import spock.adb.mcp.tools.ToolContext
+import spock.adb.mcp.tools.confirmDestructive
 
 class DeviceTargetTest {
 
@@ -23,6 +26,17 @@ class DeviceTargetTest {
         context.confirmDestructive("android_clear_app_data", "Clears data.", device)
 
         assertEquals(listOf<DeviceTarget>(DeviceTarget.Android(device)), context.confirmationTargets)
+    }
+
+    @Test
+    fun `a device-based confirmation goes through a wrapper that overrides only the target overload`() {
+        val base = FakeToolContext(confirmationAnswer = false)
+        val wrapper = object : ToolContext by base {
+            override fun confirmDestructive(toolName: String, summary: String, target: DeviceTarget): Boolean = true
+        }
+
+        assertTrue(wrapper.confirmDestructive("android_clear_app_data", "Clears data.", base.requireDevice()))
+        assertEquals(emptyList<String>(), base.confirmations)
     }
 
     @Test
