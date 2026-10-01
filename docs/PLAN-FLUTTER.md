@@ -105,6 +105,7 @@ Each phase is tagged **(must)** or **(should)** for priority.
 | `ios_revoke_permission` (kills the app), `ios_uninstall_app` | DESTRUCTIVE (default deny) |
 
 - [ ] Diagnose on an iOS simulator target: the P5 Flutter sections (errors, frames, rebuilds, HTTP) run for an `IosSimTarget` with a live session, with no Android-only sections.
+- [ ] DiagnosticCollector's `more` scoping (`APP_SCOPED_DETAILS`, `AppSection.id` → `filter`) is Android-specific: move it onto `DetailRef` before iOS sections reuse ids `app`/`logs` [review P3-4].
 - [ ] Document: notifications and camera can't be pre-granted by `simctl`; system alerts are UIKit and need a manual tap.
 - [ ] Register `ios_*` tools only on macOS with Xcode present, to keep the tool list short [FR15].
 - [ ] Update `ToolRegistry`, `ToolSafetyTest`, `McpSmokeTest`, `ReadmeToolCountTest`, `SkillToolNamesTest`, tool counts in `README.md` and `docs/MCP.md` (CLAUDE.md checklist step 8).
