@@ -6,7 +6,7 @@ import io.mockk.mockk
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.DeviceInfo
 import spock.adb.device.DeviceState
-import spock.adb.mcp.tools.DeviceTarget
+import spock.adb.device.DeviceTarget
 import spock.adb.mcp.tools.ToolContext
 
 /**

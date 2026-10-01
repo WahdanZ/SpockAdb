@@ -1,15 +1,14 @@
-package spock.adb.mcp.tools
-
-import spock.adb.device.ConnectedDevice
+package spock.adb.device
 
 /**
  * What a tool call acts on: an Android device reached over ADB, or an iOS simulator reached
  * through `simctl`.
  *
  * Tools written for one platform keep asking for theirs — Android tools still call
- * [ToolContext.requireDevice] and get a [ConnectedDevice]. What needs to name *either* is the
- * code around a call: the destructive-action dialog, and Diagnose, which reports on whichever
- * target it was given. Not called `Target`, which Kotlin already imports as an annotation.
+ * [spock.adb.mcp.tools.ToolContext.requireDevice] and get a [ConnectedDevice]. What needs to
+ * name *either* is the code around a call: the destructive-action dialog, and Diagnose, which
+ * reports on whichever target it was given. Not called `Target`, which Kotlin already imports as
+ * an annotation.
  */
 sealed interface DeviceTarget {
 

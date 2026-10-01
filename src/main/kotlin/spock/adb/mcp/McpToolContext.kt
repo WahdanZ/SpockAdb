@@ -10,7 +10,7 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.device.DebugBridgeProvider
 import spock.adb.device.DeviceInfoReader
 import spock.adb.device.DeviceLister
-import spock.adb.mcp.tools.DeviceTarget
+import spock.adb.device.DeviceTarget
 import spock.adb.mcp.tools.ToolContext
 import java.util.concurrent.atomic.AtomicReference
 

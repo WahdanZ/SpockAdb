@@ -2,7 +2,7 @@ package spock.adb.mcp
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import spock.adb.mcp.tools.DeviceTarget
+import spock.adb.device.DeviceTarget
 
 class DeviceTargetTest {
 

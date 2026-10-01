@@ -4,6 +4,7 @@ import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.CancellationSignal
 import spock.adb.device.ConnectedDevice
+import spock.adb.device.DeviceTarget
 
 /**
  * Everything a tool needs to reach a device, without knowing how it was resolved.
