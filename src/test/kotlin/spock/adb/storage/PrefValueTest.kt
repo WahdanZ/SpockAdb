@@ -1,6 +1,7 @@
 package spock.adb.storage
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
@@ -45,6 +46,25 @@ class PrefValueTest {
             PrefType.BYTES to "not base64!",
         ).forEach { (type, text) ->
             assertThrows<IllegalArgumentException>("$type '$text'") { PrefValue.parse(type, text) }
+        }
+    }
+
+    @Test
+    fun `a string list keeps its order and may repeat a value`() {
+        assertEquals(
+            PrefValue.StringListValue(listOf("b", "a", "b", "")),
+            PrefValue.parse(PrefType.STRING_LIST, "[\"b\", \"a\", \"b\", \"\"]"),
+        )
+        assertEquals(PrefValue.StringListValue(emptyList()), PrefValue.parse(PrefType.STRING_LIST, "[]"))
+        val list = PrefValue.StringListValue(listOf("quote \" and <tag>", "x"))
+        assertEquals(list, PrefValue.parse(PrefType.STRING_LIST, list.text()))
+    }
+
+    @Test
+    fun `a string list is a JSON array of strings, or refused`() {
+        listOf("a, b", "[\"a\"", "[\"a\", 1]", "[null]", "[[\"a\"]]", "{}", "\"a\"").forEach { text ->
+            val thrown = assertThrows<IllegalArgumentException>(text) { PrefValue.parse(PrefType.STRING_LIST, text) }
+            assertTrue(thrown.message!!.contains("is not a string list"), thrown.message)
         }
     }
 

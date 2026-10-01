@@ -15,6 +15,7 @@ import spock.adb.storage.PrefItem
 import spock.adb.storage.PrefType
 import spock.adb.storage.PrefValue
 import spock.adb.storage.StorageFile
+import spock.adb.storage.format
 import spock.adb.storage.isEncryptedPreferences
 
 /** `android_list_app_storage` — which preference files an app has. */
@@ -63,7 +64,7 @@ class ReadAppStorageTool : AdbTool {
         val packageName = context.resolvePackage(arguments)
         val file = AppStoragePaths.parse(arguments.requiredString("file"))
         return storageRead(device, packageName) {
-            val format = file.kind.format
+            val format = file.format
             if (format == null) {
                 "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, which " +
                     "cannot be decoded without that message's schema."
@@ -125,7 +126,7 @@ abstract class AppPreferenceEditTool : AdbTool {
     }
 
     private fun apply(edit: Edit, context: ToolContext): ToolResult {
-        val format = requireNotNull(edit.file.kind.format) {
+        val format = requireNotNull(edit.file.format) {
             "${edit.file.path} is a ${edit.file.kind.label} file, which cannot be edited."
         }
         val original = edit.target.device.readAppStorageFile(edit.packageName, edit.file)
@@ -173,14 +174,15 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
         string("key", "Preference key. May be empty.", required = true, mayBeEmpty = true)
         enumeration(
             "type",
-            "Value type. SharedPreferences cannot hold double or bytes.",
+            "Value type. SharedPreferences cannot hold double or bytes; string_list is for Flutter's " +
+                "FlutterSharedPreferences.xml only.",
             PrefType.entries.map { it.argument },
             required = true,
         )
         string(
             "value",
             "The value as text: true/false, a number, the string itself, a JSON array of strings for " +
-                "string_set, or base64 for bytes.",
+                "string_set and string_list, or base64 for bytes.",
             required = true,
         )
         restartArgument()

@@ -49,14 +49,14 @@ Each phase is tagged **(must)** or **(should)** for priority.
 - **Gate:** both platforms launch; checklist in `sample/flutter_app/README.md`.
 
 ### P1 — Flutter-aware Android, no VM Service (must) · ~4 days → can release as 4.1
-- [ ] Detect a Flutter app (`libflutter.so` in the APK / `io.flutter` in `dumpsys package`); show "Flutter · debug/profile/release" on the Home app card.
-- [ ] App Storage: show SharedPreferences `flutter.` keys with decoded types; recognise Hive (`*.hive`) and sqflite (`*.db`) files.
+- [x] Detect a Flutter app (`libflutter.so` in the APK / `io.flutter` in `dumpsys package`); show "Flutter · debug/profile/release" on the Home app card.
+- [x] App Storage: show SharedPreferences `flutter.` keys with decoded types; recognise Hive (`*.hive`) and sqflite (`*.db`) files.
   Seen in P0 (`FlutterSharedPreferences.xml`, shared_preferences 2.3): a double is stored as `<string>` with the Base64 prefix of "This is the prefix for Double." then `0.75`; a `List<String>` is the Base64 prefix of "This is the prefix for a list." followed by a Java-serialized `ArrayList`. Edits must write the same encoding back.
-- [ ] Logcat: a "Flutter" preset (`flutter` tag + app pid).
-- [ ] `LogProblemExtractor` / `LogcatTimelineClassifier`: `MissingPluginException`, `PlatformException`, Dart unhandled exception blocks (`[ERROR:flutter/runtime/dart_vm_initializer.cc…] Unhandled Exception:`), engine crashes (`libflutter.so` in tombstones).
+- [x] Logcat: a "Flutter" preset (`flutter` tag + app pid).
+- [x] `LogProblemExtractor` / `LogcatTimelineClassifier`: `MissingPluginException`, `PlatformException`, Dart unhandled exception blocks (`[ERROR:flutter/runtime/dart_vm_initializer.cc…] Unhandled Exception:`), engine crashes (`libflutter.so` in tombstones).
   Seen in P0 (Flutter 3.22, debug, Android): **framework errors never reach logcat** — overflow, `build()` and tap-handler errors go only to the VM Service as `Flutter.Error`, because structured errors are on by default on mobile. Logcat sees only unhandled async errors. So P1 cannot report layout/build errors; Diagnose must say "Flutter framework errors need a VM Service connection (P4)" rather than "no errors".
-- [ ] Element tools: `Semantics(identifier:)` around a button makes **two** nodes — a parent with the resource-id but no label and `clickable=false`, and the button child with the label and `clickable=true`, same bounds (seen in P0). Treat an id node whose only child is a same-bounds clickable node as one element, so find-by-id reports the label and tapping isn't refused as "not clickable".
-- [ ] UI tree: when the screen is one `FlutterView` with no children, show a hint ("enable semantics: open the app with TalkBack once, or call `SemanticsBinding.ensureSemantics()` in debug") and note `Semantics(identifier:)`.
+- [x] Element tools: `Semantics(identifier:)` around a button makes **two** nodes — a parent with the resource-id but no label and `clickable=false`, and the button child with the label and `clickable=true`, 12 px inside it (seen in P0). Actions on an id node with no eligible ancestor land on its only eligible descendant inside its bounds, so tapping by id works instead of being refused.
+- [x] UI tree: when the screen is one `FlutterView` with no children, show a hint ("enable semantics: open the app with TalkBack once, or call `SemanticsBinding.ensureSemantics()` in debug") and note `Semantics(identifier:)`.
 - **Gate:** each P0 fixture screen shows the expected storage / log / UI-tree result; unit tests on recorded logcat and prefs fixtures.
 
 ### P2 — Spike (must) · ~3 days

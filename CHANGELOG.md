@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Flutter apps, first pass.** Spock now understands what a Flutter app puts on the device:
+  - **App Storage** reads `FlutterSharedPreferences.xml` the way Dart does: doubles and lists
+    show as a double and a new *string list* type instead of encoded strings, and edits are
+    written back in the plugin's own encoding.
+  - **Home** shows *Flutter debug*, *profile* or *release* beside the version.
+  - **Diagnose** reports each unhandled Dart exception once, tells a missing plugin and a
+    platform channel error apart, and says that Flutter's framework errors (overflow, `build()`)
+    are not in logcat for a debug build. **Timeline** titles drop the engine's source prefix.
+  - **Logcat** has a *Flutter* view.
+  - **Element tools** tap a Flutter button by its `Semantics(identifier:)`, and say so when a
+    screen is one drawn surface with nothing to find.
+  - `sample/flutter_app` is a Flutter fixture app for all of it.
+
 ## [4.0.7] - 2026-09-29
 
 ### Added

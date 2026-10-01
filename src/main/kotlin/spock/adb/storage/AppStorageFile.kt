@@ -32,7 +32,7 @@ data class StorageEntry(val path: String, val isDirectory: Boolean) {
 
     val file: StorageFile? get() = if (isDirectory) null else AppStoragePaths.classify(path)
 
-    val editable: Boolean get() = file?.kind?.format != null
+    val editable: Boolean get() = file?.format != null
 
     override fun toString(): String = path
 }

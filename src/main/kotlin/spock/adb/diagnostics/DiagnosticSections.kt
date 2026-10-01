@@ -13,8 +13,11 @@ import spock.adb.device.ops.AppNotInstalledException
 import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.diagnostics.LikelyProblem.Severity
+import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterBuildCache
 import spock.adb.premission.ListItem
 import spock.adb.uitree.AccessibilityAudit
+import spock.adb.uitree.OPAQUE_SURFACE_NOTE
 import spock.adb.uitree.UiTree
 
 /** The sections this build knows, in the order a developer reads a bug report. */
@@ -148,10 +151,15 @@ object AppSection : DiagnosticSection {
                 },
             )
         val pids = probe.pids
+        val flutter = flutterBuild(probe, app)
         val data = JsonObject().apply {
             addProperty("packageName", app)
             addProperty("running", pids.isNotEmpty())
             add("pids", JsonArray().apply { pids.forEach(::add) })
+            flutter?.let { addProperty("flutter", it.label) }
+            // Structured errors are a debug-build behaviour: profile and release have no
+            // inspector to send them to, so for those builds there is nothing missing to explain.
+            if (flutter == FlutterBuild.DEBUG) addProperty("flutterNote", FLUTTER_ERRORS_NOTE)
         }
         val problems = if (pids.isEmpty()) {
             listOf(
@@ -167,6 +175,29 @@ object AppSection : DiagnosticSection {
         }
         return SectionReport(data, problems)
     }
+
+    /**
+     * Best effort, and one `unzip -l` per install rather than per report: a `dumpsys` or a
+     * listing that fails or times out leaves the section without the Flutter fields.
+     */
+    private fun flutterBuild(probe: DiagnosticProbe, app: String): FlutterBuild? {
+        val dumpsys = runCatching { DiagnosticShell.run(probe.device, "dumpsys package ${ShellQuote.quote(app)}") }
+            .getOrNull() ?: return null
+        return FlutterBuildCache.shared.detect(probe.serialNumber, app, dumpsys) {
+            DiagnosticShell.run(probe.device, FlutterBuild.listingCommand(app))
+        }
+    }
+
+    /**
+     * Mobile debug builds have structured errors on by default, so layout, build() and gesture
+     * errors are posted to the VM Service as `Flutter.Error` and never printed to logcat. Saying
+     * so stops an agent from reading "no problems" as "no errors".
+     */
+    const val FLUTTER_ERRORS_NOTE =
+        "Flutter framework errors (layout overflow, build() and gesture errors) go to the Dart VM Service, " +
+            "not logcat, so this report does not include them. Read them with the Dart MCP server's " +
+            "get_runtime_errors, or in the Flutter run console. Unhandled async exceptions and plugin " +
+            "failures do reach logcat and are listed below."
 }
 
 /**
@@ -207,6 +238,7 @@ object UiSection : DiagnosticSection {
             addProperty("composeTestTags", tree.testTagSupport.name.lowercase())
             addProperty("visibleNodes", nodes.size)
             addProperty("interactive", nodes.count { it.isInteractive })
+            if (tree.isOpaqueSurface) addProperty("note", OPAQUE_SURFACE_NOTE)
             nodes.firstOrNull { it.focused }
                 ?.let { addProperty("focused", DiagnosticShell.clip(it.label.ifBlank { it.className })) }
             add(

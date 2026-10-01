@@ -21,10 +21,10 @@ class PrefsEditSession(val file: StorageFile, val original: ByteArray) {
     val rows: MutableList<Row>
 
     /** The types a row may take in this file. */
-    val types: List<PrefType> = file.kind.format?.types.orEmpty()
+    val types: List<PrefType> = file.format?.types.orEmpty()
 
     init {
-        val format = file.kind.format
+        val format = file.format
         val read = format?.let { runCatching { it.read(original) } }
         items = read?.getOrNull().orEmpty()
         readOnlyReason = when {
@@ -89,7 +89,7 @@ class PrefsEditSession(val file: StorageFile, val original: ByteArray) {
         get() = readOnlyReason == null && runCatching { changes().isNotEmpty() }.getOrDefault(true)
 
     /** The bytes Apply writes. Throws as [changes] does. */
-    fun encode(): ByteArray = requireNotNull(file.kind.format).write(original, changes())
+    fun encode(): ByteArray = requireNotNull(file.format).write(original, changes())
 
     private companion object {
         const val NEW_KEY = "new_key"

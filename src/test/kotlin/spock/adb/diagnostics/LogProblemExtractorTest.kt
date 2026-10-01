@@ -198,4 +198,85 @@ class LogProblemExtractorTest {
 
         assertEquals("anr", result.problems.single().type)
     }
+
+    /** Captured from `sample/flutter_app` (Errors screen) on an Android 14 emulator, Flutter 3.22. */
+    @Test
+    fun `Flutter's unhandled exceptions are one problem each, without their Dart frames`() {
+        val log = javaClass.getResource("/logcat/flutter-unhandled.txt")!!.readText()
+        val problems = LogProblemExtractor.extract(log, "spock.adb.spock_flutter_sample", listOf("14683")).problems
+
+        val summaries = problems.map { it.type to it.summary }
+        assertTrue(
+            LogProblemExtractor.TYPE_EXCEPTION to
+                "Unhandled Dart exception: FormatException: Sample unhandled async error" in summaries,
+            "$summaries",
+        )
+        assertTrue(
+            summaries.any { (type, summary) ->
+                type == LogProblemExtractor.TYPE_FLUTTER_PLUGIN && summary.startsWith(
+                    "Flutter plugin not registered: No implementation found for method ping on channel " +
+                        "spock.sample/not_registered",
+                )
+            },
+            "$summaries",
+        )
+        assertTrue(
+            LogProblemExtractor.TYPE_FLUTTER_PLUGIN to
+                "Platform channel returned an error: SAMPLE_ERROR — Sample PlatformException from Android" in summaries,
+            "$summaries",
+        )
+        // The native exception a channel handler threw: the Dart side, and the native side once.
+        assertTrue(
+            summaries.any { it.second.startsWith("Platform channel returned an error: error — Sample native crash") },
+            "$summaries",
+        )
+        val frames = summaries.filter { it.second.contains("#0 ") || it.second.contains("asynchronous suspension") }
+        assertTrue(frames.isEmpty(), "$frames")
+        assertTrue(problems.all { it.count == 1 }, "$problems")
+    }
+
+    private fun flutterHead(exception: String) =
+        line(100, 'E', "flutter", "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: $exception")
+
+    private fun flutterSummary(exception: String) = extract(flutterHead(exception)).problems.single().summary
+
+    @Test
+    fun `a second unhandled exception in the same millisecond is its own problem`() {
+        val result = extract(
+            flutterHead("FormatException: first"),
+            line(100, 'E', "flutter", "#0      main (package:app/main.dart:1:1)"),
+            flutterHead("StateError: second"),
+            line(100, 'E', "flutter", "#0      main (package:app/main.dart:2:1)"),
+        )
+
+        assertEquals(
+            listOf("Unhandled Dart exception: FormatException: first", "Unhandled Dart exception: StateError: second"),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `a platform error's message keeps its commas`() {
+        assertEquals(
+            "Platform channel returned an error: AUTH_FAILED — Sign-in failed, try again later",
+            flutterSummary("PlatformException(AUTH_FAILED, Sign-in failed, try again later, null, null)"),
+        )
+        // The native stack trace starts on the head line and runs over the lines after it.
+        assertEquals(
+            "Platform channel returned an error: error — Boom, again",
+            flutterSummary("PlatformException(error, Boom, again, null, java.lang.IllegalStateException: Boom, again"),
+        )
+        assertEquals(
+            "Platform channel returned an error: NO_MESSAGE",
+            flutterSummary("PlatformException(NO_MESSAGE, null, null, null)"),
+        )
+    }
+
+    @Test
+    fun `a missing plugin's message keeps its own closing parenthesis`() {
+        assertEquals(
+            "Flutter plugin not registered: No implementation found for method ping on channel app/x (v2)",
+            flutterSummary("MissingPluginException(No implementation found for method ping on channel app/x (v2))"),
+        )
+    }
 }

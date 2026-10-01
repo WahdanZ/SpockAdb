@@ -9,6 +9,7 @@ import spock.adb.startActivity
 import spock.adb.storage.AppStoragePaths
 import spock.adb.storage.StorageFile
 import spock.adb.storage.StorageKind
+import spock.adb.storage.format
 import java.nio.file.Files
 import java.util.Base64
 import java.util.UUID
@@ -279,7 +280,7 @@ internal fun IDevice.writeAppStorageFile(
     restart: Boolean,
 ): AppStorageWrite {
     ShellQuote.requireValidComponent(packageName, "Package name")
-    require(file.kind.format != null) { "${file.path} is a ${file.kind.label} file and cannot be written." }
+    require(file.format != null) { "${file.path} is a ${file.kind.label} file and cannot be written." }
     require(content.size <= AppStorageShell.MAX_FILE_BYTES) {
         "${content.size} bytes is more than the ${AppStorageShell.MAX_FILE_BYTES}-byte limit for a preferences file."
     }

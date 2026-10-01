@@ -167,7 +167,8 @@ class LogcatTimelineClassifier(
             timeMs = hostMs,
             category = TimelineCategory.LOG,
             severity = severity,
-            title = "${first.tag}: ${first.message}".take(TITLE_LIMIT),
+            // The Flutter engine prefixes its own source file: `[ERROR:flutter/runtime/…(41)] `.
+            title = "${first.tag}: ${first.message.replace(FLUTTER_ENGINE_PREFIX, "")}".take(TITLE_LIMIT),
             detail = "${first.tag} (pid ${first.pid}, tid ${first.tid})\n" + lines.joinToString("\n"),
             deviceSerial = deviceSerial,
             deviceTime = first.timestamp.ifBlank { null },
@@ -175,6 +176,7 @@ class LogcatTimelineClassifier(
     }
 
     private companion object {
+        val FLUTTER_ENGINE_PREFIX = Regex("""^\[(?:ERROR|WARNING|INFO):flutter/[^\]]*]\s*""")
         val APP_INFO = Kind(TimelineCategory.APP_LIFECYCLE, TimelineSeverity.INFO)
         val APP_WARNING = Kind(TimelineCategory.APP_LIFECYCLE, TimelineSeverity.WARNING)
         val APP_ERROR = Kind(TimelineCategory.APP_LIFECYCLE, TimelineSeverity.ERROR)
