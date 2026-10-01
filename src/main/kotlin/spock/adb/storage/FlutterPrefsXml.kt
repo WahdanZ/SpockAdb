@@ -48,8 +48,16 @@ internal object FlutterPrefsXml : PrefsFormat {
     /** Android's `Base64.DEFAULT`, which the plugin uses: 76-character lines, each ending in `\n`. */
     private const val BASE64_LINE = 76
 
-    /** Ints are stored as long, so an int edit is written as one; float and set do not exist in Dart. */
-    override val types = listOf(
+    /**
+     * What any key in this file can hold. Which of them a given key takes is decided per key in
+     * [encoded]: a `flutter.` key holds what Dart can — no float or set, and an int is written as
+     * the long Dart reads — and a native key holds what SharedPreferences can, never a double or
+     * a string list.
+     */
+    override val types = SharedPrefsXml.types + PrefType.DOUBLE + PrefType.STRING_LIST
+
+    /** What a `flutter.` key can hold; an int is accepted and written as a long. */
+    private val DART_TYPES = listOf(
         PrefType.BOOLEAN,
         PrefType.INT,
         PrefType.LONG,
@@ -93,31 +101,37 @@ internal object FlutterPrefsXml : PrefsFormat {
         }
     }
 
+    /**
+     * [value] as the plugin stores it under [key]. A native key's value is written as it is, and
+     * [SharedPrefsXml] checks it as it would in any other file.
+     */
     private fun encoded(key: String, value: PrefValue, stored: PrefItem?): PrefValue {
-        val forDart = key.startsWith(KEY_PREFIX)
+        if (!key.startsWith(KEY_PREFIX)) {
+            require(value !is PrefValue.DoubleValue && value !is PrefValue.StringListValue) {
+                "Only flutter. keys hold a ${value.type.label} in this file; '$key' belongs to the app's " +
+                    "native code, which can store: ${SharedPrefsXml.types.joinToString()}."
+            }
+            return value
+        }
         return when (value) {
             is PrefValue.IntValue -> PrefValue.LongValue(value.value.toLong())
-            is PrefValue.DoubleValue -> {
-                require(forDart) { "Only flutter. keys hold doubles in this file." }
-                PrefValue.StringValue(DOUBLE_PREFIX + value.value)
-            }
+            is PrefValue.DoubleValue -> PrefValue.StringValue(DOUBLE_PREFIX + value.value)
             is PrefValue.StringListValue -> {
-                require(forDart) { "Only flutter. keys hold string lists in this file." }
                 val wasJson = ((stored as? PrefItem.Typed)?.value as? PrefValue.StringValue)
                     ?.value?.startsWith(JSON_LIST_PREFIX) == true
                 PrefValue.StringValue(if (wasJson) jsonEncoded(value.values) else serializedEncoded(value.values))
             }
             is PrefValue.StringValue -> {
                 // Flutter would read such a string back as a double or a list, not as the text.
-                require(!forDart || MARKERS.none { value.value.startsWith(it) }) {
+                require(MARKERS.none { value.value.startsWith(it) }) {
                     "A string under a flutter. key cannot start with the plugin's type marker."
                 }
                 value
             }
             is PrefValue.BooleanValue, is PrefValue.LongValue -> value
             else -> throw IllegalArgumentException(
-                "Flutter's SharedPreferences cannot store a ${value.type.label}. " +
-                    "It can store: ${types.joinToString()}.",
+                "A flutter. key cannot hold a ${value.type.label}: Dart has no such type. " +
+                    "It can hold: ${DART_TYPES.joinToString()}.",
             )
         }
     }

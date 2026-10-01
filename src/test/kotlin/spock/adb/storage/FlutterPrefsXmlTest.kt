@@ -147,6 +147,59 @@ class FlutterPrefsXmlTest {
     }
 
     @Test
+    fun `a native int key stays an int`() {
+        val native = device.replace("</map>", "    <int name=\"launches\" value=\"1\" />\n</map>")
+        val edited = String(
+            FlutterPrefsXml.write(native.toByteArray(), listOf(PrefChange.Put("launches", PrefValue.IntValue(3))))
+        )
+        assertTrue(edited.contains("<int name=\"launches\" value=\"3\" />"), edited)
+    }
+
+    @Test
+    fun `native keys take the types SharedPreferences has, and not Dart's`() {
+        val float = String(
+            FlutterPrefsXml.write(device.toByteArray(), listOf(PrefChange.Put("scale", PrefValue.FloatValue(1.5f))))
+        )
+        assertTrue(float.contains("<float name=\"scale\" value=\"1.5\" />"), float)
+        val set = String(
+            FlutterPrefsXml.write(
+                device.toByteArray(),
+                listOf(PrefChange.Put("tags", PrefValue.StringSetValue(listOf("a"))))
+            )
+        )
+        assertEquals(PrefValue.StringSetValue(listOf("a")), valueOf(set, "tags"))
+
+        val double = assertThrows<IllegalArgumentException> {
+            FlutterPrefsXml.write(device.toByteArray(), listOf(PrefChange.Put("ratio", PrefValue.DoubleValue(0.5))))
+        }
+        assertTrue(double.message!!.contains("flutter."), double.message)
+        assertThrows<IllegalArgumentException> {
+            FlutterPrefsXml.write(
+                device.toByteArray(),
+                listOf(PrefChange.Put("tags", PrefValue.StringListValue(listOf("a"))))
+            )
+        }
+    }
+
+    @Test
+    fun `a flutter key refuses a string set`() {
+        assertThrows<IllegalArgumentException> {
+            FlutterPrefsXml.write(
+                device.toByteArray(),
+                listOf(PrefChange.Put("flutter.tags", PrefValue.StringSetValue(listOf("a"))))
+            )
+        }
+    }
+
+    @Test
+    fun `offers every type a key in this file can hold`() {
+        assertEquals(
+            SharedPrefsXml.types + PrefType.DOUBLE + PrefType.STRING_LIST,
+            FlutterPrefsXml.types,
+        )
+    }
+
+    @Test
     fun `native keys are passed through without decoding`() {
         val native = device.replace("flutter.volume", "volume")
         assertEquals(PrefValue.StringValue("VGhpcyBpcyB0aGUgcHJlZml4IGZvciBEb3VibGUu0.75"), valueOf(native, "volume"))
