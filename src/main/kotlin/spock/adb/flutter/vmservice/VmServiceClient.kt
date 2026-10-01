@@ -5,6 +5,7 @@ import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
+import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.WebSocket
 import java.time.Duration
@@ -298,12 +299,24 @@ class VmServiceClient private constructor(
             uri: VmServiceUri,
             timeoutMs: Long = DEFAULT_TIMEOUT_MS,
             connectTimeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        ): VmServiceClient = open(uri.webSocketUri, uri.redacted(), timeoutMs, connectTimeoutMs)
+
+        /**
+         * The same JSON-RPC core for another loopback WebSocket service — the Dart Tooling
+         * Daemon, whose address is not a [VmServiceUri]. [label] must already be redacted: it
+         * is what every message names the service by. The caller vets [webSocketUri].
+         */
+        internal fun open(
+            webSocketUri: URI,
+            label: String,
+            timeoutMs: Long,
+            connectTimeoutMs: Long,
         ): VmServiceClient {
-            val client = VmServiceClient(uri.redacted(), timeoutMs)
+            val client = VmServiceClient(label, timeoutMs)
             val failure: Throwable = try {
                 client.socket = http.newWebSocketBuilder()
                     .connectTimeout(Duration.ofMillis(connectTimeoutMs))
-                    .buildAsync(uri.webSocketUri, client.Listener())
+                    .buildAsync(webSocketUri, client.Listener())
                     .get(connectTimeoutMs, TimeUnit.MILLISECONDS)
                 return client
             } catch (e: ExecutionException) {
@@ -317,7 +330,7 @@ class VmServiceClient private constructor(
             client.shutdown("could not connect", sendClose = false)
             // The cause is not chained: JDK messages may quote the address, token included.
             val detail = failure.message?.takeIf { it.isNotBlank() }?.let { " (${Redaction.scrub(it)})" }.orEmpty()
-            throw VmServiceException("Could not connect to ${uri.redacted()}: ${failure.javaClass.simpleName}$detail")
+            throw VmServiceException("Could not connect to $label: ${failure.javaClass.simpleName}$detail")
         }
 
         private fun jsonOf(vararg entries: Pair<String, String>): JsonObject =

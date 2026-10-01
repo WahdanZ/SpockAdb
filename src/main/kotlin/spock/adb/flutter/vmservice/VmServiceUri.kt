@@ -75,6 +75,10 @@ class VmServiceUri private constructor(
             return fromUrl(inner ?: url)
         }
 
+        /** Whether [host] names this machine's loopback: the only place an address is accepted. */
+        internal fun isLoopback(host: String): Boolean =
+            host.removePrefix("[").removeSuffix("]").lowercase() in LOOPBACK_HOSTS
+
         /** [parse], or null instead of an exception. */
         fun parseOrNull(text: String): VmServiceUri? = try {
             parse(text)
