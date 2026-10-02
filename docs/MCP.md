@@ -715,7 +715,7 @@ that returns its detail, so the agent fetches it only when the summary points th
 |---|---|---|
 | `schemaVersion` | yes | `2`. Bumped when a field changes meaning or goes away; adding one does not. |
 | `device` | yes | The device the report describes. |
-| `packageName` | yes | The app it is about, or `null` when none is known. |
+| `packageName` | yes | The app it is about, or `null` when none is known. Unless the call names one, the app selected in Spock's tool window, else the open project's. |
 | `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
 | `moreProblems` | no | How many problems were ranked below the cut. |
 | `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`, `deviceConditions`, `permissions` | per `include` | One short summary per section. `screen` also carries the app's `activityStack` (top first) and `fragments` when the app is in front. `flutter` is there only for a Flutter app (below). |
@@ -738,6 +738,10 @@ information, not a fault — runtime permissions the user denied.
 app's Dart VM Service by itself, through `flutter run`'s debugger service (DDS), and confirms the
 VM is the selected app's process on the selected device; nothing is pasted. The report waits at
 most about 3 seconds for that. An app that is not a Flutter app has no `flutter` key at all.
+While a Flutter tool is attaching, Spock does not connect to the app's VM itself — a client there
+before DDS would keep `flutter run` from starting it — so on a Flutter SDK with no Dart Tooling
+Daemon (3.22) the session can take up to a minute after `flutter run` starts, and `attach` says
+a Flutter tool is attaching meanwhile.
 
 ```json
 "flutter": {
@@ -806,7 +810,7 @@ you need to see the screen as well as read about it.
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `packageName` | the open project's app | The app the screen belongs to; `""` for the whole device. |
+| `packageName` | the app selected in Spock, else the open project's | The app the screen belongs to; `""` for the whole device. |
 | `screenshot` | `true` | Attach the screen as an image. Pass `false` for text only. |
 | `deviceSerial` | the selected device | Which device to diagnose. |
 

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.flutter.AppIdentity
 import spock.adb.flutter.DeviceTime
+import spock.adb.flutter.FlutterBuild
 import spock.adb.flutter.FlutterSession
 import spock.adb.flutter.FlutterSessionChange
 import spock.adb.flutter.FlutterSessionService
@@ -18,6 +19,7 @@ import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
 import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
 import spock.adb.flutter.vmservice.PastedUriDiscovery
+import spock.adb.flutter.vmservice.VmServiceTimeoutException
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.concurrent.CompletableFuture
@@ -93,9 +95,10 @@ class FlutterTimelineRecorderTest {
     fun `rows wait for the device clock, then take it`() {
         connect(measured = false)
         pushError(DEVICE_START)
-        awaitDelivered()
+        eventually(message = "the error queued") { recorder.queued == 1 }
         recorder.tick()
         assertTrue(rows.none { it.category == TimelineCategory.FLUTTER_ERROR }, "held until the clock is measured")
+        assertEquals(1, recorder.queued, "still queued, not dropped")
 
         session.deviceTime.set(deviceTime)
 
@@ -138,12 +141,138 @@ class FlutterTimelineRecorderTest {
         assertEquals(1, on.size)
         assertEquals("Spock turned on HTTP recording for $APP (restored when Spock disconnects)", on.single().title)
 
+        session.close()
         recorder.sessionChanged(
             FlutterSessionChange.Disconnected(session, identity, FlutterSessionService.DISCONNECTED_BY_SPOCK),
         )
 
         assertTrue(rows.any { it.title == "Flutter session ended: $APP — Spock disconnected" }, "$rows")
         assertTrue(rows.any { it.title == "Spock switched HTTP recording back off for $APP" }, "$rows")
+    }
+
+    @Test
+    fun `a restore that did not happen is not reported as done`() {
+        connect()
+        eventually(message = "HTTP recording on") { session.snapshot.httpRecording == HttpRecording.EnabledBySpock }
+        recorder.tick()
+
+        recorder.sessionChanged(
+            FlutterSessionChange.Disconnected(session, identity, FlutterSessionService.DISCONNECTED_BY_SPOCK),
+        )
+
+        val row = rows.single { it.category == TimelineCategory.HTTP && "back off" in it.title }
+        assertEquals(TimelineSeverity.WARNING, row.severity)
+        assertTrue(row.title.startsWith("Spock could not switch HTTP recording back off"), row.title)
+    }
+
+    @Test
+    fun `a refresh rate that times out does not stop the ticks`() {
+        vm.addIsolate(UI_ISOLATE, PROFILE_EXTENSIONS)
+        val timingOut = FlutterTimelineRecorder(
+            sink = { rows += it },
+            ticker = { CompletableFuture<Unit>() },
+            reads = object : FlutterTimelineRecorder.Reads {
+                override fun refreshRate(session: FlutterSession): Double =
+                    throw VmServiceTimeoutException("_flutter.listViews", 2_000)
+
+                override fun httpProfile(session: FlutterSession, updatedSinceUs: Long?) = JsonObject()
+            },
+            clock = { now },
+        )
+        timingOut.sessionCreated(session)
+        session.connect(PastedUriDiscovery(vm.uri).discover().single())
+        session.deviceTime.set(deviceTime)
+        timingOut.sessionChanged(FlutterSessionChange.Connected(session, identity))
+        eventually(message = "a profile build") { session.buildMode == FlutterBuild.PROFILE }
+
+        timingOut.tick()
+        pushError(DEVICE_START)
+        eventually(message = "the error row") {
+            timingOut.tick()
+            rows.any { it.category == TimelineCategory.FLUTTER_ERROR }
+        }
+        timingOut.dispose()
+    }
+
+    @Test
+    fun `a new session on the same process writes no row twice`() {
+        profile = FlutterFixtures.json("httpProfile.json")
+        connect()
+        pushError(DEVICE_START)
+        awaitRow { it.category == TimelineCategory.FLUTTER_ERROR }
+        now += FlutterTimelineRecorder.HTTP_POLL_MS
+        recorder.tick()
+        // Errors and failed requests; Spock turning recording on again for the new session is news.
+        fun failures() =
+            rows.filter { it.category == TimelineCategory.FLUTTER_ERROR || it.severity == TimelineSeverity.ERROR }
+        val before = failures()
+        assertTrue(before.any { it.category == TimelineCategory.HTTP }, "$rows")
+
+        // The same app's process, a second session: DDS replays the error, the profile still holds the request.
+        val second = FlutterSession(clock = { now })
+        vm.replayOnListen = { stream -> if (stream == "Extension") pushError(DEVICE_START) }
+        // As the service does: the old session closes before the new one connects.
+        session.close()
+        recorder.sessionCreated(second)
+        second.connect(PastedUriDiscovery(vm.uri).discover().single())
+        second.deviceTime.set(deviceTime)
+        recorder.sessionChanged(FlutterSessionChange.Replaced(session, identity, second, identity))
+        awaitDelivered(second)
+        now += FlutterTimelineRecorder.HTTP_POLL_MS
+        recorder.tick()
+        second.close()
+
+        assertEquals(before, failures())
+    }
+
+    @Test
+    fun `history replayed during connect is recorded once, marked as such`() {
+        vm.replayOnListen = { stream -> if (stream == "Extension") pushError(DEVICE_START) }
+        connect()
+
+        val row = awaitRow { it.category == TimelineCategory.FLUTTER_ERROR }
+        awaitDelivered()
+
+        assertEquals(1, rows.count { it.category == TimelineCategory.FLUTTER_ERROR })
+        assertTrue(row.detail.startsWith("Replayed on connect"), row.detail)
+    }
+
+    @Test
+    fun `with no device clock the rows say whose clock they are on`() {
+        connect(measured = false)
+        session.deviceTime.set(null)
+        pushError(DEVICE_START)
+
+        awaitRow { it.category == TimelineCategory.FLUTTER_ERROR }
+
+        assertTrue(rows.any { it.title.startsWith("Device clock not measured") }, "$rows")
+    }
+
+    @Test
+    fun `while device events are not recorded, nothing arrives and the app is not asked`() {
+        var active = true
+        val paused = FlutterTimelineRecorder(
+            sink = { rows += it },
+            ticker = { CompletableFuture<Unit>() },
+            reads = reads,
+            clock = { now },
+            active = { active },
+        )
+        paused.sessionCreated(session)
+        session.connect(PastedUriDiscovery(vm.uri).discover().single())
+        session.deviceTime.set(deviceTime)
+        paused.sessionChanged(FlutterSessionChange.Connected(session, identity))
+        active = false
+        pushError(DEVICE_START)
+        eventually(message = "the error queued") { paused.queued == 1 }
+        now += FlutterTimelineRecorder.HTTP_POLL_MS
+
+        paused.tick()
+
+        assertEquals(0, paused.queued, "dropped, not kept for later")
+        assertTrue(rows.none { it.category == TimelineCategory.FLUTTER_ERROR })
+        assertEquals(emptyList<Long?>(), profilesAsked.toList())
+        paused.dispose()
     }
 
     @Test
@@ -242,9 +371,9 @@ class FlutterTimelineRecorderTest {
     )
 
     /** Everything pushed so far has reached the recorder: a marker navigation event arrived. */
-    private fun awaitDelivered() {
+    private fun awaitDelivered(on: FlutterSession = session) {
         val marker = "/marker-${System.nanoTime()}"
-        val placementWas = session.deviceTime.current
+        val placementWas = on.deviceTime.current
         vm.pushEvent(
             "Extension",
             isolateEvent("Extension", UI_ISOLATE, DEVICE_START) {

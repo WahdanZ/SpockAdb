@@ -12,7 +12,10 @@ import java.util.concurrent.TimeUnit
  * answer only changes when the app is installed again — which changes `versionCode` or
  * `lastUpdateTime` in `dumpsys package`. Keyed on those, a refresh reuses the answer.
  */
-class FlutterBuildCache(private val capacity: Int = DEFAULT_CAPACITY) {
+class FlutterBuildCache(
+    private val capacity: Int = DEFAULT_CAPACITY,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
 
     data class Key(val serial: String, val packageName: String, val versionCode: String, val lastUpdateTime: String)
 
@@ -45,10 +48,23 @@ class FlutterBuildCache(private val capacity: Int = DEFAULT_CAPACITY) {
      * APK listing. Null when [packageName] is not a Flutter app, or adb fails. Blocking.
      */
     fun detectOn(device: IDevice, serial: String, packageName: String): FlutterBuild? {
+        val asked = "$serial $packageName"
+        synchronized(recent) { recent[asked]?.takeIf { clock() - it.first < RECENT_MS }?.let { return it.second } }
         val dumpsys = runCatching { shell(device, "dumpsys package ${ShellQuote.quote(packageName)}") }
             .getOrNull() ?: return null
-        return detect(serial, packageName, dumpsys) { shell(device, FlutterBuild.listingCommand(packageName)) }
+        val build = detect(serial, packageName, dumpsys) { shell(device, FlutterBuild.listingCommand(packageName)) }
+        synchronized(recent) {
+            recent[asked] = clock() to build
+            if (recent.size > capacity) recent.remove(recent.keys.first())
+        }
+        return build
     }
+
+    /**
+     * The last [detectOn] answer per device and package, with when: the Flutter section and the
+     * app section of one report both ask, a moment apart, and `dumpsys package` is not free.
+     */
+    private val recent = LinkedHashMap<String, Pair<Long, FlutterBuild?>>()
 
     private fun shell(device: IDevice, command: String): String {
         val receiver = ShellOutputReceiver()
@@ -65,6 +81,9 @@ class FlutterBuildCache(private val capacity: Int = DEFAULT_CAPACITY) {
     companion object {
         private const val DEFAULT_CAPACITY = 64
         private const val SHELL_SECONDS = 20L
+
+        /** Long enough for one report, short enough that a reinstall is seen at the next. */
+        private const val RECENT_MS = 10_000L
         private const val LOAD_FACTOR = 0.75f
 
         private val VERSION_CODE = Regex("""\bversionCode=(\S+)""")

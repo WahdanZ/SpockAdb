@@ -7,7 +7,6 @@ import spock.adb.ShellOutputReceiver
 import spock.adb.ShellQuote
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.InspectionOperations
-import spock.adb.logcat.AppProcessTracker
 import spock.adb.logcat.LogcatEntry
 import spock.adb.logcat.LogcatStream
 import spock.adb.models.FragmentData
@@ -124,7 +123,7 @@ class DeviceEventRecorder(
         )
         synchronized(lock) {
             if (stopped) return
-            classifier = LogcatTimelineClassifier(packageName, pids, target.serialNumber)
+            classifier = LogcatTimelineClassifier(packageName, pids, target.serialNumber, onProcessStarted)
             stream = logcat
             logcat.start()
             tick = AppExecutorUtil.getAppScheduledExecutorService()
@@ -215,10 +214,7 @@ class DeviceEventRecorder(
     private fun deliver(entry: LogcatEntry, arrivedMs: Long) {
         val active = classifier ?: return
         val measured = clock?.toHostMillis(entry.timestamp, arrivedMs)
-        val known = active.processes
         active.accept(entry, measured ?: arrivedMs).forEach(::emit)
-        AppProcessTracker.startedPid(entry, packageName)?.takeIf { !known.contains(it) }
-            ?.let { onProcessStarted(it, measured ?: arrivedMs) }
     }
 
     private fun onTick() {

@@ -120,6 +120,11 @@ data class LikelyProblem(
     val lastSeen: String? = null,
     /** The section that reported it, so the agent knows where to look for more. */
     val section: String? = null,
+    /**
+     * When each occurrence was seen, as logcat printed it, oldest first and bounded — for pairing
+     * it with what happened around any of them. Not in the report: [lastSeen] is.
+     */
+    val seenAt: List<String> = listOfNotNull(lastSeen),
 ) {
     enum class Severity(val id: String, val rank: Int) {
         ERROR("error", 0),

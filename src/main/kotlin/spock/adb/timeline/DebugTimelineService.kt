@@ -46,6 +46,7 @@ class DebugTimelineService(private val project: Project) : Disposable {
     private var disposed = false
 
     /** Whether the device's log is being read. Actions and agent calls are recorded regardless. */
+    @Volatile
     var recordingDevice: Boolean = true
         set(value) {
             if (field == value) return
@@ -71,6 +72,7 @@ class DebugTimelineService(private val project: Project) : Disposable {
 
     private val flutterRecorder = FlutterTimelineRecorder(
         sink = { event -> if (!disposed && recordingDevice) timeline.record(event) },
+        active = { !disposed && recordingDevice },
         ticker = { tick ->
             AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
                 tick,

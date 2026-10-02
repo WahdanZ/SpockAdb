@@ -97,4 +97,17 @@ class FlutterEventLogTest {
         ),
         history,
     )
+
+    @Test
+    fun `a session created after the current one keeps what it heard`() {
+        val first = FlutterSession()
+        val second = FlutterSession()
+        log.sessionCreated(first)
+        log.sessionCreated(second)
+        log.accept(second, event(FlutterExtensionEvent.ERROR, 7, history = true))
+        log.sessionChanged(FlutterSessionChange.Connected(first, identity))
+        log.sessionChanged(FlutterSessionChange.Replaced(first, identity, second, identity))
+
+        assertEquals(listOf(7L), checkNotNull(log.contents(second)).errors.map { it.timestampMs })
+    }
 }

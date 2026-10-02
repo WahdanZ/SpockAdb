@@ -1,9 +1,14 @@
 package spock.adb.flutter
 
+import com.android.ddmlib.IDevice
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.slot
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 class FlutterBuildCacheTest {
 
@@ -81,5 +86,24 @@ class FlutterBuildCacheTest {
         small.detect("b", "com.example.app", dumpsys, list)
         small.detect("a", "com.example.app", dumpsys, list)
         assertEquals(3, listings)
+    }
+
+    @Test
+    fun `one report asking twice reads the package once`() {
+        val device = mockk<IDevice>(relaxed = true)
+        val commands = mutableListOf<String>()
+        val command = slot<String>()
+        every { device.executeShellCommand(capture(command), any(), any(), any<TimeUnit>()) } answers {
+            commands += command.captured
+        }
+        var now = 0L
+        val timed = FlutterBuildCache(clock = { now })
+
+        timed.detectOn(device, "emulator-5554", "com.example.app")
+        timed.detectOn(device, "emulator-5554", "com.example.app")
+        now += 10_000
+        timed.detectOn(device, "emulator-5554", "com.example.app")
+
+        assertEquals(2, commands.count { it.startsWith("dumpsys package") }, "$commands")
     }
 }

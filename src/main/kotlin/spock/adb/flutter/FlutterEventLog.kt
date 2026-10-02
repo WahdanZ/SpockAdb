@@ -95,8 +95,10 @@ class FlutterEventLog(
     /** The buffers start over for [session], keeping what it reported while it was connecting. */
     private fun makeCurrent(session: FlutterSession) = synchronized(lock) {
         if (current?.session === session) return@synchronized
-        current = opening.firstOrNull { it.session === session } ?: Buffers(session)
-        opening.clear()
+        // Only it and those created before it: a connect that has started since keeps its buffers.
+        val index = opening.indexOfFirst { it.session === session }
+        current = if (index >= 0) opening[index] else Buffers(session)
+        if (index >= 0) opening.subList(0, index + 1).clear()
     }
 
     private fun capacityOf(kind: String): Int? = when (kind) {

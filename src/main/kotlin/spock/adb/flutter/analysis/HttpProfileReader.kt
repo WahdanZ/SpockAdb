@@ -41,6 +41,8 @@ object HttpProfileReader {
          * An app that reads the status and never drains the body leaves it null for good.
          */
         val endTimeUs: Long?,
+        /** The isolate that made it: a request id is unique only within its isolate. */
+        val isolateId: String? = null,
     ) {
         val inFlight: Boolean get() = endTimeUs == null && error == null
 
@@ -133,6 +135,7 @@ object HttpProfileReader {
             startTimeUs = FlutterJson.long(json, "startTime"),
             endTimeUs = FlutterJson.long(response, "endTime")
                 ?: FlutterJson.long(json, "endTime")?.takeIf { error != null },
+            isolateId = FlutterJson.string(json, "isolateId"),
         )
     }
 

@@ -390,4 +390,14 @@ class FlutterSectionTest {
         /** 14:00:00 in Berlin: the error's device epoch ms. */
         val AT: Long = Instant.parse("2026-10-02T12:00:00Z").toEpochMilli()
     }
+
+    @Test
+    fun `a log problem pairs on any of its lines, not only its last`() {
+        val repeated = logProblem("exception: repeated", "10-02 14:00:30.000")
+            .copy(count = 2, seenAt = listOf("10-02 14:00:01.000", "10-02 14:00:30.000"))
+        val report = collect(live(errors = listOf(error(AT))), repeated)
+
+        val nearby = groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString }
+        assertEquals(listOf(idOf(report, "exception: repeated")), nearby)
+    }
 }

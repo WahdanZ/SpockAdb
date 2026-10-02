@@ -71,7 +71,7 @@ class FlutterDiagnosticSource(
  * replaced `FlutterError.onError` — the section says where to look instead.
  *
  * Each error group carries `nearbyLogs`: the ids of the log problems listed in `likelyProblems`
- * whose last line fell within [NEARBY_WINDOW_MS] of the group, widened by the clock's
+ * any of whose lines fell within [NEARBY_WINDOW_MS] of the group, widened by the clock's
  * uncertainty, compared on the device's own epoch (design §3, §4a).
  *
  * Reads only; never starts rebuild recording, which writes to the app.
@@ -247,14 +247,16 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
         silentHandlerNote(ranked)
         val time = live?.deviceTime ?: return
         val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
+        // Every occurrence a log problem kept, not only its last: a warning that repeated is near
+        // the error if any of its lines is.
         val logs = ranked.listed.mapNotNull { (id, problem) ->
             if (problem.section != LogsSection.id) return@mapNotNull null
-            val stamp = problem.lastSeen ?: return@mapNotNull null
-            time.logcatToEpoch(stamp, source.hostNowMs)?.let { id to it }
+            val times = problem.seenAt.mapNotNull { time.logcatToEpoch(it, source.hostNowMs) }
+            times.takeIf { it.isNotEmpty() }?.let { id to it }
         }
         groups.forEach { (group, _, json) ->
             val range = (group.firstSeenMs - window)..(group.lastSeenMs + window)
-            val nearby = logs.filter { (_, epochMs) -> epochMs in range }.map { it.first }
+            val nearby = logs.filter { (_, epochs) -> epochs.any { it in range } }.map { it.first }
             json.add("nearbyLogs", JsonArray().apply { nearby.forEach(::add) })
         }
     }

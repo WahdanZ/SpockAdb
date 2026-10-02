@@ -1,6 +1,7 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
+import spock.adb.context.SpockSelection
 import spock.adb.diagnostics.AndroidProbe
 import spock.adb.diagnostics.DiagnosticCollector
 import spock.adb.diagnostics.DiagnosticSection
@@ -63,8 +64,8 @@ class DebugContextTool : AdbTool {
         )
         string(
             "packageName",
-            "The app the question is about. Defaults to the open project's application ID. " +
-                "Pass an empty string to consider the whole device.",
+            "The app the question is about. Defaults to the app selected in Spock's tool window, " +
+                "else the open project's application ID. Pass an empty string to consider the whole device.",
         )
         enumeration(
             "minLevel",
@@ -105,7 +106,7 @@ class DebugContextTool : AdbTool {
             )
         }
 
-        val packageName = with(LogcatReader) { arguments.logcatPackage(context) }
+        val packageName = summaryPackage(arguments, context)
         val probe = AndroidProbe(
             device = device.device,
             serialNumber = device.serialNumber,
@@ -143,6 +144,18 @@ class DebugContextTool : AdbTool {
         }
         content.add(0, ToolContent.Text(DiagnosticCollector.render(report)))
         return ToolResult(content)
+    }
+
+    /**
+     * The app the summary is about: the one asked for, else the one selected in Spock's tool
+     * window — as the Diagnose tab does, so a report does not open a session for another app
+     * than the one the developer follows — else the open project's.
+     */
+    private fun summaryPackage(arguments: JsonObject, context: ToolContext): String? {
+        if (arguments.has("packageName")) return with(LogcatReader) { arguments.logcatPackage(context) }
+        // Not created here: a selection nobody has made has nothing to say.
+        val selected = context.project?.getServiceIfCreated(SpockSelection::class.java)?.snapshot?.app
+        return selected?.takeIf { it.isNotBlank() } ?: context.projectApplicationId()
     }
 
     /**

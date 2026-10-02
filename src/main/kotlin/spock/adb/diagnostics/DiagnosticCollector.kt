@@ -3,6 +3,7 @@ package spock.adb.diagnostics
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.intellij.openapi.diagnostic.Logger
 import spock.adb.flutter.analysis.FlutterProblemTypes
 
 /**
@@ -87,7 +88,11 @@ class DiagnosticCollector(
     ) {
         val sections = reports.entries.associate { (section, report) -> section.id to report.data }
         val ranked = RankedProblems(listed, sections)
-        reports.values.forEach { report -> report.afterRanking?.let { step -> runCatching { step(ranked) } } }
+        reports.values.forEach { report ->
+            report.afterRanking?.let { step ->
+                runCatching { step(ranked) }.onFailure { log.warn("A section's step after ranking failed", it) }
+            }
+        }
     }
 
     private fun references(sections: List<DiagnosticSection<*>>, probe: DiagnosticProbe): JsonObject {
@@ -180,6 +185,8 @@ class DiagnosticCollector(
             DeviceConditionsSection.id,
             PermissionsSection.id,
         )
+
+        private val log = Logger.getInstance(DiagnosticCollector::class.java)
 
         private val GSON = GsonBuilder().serializeNulls().setPrettyPrinting().disableHtmlEscaping().create()
 

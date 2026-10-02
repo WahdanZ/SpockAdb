@@ -139,6 +139,15 @@ class FlutterSession(
      */
     val deviceTime = DeviceTimeSlot()
 
+    /**
+     * Whether the last close switched HTTP logging back off where Spock had switched it on: true
+     * when it did, false when it could not (not DDS, the connection gone, an isolate paused or not
+     * answering), null when there was nothing to switch off.
+     */
+    @Volatile
+    var httpRestored: Boolean? = null
+        private set
+
     /** Null until read, or when the UI isolate has no inspector (profile builds). */
     val structuredErrorsEnabled: Boolean? get() = snapshot.structuredErrorsEnabled
 
@@ -393,14 +402,17 @@ class FlutterSession(
     private fun tearDown(attempt: Attempt) {
         val connected = attempt.client
         try {
+            val owed = httpLogging.owesRestore()
+            var restored = false
             if (connected != null && connected.isOpen) {
                 connected.failPendingCalls("the Flutter session is closing")
                 // Only through DDS: a direct connection writes nothing, and the isolates stay listed
                 // for a later DDS one. A connect closed before its probe answered asks now — only
                 // when there is something to switch off.
-                val kind = attempt.kind ?: if (httpLogging.owesRestore()) kindOnClose(connected) else null
-                if (kind == ConnectionKind.DDS) httpLogging.restore(connected)
+                val kind = attempt.kind ?: if (owed) kindOnClose(connected) else null
+                if (kind == ConnectionKind.DDS) restored = httpLogging.restore(connected)
             }
+            httpRestored = restored.takeIf { owed }
         } finally {
             try {
                 connected?.close()

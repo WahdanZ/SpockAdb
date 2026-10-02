@@ -22,6 +22,7 @@ import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceEvent
 import spock.adb.timeline.FlutterTimelineRecorder
+import spock.adb.timeline.TimelineCategory
 import spock.adb.timeline.TimelineEvent
 import java.time.ZoneOffset
 import java.util.concurrent.CompletableFuture
@@ -67,7 +68,10 @@ class FlutterTokenPathTest {
         eventually(message = "the events in the log") {
             log.contents(session)?.let { it.errors.isNotEmpty() && it.navigation.isNotEmpty() } == true
         }
-        recorder.tick()
+        eventually(message = "the failed request on the Timeline") {
+            recorder.tick()
+            rows.any { it.category == TimelineCategory.HTTP && "getVM" in it.title }
+        }
 
         val contents = checkNotNull(log.contents(session))
         val report = DiagnosticCollector.render(diagnose(contents))
@@ -75,6 +79,7 @@ class FlutterTokenPathTest {
 
         assertTrue(rows.any { it.title.contains("Navigator") }, "the route reached the Timeline: $timeline")
         assertTrue(rows.any { it.title.contains("RenderFlex") }, "the error reached the Timeline: $timeline")
+        assertTrue(rows.any { it.category == TimelineCategory.HTTP && "getVM" in it.title }, timeline)
         assertTrue(report.contains("RenderFlex"), "the error reached the report")
         assertTrue(report.contains("/status/500") || report.contains("getVM"), "the HTTP failures reached the report")
         listOf(

@@ -26,6 +26,7 @@ import spock.adb.flutter.vmservice.VmServiceException
 import java.time.ZoneOffset
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Future
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Puts the live Flutter session on the Debug Timeline (design §4): errors, routes, bursts of slow
@@ -57,6 +58,8 @@ class FlutterTimelineRecorder(
     private val ticker: (Runnable) -> Future<*>,
     private val reads: Reads = Reads.SESSION,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** Whether rows are wanted now ("Record device events"); while not, what arrives is dropped. */
+    private val active: () -> Boolean = { true },
 ) : FlutterSessionServiceListener, Disposable {
 
     /** What the recorder asks the app. Blocking calls; on the ticking thread. */
@@ -89,15 +92,44 @@ class FlutterTimelineRecorder(
         var fpsAsked = false
         var lastHttpPollAt = 0L
         var updatedSinceUs: Long? = null
-        val httpSeen = LinkedHashSet<String>()
+        var clockNoted = false
+
+        /** What was written about this app's process, across its sessions. */
+        val processKey: String
+            get() = "${identity?.serial}|${identity?.applicationId}|${identity?.pid ?: session.snapshot.vmPid}"
     }
 
+    /** One session's events, bounded without counting the queue on every event. */
     private class Queue(val session: FlutterSession) {
-        val events = ConcurrentLinkedQueue<FlutterEvent>()
+        private val events = ConcurrentLinkedQueue<FlutterEvent>()
+        private val size = AtomicInteger()
+
+        fun offer(event: FlutterEvent) {
+            if (size.incrementAndGet() > MAX_QUEUED) {
+                size.decrementAndGet()
+                return
+            }
+            events += event
+        }
+
+        fun poll(): FlutterEvent? = events.poll()?.also { size.decrementAndGet() }
+
+        val count: Int get() = size.get()
     }
 
     private val lock = Any()
     private val opening = ArrayList<Queue>()
+
+    /**
+     * Rows already written per process — `serial|app|pid` to keys of `(kind, device time,
+     * isolate)` events and `(isolate, request id)` requests — so a new session on the same process
+     * (the selection moving away and back, another app's Diagnose in between) does not write
+     * again what DDS replays or what the HTTP profile still holds.
+     */
+    private val written = object : LinkedHashMap<String, LinkedHashSet<String>>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LinkedHashSet<String>>?) =
+            size > MAX_PROCESSES
+    }
     private var current: Followed? = null
     private var ticking: Future<*>? = null
     private var disposed = false
@@ -111,9 +143,7 @@ class FlutterTimelineRecorder(
         }
         session.addListener(
             object : FlutterSessionListener {
-                override fun onEvent(event: FlutterEvent) {
-                    if (queue.events.size < MAX_QUEUED) queue.events += event
-                }
+                override fun onEvent(event: FlutterEvent) = queue.offer(event)
             },
         )
     }
@@ -132,19 +162,25 @@ class FlutterTimelineRecorder(
         }
     }
 
-    // A tick that throws would end the periodic task, and the session would go quiet.
+    // Any exception — the VM Service's are checked ones — would end the periodic task, and the
+    // session would go quiet for good.
     @Suppress("TooGenericExceptionCaught")
     private fun safeTick() {
         try {
             tick()
-        } catch (e: RuntimeException) {
-            log.warn("Recording the Flutter session on the Timeline failed", e)
+        } catch (e: Exception) {
+            log.warn("Recording the Flutter session on the Timeline failed: ${Redaction.scrub(e.message.orEmpty())}")
         }
     }
 
     /** Turns what arrived into rows, and looks at the session. On the ticking thread. */
     fun tick() {
         val followed = synchronized(lock) { current } ?: return
+        if (!active()) {
+            // Not recording: what arrived is not kept for later, and the app is not asked anything.
+            generateSequence { followed.queue.poll() }.count()
+            return
+        }
         readRefreshRateOnce(followed)
         synchronized(lock) {
             if (current !== followed) return
@@ -166,11 +202,16 @@ class FlutterTimelineRecorder(
         }
     }
 
+    /** Events queued and not yet turned into rows; for tests. */
+    internal val queued: Int get() = synchronized(lock) { current?.queue?.count ?: 0 }
+
     /** Under [lock]. */
     private fun start(session: FlutterSession, identity: AppIdentity?) {
         if (current?.session === session) return
-        val queue = opening.firstOrNull { it.session === session } ?: Queue(session)
-        opening.clear()
+        // Sessions created after this one — a connect that has started since — keep their queues.
+        val index = opening.indexOfFirst { it.session === session }
+        val queue = if (index >= 0) opening[index] else Queue(session)
+        if (index >= 0) opening.subList(0, index + 1).clear()
         val followed = Followed(session, identity, queue).apply { windowStartedAt = clock() }
         current = followed
         val snapshot = session.snapshot
@@ -199,28 +240,31 @@ class FlutterTimelineRecorder(
             if (bySpock) TimelineSeverity.INFO else TimelineSeverity.WARNING,
             "Flutter session ended: ${followed.app} — ${endWords(reason)}",
         )
-        if (followed.enabledBySpock) {
-            row(
-                followed,
-                clock(),
-                TimelineSeverity.INFO,
-                category = TimelineCategory.HTTP,
-                title = if (bySpock) {
-                    "Spock switched HTTP recording back off for ${followed.app}"
-                } else {
-                    "HTTP recording for ${followed.app} was not switched back off: the connection ended first"
-                },
-            )
-        }
+        if (followed.enabledBySpock) restoreRow(followed, bySpock)
         current = null
         ticking?.cancel(false)
         ticking = null
     }
 
+    /** Under [lock]: whether Spock's switching HTTP recording back off is known to have worked. */
+    private fun restoreRow(followed: Followed, bySpock: Boolean) {
+        val restored = followed.session.httpRestored
+        val app = followed.app
+        val (severity, title) = when {
+            !bySpock ->
+                TimelineSeverity.INFO to "HTTP recording for $app was not switched back off: the connection ended first"
+            restored == true -> TimelineSeverity.INFO to "Spock switched HTTP recording back off for $app"
+            else ->
+                TimelineSeverity.WARNING to
+                    "Spock could not switch HTTP recording back off for $app: it stays on until the app restarts"
+        }
+        row(followed, clock(), severity, category = TimelineCategory.HTTP, title = title)
+    }
+
     /** Under [lock]: rows for what arrived. */
     private fun drain(followed: Followed, placement: FlutterTimelineMapper.Placement) {
         val profile = followed.session.buildMode == FlutterBuild.PROFILE
-        generateSequence { followed.queue.events.poll() }.forEach { event -> take(followed, event, placement, profile) }
+        generateSequence { followed.queue.poll() }.forEach { event -> take(followed, event, placement, profile) }
         flushFrames(followed, placement, force = false)
     }
 
@@ -235,6 +279,8 @@ class FlutterTimelineRecorder(
             followed.isolateExitAt = clock()
         }
         val read = FlutterExtensionEvent.from(event) ?: return
+        val rowed = read.kind == FlutterExtensionEvent.ERROR || read.kind == FlutterExtensionEvent.NAVIGATION
+        if (rowed && !firstTime(followed, "${read.kind}|${read.timestampMs}|${read.isolateId}")) return
         when (read.kind) {
             FlutterExtensionEvent.ERROR -> sink(FlutterTimelineMapper.error(FlutterErrorReader.read(read), placement))
             FlutterExtensionEvent.NAVIGATION -> FlutterTimelineMapper.navigation(read, placement)?.let(sink)
@@ -322,22 +368,33 @@ class FlutterTimelineRecorder(
             profile.timestampUs?.let { followed.updatedSinceUs = it }
             profile.requests.forEach { request ->
                 val failure = FlutterTimelineMapper.httpFailure(request, placement) ?: return@forEach
-                if (!followed.httpSeen.add(failure.requestId)) return@forEach
-                if (followed.httpSeen.size > MAX_HTTP_IDS) followed.httpSeen.remove(followed.httpSeen.first())
+                if (!firstTime(followed, "http|${request.isolateId}|${failure.requestId}")) return@forEach
                 sink(failure.row)
             }
         }
     }
 
-    // A refresh rate that cannot be read is assumed: one failure must not stop the frames.
+    /** Under [lock]: whether [key] is new for [followed]'s process, remembering it. */
+    private fun firstTime(followed: Followed, key: String): Boolean {
+        val keys = written.getOrPut(followed.processKey) { LinkedHashSet() }
+        if (!keys.add(key)) return false
+        if (keys.size > MAX_KEYS_PER_PROCESS) keys.remove(keys.first())
+        return true
+    }
+
+    // A refresh rate that cannot be read is assumed: one failure — a timeout, a bug — must not
+    // stop the frames.
     @Suppress("TooGenericExceptionCaught")
     private fun readRefreshRateOnce(followed: Followed) {
         if (followed.fpsAsked || followed.session.buildMode != FlutterBuild.PROFILE) return
         followed.fpsAsked = true
         followed.fps = try {
             reads.refreshRate(followed.session)
+        } catch (e: VmServiceException) {
+            log.info("Could not read the display refresh rate: ${Redaction.scrub(e.message.orEmpty())}")
+            null
         } catch (e: RuntimeException) {
-            log.info("Could not read the display refresh rate: ${e.message}")
+            log.info("Could not read the display refresh rate", e)
             null
         }
     }
@@ -350,6 +407,15 @@ class FlutterTimelineRecorder(
         val slot = followed.session.deviceTime
         val waited = clock() - (followed.session.snapshot.connectedAtHostMs ?: followed.windowStartedAt)
         if (slot.current == null && !slot.done && waited < CLOCK_WAIT_MS) return null
+        if (slot.current == null && !followed.clockNoted) {
+            followed.clockNoted = true
+            row(
+                followed,
+                clock(),
+                TimelineSeverity.INFO,
+                "Device clock not measured: ${followed.app}'s Flutter rows are on the device's clock, in UTC",
+            )
+        }
         return placement(followed)
     }
 
@@ -387,7 +453,8 @@ class FlutterTimelineRecorder(
         private const val READ_TIMEOUT_MS = 2_000L
         private const val MAX_OPENING = 4
         private const val MAX_QUEUED = 20_000
-        private const val MAX_HTTP_IDS = 2_000
+        private const val MAX_KEYS_PER_PROCESS = 5_000
+        private const val MAX_PROCESSES = 8
         private const val TITLE_LIMIT = 200
         private const val ENDED_REPLACED = FlutterSessionService.CLOSED_FOR_NEW_CONNECTION
         private val SPOCKS_REASONS =

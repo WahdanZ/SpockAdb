@@ -101,21 +101,30 @@ internal class HttpLogging {
     /** An isolate that exited takes its flag with it. */
     fun forget(isolateId: String) = synchronized(this) { enabledBySpock -= isolateId }
 
-    /** Every isolate Spock switched on that is still alive; a paused one is left, as it would not answer. */
-    fun restore(connected: VmServiceClient) = writeLock.withLock {
+    /**
+     * Every isolate Spock switched on that is still alive; a paused one is left, as it would not
+     * answer. True when each was switched off or is gone; false when one was left on.
+     */
+    fun restore(connected: VmServiceClient): Boolean = writeLock.withLock {
         val isolateIds = synchronized(this) { enabledBySpock.toList().also { enabledBySpock.clear() } }
-        isolateIds.forEach { isolateId ->
+        isolateIds.map { isolateId ->
             try {
                 val params = JsonObject().apply { addProperty("isolateId", isolateId) }
                 val isolate = FlutterIsolate.from(connected.call("getIsolate", params, RESTORE_TIMEOUT_MS))
-                if (isolate != null && !isolate.paused) {
-                    val off = mapOf("enabled" to "false")
-                    connected.callServiceExtension(HTTP_LOGGING, isolateId, off, RESTORE_TIMEOUT_MS)
+                when {
+                    isolate == null -> true
+                    isolate.paused -> false
+                    else -> {
+                        val off = mapOf("enabled" to "false")
+                        connected.callServiceExtension(HTTP_LOGGING, isolateId, off, RESTORE_TIMEOUT_MS)
+                        true
+                    }
                 }
             } catch (e: VmServiceException) {
                 log.warn("Could not switch HTTP timeline logging back off: ${e.message}")
+                false
             }
-        }
+        }.all { it }
     }
 
     companion object {

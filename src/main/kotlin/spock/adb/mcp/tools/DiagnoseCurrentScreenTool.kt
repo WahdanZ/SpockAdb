@@ -35,7 +35,8 @@ class DiagnoseCurrentScreenTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj {
         string(
             "packageName",
-            "The app the screen belongs to. Defaults to the open project's application ID. " +
+            "The app the screen belongs to. Defaults to the app selected in Spock's tool window, " +
+                "else the open project's application ID. " +
                 "Pass an empty string to consider the whole device.",
         )
         boolean(
