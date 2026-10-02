@@ -40,7 +40,8 @@ import java.util.concurrent.atomic.AtomicReference
 class VmServiceClient private constructor(
     /** The redacted address, for messages. */
     private val label: String,
-    private val defaultTimeoutMs: Long,
+    /** How long a call waits unless it asks for longer. */
+    val defaultTimeoutMs: Long,
     private val maxQueuedEvents: Int,
     private val maxMessageChars: Int,
 ) : AutoCloseable {

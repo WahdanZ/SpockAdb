@@ -76,21 +76,21 @@ class VmServiceClientTest {
     @Test
     fun `an error's data and an address extension's answer never carry the token`() {
         vm.on("ext.flutter.broken") {
-            FakeVmService.Reply.Error(-32_000, "failed at http://127.0.0.1:50300/HXKQJZK_Rkw=/")
+            FakeVmService.Reply.Error(-32_000, "failed at http://127.0.0.1:50300/FAKEtoken_0000=/")
         }
         vm.on("ext.flutter.connectedVmServiceUri") {
-            FakeVmService.Reply.Result(result("http://127.0.0.1:50300/HXKQJZK_Rkw=/"))
+            FakeVmService.Reply.Result(result("http://127.0.0.1:50300/FAKEtoken_0000=/"))
         }
         vm.on("withData") {
-            FakeVmService.Reply.Error(-32_000, "boom", data = "see ws://localhost:50300/HXKQJZK_Rkw=/ws")
+            FakeVmService.Reply.Error(-32_000, "boom", data = "see ws://localhost:50300/FAKEtoken_0000=/ws")
         }
 
         val error = assertThrows<VmServiceRpcException> { client.call("withData") }
         val extension = assertThrows<VmServiceRpcException> { client.call("ext.flutter.broken") }
         val uri = client.callServiceExtension("ext.flutter.connectedVmServiceUri", "isolates/1111")
 
-        assertFalse(error.data.toString().contains("HXKQJZK"), error.data.toString())
-        assertFalse(extension.message!!.contains("HXKQJZK"), extension.message)
+        assertFalse(error.data.toString().contains("FAKEtoken"), error.data.toString())
+        assertFalse(extension.message!!.contains("FAKEtoken"), extension.message)
         assertEquals("<redacted>", uri.get("value").asString)
     }
 
@@ -153,7 +153,7 @@ class VmServiceClientTest {
         assertEquals("Extension", received[1].streamId)
         assertEquals("isolates/1111", received[1].isolateId)
         assertEquals(1_727_776_801_000L, received[1].timestamp)
-        received.forEach { assertFalse(it.event.toString().contains("HXKQJZK"), it.event.toString()) }
+        received.forEach { assertFalse(it.event.toString().contains("FAKEtoken"), it.event.toString()) }
         assertEquals("<redacted>", received[1].event.getAsJsonObject("extensionData").get("value").asString)
     }
 
@@ -276,11 +276,11 @@ class VmServiceClientTest {
     fun `a connection that cannot open says so without the token`() {
         val freePort = ServerSocket(0).use { it.localPort }
         val error = assertThrows<VmServiceException> {
-            val uri = VmServiceUri.parse("ws://127.0.0.1:$freePort/HXKQJZK_Rkw=/ws")
+            val uri = VmServiceUri.parse("ws://127.0.0.1:$freePort/FAKEtoken_0000=/ws")
             VmServiceClient.connect(uri, connectTimeoutMs = 2_000)
         }
         assertTrue(error.message!!.contains("ws://127.0.0.1:$freePort/<redacted>/ws"), error.message)
-        assertFalse(error.message!!.contains("HXKQJZK"), error.message)
+        assertFalse(error.message!!.contains("FAKEtoken"), error.message)
     }
 
     @Test

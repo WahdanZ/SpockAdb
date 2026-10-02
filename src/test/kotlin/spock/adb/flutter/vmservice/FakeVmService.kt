@@ -9,9 +9,10 @@ import java.util.concurrent.TimeUnit
 
 /**
  * A scripted Dart VM Service on [FakeWebSocketServer]. Answers `getVM`, `getIsolate`,
- * `_flutter.listViews`, `streamListen`/`streamCancel` and the two extensions the session uses,
- * from the recorded fixtures in `src/test/resources/vmservice`; records every request; and pushes
- * events on demand. Override any method with [on].
+ * `_flutter.listViews`, `streamListen`/`streamCancel`, `getDartDevelopmentServiceVersion` (as DDS
+ * does, unless [dds] is false) and the two extensions the session uses, from the recorded fixtures
+ * in `src/test/resources/vmservice`; records every request; and pushes events on demand. Override
+ * any method with [on].
  */
 class FakeVmService : AutoCloseable {
 
@@ -33,6 +34,13 @@ class FakeVmService : AutoCloseable {
     /** The isolates behind views; null when `_flutter.listViews` is not served. */
     @Volatile
     var viewIsolates: List<String>? = listOf(UI_ISOLATE)
+
+    /**
+     * True: DDS, which serves `getDartDevelopmentServiceVersion`. False: the VM itself, started
+     * without `flutter run`, which answers it with "method not found" (seen on Android 14).
+     */
+    @Volatile
+    var dds = true
 
     /** Flutter answers its bool extensions with strings. */
     @Volatile
@@ -136,6 +144,7 @@ class FakeVmService : AutoCloseable {
             )
         "_flutter.listViews" -> viewIsolates?.let { Reply.Result(views(it)) } ?: notFound()
         "streamListen", "streamCancel" -> Reply.Result(success())
+        DDS_VERSION -> ddsVersion()
         STRUCTURED_ERRORS -> structuredErrors(params)
         HTTP_LOGGING -> httpLogging(params)
         else -> notFound()
@@ -159,6 +168,19 @@ class FakeVmService : AutoCloseable {
     }
 
     private fun notFound() = Reply.Error(METHOD_NOT_FOUND, "Method not found")
+
+    /** DDS answers with its version; the VM itself does not know the method. */
+    private fun ddsVersion(): Reply = if (!dds) {
+        notFound()
+    } else {
+        Reply.Result(
+            JsonObject().apply {
+                addProperty("type", "Version")
+                addProperty("major", 1)
+                addProperty("minor", 6)
+            },
+        )
+    }
 
     private fun vm(): JsonObject = fixture("getVM.json").apply {
         add(
@@ -193,6 +215,7 @@ class FakeVmService : AutoCloseable {
         const val UI_ISOLATE = "isolates/1111"
         const val STRUCTURED_ERRORS = "ext.flutter.inspector.structuredErrors"
         const val HTTP_LOGGING = "ext.dart.io.httpEnableTimelineLogging"
+        const val DDS_VERSION = "getDartDevelopmentServiceVersion"
         const val METHOD_NOT_FOUND = -32_601
         const val AWAIT_MS = 5_000L
         private const val POLL_MS = 10L
