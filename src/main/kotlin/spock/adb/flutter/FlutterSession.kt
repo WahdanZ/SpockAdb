@@ -132,6 +132,13 @@ class FlutterSession(
     var vm: JsonObject? = null
         private set
 
+    /**
+     * The device's clock and zone, measured once for this session by [FlutterSessionService]
+     * when it attaches on a device it knows (design §4a), and kept across reconnects. Diagnose
+     * and the Timeline read device times through it. Empty for a session opened without a device.
+     */
+    val deviceTime = DeviceTimeSlot()
+
     /** Null until read, or when the UI isolate has no inspector (profile builds). */
     val structuredErrorsEnabled: Boolean? get() = snapshot.structuredErrorsEnabled
 

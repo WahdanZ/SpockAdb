@@ -35,6 +35,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.FutureTask
@@ -617,6 +618,66 @@ class FlutterSessionServiceTest {
             assertNotSame(first.session, second.session)
             assertTrue(first.session.state is SessionState.Disconnected)
         }
+    }
+
+    @Test
+    fun `ensureSession - the Settings switch decides whether a new session records HTTP`() {
+        dtdFound = listOf(liveDtdApp())
+        val outcome = service.ensureSession(device, APP_ID, recordHttp = false) as FlutterAttachOutcome.Connected
+
+        FakeVmService.eventually(message = "the HTTP decision") { outcome.session.snapshot.httpRecording != null }
+        assertEquals(HttpRecording.Off(HttpRecording.Reason.SETTING_OFF), outcome.session.snapshot.httpRecording)
+        assertTrue(vm.requestsFor(FakeVmService.HTTP_LOGGING).none { it.getAsJsonObject("params").has("enabled") })
+    }
+
+    @Test
+    fun `ensureSession - a new session's device clock is measured once, on the device it was verified on`() {
+        val measured = CopyOnWriteArrayList<IDevice>()
+        val time = DeviceTime(-1_000, 47, java.time.ZoneOffset.ofHours(2))
+        service.measureDeviceTime = { device ->
+            measured += device
+            time
+        }
+        dtdFound = listOf(liveDtdApp())
+
+        val first = ensure() as FlutterAttachOutcome.Connected
+        assertEquals(time, first.session.deviceTime.await(FakeVmService.AWAIT_MS))
+        val again = ensure() as FlutterAttachOutcome.Connected
+
+        assertTrue(again.reused)
+        assertEquals(listOf(device.device), measured.toList())
+    }
+
+    @Test
+    fun `ensureSession - a clock that cannot be read leaves the slot done and empty`() {
+        service.measureDeviceTime = { error("adb went away") }
+        dtdFound = listOf(liveDtdApp())
+
+        val outcome = ensure() as FlutterAttachOutcome.Connected
+
+        FakeVmService.eventually(message = "the measurement to end") { outcome.session.deviceTime.done }
+        assertNull(outcome.session.deviceTime.current)
+    }
+
+    @Test
+    fun `listeners hear of a session before it connects`() {
+        val created = CopyOnWriteArrayList<FlutterSession>()
+        service.addListener(
+            parent,
+            object : FlutterSessionServiceListener {
+                override fun sessionChanged(change: FlutterSessionChange) = Unit
+
+                override fun sessionCreated(session: FlutterSession) {
+                    assertTrue(session.state is SessionState.Disconnected, "not connected yet")
+                    created += session
+                }
+            },
+        )
+        dtdFound = listOf(liveDtdApp())
+
+        val outcome = ensure() as FlutterAttachOutcome.Connected
+
+        assertEquals(listOf(outcome.session), created.toList())
     }
 
     private companion object {

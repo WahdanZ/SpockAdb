@@ -63,6 +63,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
     internal var processTiming: (IDevice, Long) -> ProcessTiming? = ::readProcessTiming
     internal var dtdIdentity: DtdAppIdentity = DtdAppIdentity()
     internal var newSession: () -> FlutterSession = { FlutterSession() }
+    internal var measureDeviceTime: (IDevice) -> DeviceTime? = DeviceTimeSampler::measure
     internal var background: (Runnable) -> Future<*> = { ApplicationManager.getApplication().executeOnPooledThread(it) }
     internal var onEdt: () -> Boolean = { ApplicationManager.getApplication()?.isDispatchThread == true }
     internal var clock: () -> Long = System::currentTimeMillis
@@ -191,18 +192,31 @@ class FlutterSessionService(private val project: Project) : Disposable {
      *
      * Never sleeps or loops: the caller retries [FlutterAttachOutcome.NotReady] with its own
      * backoff. [build] is the app's build when the caller knows it — a release build has no VM
-     * Service. Blocking.
+     * Service. [recordHttp] as in [FlutterSession.connect]: the Settings switch, for a new
+     * session; a session reused keeps what it was opened with. Blocking.
+     *
+     * A session connected here has its [FlutterSession.deviceTime] measured on [device] once, on
+     * a pooled thread, so the caller is not kept waiting for it.
      */
     fun ensureSession(
         device: ConnectedDevice,
         applicationId: String,
         processStartedAt: Long? = null,
         build: FlutterBuild? = null,
+        recordHttp: Boolean = true,
     ): FlutterAttachOutcome {
         checkOffEdt()
         require(applicationId.isNotBlank()) { "No app is selected." }
         val attachLock = attachLocks.computeIfAbsent(startupKey(device.serialNumber, applicationId)) { ReentrantLock() }
-        return attachLock.withLock { ensureLocked(device, applicationId, processStartedAt, build) }
+        val outcome = attachLock.withLock {
+            ensureLocked(device, Attempt(applicationId, processStartedAt, build, recordHttp))
+        }
+        // Once per session, off the caller's thread; a sampler that throws still sets the slot,
+        // so nobody waits on it.
+        (outcome as? FlutterAttachOutcome.Connected)?.session?.deviceTime?.takeIf { it.claim() }?.let { slot ->
+            background(Runnable { slot.set(runCatching { measureDeviceTime(device.device) }.getOrNull()) })
+        }
+        return outcome
     }
 
     /**
@@ -249,7 +263,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
         opening?.close()
         old?.session?.close()
         old?.takeIf { lostReported !== it.session }?.let {
-            notify(FlutterSessionChange.Disconnected(it.session, it.identity, "Disconnected by Spock."))
+            notify(FlutterSessionChange.Disconnected(it.session, it.identity, DISCONNECTED_BY_SPOCK))
         }
     }
 
@@ -288,18 +302,23 @@ class FlutterSessionService(private val project: Project) : Disposable {
         }
     }
 
+    /** What one [ensureSession] call asks for. */
+    private class Attempt(
+        val applicationId: String,
+        val processStartedAt: Long?,
+        val build: FlutterBuild?,
+        val recordHttp: Boolean,
+    )
+
     /** [ensureSession] under the app's attach lock. */
-    private fun ensureLocked(
-        device: ConnectedDevice,
-        applicationId: String,
-        processStartedAt: Long?,
-        build: FlutterBuild?,
-    ): FlutterAttachOutcome {
+    private fun ensureLocked(device: ConnectedDevice, attempt: Attempt): FlutterAttachOutcome {
         val serial = device.serialNumber
+        val applicationId = attempt.applicationId
         val notes = mutableListOf<String>()
-        val pids = if (build == FlutterBuild.RELEASE) null else pidsOrNull(device, applicationId, notes)
+        val release = attempt.build == FlutterBuild.RELEASE
+        val pids = if (release) null else pidsOrNull(device, applicationId, notes)
         return when {
-            build == FlutterBuild.RELEASE -> FlutterAttachOutcome.ReleaseBuild(serial, applicationId)
+            release -> FlutterAttachOutcome.ReleaseBuild(serial, applicationId)
             pids == null -> FlutterAttachOutcome.Failed(notes.joinToString(" "))
             pids.isEmpty() -> {
                 synchronized(lock) { startups.remove(startupKey(serial, applicationId)) }
@@ -307,8 +326,8 @@ class FlutterSessionService(private val project: Project) : Disposable {
             }
             else -> reusable(serial, applicationId, pids) ?: run {
                 val timings = pids.associateWith { processTiming(device.device, it) }
-                val startup = startupOf(serial, applicationId, pids, processStartedAt, timings)
-                attachFromEvidence(device, applicationId, startup, timings, notes)
+                val startup = startupOf(serial, applicationId, pids, attempt.processStartedAt, timings)
+                attachFromEvidence(device, attempt, startup, timings, notes)
             }
         }
     }
@@ -316,29 +335,29 @@ class FlutterSessionService(private val project: Project) : Disposable {
     /** DTD first — it only touches DDS — then, unless the process is known to have no DDS, logcat. */
     private fun attachFromEvidence(
         device: ConnectedDevice,
-        applicationId: String,
+        attempt: Attempt,
         startup: Startup,
         timings: Map<Long, ProcessTiming?>,
         notes: MutableList<String>,
     ): FlutterAttachOutcome {
         val inWindow = clock() - startup.startedAt < STARTUP_GRACE_MS
-        return when (val dtd = dtdEvidence(device, applicationId, timings, notes)) {
-            is DtdEvidence.Found -> attach(dtd.found, startup, inWindow)
+        return when (val dtd = dtdEvidence(device, attempt.applicationId, timings, notes)) {
+            is DtdEvidence.Found -> attach(dtd.found, startup, inWindow, attempt.recordHttp)
             is DtdEvidence.Ambiguous -> FlutterAttachOutcome.Ambiguous(dtd.candidates, notes.joinToString(" "))
             DtdEvidence.None -> startup.noDds?.let { FlutterAttachOutcome.NoDdsSession(it, NO_DDS_MESSAGE) }
-                ?: attachDirect(device, applicationId, startup, inWindow, notes)
+                ?: attachDirect(device, attempt, startup, inWindow, notes)
         }
     }
 
     /** The logcat address — the VM's own — connected to only when the probe rules allow. */
     private fun attachDirect(
         device: ConnectedDevice,
-        applicationId: String,
+        attempt: Attempt,
         startup: Startup,
         inWindow: Boolean,
         notes: MutableList<String>,
     ): FlutterAttachOutcome {
-        val logcat = logcatFound(device, applicationId, startup.pids, notes).firstOrNull()
+        val logcat = logcatFound(device, attempt.applicationId, startup.pids, notes).firstOrNull()
         val now = clock()
         val wait = directProbeWait(startup, now, inWindow)
         return when {
@@ -350,7 +369,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
             wait != null -> wait
             else -> {
                 startup.lastDirectProbeAt = now
-                attach(logcat, startup, inWindow)
+                attach(logcat, startup, inWindow, attempt.recordHttp)
             }
         }
     }
@@ -476,10 +495,21 @@ class FlutterSessionService(private val project: Project) : Disposable {
      * for a logcat address, keeps it only if its VM runs as one of the app's pids; maps what it
      * is not to an outcome.
      */
-    private fun attach(found: IdentifiedCandidate, startup: Startup, inWindow: Boolean): FlutterAttachOutcome {
+    private fun attach(
+        found: IdentifiedCandidate,
+        startup: Startup,
+        inWindow: Boolean,
+        recordHttp: Boolean,
+    ): FlutterAttachOutcome {
         val pidsAllowed = startup.pids.takeIf { found.identity.verifiedBy == IdentityCheck.LOGCAT_PID }
         val kept = try {
-            open(found.candidate, found.identity, allowDirect = false, recordHttp = true, pidsAllowed = pidsAllowed)
+            open(
+                found.candidate,
+                found.identity,
+                allowDirect = false,
+                recordHttp = recordHttp,
+                pidsAllowed = pidsAllowed,
+            )
         } catch (e: NoDdsException) {
             // Before VmServiceException, which it is: a VM with no DDS is an answer, not a failure.
             return if (inWindow) {
@@ -523,6 +553,11 @@ class FlutterSessionService(private val project: Project) : Disposable {
         pidsAllowed: Set<Long>? = null,
     ): Held? {
         val session = newSession()
+        // Before it connects, so what a listener adds to it hears what DDS replays on connect.
+        listeners.forEach { listener ->
+            runCatching { listener.sessionCreated(session) }
+                .onFailure { log.warn("A Flutter session listener failed on a new session", it) }
+        }
         val (previous, opening) = synchronized(lock) {
             check(!disposed) { "The project is closed." }
             (held to connecting).also {
@@ -554,7 +589,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
                 synchronized(lock) { if (connecting === session) connecting = null }
                 session.close()
                 previousLive?.let {
-                    notify(FlutterSessionChange.Disconnected(it.session, it.identity, "Closed for a new connection."))
+                    notify(FlutterSessionChange.Disconnected(it.session, it.identity, CLOSED_FOR_NEW_CONNECTION))
                 }
             }
         }
@@ -664,6 +699,12 @@ class FlutterSessionService(private val project: Project) : Disposable {
 
         /** The retry suggested with [FlutterAttachOutcome.NotReady]; callers back off from it. */
         const val RETRY_MS = 1_000L
+
+        /** [FlutterSessionChange.Disconnected.reason] when [disconnect] closed the session. */
+        const val DISCONNECTED_BY_SPOCK = "Disconnected by Spock."
+
+        /** [FlutterSessionChange.Disconnected.reason] when a new connection closed the old one. */
+        const val CLOSED_FOR_NEW_CONNECTION = "Closed for a new connection."
 
         /** How long [dispose] waits for the close that restores the app's HTTP logging. */
         const val CLOSE_WAIT_MS = 1_000L

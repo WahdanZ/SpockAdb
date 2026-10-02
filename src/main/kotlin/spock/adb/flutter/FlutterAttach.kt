@@ -73,4 +73,11 @@ sealed interface FlutterSessionChange {
  */
 fun interface FlutterSessionServiceListener {
     fun sessionChanged(change: FlutterSessionChange)
+
+    /**
+     * [session] was just created, and is about to connect: a listener added to it now hears the
+     * events DDS replays on connect, which are delivered before [sessionChanged] says the session
+     * exists. It may still be refused or fail — act on its events once a change makes it current.
+     */
+    fun sessionCreated(session: FlutterSession) = Unit
 }
