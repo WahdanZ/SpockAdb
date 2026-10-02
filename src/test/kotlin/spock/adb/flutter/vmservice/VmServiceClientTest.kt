@@ -79,9 +79,11 @@ class VmServiceClientTest {
             FakeVmService.Reply.Error(-32_000, "failed at http://127.0.0.1:50300/HXKQJZK_Rkw=/")
         }
         vm.on("ext.flutter.connectedVmServiceUri") {
-            FakeVmService.Reply.Result(JsonObject().apply { addProperty("value", "http://127.0.0.1:50300/HXKQJZK_Rkw=/") })
+            FakeVmService.Reply.Result(result("http://127.0.0.1:50300/HXKQJZK_Rkw=/"))
         }
-        vm.on("withData") { FakeVmService.Reply.Error(-32_000, "boom", data = "see ws://localhost:50300/HXKQJZK_Rkw=/ws") }
+        vm.on("withData") {
+            FakeVmService.Reply.Error(-32_000, "boom", data = "see ws://localhost:50300/HXKQJZK_Rkw=/ws")
+        }
 
         val error = assertThrows<VmServiceRpcException> { client.call("withData") }
         val extension = assertThrows<VmServiceRpcException> { client.call("ext.flutter.broken") }
@@ -239,6 +241,27 @@ class VmServiceClientTest {
         assertEquals("isolates/1111", params.get("isolateId").asString)
         assertTrue(params.get("enabled").asJsonPrimitive.isString)
         assertEquals("true", params.get("enabled").asString)
+    }
+
+    @Test
+    fun `events that arrive before their stream's streamListen is answered are marked, later ones are not`() {
+        val received = CopyOnWriteArrayList<VmServiceEvent>()
+        client.addListener(
+            object : VmServiceListener {
+                override fun onEvent(event: VmServiceEvent) {
+                    received += event
+                }
+            },
+        )
+        // As DDS does: the history first, then the answer.
+        vm.replayOnListen = { stream -> vm.pushEvent(stream, fixture("event-frame.json")) }
+        vm.afterStreamListen = { stream -> vm.pushEvent(stream, fixture("event-frame.json")) }
+
+        client.streamListen("Extension")
+        vm.pushEvent("Logging", fixture("event-frame.json"))
+
+        eventually { received.size == 3 }
+        assertEquals(listOf(true, false, false), received.map { it.duringListen })
     }
 
     @Test
@@ -411,13 +434,13 @@ class VmServiceClientTest {
         vm.on("slow") { FakeVmService.Reply.None }
         client.getVM()
         val outcomes = CopyOnWriteArrayList<String>()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         val callers = (0 until 16).map { index ->
             Thread {
-                repeat(20) {
+                while (System.nanoTime() < deadline) {
                     try {
                         client.call(if (index % 2 == 0) "slow" else "getVM", timeoutMs = 10_000)
-                        outcomes += "answered"
-                    } catch (e: VmServiceClosedException) {
+                    } catch (_: VmServiceClosedException) {
                         outcomes += "closed"
                         return@Thread
                     } catch (e: VmServiceException) {
@@ -464,7 +487,8 @@ class VmServiceClientTest {
             val feeder = Thread {
                 while (callers.any { it.isAlive }) {
                     vm.requestsFor("racy").map { it.get("id").asString }.filter { answered.add(it) }.forEach { id ->
-                        replier.schedule({ vm.reply(id, result("late or not")) }, (id.toLong() % 40), TimeUnit.MILLISECONDS)
+                        val delayMs = id.toLong() % 40
+                        replier.schedule({ vm.reply(id, result("late or not")) }, delayMs, TimeUnit.MILLISECONDS)
                     }
                     Thread.sleep(2)
                 }

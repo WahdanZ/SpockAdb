@@ -42,7 +42,14 @@ class FakeVmService : AutoCloseable {
     @Volatile
     var httpLogging = false
 
-    /** Run after `streamListen` has been answered: DDS replays history then. */
+    /**
+     * Run before `streamListen` is answered, as DDS does: its handler sends a new subscriber the
+     * stream's history, then answers.
+     */
+    @Volatile
+    var replayOnListen: (String) -> Unit = {}
+
+    /** Run after `streamListen` has been answered: events that arrive once the stream is live. */
     @Volatile
     var afterStreamListen: (String) -> Unit = {}
 
@@ -98,6 +105,7 @@ class FakeVmService : AutoCloseable {
         val method = request.get("method").asString
         val params = request.getAsJsonObject("params") ?: JsonObject()
         val reply = handlers[method]?.invoke(params) ?: defaultReply(method, params)
+        if (method == "streamListen") replayOnListen(params.get("streamId").asString)
         when (reply) {
             is Reply.Result -> server.sendText(response(id).apply { add("result", reply.result) }.toString())
             is Reply.Error -> server.sendText(

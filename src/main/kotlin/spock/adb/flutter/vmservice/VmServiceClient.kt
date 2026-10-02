@@ -44,7 +44,8 @@ class VmServiceClient private constructor(
     private val maxMessageChars: Int,
 ) : AutoCloseable {
 
-    private class Pending(val method: String, val future: CompletableFuture<JsonObject>)
+    /** A call waiting for its answer; [listening] is the stream of a `streamListen`. */
+    private class Pending(val method: String, val future: CompletableFuture<JsonObject>, val listening: String?)
 
     /** An event's delivery; [droppable] when the queue may shed it on overflow. */
     private class EventTask(val droppable: Boolean, private val body: () -> Unit) : Runnable {
@@ -161,7 +162,8 @@ class VmServiceClient private constructor(
     private fun start(method: String, params: JsonObject): Pair<String, CompletableFuture<JsonObject>> {
         val id = nextId.incrementAndGet().toString()
         val future = CompletableFuture<JsonObject>()
-        pending[id] = Pending(method, future)
+        val listening = if (method == "streamListen") params.string("streamId") else null
+        pending[id] = Pending(method, future, listening)
         // Checked after registering, so a close that drained the map before this call was added
         // is still seen.
         val reason = closedReason.get()
@@ -229,16 +231,19 @@ class VmServiceClient private constructor(
         val params = message.get("params") as? JsonObject ?: return
         val streamId = params.string("streamId") ?: return
         val event = params.get("event") as? JsonObject ?: return
-        queueEvent(EventTask(streamId in DROPPABLE_STREAMS) { deliverEvent(streamId, event) })
+        // Read here, on the reader thread, in arrival order: DDS replays a stream's history to a
+        // new subscriber before it answers the subscriber's streamListen.
+        val duringListen = pending.values.any { it.listening == streamId }
+        queueEvent(EventTask(streamId in DROPPABLE_STREAMS) { deliverEvent(streamId, event, duringListen) })
     }
 
     // The event is scrubbed here, on the event thread, inside the guard: whatever the scrub or a
     // listener throws costs this event, never the thread or the events after it. Exception, not
     // RuntimeException: a Kotlin listener can throw a checked one undeclared.
     @Suppress("TooGenericExceptionCaught")
-    private fun deliverEvent(streamId: String, raw: JsonObject) {
+    private fun deliverEvent(streamId: String, raw: JsonObject, duringListen: Boolean) {
         val event = try {
-            VmServiceEvent(streamId, Redaction.scrubEvent(raw))
+            VmServiceEvent(streamId, Redaction.scrubEvent(raw), duringListen)
         } catch (e: Exception) {
             log.warn("Could not redact a $streamId event from $label; it is dropped", e)
             return
