@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
+import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.ExtensionResults
+import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceRedirectException
@@ -21,10 +23,14 @@ import java.util.concurrent.CopyOnWriteArrayList
  *   ./gradlew test --tests spock.adb.flutter.FlutterSessionLiveCheck --rerun -i
  * ```
  *
- * It connects a [FlutterSession], prints what it found and the events it saw for
- * `SPOCK_VM_SERVICE_SECONDS` (default 10 — interact with the app meanwhile), closes, and checks
- * that HTTP timeline logging is back where it was. `flutter run`'s hot reload should keep working
- * throughout. Nothing printed carries the token.
+ * It connects a [FlutterSession], prints what answered (DDS or the VM itself), what it found and
+ * the events it saw for `SPOCK_VM_SERVICE_SECONDS` (default 10 — interact with the app meanwhile),
+ * closes, and checks that HTTP timeline logging is back where it was. `flutter run`'s hot reload
+ * should keep working throughout. Nothing printed carries the token.
+ *
+ * A VM with no DDS in front of it (the app started without `flutter run`) is left at once, which
+ * the check prints and accepts. `SPOCK_VM_SERVICE_ALLOW_DIRECT=1` keeps it instead, read-only —
+ * and keeps `flutter attach` from starting DDS until the check ends.
  */
 @EnabledIfEnvironmentVariable(named = FlutterSessionLiveCheck.URI_ENV, matches = ".+")
 class FlutterSessionLiveCheck {
@@ -48,9 +54,18 @@ class FlutterSessionLiveCheck {
             },
         )
         val candidate = PastedUriDiscovery(pasted).discover().single()
-        session.connect(candidate)
+        val allowDirect = System.getenv(ALLOW_DIRECT_ENV) == "1"
+        try {
+            session.connect(candidate, allowDirect)
+        } catch (e: NoDdsException) {
+            println("connection kind: ${ConnectionKind.DIRECT_NO_DDS}, not kept: ${e.message}")
+            assertTrue(session.state is SessionState.Disconnected, "state ${session.state}")
+            assertEquals(before, httpLogging(VmServiceUri.parse(pasted)))
+            return
+        }
         try {
             println("connected to $candidate at ${session.connectedAt}")
+            println("connection kind: ${session.connectionKind}, read-only ${session.readOnly}")
             println("VM ${session.vm?.get("version")?.asString}")
             println("selection: ${session.selection?.let(::describe)}")
             println("UI isolate ${session.uiIsolateId}, build ${session.buildMode}")
@@ -103,6 +118,7 @@ class FlutterSessionLiveCheck {
     companion object {
         const val URI_ENV = "SPOCK_VM_SERVICE_URI"
         private const val SECONDS_ENV = "SPOCK_VM_SERVICE_SECONDS"
+        private const val ALLOW_DIRECT_ENV = "SPOCK_VM_SERVICE_ALLOW_DIRECT"
         private const val DEFAULT_SECONDS = 10L
         private const val MILLIS = 1_000L
     }
