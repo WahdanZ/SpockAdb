@@ -58,11 +58,11 @@ class VmServiceProbeTest {
     fun `nothing listening is unreachable, with the token kept out of the reason`() {
         val freePort = ServerSocket(0).use { it.localPort }
 
-        val result = VmServiceProbe.probe(VmServiceUri.parse("ws://127.0.0.1:$freePort/HXKQJZK_Rkw=/ws"))
+        val result = VmServiceProbe.probe(VmServiceUri.parse("ws://127.0.0.1:$freePort/FAKEtoken_0000=/ws"))
 
         val reason = (result as VmServiceProbe.Result.Unreachable).reason
         assertTrue(reason.startsWith("Could not connect"), reason)
-        assertFalse(reason.contains("HXKQJZK"), reason)
+        assertFalse(reason.contains("FAKEtoken"), reason)
     }
 
     @Test
