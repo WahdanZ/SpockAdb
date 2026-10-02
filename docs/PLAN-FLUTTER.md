@@ -52,7 +52,7 @@ or SDK, not only in unit tests. The Android flow comes first:
 | P3 target-neutral context | ✅ #157 merged | ✅ CI Plugin Verifier, all IDEs | — |
 | P4a client + session | ✅ #159, review fixed | ✅ DDS connect, 302 → DDS from the direct address, history by arrival, hot restart followed, HTTP logging restored | **H1** (connection type by probe) |
 | P4b DTD discovery | ✅ #161, reviewed (2 major) | ✅ DTD found and connected on Flutter 3.47.5 | **H2** (app identity by pid), review D1–D11, S22 (IDE-run app), S23 (Linux/Windows) |
-| P5a analyzers | ✅ #162, reviewed (3 major) | ⚠️ unit-tested on recorded **debug** payloads only | review A1–A15, **H3** device validation |
+| P5a analyzers | ✅ #162, reviewed (3 major), A1–A15 fixed | ⚠️ unit-tested on recorded **debug** payloads only | **H3** device validation |
 | H Android hardening | ⬜ | ⬜ | all — see below |
 | P5b wiring | ⬜ | ⬜ | after H |
 | P6 iOS | ⬜ deferred until H and P5b | ⬜ | |
@@ -139,29 +139,34 @@ From the joint review of #159, #161 and #162 and the device experiments of 2026-
   - Confirm with `getVM().pid == pidof <selected applicationId>` on the **selected device**: a read-only call on a DDS candidate.
   - No candidate confirms → none is used (fall back to the logcat path, which is keyed by the app's pid already).
   - Several confirm (pid collision across devices) → ambiguous, ask.
-- [ ] **Review findings**: #161 D1–D11, #162 A1–A15 (A1 error grouping, A2 frame rows flooding the Timeline, A3 rebuild-storm false positives).
+- [ ] **Review findings**: #161 D1–D11. #162 A1–A15 done (A1 error grouping, A2 frame rows flooding the Timeline, A3 rebuild-storm false positives).
 - [ ] **H3 — device validation of the P5a assumptions** (each on the P0 sample, Android emulator):
-  - profile-mode `Flutter.Frame` payloads and a real jank fixture (`flutter run --profile`): budget from `_flutter.getDisplayRefreshRate`;
-  - rebuild-storm threshold against the sample's rebuild storm **and** against normal scrolling (`ListView.builder`) and an
-    indeterminate progress indicator, which must not be called a storm (review A3);
-  - HTTP profile paging: `updatedSince` returns updated in-flight requests; a 4xx/5xx whose body is never drained (review A7);
+  - profile-mode `Flutter.Frame` payloads and a real jank fixture (`flutter run --profile`, *Frames and rebuilds* →
+    `frames_slow`): budget from `_flutter.getDisplayRefreshRate`; the jank WARNING thresholds (≥ 3 slow frames and ≥ 5 %, or one
+    ≥ 700 ms frame) and the Timeline's one row per burst;
+  - the frequent-rebuilds rule (built in every frame of a 60-frame run; WARNING at ≥ 10 builds a frame) against the sample's
+    rebuild storm (`frames_rebuild_storm`, must be reported) **and** against a fast scroll of the 500-item *List → detail routes*
+    (`ListView.builder`) and *Indeterminate progress* (`frames_progress`), neither of which may be (review A3);
+  - HTTP profile paging: `updatedSince` returns updated in-flight requests; a 4xx whose body is never drained
+    (*Network* → `net_404_undrained`) is reported as failed (review A7);
   - hot restart: `errorsSinceReload` resets, RebuiltWidgets location ids restart with the new isolate (review A6), HTTP logging is re-enabled;
   - Android back at the root destroys the engine: the session reports "isolate exited", not a hang.
 - **Gate (end to end, Android):** with an app selected in Spock and nothing pasted, discovery → session → Diagnose shows the
   Flutter error from the P0 Layout screen next to its logcat context, in each of: `flutter run` on 3.22 (logcat → 302 → DDS),
-  `flutter run` on 3.47.5 (DTD), two flavors of the sample running together, two emulators of the same image. An app started
+  `flutter run` on 3.47.5 (DTD), two flavors of the sample running together (the second copy: `flutter run
+  --android-project-arg spockAppIdSuffix=.second`, see the sample's README), two emulators of the same image. An app started
   without a debugger session is reported, not connected.
 
 ### P5 — Cross-layer Diagnose + Timeline (must) · ~7 days
 
 #### P5a — analyzers (pure, no wiring)
 Library and tests only, in `spock.adb.flutter.analysis`: no device, no IDE API, no UI, no MCP tool. Inputs are `FlutterExtensionEvent` (kind, device timestamp, isolate, `extensionData`, history flag), built from the session's `FlutterEvent` by one adapter, so a change inside `FlutterSession` touches only that.
-- [x] `FlutterErrorReader`: `Flutter.Error` → one line from the tree, not the console text (`ErrorSummary` headline, the "Exception caught by …" description, what was thrown, the error-causing widget's `lib/…:line:col`), `errorsSinceReload`; repeats grouped with a count (digits ignored); clipped; type `flutterError`, ERROR. Replayed events are counted apart and the problem says "(before Spock connected)".
-- [x] `FrameStats`: p50/p90/worst build and raster in ms, frames over the budget (`1000 / fps` from `_flutter.getDisplayRefreshRate`, 60 assumed when absent), a frame being over when build **or** raster exceeds it. Type `jank`: WARNING in profile/release, INFO "not representative" in debug or an unknown build [FR4]. Replayed frames (start-up) left out by default.
-- [x] `RebuildTracker`: accumulates `Flutter.RebuiltWidgets` (`events` = `[id, count, …]` per frame; `locations` with names and the older `newLocations` triples, both deltas) → top widgets by rebuilds, per second and per frame, with source location. Rebuild storm (type `rebuildStorm`, WARNING): ≥ 1 rebuild per frame over ≥ 60 frames. Found in the 3.22 source: each location is sent **once per isolate**, so a second recording, or one started while the IDE's rebuild counts were on, sees bare ids — `seedLocations` takes `ext.flutter.inspector.widgetLocationIdMap` to name them.
-- [x] `HttpProfileReader`: requests with method, URL (query stripped, host kept, as logcat's), status, error, duration; failed = an error or a finished 4xx/5xx; in flight is not failed. Type `network`: WARNING for 4xx, ERROR for 5xx and errors. Pages merged by request id. Times are epoch **µs** on the device clock.
-- [x] `FlutterTimelineMapper` and categories `FLUTTER_ERROR`, `FLUTTER_FRAME` (over budget only), `NAVIGATION` and `HTTP` (there was no network category); events are placed at the device's timestamp for P5b to move onto the host clock, frames optionally by `startTime` plus a caller-measured offset. `android_get_debug_timeline`'s schema and `docs/MCP.md` list them. `Flutter.Navigation` carries no push/pop flag, so a row says "Navigator: <route>", never "opened" (on a pop it names the popped route).
-- [x] Classifier: a `MissingPluginException` within 2 s of DartMessenger's `Uncaught exception in binary message listener` (same pid) is one problem, "Platform channel handler for M on C threw <exception>" (type `flutterPlugin`), replacing both the DartMessenger problem and "plugin not registered" (spike S8). A `TODO()` in a handler stays a crash.
+- [x] `FlutterErrorReader`: `Flutter.Error` → one line from the tree, not the console text (`ErrorSummary` headline, the "Exception caught by …" description, what was thrown, the error-causing widget's `lib/…:line:col`), `errorsSinceReload` (sent 0-based; reported with the latest error counted); repeats grouped with a count (digits ignored in the headline only; the widget's `file:line:col` keeps two sites apart); multi-line headlines on one line; URL queries cut; clipped; type `flutterError`, ERROR. Replayed events are counted apart and the problem says "(before Spock connected)".
+- [x] `FrameStats`: p50/p90/worst build and raster in ms, frames over the budget (`1000 / fps` from `_flutter.getDisplayRefreshRate`, 60 assumed when absent), a frame being over when build **or** raster exceeds it. Type `jank`: nothing when every frame made it; WARNING in profile/release when slow frames are frequent (≥ 3 and ≥ 5 %) or one froze (≥ 700 ms), else INFO; INFO "not representative" in debug or an unknown build [FR4]. Replayed frames (start-up) left out by default.
+- [x] `RebuildTracker`: accumulates `Flutter.RebuiltWidgets` (`events` = `[id, count, …]` per frame; `locations` with names and the older `newLocations` triples, both deltas) → top widgets by rebuilds, per second and per frame, with source location. Frequent rebuilds (type `frequentRebuilds`): a location built in **every** frame of a run of ≥ 60 — INFO "rebuilt N times in M frames", WARNING only at ≥ 10 builds in each frame of the run. The inspector counts first builds too and per creation location (`_onRebuildWidget` ignores `builtOnce`), so an average per frame is met by a scrolling list; a run in every frame is not (review A3). A new isolate starts the window over (hot restart renumbers locations), replayed events are skipped, and the tracker is thread-safe. Found in the 3.22 source: each location is sent **once per isolate**, so a second recording, or one started while the IDE's rebuild counts were on, sees bare ids — `seedLocations` takes `ext.flutter.inspector.widgetLocationIdMap` to name them.
+- [x] `HttpProfileReader`: requests with method, URL (query stripped, host kept, as logcat's), status, error, duration; failed = an error or a 4xx/5xx status, finished or not (a body never drained never finishes); in flight with no status is not failed; URL queries cut from error text. Type `network`: WARNING for 4xx, ERROR for 5xx and errors. Pages merged by request id. Times are epoch **µs** on the device clock.
+- [x] `FlutterTimelineMapper` and categories `FLUTTER_ERROR`, `FLUTTER_FRAME` (one row per burst of slow frames, capped per window; replayed frames none), `NAVIGATION` and `HTTP` (there was no network category); events start from the device's timestamp and `Placement.toHostMs` moves them onto the host clock, frames optionally by `startTime` plus a caller-measured offset. `android_get_debug_timeline`'s schema and `docs/MCP.md` list them. `Flutter.Navigation` carries no push/pop flag, so a row says "Navigator: <route>", never "opened"; the KDoc and `docs/MCP.md` say once which route each call names (pop: the popped one; `removeRoute`: the new current one, or none). `TimelineCategory.parse` matches names first and refuses `flutter`.
+- [x] Classifier: a `MissingPluginException` within 500 ms of DartMessenger's `Uncaught exception in binary message listener` (same pid, no other line of that pid in between, failures paired oldest first) is one problem, "Platform channel handler for M on C threw <exception> (inferred from DartMessenger's log)" (type `flutterPlugin`), replacing both the DartMessenger problem and "plugin not registered" (spike S8). A `TODO()` in a handler stays a crash.
 - [x] Tests against the device captures in `src/test/resources/flutter/vm-3.22.2/` (Flutter 3.22.2, Android 14 emulator): errors, frames, rebuilds, navigation, HTTP profile, refresh rate; empty, history-only and malformed payloads.
 - Found in the capture: the first `Flutter.Error` after a reload renders a DevTools link whose `uri=` holds the VM Service token **percent-encoded** (`%2F<token>%3D%2F`). `Redaction` already scrubs that form; fixtures must be checked for it too, not only for `/<token>=/`.
 
