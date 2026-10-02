@@ -285,7 +285,7 @@ class LogProblemExtractorTest {
             listOf(
                 LogProblemExtractor.TYPE_FLUTTER_PLUGIN to "Platform channel handler for throwChecked on " +
                     "spock.sample/native threw java.io.IOException: " +
-                    "Sample checked exception thrown in a channel handler",
+                    "Sample checked exception thrown in a channel handler (inferred from DartMessenger's log)",
                 LogProblemExtractor.TYPE_CRASH to
                     "App crashed: kotlin.NotImplementedError: An operation is not implemented: Sample (thread main)",
             ),
@@ -341,7 +341,7 @@ class LogProblemExtractorTest {
         )
 
         assertEquals(
-            listOf("Platform channel handler for m on c threw an exception"),
+            listOf("Platform channel handler for m on c threw an exception (inferred from DartMessenger's log)"),
             result.problems.map { it.summary },
         )
     }
@@ -366,5 +366,82 @@ class LogProblemExtractorTest {
             "Flutter plugin not registered: No implementation found for method ping on channel app/x (v2)",
             flutterSummary("MissingPluginException(No implementation found for method ping on channel app/x (v2))"),
         )
+    }
+
+    private fun missing(method: String, time: String = "09-25 10:00:00.000") = line(
+        100,
+        'E',
+        "flutter",
+        "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: " +
+            "MissingPluginException(No implementation found for method $method on channel c)",
+        time = time,
+    )
+
+    @Test
+    fun `a missing plugin more than half a second after a handler failure is not paired`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure, time = "09-25 10:00:00.000"),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom", time = "09-25 10:00:00.000"),
+            missing("m", time = "09-25 10:00:00.600"),
+        )
+
+        assertTrue(result.problems.any { it.summary.startsWith("Flutter plugin not registered") }, "${result.problems}")
+    }
+
+    @Test
+    fun `another line of the process between the two breaks the pairing`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom"),
+            line(100, 'I', "flutter", "user tapped Save"),
+            missing("m"),
+        )
+
+        assertEquals(
+            listOf(
+                "DartMessenger: $listenerFailure — java.io.IOException: boom",
+                "Flutter plugin not registered: No implementation found for method m on channel c",
+            ),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `two failures before their replies pair first with first`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure),
+            line(100, 'E', "DartMessenger", "java.io.IOException: first"),
+            line(100, 'E', "DartMessenger", "\tat app.Handler.onMethodCall(Handler.kt:12)"),
+            line(100, 'E', "DartMessenger", listenerFailure),
+            line(100, 'E', "DartMessenger", "java.io.IOException: second"),
+            missing("one"),
+            line(100, 'E', "flutter", "#0      MethodChannel._invokeMethod (package:flutter/x.dart:1:1)"),
+            missing("two", time = "09-25 10:00:00.001"),
+        )
+
+        val inferred = " (inferred from DartMessenger's log)"
+        assertEquals(
+            listOf(
+                "Platform channel handler for one on c threw java.io.IOException: first$inferred",
+                "Platform channel handler for two on c threw java.io.IOException: second$inferred",
+            ),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `a failure taken back leaves the problem its earlier time`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure, time = "09-25 10:00:00.000"),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom", time = "09-25 10:00:00.000"),
+            line(100, 'E', "DartMessenger", listenerFailure, time = "09-25 10:00:05.000"),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom", time = "09-25 10:00:05.000"),
+            missing("m", time = "09-25 10:00:05.010"),
+        )
+
+        val messenger = result.problems.single { it.summary.startsWith("DartMessenger") }
+        assertEquals(1, messenger.count)
+        assertEquals("09-25 10:00:00.000", messenger.lastSeen)
+        assertEquals("09-25 10:00:05.010", result.problems.single { it.summary.startsWith("Platform") }.lastSeen)
     }
 }
