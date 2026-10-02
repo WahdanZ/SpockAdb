@@ -7,6 +7,7 @@ import spock.adb.ShellOutputReceiver
 import spock.adb.ShellQuote
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.InspectionOperations
+import spock.adb.logcat.AppProcessTracker
 import spock.adb.logcat.LogcatEntry
 import spock.adb.logcat.LogcatStream
 import spock.adb.models.FragmentData
@@ -40,6 +41,11 @@ class DeviceEventRecorder(
      */
     private val onEnded: (String) -> Unit = {},
     private val readFragments: (String) -> List<FragmentData> = { InspectionOperations(target.device).fragments(it) },
+    /**
+     * The app's process [pid] started, at host ms: the Flutter follower attaches then. Called
+     * under the recorder's lock, so it must only hand the work on.
+     */
+    private val onProcessStarted: (pid: Int, hostMs: Long) -> Unit = { _, _ -> },
 ) {
 
     private val log = Logger.getInstance(DeviceEventRecorder::class.java)
@@ -209,7 +215,10 @@ class DeviceEventRecorder(
     private fun deliver(entry: LogcatEntry, arrivedMs: Long) {
         val active = classifier ?: return
         val measured = clock?.toHostMillis(entry.timestamp, arrivedMs)
+        val known = active.processes
         active.accept(entry, measured ?: arrivedMs).forEach(::emit)
+        AppProcessTracker.startedPid(entry, packageName)?.takeIf { !known.contains(it) }
+            ?.let { onProcessStarted(it, measured ?: arrivedMs) }
     }
 
     private fun onTick() {

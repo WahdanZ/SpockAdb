@@ -4,13 +4,18 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
+import com.intellij.util.concurrency.AppExecutorUtil
 import spock.adb.ActionResult
 import spock.adb.SpockAdbService
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.DeviceInfo
+import spock.adb.flutter.FlutterSessionService
 import spock.adb.mcp.McpCall
 import spock.adb.mcp.McpServerService
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /**
  * The project's Debug Timeline: what happened, from every part of Spock, in one order.
@@ -23,7 +28,9 @@ import spock.adb.mcp.McpServerService
  *   through too;
  * - devices connecting and disconnecting — a device-list observer;
  * - the app on the device — a [DeviceEventRecorder] for the device and app the tool window has
- *   selected, started by [follow].
+ *   selected, started by [follow];
+ * - the app's live Flutter session — a [FlutterTimelineRecorder] following
+ *   [FlutterSessionService], while device events are recorded.
  */
 @Service(Service.Level.PROJECT)
 class DebugTimelineService(private val project: Project) : Disposable {
@@ -53,8 +60,31 @@ class DebugTimelineService(private val project: Project) : Disposable {
 
     private val mcpListener: (McpCall) -> Unit = { call -> recordAgentCall(call) }
 
+    /** Told when the followed app's process starts; see [addProcessStartListener]. */
+    private val processStartListeners = CopyOnWriteArrayList<ProcessStartListener>()
+
+    /** The selected app's process started, seen in the device log the recorder reads. */
+    fun interface ProcessStartListener {
+        /** On the recorder's thread, under its lock: hand the work on, do not do it here. */
+        fun processStarted(serial: String, packageName: String, pid: Long, hostMs: Long)
+    }
+
+    private val flutterRecorder = FlutterTimelineRecorder(
+        sink = { event -> if (!disposed && recordingDevice) timeline.record(event) },
+        ticker = { tick ->
+            AppExecutorUtil.getAppScheduledExecutorService().scheduleWithFixedDelay(
+                tick,
+                FlutterTimelineRecorder.TICK_MS,
+                FlutterTimelineRecorder.TICK_MS,
+                TimeUnit.MILLISECONDS,
+            )
+        },
+    )
+
     init {
         McpServerService.getInstance().addCallListener(mcpListener)
+        FlutterSessionService.getInstance(project).addListener(this, flutterRecorder)
+        Disposer.register(this, flutterRecorder)
         SpockAdbService.getInstance(project).controller.observeDevices(::onDevices)
         // Records the device and app every Spock surface acts on, as they change.
         SpockSelection.getInstance(project).addListener(this) { snapshot, changes ->
@@ -118,6 +148,15 @@ class DebugTimelineService(private val project: Project) : Disposable {
         record(TimelineCategory.STORAGE, severity, title, message, deviceSerial)
     }
 
+    /**
+     * Calls [listener] whenever the followed app's process starts, until [parent] is disposed.
+     * Only while device events are recorded: the start is read from the device's log.
+     */
+    fun addProcessStartListener(parent: Disposable, listener: ProcessStartListener) {
+        if (!Disposer.tryRegister(parent, Disposable { processStartListeners -= listener })) return
+        processStartListeners += listener
+    }
+
     /** A note the developer adds, to find the moment they saw the bug. */
     fun addMarker(note: String) {
         record(TimelineCategory.MARKER, TimelineSeverity.INFO, note.ifBlank { "Marker" })
@@ -159,6 +198,9 @@ class DebugTimelineService(private val project: Project) : Disposable {
             sink = { event -> if (!disposed) timeline.record(event) },
             onEnded = { reason ->
                 ApplicationManager.getApplication().invokeLater({ recorderEnded(started, reason) }) { disposed }
+            },
+            onProcessStarted = { pid, hostMs ->
+                processStartListeners.forEach { it.processStarted(device.serialNumber, app, pid.toLong(), hostMs) }
             },
         )
         recorder = started.also { it.start() }
