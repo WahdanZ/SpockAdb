@@ -33,6 +33,18 @@ class VmServiceRpcException(
 class VmServiceRedirectException(val target: VmServiceUri, from: String) :
     VmServiceException("$from hands its clients to the Dart Development Service")
 
+/**
+ * The address is the VM's own and no Dart Development Service runs in front of it: the app was
+ * started without `flutter run` or `flutter attach`. A client that stays connected there makes
+ * either of them fail to start DDS ("connection to device ended too early", spike S10), so the
+ * session closed the connection rather than keep it. The message is fit to show.
+ */
+class NoDdsException : VmServiceException(
+    "The app is running without a debugger session (no Dart Development Service). " +
+        "Start it with `flutter run` or `flutter attach`; Spock did not stay connected, " +
+        "because a direct connection would block them.",
+)
+
 /** No answer within the call's timeout. The request is forgotten; a late answer is dropped. */
 class VmServiceTimeoutException(val method: String, val timeoutMs: Long) :
     VmServiceException("$method got no answer in $timeoutMs ms")

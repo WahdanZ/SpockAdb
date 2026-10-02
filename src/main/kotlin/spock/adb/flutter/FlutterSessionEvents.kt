@@ -3,6 +3,7 @@ package spock.adb.flutter
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
+import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.VmServiceEvent
 import spock.adb.flutter.vmservice.string
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -35,6 +36,8 @@ data class FlutterSessionSnapshot(
     val uiIsolate: FlutterIsolate? = null,
     /** Null until read, or when the UI isolate has no inspector (profile builds). */
     val structuredErrorsEnabled: Boolean? = null,
+    /** What answered on connect; null while not connected. Only [ConnectionKind.DDS] is written to. */
+    val connectionKind: ConnectionKind? = null,
 ) {
     val uiIsolateId: String? get() = uiIsolate?.id
 }

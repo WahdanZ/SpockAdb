@@ -9,17 +9,21 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.FakeVmService
+import spock.adb.flutter.vmservice.FakeVmService.Companion.DDS_VERSION
 import spock.adb.flutter.vmservice.FakeVmService.Companion.HTTP_LOGGING
 import spock.adb.flutter.vmservice.FakeVmService.Companion.STRUCTURED_ERRORS
 import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
 import spock.adb.flutter.vmservice.FakeVmService.Companion.fixture
 import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
+import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceCandidate
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
+import spock.adb.flutter.vmservice.VmServiceRpcException
 import spock.adb.flutter.vmservice.VmServiceSource
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.net.ServerSocket
@@ -73,6 +77,8 @@ class FlutterSessionTest {
     private fun writes(method: String, isolateId: String? = null) =
         extensionCalls(method, isolateId).filter { it.has("enabled") }.map { it.get("enabled").asString }
 
+    private fun FakeVmService.methods() = requests.map { it.get("method").asString }
+
     private fun stateChanged(value: String, timestamp: Long, isolateId: String = UI_ISOLATE) =
         isolateEvent("Extension", isolateId, timestamp) {
             addProperty("extensionKind", "Flutter.ServiceExtensionStateChanged")
@@ -95,6 +101,8 @@ class FlutterSessionTest {
         assertEquals(connectedAt, session.connectedAt)
         assertEquals("VM", session.vm?.get("type")?.asString)
         assertEquals(FlutterBuild.DEBUG, session.buildMode)
+        assertEquals(ConnectionKind.DDS, session.connectionKind)
+        assertEquals(ConnectionKind.DDS, session.snapshot.connectionKind)
         assertFalse(session.readOnly)
         assertEquals(
             FlutterSession.DEFAULT_STREAMS,
@@ -296,28 +304,106 @@ class FlutterSessionTest {
     }
 
     @Test
-    fun `a direct connection reads but writes nothing`() {
+    fun `what answers is asked first, before any stream, VM read or extension call`() {
+        session.connect(pasted())
+
+        val methods = vm.methods()
+        assertEquals(DDS_VERSION, methods.first())
+        assertEquals(1, methods.count { it == DDS_VERSION })
+        assertTrue(methods.indexOf("getVM") > 0 && methods.indexOf("streamListen") > 0, methods.toString())
+    }
+
+    @Test
+    fun `a pasted address of a VM with no DDS is left at once, having called nothing else`() {
+        vm.dds = false
+
+        val error = assertThrows<NoDdsException> { session.connect(pasted()) }
+
+        assertTrue(error.message!!.contains("without a debugger session"), error.message)
+        assertTrue(error.message!!.contains("flutter attach"), error.message)
+        assertEquals(listOf(DDS_VERSION), vm.methods())
+        assertTrue(vm.server.closeFrameReceived.await(2, TimeUnit.SECONDS))
+        assertEquals(SessionState.Disconnected(error.message!!), session.state)
+        assertNull(session.client)
+        assertNull(session.connectionKind)
+        assertTrue(session.readOnly)
+        assertFalse(vm.httpLogging)
+    }
+
+    @Test
+    fun `a VM with no DDS found through logcat is left too, and its forward released`() {
+        vm.dds = false
         val candidate = tracking(ddsLikely = false)
 
-        session.connect(candidate)
+        assertThrows<NoDdsException> { session.connect(candidate) }
+
+        assertEquals(listOf(DDS_VERSION), vm.methods())
+        assertEquals(1, candidate.released)
+    }
+
+    @Test
+    fun `a VM with no DDS is kept only when asked, and then read but never written`() {
+        vm.dds = false
+        val candidate = tracking(ddsLikely = false)
+
+        session.connect(candidate, allowDirect = true)
+
+        assertEquals(ConnectionKind.DIRECT_NO_DDS, session.connectionKind)
+        assertTrue(session.readOnly)
+        assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
+        assertEquals(true, session.structuredErrorsEnabled)
+        assertEquals(DDS_VERSION, vm.methods().first())
         session.close()
 
-        assertTrue(candidate.direct)
         assertEquals(emptyList<String>(), writes(HTTP_LOGGING) + writes(STRUCTURED_ERRORS))
-        assertEquals(true, session.structuredErrorsEnabled)
+        assertFalse(vm.httpLogging)
+        assertEquals(1, candidate.released)
+    }
+
+    @Test
+    fun `a candidate not marked as DDS that answers as DDS is a DDS connection`() {
+        session.connect(tracking(ddsLikely = false))
+
+        assertEquals(ConnectionKind.DDS, session.connectionKind)
+        assertFalse(session.readOnly)
+        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
+    }
+
+    @Test
+    fun `asking with DDS allowed is no different on DDS`() {
+        session.connect(pasted(), allowDirect = true)
+
+        assertEquals(ConnectionKind.DDS, session.connectionKind)
+        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
+    }
+
+    @Test
+    fun `a probe that fails any other way fails the connection`() {
+        vm.on(DDS_VERSION) { FakeVmService.Reply.Error(-32_000, "Server error") }
+        val candidate = tracking()
+
+        val error = assertThrows<VmServiceRpcException> { session.connect(candidate, allowDirect = true) }
+
+        assertEquals(DDS_VERSION, error.method)
+        assertEquals(listOf(DDS_VERSION), vm.methods())
+        assertEquals(SessionState.Disconnected(error.message!!), session.state)
+        assertNull(session.connectionKind)
         assertEquals(1, candidate.released)
     }
 
     @Test
     fun `a direct address the VM redirects to DDS is followed, and the connection is then DDS's`() {
         FakeVmService().use { dds ->
+            vm.dds = false
             vm.server.redirectTo = dds.uri
             val candidate = tracking(ddsLikely = false)
 
             session.connect(candidate)
 
             assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
+            assertEquals(ConnectionKind.DDS, session.connectionKind)
             assertFalse(session.readOnly)
+            assertEquals(DDS_VERSION, dds.methods().first())
             val ddsWrites = dds.requestsFor(HTTP_LOGGING).map { it.getAsJsonObject("params") }
                 .filter { it.has("enabled") }.map { it.get("enabled").asString }
             assertEquals(listOf("true"), ddsWrites)
@@ -634,10 +720,12 @@ class FlutterSessionTest {
         vm.server.drop()
         eventually { session.state is SessionState.Disconnected }
 
-        session.connect(tracking(ddsLikely = false))
+        vm.dds = false
+        session.connect(tracking(ddsLikely = false), allowDirect = true)
         session.close()
         assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
 
+        vm.dds = true
         session.connect(pasted())
         session.close()
         assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))

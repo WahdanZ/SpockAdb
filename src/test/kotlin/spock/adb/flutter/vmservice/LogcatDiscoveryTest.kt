@@ -9,6 +9,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -41,14 +42,14 @@ class LogcatDiscoveryTest {
     }
 
     @Test
-    fun `the announced address becomes a direct candidate that forwards its port`() {
+    fun `the announced address becomes a candidate tried after DDS ones, that forwards its port`() {
         val device = device()
         val candidate = LogcatDiscovery(device, "com.example.app").discover().single()
 
         val uri = candidate.open()
         candidate.release()
 
-        assertTrue(candidate.direct)
+        assertFalse(candidate.ddsLikely)
         assertEquals(VmServiceSource.LOGCAT, candidate.source)
         verify { device.createForward(uri.port, 43_181) }
         verify { device.removeForward(uri.port) }

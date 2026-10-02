@@ -2,8 +2,10 @@ package spock.adb.flutter
 
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
+import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.ExtensionResults
 import spock.adb.flutter.vmservice.HandedToDdsCandidate
+import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.VmServiceCandidate
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceClosedException
@@ -34,13 +36,20 @@ import kotlin.concurrent.withLock
  * listener call. Selection work is serialised by a lock of its own, and [close] first stops every
  * call still waiting, so it never waits behind a stuck isolate.
  *
+ * What answers is asked before anything else, not taken from where the address came from: a
+ * device address forwarded by hand looks like a pasted DDS one. DDS serves
+ * `getDartDevelopmentServiceVersion`; the VM itself does not. A VM with no DDS in front of it is
+ * left at once unless the caller opts in, because a client that stays there keeps `flutter run`
+ * and `flutter attach` from starting DDS (spike S10) [FR1].
+ *
  * Side effects on the app are kept to one, and undone [FR10]:
  * - `structuredErrors` is only read, never set. Debug builds already have it on (spike S3), and
  *   switching it would change where the app reports its errors for every other tool.
  * - `httpEnableTimelineLogging` is off by default (spike S4) and P5 needs it for HTTP failures, so
  *   it is switched on for each new UI isolate — and off again on [close], only where Spock was the
- *   one that switched it on. A [VmServiceCandidate.direct] connection makes no writes at all —
- *   unless the VM hands it to DDS on connect, which makes it a DDS connection like any other.
+ *   one that switched it on. Only a [ConnectionKind.DDS] connection writes: a direct one kept by
+ *   opt-in makes no writes at all. A direct address the VM hands to DDS on connect answers the
+ *   probe as DDS, and is a DDS connection like any other.
  */
 class FlutterSession(
     private val connector: (VmServiceUri) -> VmServiceClient = { VmServiceClient.connect(it) },
@@ -54,6 +63,10 @@ class FlutterSession(
         /** Set under the session's lock, and only while this is the session's attempt. */
         @Volatile
         var client: VmServiceClient? = null
+
+        /** What answered on [client]; null until asked. Only a DDS connection is restored on close. */
+        @Volatile
+        var kind: ConnectionKind? = null
     }
 
     private val listeners = CopyOnWriteArrayList<FlutterSessionListener>()
@@ -116,8 +129,11 @@ class FlutterSession(
     /** Null until read, or when the UI isolate has no inspector (profile builds). */
     val structuredErrorsEnabled: Boolean? get() = snapshot.structuredErrorsEnabled
 
-    /** A direct device URI: watch, do not change anything in the app. */
-    val readOnly: Boolean get() = attempt?.candidate?.direct == true
+    /** What answered on connect; null while not connected. */
+    val connectionKind: ConnectionKind? get() = snapshot.connectionKind
+
+    /** Anything but DDS, including not connected (yet): watch, do not change anything in the app. */
+    val readOnly: Boolean get() = snapshot.connectionKind != ConnectionKind.DDS
 
     /**
      * A hint from the UI isolate's extensions: the inspector is registered only in debug builds,
@@ -142,16 +158,22 @@ class FlutterSession(
     }
 
     /**
-     * Opens [candidate], reads the VM, subscribes to [streams] and selects the UI isolate. Returns
-     * the client for calls the session does not wrap. Blocking. A [close] meanwhile ends it.
+     * Opens [candidate], asks what answers ([connectionKind]), reads the VM, subscribes to
+     * [streams] and selects the UI isolate. Returns the client for calls the session does not
+     * wrap. Blocking. A [close] meanwhile ends it.
      *
+     * @param allowDirect keep a connection to a VM with no DDS in front of it, read-only. It then
+     * keeps `flutter run` and `flutter attach` from starting DDS until [close] — the developer's
+     * explicit choice, never a default.
+     * @throws NoDdsException when the VM has no DDS in front of it and [allowDirect] is false: the
+     * connection is closed before anything else is called.
      * @throws VmServiceException when the connection or its first calls fail; nothing is left open,
      * and the state is [SessionState.Disconnected] with the reason.
      */
     // Anything that escapes — the VM Service failing, or a bug — must not leave a socket open or
     // the session half set: it is cleaned up and rethrown as it was.
     @Suppress("TooGenericExceptionCaught")
-    fun connect(candidate: VmServiceCandidate): VmServiceClient {
+    fun connect(candidate: VmServiceCandidate, allowDirect: Boolean = false): VmServiceClient {
         val attempt = Attempt(candidate)
         synchronized(lock) {
             check(this.attempt == null) { "This session is already connected; close it first." }
@@ -160,11 +182,23 @@ class FlutterSession(
             // app still has logging on, and close() must still switch it off.
             structuredErrorsReadFor = null
             httpLoggingCheckedFor = null
-            snapshot = snapshot.copy(selection = null, uiIsolate = null, structuredErrorsEnabled = null)
+            snapshot = snapshot.copy(
+                selection = null,
+                uiIsolate = null,
+                structuredErrorsEnabled = null,
+                connectionKind = null,
+            )
         }
         try {
             val connected = openFollowingDds(attempt)
             hold(attempt, connected)
+            val kind = probe(connected)
+            if (kind == ConnectionKind.DIRECT_NO_DDS && !allowDirect) throw NoDdsException()
+            synchronized(lock) {
+                ensureCurrent(attempt)
+                attempt.kind = kind
+                snapshot = snapshot.copy(connectionKind = kind)
+            }
             val description = connected.getVM()
             synchronized(lock) {
                 ensureCurrent(attempt)
@@ -225,6 +259,19 @@ class FlutterSession(
         connector(handed.open())
     }
 
+    /**
+     * The first call on a new connection, before any stream or extension: a client on a VM with no
+     * DDS must leave before it does anything else. Only "method not found" means the VM itself;
+     * any other failure is the connection's, and fails it.
+     */
+    private fun probe(connected: VmServiceClient): ConnectionKind = try {
+        connected.call(DDS_VERSION)
+        ConnectionKind.DDS
+    } catch (e: VmServiceRpcException) {
+        if (e.code != VmServiceRpcException.METHOD_NOT_FOUND) throw e
+        ConnectionKind.DIRECT_NO_DDS
+    }
+
     /** Makes [connected] the attempt's client — unless [close] came first, which ends it here. */
     private fun hold(attempt: Attempt, connected: VmServiceClient) {
         val held = synchronized(lock) {
@@ -266,7 +313,7 @@ class FlutterSession(
     /** Under the lock: the session lets go of its attempt and says why. */
     private fun detach(state: SessionState.Disconnected) {
         attempt = null
-        snapshot = snapshot.copy(uiIsolate = null)
+        snapshot = snapshot.copy(uiIsolate = null, connectionKind = null)
         setState(state)
     }
 
@@ -277,7 +324,7 @@ class FlutterSession(
             if (connected != null && connected.isOpen) {
                 connected.failPendingCalls("the Flutter session is closing")
                 // A direct connection writes nothing; the isolates stay listed for a later DDS one.
-                if (!attempt.candidate.direct) restoreHttpLogging(connected)
+                if (attempt.kind == ConnectionKind.DDS) restoreHttpLogging(connected)
             }
         } finally {
             try {
@@ -553,6 +600,9 @@ class FlutterSession(
         val DEFAULT_STREAMS = listOf("Isolate", "Debug", "Extension", "Logging")
 
         const val HTTP_LOGGING = "ext.dart.io.httpEnableTimelineLogging"
+
+        /** Served by DDS only; the VM itself answers it with "method not found". */
+        const val DDS_VERSION = "getDartDevelopmentServiceVersion"
         const val CLOSED_BY_SPOCK = "closed by Spock"
         private const val STATE_CHANGED = "Flutter.ServiceExtensionStateChanged"
 
