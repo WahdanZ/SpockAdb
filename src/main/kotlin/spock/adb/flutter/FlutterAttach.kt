@@ -34,6 +34,12 @@ sealed interface FlutterAttachOutcome {
      */
     data class NoDdsSession(val identity: AppIdentity, val message: String) : FlutterAttachOutcome
 
+    /**
+     * Several Dart Tooling Daemon apps pass as the selected app on the selected device — same
+     * pid, and starts that cannot be told apart. Spock does not pick by rank: the caller asks.
+     */
+    data class Ambiguous(val candidates: List<IdentifiedCandidate>, val reason: String) : FlutterAttachOutcome
+
     /** Nothing names the app's VM Service, past the startup window. [reason] is fit to show. */
     data class NotFound(val reason: String) : FlutterAttachOutcome
 

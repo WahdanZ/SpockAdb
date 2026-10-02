@@ -1,6 +1,7 @@
 package spock.adb.flutter
 
 import com.android.ddmlib.IDevice
+import com.google.gson.JsonArray
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -19,6 +20,8 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.device.DeviceInfo
 import spock.adb.device.DeviceState
 import spock.adb.flutter.dtd.DtdAppIdentity
+import spock.adb.flutter.dtd.DtdCandidate
+import spock.adb.flutter.dtd.FakeDtd
 import spock.adb.flutter.vmservice.FakeVmService
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceCandidate
@@ -30,6 +33,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
@@ -44,16 +48,18 @@ class FlutterSessionServiceTest {
     )
 
     private val dtdAsked = mutableListOf<Pair<String, String?>>()
-    private var dtdFound: List<VmServiceCandidate> = emptyList()
+    private var dtdFound: List<DtdCandidate> = emptyList()
     private var logcatAsked = mutableListOf<String>()
     private var logcatFound: List<VmServiceCandidate> = emptyList()
+    private var logcatDelayMs = 0L
 
-    /** What `pidof` answers on the device. */
+    /** What `pidof` answers on the device, and when each process started there. */
     private var appPids: Set<Long> = setOf(APP_PID)
     private var pidsFail = false
+    private val timings = mutableMapOf<Long, ProcessTiming?>(APP_PID to ProcessTiming(PROCESS_START, null))
 
-    /** The pid each DTD candidate's VM runs as, by port; the ports probed. */
-    private val vmPids = mutableMapOf<Int, Long>()
+    /** Each DTD candidate's VM, by port; the ports probed. */
+    private val vms = mutableMapOf<Int, DtdAppIdentity.VmProcess>()
     private val probed = mutableListOf<Int>()
 
     private var now = 1_000_000L
@@ -65,29 +71,31 @@ class FlutterSessionServiceTest {
     private val service = FlutterSessionService(project).apply {
         dtdDiscovery = { path, model ->
             dtdAsked += path to model
-            VmServiceDiscovery { dtdFound }
+            dtdFound
         }
         logcatDiscovery = { _, applicationId ->
             logcatAsked += applicationId
+            Thread.sleep(logcatDelayMs)
             VmServiceDiscovery { logcatFound }
         }
         appPids = { _, _ ->
             if (pidsFail) throw IOException("adb went away")
             this@FlutterSessionServiceTest.appPids
         }
-        dtdIdentity = DtdAppIdentity { uri ->
+        processTiming = { _, pid -> timings[pid] }
+        dtdIdentity = DtdAppIdentity(vmProcess = { uri ->
             probed += uri.port
-            vmPids[uri.port]
-        }
+            vms[uri.port]
+        })
         ddsProbe = { probe }
         newSession = {
-            sessionsMade++
+            synchronized(this@FlutterSessionServiceTest) { sessionsMade++ }
             FlutterSession()
         }
         clock = { now }
         onEdt = { false }
         background = { FutureTask(it, null).also { task -> Thread(task).start() } }
-        addListener(parent) { changes += it }
+        addListener(parent) { synchronized(changes) { changes += it } }
     }
 
     @AfterEach
@@ -106,20 +114,41 @@ class FlutterSessionServiceTest {
     private fun candidate(source: VmServiceSource, port: Int = 1, ddsLikely: Boolean = true) =
         Fixed(source, ddsLikely, VmServiceUri.parse("ws://127.0.0.1:$port/T=/ws"))
 
-    /** A DTD candidate whose VM runs as [pid]. */
-    private fun dtdApp(port: Int, pid: Long): VmServiceCandidate {
-        vmPids[port] = pid
-        return candidate(VmServiceSource.DTD, port)
+    /** A DTD candidate whose VM runs as [pid], started with the app's process unless said otherwise. */
+    private fun dtdApp(port: Int, pid: Long, start: Long? = PROCESS_START + 500): DtdCandidate {
+        vms[port] = DtdAppIdentity.VmProcess(pid, start)
+        return FakeDtd.candidate(VmServiceUri.parse("ws://127.0.0.1:$port/T=/ws"))
     }
 
-    private fun live(source: VmServiceSource, ddsLikely: Boolean) =
-        Fixed(source, ddsLikely, VmServiceUri.parse(vm.uri))
+    /** The fake VM, listed by a DTD as the app's. */
+    private fun liveDtdApp(fake: FakeVmService = vm): DtdCandidate {
+        val uri = VmServiceUri.parse(fake.uri)
+        vms[uri.port] = DtdAppIdentity.VmProcess(APP_PID, PROCESS_START + 500)
+        return FakeDtd.candidate(uri)
+    }
+
+    private fun live(source: VmServiceSource, ddsLikely: Boolean, fake: FakeVmService = vm) =
+        Fixed(source, ddsLikely, VmServiceUri.parse(fake.uri))
+
+    /** A fake VM whose `getVM` says [pid]. */
+    private fun vmWithPid(pid: Long) = FakeVmService().apply {
+        on("getVM") {
+            FakeVmService.Reply.Result(
+                FakeVmService.fixture("getVM.json").apply {
+                    addProperty("pid", pid)
+                    add("isolates", JsonArray().apply { add(FakeVmService.isolateRef(FakeVmService.UI_ISOLATE)) })
+                },
+            )
+        }
+    }
 
     private fun discover(applicationId: String? = APP_ID, pasted: String? = null) =
         service.discover(device, applicationId, pasted)
 
     private fun ensure(startedAt: Long? = null, build: FlutterBuild? = null) =
         service.ensureSession(device, APP_ID, startedAt, build)
+
+    private fun changeKinds() = synchronized(changes) { changes.map { it::class.simpleName } }
 
     // --- discovery ---
 
@@ -134,13 +163,13 @@ class FlutterSessionServiceTest {
         dtdFound = listOf(dtdApp(1, APP_PID))
         val found = discover(pasted = "http://127.0.0.1:50300/HXKQJZK_Rkw=/").candidates
         assertEquals(listOf(VmServiceSource.DTD, VmServiceSource.PASTED), found.map { it.candidate.source })
-        assertEquals(AppIdentity("emulator-5554", APP_ID, APP_PID, IdentityCheck.DTD_PID), found[0].identity)
+        assertEquals(AppIdentity("emulator-5554", APP_ID, APP_PID, IdentityCheck.DTD_PID_START), found[0].identity)
         assertEquals(IdentityCheck.PASTED_UNVERIFIED, found[1].identity.verifiedBy)
         assertFalse(found[1].identity.verified)
     }
 
     @Test
-    fun `two flavors of one project - only the one running as the selected app's pid is kept`() {
+    fun `two flavors of one project - only the one that is the selected app's process is kept`() {
         dtdFound = listOf(dtdApp(1, 111L), dtdApp(2, APP_PID))
         val found = discover().candidates.single()
         assertEquals(2, found.candidate.open().port)
@@ -149,14 +178,30 @@ class FlutterSessionServiceTest {
     }
 
     @Test
-    fun `several DTD apps on the app's pid - the best-ranked is taken`() {
-        dtdFound = listOf(dtdApp(1, APP_PID), dtdApp(2, APP_PID))
-        assertEquals(1, discover().candidates.single().candidate.open().port)
+    fun `two emulators of one snapshot - the same pid started at another time is the other device's app`() {
+        dtdFound = listOf(dtdApp(1, APP_PID, start = PROCESS_START - 600_000), dtdApp(2, APP_PID))
+        assertEquals(2, discover().candidates.single().candidate.open().port)
     }
 
     @Test
-    fun `no DTD app runs as the app's pid - logcat, keyed by the pid, is asked instead`() {
-        dtdFound = listOf(dtdApp(1, 111L), candidate(VmServiceSource.DTD, port = 2))
+    fun `several DTD apps passing as the selected app are offered as ambiguous, not picked by rank`() {
+        dtdFound = listOf(dtdApp(1, APP_PID), dtdApp(2, APP_PID, start = PROCESS_START + 900))
+        val result = discover()
+        assertTrue(result.candidates.none { it.candidate.source == VmServiceSource.DTD })
+        assertEquals(listOf(1, 2), result.ambiguous.map { it.candidate.open().port })
+        assertTrue(result.ambiguous.all { it.identity.verifiedBy == IdentityCheck.DTD_PID_AMBIGUOUS })
+    }
+
+    @Test
+    fun `a device whose proc is refused - the pid alone, marked weaker`() {
+        timings[APP_PID] = null
+        dtdFound = listOf(dtdApp(1, APP_PID))
+        assertEquals(IdentityCheck.DTD_PID_ONLY, discover().candidates.single().identity.verifiedBy)
+    }
+
+    @Test
+    fun `no DTD app is the app's process - logcat, keyed by the pid, is asked instead`() {
+        dtdFound = listOf(dtdApp(1, 111L), FakeDtd.candidate(VmServiceUri.parse("ws://127.0.0.1:2/T=/ws")))
         logcatFound = listOf(candidate(VmServiceSource.LOGCAT, ddsLikely = false))
         val result = discover()
         assertEquals(listOf(VmServiceSource.LOGCAT), result.candidates.map { it.candidate.source })
@@ -198,13 +243,13 @@ class FlutterSessionServiceTest {
 
     @Test
     fun `no application id - one DTD app is offered unverified, several are not guessed between, logcat never`() {
-        dtdFound = listOf(candidate(VmServiceSource.DTD, port = 1))
+        dtdFound = listOf(dtdApp(1, APP_PID))
         val one = discover(applicationId = null)
         assertEquals(IdentityCheck.DTD_NAME_UNVERIFIED, one.candidates.single().identity.verifiedBy)
         assertFalse(one.candidates.single().identity.verified)
         assertTrue(probed.isEmpty())
 
-        dtdFound = listOf(candidate(VmServiceSource.DTD, port = 1), candidate(VmServiceSource.DTD, port = 2))
+        dtdFound = listOf(dtdApp(1, APP_PID), dtdApp(2, APP_PID))
         val two = discover(applicationId = " ")
         assertTrue(two.isEmpty)
         assertTrue(two.notes.single().contains("select the app"), "${two.notes}")
@@ -227,7 +272,7 @@ class FlutterSessionServiceTest {
 
     @Test
     fun `a failing source is skipped`() {
-        service.dtdDiscovery = { _, _ -> VmServiceDiscovery { throw VmServiceException("boom") } }
+        service.dtdDiscovery = { _, _ -> throw VmServiceException("boom") }
         logcatFound = listOf(candidate(VmServiceSource.LOGCAT, ddsLikely = false))
         assertEquals(listOf(VmServiceSource.LOGCAT), discover().candidates.map { it.candidate.source })
     }
@@ -249,7 +294,7 @@ class FlutterSessionServiceTest {
         service.onEdt = { false }
     }
 
-    // --- connect, disconnect, dispose ---
+    // --- connect, disconnect, dispose, listeners ---
 
     @Test
     fun `connect holds one session, a second connect replaces the first, and listeners follow`() {
@@ -264,14 +309,7 @@ class FlutterSessionServiceTest {
             service.disconnect()
             assertNull(service.current)
             assertTrue(second.state is SessionState.Disconnected)
-            assertEquals(
-                listOf(
-                    FlutterSessionChange.Connected::class,
-                    FlutterSessionChange.Replaced::class,
-                    FlutterSessionChange.Disconnected::class,
-                ),
-                changes.map { it::class },
-            )
+            assertEquals(listOf("Connected", "Replaced", "Disconnected"), changeKinds())
             assertSame(first, (changes[1] as FlutterSessionChange.Replaced).previous)
         }
     }
@@ -280,16 +318,37 @@ class FlutterSessionServiceTest {
     fun `a connected identity gets its pid from the VM`() {
         val identity = AppIdentity("emulator-5554", APP_ID, null, IdentityCheck.PASTED_UNVERIFIED)
         service.connect(live(VmServiceSource.PASTED, true), identity)
-        assertEquals(12345L, service.identity?.pid)
+        assertEquals(APP_PID, service.identity?.pid)
         assertEquals("emulator-5554", service.identity?.serial)
     }
 
     @Test
-    fun `a lost connection is reported once`() {
+    fun `a lost session is reported once - not again on disconnect`() {
         service.connect(live(VmServiceSource.PASTED, true))
         vm.server.drop()
-        FakeVmService.eventually { changes.lastOrNull() is FlutterSessionChange.Disconnected }
-        assertEquals(1, changes.count { it is FlutterSessionChange.Disconnected })
+        FakeVmService.eventually { changeKinds().lastOrNull() == "Disconnected" }
+        service.disconnect()
+        assertEquals(listOf("Connected", "Disconnected"), changeKinds())
+    }
+
+    @Test
+    fun `a session after a lost one is Connected, not Replaced`() {
+        service.connect(live(VmServiceSource.PASTED, true))
+        vm.server.drop()
+        FakeVmService.eventually { changeKinds().lastOrNull() == "Disconnected" }
+        FakeVmService().use { other ->
+            service.connect(live(VmServiceSource.PASTED, true, other))
+            assertEquals(listOf("Connected", "Disconnected", "Connected"), changeKinds())
+        }
+    }
+
+    @Test
+    fun `a listener whose parent is already disposed is not registered`() {
+        val gone = Disposer.newDisposable().also(Disposer::dispose)
+        val heard = mutableListOf<FlutterSessionChange>()
+        service.addListener(gone) { heard += it }
+        service.connect(live(VmServiceSource.PASTED, true))
+        assertTrue(heard.isEmpty())
     }
 
     @Test
@@ -357,15 +416,21 @@ class FlutterSessionServiceTest {
     }
 
     @Test
-    fun `ensureSession - the DTD app on the app's pid is connected, with its identity`() {
-        val app = Fixed(VmServiceSource.DTD, true, VmServiceUri.parse(vm.uri))
-        vmPids[app.open().port] = APP_PID
-        dtdFound = listOf(app)
+    fun `ensureSession - the DTD app that is the app's process is connected at once, with its identity`() {
+        dtdFound = listOf(liveDtdApp())
         val outcome = ensure() as FlutterAttachOutcome.Connected
-        assertEquals(AppIdentity("emulator-5554", APP_ID, APP_PID, IdentityCheck.DTD_PID), outcome.identity)
+        assertEquals(AppIdentity("emulator-5554", APP_ID, APP_PID, IdentityCheck.DTD_PID_START), outcome.identity)
         assertSame(outcome.session, service.current)
         assertFalse(outcome.reused)
         assertTrue(logcatAsked.isEmpty())
+    }
+
+    @Test
+    fun `ensureSession - DTD apps that cannot be told apart are ambiguous`() {
+        dtdFound = listOf(dtdApp(1, APP_PID), dtdApp(2, APP_PID))
+        val outcome = ensure() as FlutterAttachOutcome.Ambiguous
+        assertEquals(2, outcome.candidates.size)
+        assertEquals(0, sessionsMade)
     }
 
     @Test
@@ -374,7 +439,7 @@ class FlutterSessionServiceTest {
         assertTrue(first is FlutterAttachOutcome.NotReady, "$first")
         assertEquals(0, sessionsMade)
 
-        now += 2_000
+        now += FlutterSessionService.DIRECT_PROBE_MIN_AGE_MS
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
         val second = ensure() as FlutterAttachOutcome.Connected
         assertEquals(IdentityCheck.LOGCAT_PID, second.identity.verifiedBy)
@@ -382,9 +447,17 @@ class FlutterSessionServiceTest {
     }
 
     @Test
+    fun `ensureSession - the direct VM is not connected to in the first seconds after the start`() {
+        logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
+        val early = ensure(startedAt = now - 1_000) as FlutterAttachOutcome.NotReady
+        assertEquals(FlutterSessionService.DIRECT_PROBE_MIN_AGE_MS - 1_000, early.retryAfterMs)
+        assertEquals(0, sessionsMade)
+    }
+
+    @Test
     fun `ensureSession - a repeat call while connected returns the same session without reconnecting`() {
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
-        val first = ensure() as FlutterAttachOutcome.Connected
+        val first = ensure(startedAt = now - 5_000) as FlutterAttachOutcome.Connected
         val again = ensure() as FlutterAttachOutcome.Connected
         assertSame(first.session, again.session)
         assertTrue(again.reused)
@@ -393,10 +466,34 @@ class FlutterSessionServiceTest {
     }
 
     @Test
+    fun `ensureSession - two calls at once make one connection, and both are connected`() {
+        logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
+        logcatDelayMs = 200
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val calls = List(2) {
+                pool.submit<FlutterAttachOutcome> {
+                    start.await()
+                    ensure(startedAt = now - 5_000)
+                }
+            }
+            start.countDown()
+            val outcomes = calls.map { it.get(10, TimeUnit.SECONDS) }
+            assertTrue(outcomes.all { it is FlutterAttachOutcome.Connected }, "$outcomes")
+            assertEquals(1, sessionsMade)
+            assertEquals(1, outcomes.count { (it as FlutterAttachOutcome.Connected).reused })
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
     fun `ensureSession - a VM without DDS inside the window is not ready, and not probed again at once`() {
         probe = DdsProbeResult.DirectNoDds
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
-        assertTrue(ensure() is FlutterAttachOutcome.NotReady)
+        val old = now - FlutterSessionService.DIRECT_PROBE_MIN_AGE_MS
+        assertTrue(ensure(startedAt = old) is FlutterAttachOutcome.NotReady)
         assertNull(service.current, "a direct VM without DDS is never kept")
         assertEquals(1, sessionsMade)
 
@@ -420,14 +517,55 @@ class FlutterSessionServiceTest {
 
         appPids = setOf(APP_PID + 1)
         assertTrue(ensure() is FlutterAttachOutcome.NotReady, "a new process gets its own window")
-        assertEquals(2, sessionsMade)
+        assertEquals(1, sessionsMade, "and its VM is not asked in its first seconds")
+    }
+
+    @Test
+    fun `ensureSession - after no DDS, a later flutter attach is found through the DTD`() {
+        probe = DdsProbeResult.DirectNoDds
+        logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
+        assertTrue(ensure(startedAt = now - 60_000) is FlutterAttachOutcome.NoDdsSession)
+
+        probe = DdsProbeResult.Dds
+        dtdFound = listOf(liveDtdApp())
+        val attached = ensure() as FlutterAttachOutcome.Connected
+        assertEquals(IdentityCheck.DTD_PID_START, attached.identity.verifiedBy)
+    }
+
+    @Test
+    fun `ensureSession - disconnect and resetAttach forget a no-DDS verdict`() {
+        probe = DdsProbeResult.DirectNoDds
+        logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
+        assertTrue(ensure(startedAt = now - 60_000) is FlutterAttachOutcome.NoDdsSession)
+        service.resetAttach()
+        probe = DdsProbeResult.Dds
+        assertTrue(ensure(startedAt = now - 60_000) is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `ensureSession - the device's process age decides the window when the caller does not`() {
+        timings[APP_PID] = ProcessTiming(PROCESS_START, ageMs = 3_600_000)
+        probe = DdsProbeResult.DirectNoDds
+        logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
+        assertTrue(ensure() is FlutterAttachOutcome.NoDdsSession, "an app running for an hour is not starting")
+    }
+
+    @Test
+    fun `ensureSession - a logcat VM on another pid is not kept`() {
+        vmWithPid(999L).use { other ->
+            logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false, fake = other))
+            val outcome = ensure(startedAt = now - 60_000)
+            assertTrue(outcome is FlutterAttachOutcome.Failed, "$outcome")
+            assertNull(service.current)
+        }
     }
 
     @Test
     fun `ensureSession - unreachable inside the window is not ready, past it a failure`() {
         val port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
         logcatFound = listOf(candidate(VmServiceSource.LOGCAT, port, ddsLikely = false))
-        assertTrue(ensure() is FlutterAttachOutcome.NotReady)
+        val old = now - FlutterSessionService.DIRECT_PROBE_MIN_AGE_MS
+        assertTrue(ensure(startedAt = old) is FlutterAttachOutcome.NotReady)
         now += FlutterSessionService.STARTUP_GRACE_MS
         assertTrue(ensure() is FlutterAttachOutcome.Failed)
     }
@@ -441,15 +579,21 @@ class FlutterSessionServiceTest {
     @Test
     fun `ensureSession - the session of a pid that is gone is not reused`() {
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
-        val first = ensure() as FlutterAttachOutcome.Connected
-        appPids = setOf(APP_PID + 1)
-        val second = ensure() as FlutterAttachOutcome.Connected
-        assertNotSame(first.session, second.session)
-        assertTrue(first.session.state is SessionState.Disconnected)
+        val first = ensure(startedAt = now - 5_000) as FlutterAttachOutcome.Connected
+        vmWithPid(APP_PID + 1).use { restarted ->
+            appPids = setOf(APP_PID + 1)
+            logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false, fake = restarted))
+            val second = ensure(startedAt = now - 5_000) as FlutterAttachOutcome.Connected
+            assertNotSame(first.session, second.session)
+            assertTrue(first.session.state is SessionState.Disconnected)
+        }
     }
 
     private companion object {
         const val APP_ID = "com.example.app.dev"
-        const val APP_PID = 4242L
+
+        /** The pid in the recorded `getVM`. */
+        const val APP_PID = 12345L
+        const val PROCESS_START = 1_727_776_799_500L
     }
 }

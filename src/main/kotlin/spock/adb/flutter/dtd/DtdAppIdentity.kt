@@ -3,57 +3,102 @@ package spock.adb.flutter.dtd
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
-import spock.adb.flutter.vmservice.VmServiceCandidate
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.flutter.vmservice.VmServiceRedirectException
 import spock.adb.flutter.vmservice.VmServiceUri
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Tells which app a Dart Tooling Daemon listed is the one selected in Spock — by process, not by
  * name (plan H2). A DTD name gives the pubspec package and the device model, which two flavors
- * of one project, or two emulators of one image, share. The VM's `getVM().pid` is the app's pid
- * on its device (seen on a device: it equals `pidof <applicationId>`), so a candidate whose VM
- * runs as one of the selected app's pids on the selected device is that app, and no other.
+ * of one project, or two emulators of one image, share. `getVM()` gives the VM's `pid` (seen on a
+ * device: it equals `pidof <applicationId>`) and its `startTime`, on the device's clock. A pid is
+ * only unique on its own device — two emulators booted from one snapshot can give the app the
+ * same pid — so a candidate is the selected app when its VM runs as one of the app's pids on the
+ * selected device **and** started within [VM_START_LAG_MS] of that process.
  *
  * Each candidate is asked over a bare connection — `getVM` only: no stream, no write — closed at
  * once, before any [spock.adb.flutter.FlutterSession] is made, so nothing ever changes in an app
- * that turns out to be another. The addresses are DDS's (DTD lists DDS), which any number of
- * clients share; a direct VM address is never probed (spike S10).
+ * that turns out to be another. DTD lists DDS addresses, which any number of clients share. One
+ * that turns out to be a VM's own (it answers with a redirect to DDS) is not asked again within
+ * [DIRECT_PROBE_INTERVAL_MS], as for any direct VM (spike S10), until S22 shows what an IDE's DTD
+ * lists.
  *
  * Blocking: call from a pooled thread. Never throws; a candidate that does not answer is not
- * confirmed. [vmPid] is for tests.
+ * confirmed. [vmProcess] and [clock] are for tests.
  */
-class DtdAppIdentity(private val vmPid: (VmServiceUri) -> Long? = ::readVmPid) {
-
-    /** [candidate] runs as [pid], one of the selected app's. */
-    class Confirmed(val candidate: VmServiceCandidate, val pid: Long)
+class DtdAppIdentity(
+    private val vmProcess: (VmServiceUri) -> VmProcess? = ::readVmProcess,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
 
     /**
-     * The best-ranked of [candidates] whose VM runs as one of [appPids], the pids of the selected
-     * app on the selected device; null when none does. Every candidate is asked, so that two
-     * claiming one pid — which one VM per process rules out — are logged.
+     * What a VM says about its process: [pid], and [startTime] in ms since the epoch on the
+     * device's clock (null when not given). [viaRedirect] when the address asked was the VM's own,
+     * which handed Spock to DDS.
      */
-    fun confirm(candidates: List<VmServiceCandidate>, appPids: Set<Long>): Confirmed? {
-        if (appPids.isEmpty() || candidates.isEmpty()) return null
-        val confirmed = candidates.mapNotNull { candidate ->
-            pidOf(candidate)?.takeIf { it in appPids }?.let { Confirmed(candidate, it) }
-        }
-        if (confirmed.size > 1) {
-            log.info(
-                "${confirmed.size} DTD apps run as the selected app's pid: " +
-                    "${confirmed.joinToString { "${it.candidate} (pid ${it.pid})" }}; using the best-ranked",
-            )
-        }
-        return confirmed.firstOrNull()
+    data class VmProcess(val pid: Long, val startTime: Long?, val viaRedirect: Boolean = false)
+
+    sealed interface Result {
+        /** [candidate] runs as [pid]; [startChecked] when the start times agreed too, not just the pid. */
+        data class Confirmed(val candidate: DtdCandidate, val pid: Long, val startChecked: Boolean) : Result
+
+        /** Several candidates pass: Spock does not pick one by rank. */
+        data class Ambiguous(val candidates: List<Confirmed>) : Result
+
+        object None : Result
     }
 
-    private fun pidOf(candidate: VmServiceCandidate): Long? = try {
-        vmPid(candidate.open()).also { log.debug("$candidate runs as pid $it") }
-    } catch (e: VmServiceException) {
-        // Messages from the client are redacted.
-        log.info("Could not read the pid of $candidate: ${e.message}")
-        null
+    /** Addresses that turned out to be a VM's own, and when they were last asked. */
+    private val directAskedAt = ConcurrentHashMap<String, Long>()
+
+    /**
+     * Which of [candidates] is the selected app. [appStarts] maps each of its pids on the selected
+     * device to that process's start, in ms since the epoch on the device's clock — null when the
+     * device would not say. A candidate whose start is known on both sides and disagrees is
+     * rejected; when either is unknown the pid alone decides. Exactly one passing is [Result.Confirmed];
+     * more are [Result.Ambiguous], whatever their rank.
+     */
+    fun confirm(candidates: List<DtdCandidate>, appStarts: Map<Long, Long?>): Result {
+        if (appStarts.isEmpty() || candidates.isEmpty()) return Result.None
+        val passing = candidates.mapNotNull { candidate ->
+            processOf(candidate)?.let { vm -> match(vm, appStarts)?.let { Result.Confirmed(candidate, vm.pid, it) } }
+        }
+        return when (passing.size) {
+            0 -> Result.None
+            1 -> passing.single()
+            else -> {
+                log.info("${passing.size} DTD apps pass as the selected app: ${passing.map { it.candidate }}")
+                Result.Ambiguous(passing)
+            }
+        }
+    }
+
+    /** Null when [vm] is not the app; else whether the start times were compared. */
+    private fun match(vm: VmProcess, appStarts: Map<Long, Long?>): Boolean? {
+        if (vm.pid !in appStarts) return null
+        val processStart = appStarts[vm.pid] ?: return false
+        val vmStart = vm.startTime ?: return false
+        return if (vmStart - processStart in -START_SLACK_MS..VM_START_LAG_MS) true else null
+    }
+
+    private fun processOf(candidate: DtdCandidate): VmProcess? {
+        val uri = candidate.open()
+        val key = "${uri.host}:${uri.port}"
+        val now = clock()
+        val lastDirect = directAskedAt[key]
+        if (lastDirect != null && now - lastDirect < DIRECT_PROBE_INTERVAL_MS) {
+            log.info("Not asking $candidate again yet: its address is a VM's own")
+            return null
+        }
+        return try {
+            vmProcess(uri)?.also { if (it.viaRedirect) directAskedAt[key] = now }
+        } catch (e: VmServiceException) {
+            // Messages from the client are redacted.
+            log.info("Could not read the process of $candidate: ${e.message}")
+            null
+        }
     }
 
     companion object {
@@ -63,6 +108,21 @@ class DtdAppIdentity(private val vmPid: (VmServiceUri) -> Long? = ::readVmPid) {
         const val TIMEOUT_MS = 3_000L
         const val CONNECT_TIMEOUT_MS = 2_000L
 
+        /**
+         * How long after its process the VM may start. A FlutterActivity starts its engine while
+         * the activity is created, well under a second after the fork on an emulator, a few
+         * seconds on a slow device; 5 s leaves room for that, and is still far below the
+         * difference between two processes that merely got the same pid on two devices. An
+         * add-to-app engine created later than this is rejected here and found through logcat.
+         */
+        const val VM_START_LAG_MS = 5_000L
+
+        /** The process start is read to the clock tick, on top of `btime`'s whole second. */
+        const val START_SLACK_MS = 1_500L
+
+        /** The least time between two connections to one VM's own address (spike S10). */
+        const val DIRECT_PROBE_INTERVAL_MS = 4_000L
+
         /** Nothing is subscribed, so any event is unasked for. */
         private const val MAX_QUEUED_EVENTS = 16
 
@@ -70,23 +130,30 @@ class DtdAppIdentity(private val vmPid: (VmServiceUri) -> Long? = ::readVmPid) {
         private const val MAX_MESSAGE_CHARS = 1024 * 1024
 
         /**
-         * The pid the VM at [uri] runs as, from one `getVM` on a connection of its own; null when
-         * the answer has none. A VM address handing its clients to DDS is followed there once.
+         * The process the VM at [uri] runs in, from one `getVM` on a connection of its own; null
+         * when the answer names no pid. A VM address handing its clients to DDS is followed there
+         * once.
          *
          * @throws VmServiceException when the VM does not answer. The message is redacted.
          */
-        fun readVmPid(uri: VmServiceUri): Long? {
+        fun readVmProcess(uri: VmServiceUri): VmProcess? {
+            var redirected = false
             val client = try {
                 open(uri)
             } catch (e: VmServiceRedirectException) {
+                redirected = true
                 open(e.target)
             }
-            return client.use { pidOf(it.getVM()) }
+            val vm = client.use { it.getVM() }
+            val pid = pidOf(vm) ?: return null
+            return VmProcess(pid, longOf(vm, "startTime"), redirected)
         }
 
         /** The `pid` of a `VM` object: a number, or a string holding one. */
-        fun pidOf(vm: JsonObject?): Long? {
-            val value = vm?.get("pid") as? JsonPrimitive ?: return null
+        fun pidOf(vm: JsonObject?): Long? = longOf(vm, "pid")
+
+        private fun longOf(vm: JsonObject?, key: String): Long? {
+            val value = vm?.get(key) as? JsonPrimitive ?: return null
             return when {
                 value.isNumber -> value.asNumber.toLong()
                 value.isString -> value.asString.trim().toLongOrNull()

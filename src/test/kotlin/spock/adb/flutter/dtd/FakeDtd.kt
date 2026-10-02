@@ -4,6 +4,8 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import spock.adb.flutter.vmservice.FakeVmService
 import spock.adb.flutter.vmservice.FakeWebSocketServer
+import spock.adb.flutter.vmservice.VmServiceUri
+import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -66,6 +68,14 @@ class FakeDtd(val secret: String = SECRET) : AutoCloseable {
 
         fun recorded(): JsonObject =
             JsonParser.parseString(FakeDtd::class.java.getResource("/dtd/getVmServices.json")!!.readText()).asJsonObject
+
+        /** A DTD candidate at [uri], from an exact-workspace daemon; for tests of what comes after discovery. */
+        fun candidate(uri: VmServiceUri, name: String = "Kind: Flutter - Device: sdk gphone64 arm64 - Package: app") =
+            DtdCandidate(
+                DtdVmService(uri, name, "Flutter", "sdk gphone64 arm64", "app"),
+                DtdRegistry.parse("""{"wsUri":"ws://127.0.0.1:1/S=","pid":1,"epoch":1}""", Path.of("1"))!!,
+                WorkspaceRelation(WorkspaceMatch.EXACT, Path.of("/work/app"), Path.of("/work/app")),
+            )
 
         /** A `VmServicesResponse` listing [services] as (address, name) pairs. */
         fun response(vararg services: Pair<String, String>): JsonObject =

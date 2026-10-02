@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import spock.adb.ShellQuote
 import spock.adb.flutter.FlutterSession
+import spock.adb.flutter.ProcessTiming
 import spock.adb.flutter.Pubspec
 import spock.adb.flutter.SessionState
 import java.util.concurrent.TimeUnit
@@ -22,8 +23,9 @@ import java.util.concurrent.TimeUnit
  * It prints every live registry entry and the candidates found for the project (filtered by
  * `SPOCK_DTD_DEVICE_MODEL` when set, e.g. `sdk_gphone64_arm64`, and by the project's pubspec
  * name). With `SPOCK_DTD_APP_ID=<applicationId>` and `SPOCK_DTD_SERIAL=<adb serial>` it also
- * checks identity (plan H2): it runs `adb -s <serial> shell pidof <applicationId>`, prints each
- * candidate's VM pid and which candidate that confirms. With `SPOCK_DTD_CONNECT=1` it connects a
+ * checks identity (plan H2): it runs `pidof <applicationId>` and reads each pid's start from
+ * `/proc` with `adb -s <serial> shell`, prints each candidate's VM pid and start, and what that
+ * confirms (or that several pass). With `SPOCK_DTD_CONNECT=1` it connects a
  * [FlutterSession] to the confirmed candidate — the first one when no identity check ran —
  * prints its state, UI isolate and build mode, and closes it. Nothing printed carries a DTD
  * secret or a VM Service token.
@@ -65,26 +67,28 @@ class DtdLiveCheck {
     private fun verify(candidates: List<DtdCandidate>): DtdCandidate? {
         val appId = System.getenv(APP_ID_ENV)?.takeIf { it.isNotBlank() } ?: return null
         val serial = System.getenv(SERIAL_ENV)?.takeIf { it.isNotBlank() } ?: return null
-        val pids = pidof(serial, appId)
+        val pids = adbShell(serial, "pidof ${ShellQuote.quote(appId)}")
+            .trim().split(WHITESPACE).mapNotNull { it.toLongOrNull() }.toSet()
         println("pidof $appId on $serial: ${pids.ifEmpty { "not running" }}")
+        val starts = pids.associateWith { pid -> ProcessTiming.parse(adbShell(serial, ProcessTiming.command(pid))) }
+        starts.forEach { (pid, timing) -> println("  process $pid on the device: $timing") }
         candidates.forEach { candidate ->
-            val pid = runCatching { DtdAppIdentity.readVmPid(candidate.open()) }
-            println("  VM pid of $candidate: ${pid.getOrElse { "unreadable (${it.message})" }}")
+            val vm = runCatching { DtdAppIdentity.readVmProcess(candidate.open()) }
+            println("  VM of $candidate: ${vm.getOrElse { "unreadable (${it.message})" }}")
         }
-        val confirmed = DtdAppIdentity().confirm(candidates, pids)
-        println("verified: ${confirmed?.let { "${it.candidate} (pid ${it.pid}, dtd+pid)" } ?: "none"}")
-        assertTrue(pids.isEmpty() || confirmed != null, "$appId runs on $serial, but no DTD app has its pid")
-        return confirmed?.candidate as DtdCandidate?
+        val result = DtdAppIdentity().confirm(candidates, starts.mapValues { it.value?.startEpochMs })
+        println("verified: $result")
+        val found = pids.isEmpty() || result !is DtdAppIdentity.Result.None
+        assertTrue(found, "$appId runs on $serial, but no DTD app is it")
+        return (result as? DtdAppIdentity.Result.Confirmed)?.candidate
     }
 
-    /** A plain argv on the host; the device's shell gets the id as one quoted word. */
-    private fun pidof(serial: String, appId: String): Set<Long> {
-        val process = ProcessBuilder("adb", "-s", serial, "shell", "pidof ${ShellQuote.quote(appId)}")
-            .redirectErrorStream(true)
-            .start()
+    /** A plain argv on the host; the device's shell gets [command] as written. */
+    private fun adbShell(serial: String, command: String): String {
+        val process = ProcessBuilder("adb", "-s", serial, "shell", command).redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText()
         process.waitFor(ADB_SECONDS, TimeUnit.SECONDS)
-        return output.trim().split(WHITESPACE).mapNotNull { it.toLongOrNull() }.toSet()
+        return output
     }
 
     companion object {

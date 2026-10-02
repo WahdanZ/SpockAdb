@@ -4,10 +4,23 @@ import spock.adb.flutter.vmservice.VmServiceCandidate
 
 /** How Spock knows a VM Service is the app selected in Spock (plan H2). */
 enum class IdentityCheck(val verified: Boolean, val label: String) {
-    /** Listed by a Dart Tooling Daemon, and its VM's `getVM().pid` is the app's pid on the selected device. */
-    DTD_PID(true, "dtd+pid"),
+    /**
+     * Listed by a Dart Tooling Daemon; its VM runs as the app's pid on the selected device and
+     * started with that process — a pid alone can repeat on another device.
+     */
+    DTD_PID_START(true, "dtd+pid+start"),
 
-    /** Announced in logcat by one of the app's own pids on the selected device. */
+    /**
+     * As [DTD_PID_START], but the selected device would not say when the process started
+     * (`/proc` refused), so only the pid was compared — and only one candidate had it. Weaker:
+     * the same pid on another device of one snapshot would pass too, were it the only one listed.
+     */
+    DTD_PID_ONLY(true, "dtd+pid"),
+
+    /** Several Dart Tooling Daemon apps pass as the selected app: offered, not chosen. */
+    DTD_PID_AMBIGUOUS(false, "dtd+pid, ambiguous"),
+
+    /** Announced in logcat by one of the app's own pids on the selected device, its VM on that pid. */
     LOGCAT_PID(true, "logcat-pid"),
 
     /**
@@ -45,8 +58,14 @@ class IdentifiedCandidate(val candidate: VmServiceCandidate, val identity: AppId
 
 /**
  * What [FlutterSessionService.discover] found, best first, and [notes] on why anything is
- * missing — "the app is not running", "no app has its pid" — fit to show.
+ * missing — "the app is not running", "no app has its pid" — fit to show. [ambiguous] are the
+ * Dart Tooling Daemon apps that all passed as the selected app, for the developer to choose
+ * between; they are not in [candidates].
  */
-class FlutterDiscoveryResult(val candidates: List<IdentifiedCandidate>, val notes: List<String>) {
+class FlutterDiscoveryResult(
+    val candidates: List<IdentifiedCandidate>,
+    val notes: List<String>,
+    val ambiguous: List<IdentifiedCandidate> = emptyList(),
+) {
     val isEmpty: Boolean get() = candidates.isEmpty()
 }
