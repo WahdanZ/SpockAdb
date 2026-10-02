@@ -18,11 +18,14 @@ import spock.adb.flutter.vmservice.FakeVmService.Companion.fixture
 import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceCandidate
+import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.flutter.vmservice.VmServiceSource
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.net.ServerSocket
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class FlutterSessionTest {
 
@@ -110,7 +113,7 @@ class FlutterSessionTest {
 
     @Test
     fun `structuredErrors follows a live state change, not a replayed one`() {
-        vm.afterStreamListen = { stream ->
+        vm.replayOnListen = { stream ->
             if (stream == "Extension") vm.pushEvent("Extension", stateChanged("false", connectedAt - 60_000))
         }
         session.connect(pasted())
@@ -315,8 +318,9 @@ class FlutterSessionTest {
 
             assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
             assertFalse(session.readOnly)
-            assertEquals(listOf("true"), dds.requestsFor(HTTP_LOGGING).filter { it.getAsJsonObject("params").has("enabled") }
-                .map { it.getAsJsonObject("params").get("enabled").asString })
+            val ddsWrites = dds.requestsFor(HTTP_LOGGING).map { it.getAsJsonObject("params") }
+                .filter { it.has("enabled") }.map { it.get("enabled").asString }
+            assertEquals(listOf("true"), ddsWrites)
             assertTrue(vm.requests.isEmpty())
 
             session.close()
@@ -331,8 +335,8 @@ class FlutterSessionTest {
         val older = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt - 2_000) }
         val old = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt - 1_000) }
         val live = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt + 1_000) }
-        vm.afterStreamListen = { stream ->
-            if (stream == "Extension") listOf(older, old, old, live).forEach { vm.pushEvent("Extension", it) }
+        vm.replayOnListen = { stream ->
+            if (stream == "Extension") listOf(older, old, old).forEach { vm.pushEvent("Extension", it) }
             if (stream == "Logging") {
                 listOf("first", "second").forEach { message ->
                     vm.pushEvent(
@@ -344,6 +348,7 @@ class FlutterSessionTest {
                 }
             }
         }
+        vm.afterStreamListen = { stream -> if (stream == "Extension") vm.pushEvent("Extension", live) }
 
         session.connect(pasted())
 
@@ -404,7 +409,7 @@ class FlutterSessionTest {
         assertEquals(SessionState.Disconnected("closed by Spock"), session.state)
         assertFalse(client.isOpen)
         assertEquals(1, candidate.released)
-        assertTrue(vm.server.closeFrameReceived.await(2, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(vm.server.closeFrameReceived.await(2, TimeUnit.SECONDS))
     }
 
     @Test
@@ -412,11 +417,281 @@ class FlutterSessionTest {
         val freePort = ServerSocket(0).use { it.localPort }
         val candidate = TrackingCandidate(VmServiceUri.parse("ws://127.0.0.1:$freePort/HXKQJZK_Rkw=/ws"), true)
 
-        assertThrows<VmServiceException> { session.connect(candidate) }
+        val error = assertThrows<VmServiceException> { session.connect(candidate) }
 
         assertEquals(1, candidate.released)
-        assertTrue(session.state is SessionState.Disconnected)
+        assertEquals(SessionState.Disconnected(error.message!!), session.state)
+        assertTrue(error.message!!.startsWith("Could not connect"), error.message)
         assertNull(session.client)
+    }
+
+    @Test
+    fun `close during a stuck re-selection returns at once`() {
+        session.connect(pasted())
+        vm.on("_flutter.listViews") { FakeVmService.Reply.None }
+        vm.pushEvent("Isolate", isolateEvent("IsolateExit", UI_ISOLATE, connectedAt + 1_000))
+        vm.awaitRequests("_flutter.listViews", count = 2)
+
+        val started = System.nanoTime()
+        session.close()
+        val tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+
+        assertTrue(tookMs < 2_000, "close took $tookMs ms behind a re-selection waiting 5 s")
+        assertEquals(SessionState.Disconnected(FlutterSession.CLOSED_BY_SPOCK), session.state)
+    }
+
+    @Test
+    fun `a listener that waits on a thread calling back into the session does not deadlock it`() {
+        val stuck = AtomicBoolean(false)
+        session.addListener(
+            object : FlutterSessionListener {
+                override fun onEvent(event: FlutterEvent) = Unit
+                override fun onStateChanged(state: SessionState) {
+                    if (state !is SessionState.Paused) return
+                    val other = Thread {
+                        session.selectIsolate(UI_ISOLATE)
+                        session.close()
+                    }
+                    other.start()
+                    other.join(5_000)
+                    stuck.set(other.isAlive)
+                }
+            },
+        )
+        session.connect(pasted())
+
+        vm.pushEvent("Debug", isolateEvent("PauseBreakpoint", UI_ISOLATE, connectedAt + 1_000))
+
+        eventually(timeoutMs = 8_000, message = "the close from the other thread") {
+            session.state is SessionState.Disconnected
+        }
+        assertFalse(stuck.get())
+    }
+
+    @Test
+    fun `a listener that throws while connect reports a state breaks neither the connect nor a retry`() {
+        val thrown = AtomicBoolean(false)
+        session.addListener(
+            object : FlutterSessionListener {
+                override fun onEvent(event: FlutterEvent) = Unit
+                override fun onStateChanged(state: SessionState) {
+                    if (thrown.compareAndSet(false, true)) error("listener bug")
+                }
+            },
+        )
+
+        val client = session.connect(pasted())
+
+        assertTrue(thrown.get())
+        assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
+        session.close()
+        assertFalse(client.isOpen)
+        assertTrue(vm.server.closeFrameReceived.await(2, TimeUnit.SECONDS))
+        session.connect(pasted())
+        assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
+    }
+
+    @Test
+    fun `a release that throws still ends the session, disconnected and closed`() {
+        val uri = VmServiceUri.parse(vm.uri)
+        val candidate = object : VmServiceCandidate(VmServiceSource.LOGCAT, ddsLikely = true) {
+            override val description: String get() = uri.redacted()
+            override fun open(): VmServiceUri = uri
+            override fun release() = error("adb is gone")
+        }
+        val client = session.connect(candidate)
+
+        session.close()
+
+        assertEquals(SessionState.Disconnected(FlutterSession.CLOSED_BY_SPOCK), session.state)
+        assertFalse(client.isOpen)
+        assertNull(session.client)
+        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
+    }
+
+    @Test
+    fun `a switch-on that times out may still apply, so close still switches it off`() {
+        vm.on(HTTP_LOGGING) { params ->
+            when (params.get("enabled")?.asString) {
+                // Applied by the app, but the answer never comes.
+                "true" -> FakeVmService.Reply.None.also { vm.httpLogging = true }
+                else -> {
+                    params.get("enabled")?.let { vm.httpLogging = it.asString == "true" }
+                    FakeVmService.Reply.Result(JsonObject().apply { addProperty("enabled", vm.httpLogging) })
+                }
+            }
+        }
+        val impatient = FlutterSession(connector = { VmServiceClient.connect(it, timeoutMs = 300) })
+        try {
+            impatient.connect(pasted())
+        } finally {
+            impatient.close()
+        }
+
+        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
+        assertFalse(vm.httpLogging)
+    }
+
+    @Test
+    fun `a burst of extension registrations while no isolate is chosen costs one re-selection`() {
+        vm.viewIsolates = null
+        vm.isolates.clear()
+        vm.addIsolate("isolates/0001", listOf("ext.dart.io.getVersion"))
+        session.connect(pasted())
+        val before = vm.requestsFor("_flutter.listViews").size
+
+        repeat(30) { index ->
+            vm.pushEvent(
+                "Isolate",
+                isolateEvent("ServiceExtensionAdded", "isolates/0001", connectedAt + index) {
+                    addProperty("extensionRPC", "ext.dart.io.extension$index")
+                },
+            )
+        }
+        awaitEventsHandled()
+        Thread.sleep(400)
+
+        val reselections = vm.requestsFor("_flutter.listViews").size - before
+        assertTrue(reselections in 1..3, "$reselections re-selections for one burst")
+    }
+
+    @Test
+    fun `while several isolates wait for the caller's choice, isolate events do not re-select`() {
+        vm.viewIsolates = listOf(UI_ISOLATE, "isolates/3333")
+        val rpcs = fixture("getIsolate-ui-debug.json").getAsJsonArray("extensionRPCs").map { it.asString }
+        vm.addIsolate("isolates/3333", rpcs)
+        session.connect(pasted())
+        val before = vm.requestsFor("_flutter.listViews").size
+
+        vm.pushEvent("Isolate", isolateEvent("IsolateStart", "isolates/4444", connectedAt + 1_000))
+        vm.pushEvent(
+            "Isolate",
+            isolateEvent("ServiceExtensionAdded", "isolates/3333", connectedAt + 1_001) {
+                addProperty("extensionRPC", "ext.flutter.extra")
+            },
+        )
+        vm.pushEvent("Debug", isolateEvent("Resume", "isolates/3333", connectedAt + 1_002))
+        awaitEventsHandled()
+        Thread.sleep(300)
+
+        assertEquals(before, vm.requestsFor("_flutter.listViews").size)
+        assertTrue(session.selection is IsolateSelection.Ambiguous)
+    }
+
+    @Test
+    fun `an extension registered while the UI isolate is paused is not called until it resumes`() {
+        vm.addIsolate(UI_ISOLATE, listOf(HTTP_LOGGING))
+        session.connect(pasted())
+        vm.pushEvent("Debug", isolateEvent("PauseBreakpoint", UI_ISOLATE, connectedAt + 1_000))
+        eventually { session.state is SessionState.Paused }
+
+        vm.pushEvent(
+            "Isolate",
+            isolateEvent("ServiceExtensionAdded", UI_ISOLATE, connectedAt + 1_001) {
+                addProperty("extensionRPC", STRUCTURED_ERRORS)
+            },
+        )
+        awaitEventsHandled()
+        Thread.sleep(300)
+        assertEquals(0, extensionCalls(STRUCTURED_ERRORS).size)
+
+        vm.pushEvent("Debug", isolateEvent("Resume", UI_ISOLATE, connectedAt + 1_002))
+        eventually(message = "the read after resuming") { session.structuredErrorsEnabled == true }
+        assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
+    }
+
+    @Test
+    fun `live events drive the session whatever the device clock says`() {
+        session.connect(pasted())
+        // The device's clock an hour behind the host's.
+        val behind = connectedAt - 3_600_000
+
+        vm.pushEvent("Debug", isolateEvent("PauseBreakpoint", UI_ISOLATE, behind))
+        eventually(message = "the pause") { session.state == SessionState.Paused(UI_ISOLATE, "PauseBreakpoint") }
+        vm.pushEvent("Debug", isolateEvent("Resume", UI_ISOLATE, behind + 1))
+        eventually(message = "the resume") { session.state == SessionState.Connected(UI_ISOLATE) }
+        vm.pushEvent("Extension", stateChanged("false", behind + 2))
+        eventually(message = "the live change") { session.structuredErrorsEnabled == false }
+
+        assertFalse(events.any { it.history }, events.toString())
+    }
+
+    @Test
+    fun `a replay is history whatever the device clock says`() {
+        // The device's clock an hour ahead of the host's.
+        val ahead = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt + 3_600_000) }
+        vm.replayOnListen = { stream -> if (stream == "Extension") vm.pushEvent("Extension", ahead) }
+
+        session.connect(pasted())
+
+        eventually(message = "the replayed frame") { events.any { it.extensionKind == "Flutter.Frame" } }
+        assertTrue(events.single { it.extensionKind == "Flutter.Frame" }.history)
+    }
+
+    @Test
+    fun `logging switched on through DDS is switched off through DDS, never through a direct connection`() {
+        session.connect(pasted())
+        vm.server.drop()
+        eventually { session.state is SessionState.Disconnected }
+
+        session.connect(tracking(ddsLikely = false))
+        session.close()
+        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
+
+        session.connect(pasted())
+        session.close()
+        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
+        assertFalse(vm.httpLogging)
+    }
+
+    @Test
+    fun `a reconnect's replay of events already delivered is dropped`() {
+        val old = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt - 1_000) }
+        vm.replayOnListen = { stream -> if (stream == "Extension") vm.pushEvent("Extension", old) }
+        session.connect(pasted())
+        eventually(message = "the first replay") { events.size == 1 }
+        vm.server.drop()
+        eventually { session.state is SessionState.Disconnected }
+
+        session.connect(pasted())
+        awaitEventsHandled()
+
+        assertEquals(1, events.count { it.timestamp == connectedAt - 1_000 })
+    }
+
+    @Test
+    fun `a listener told Connected finds the snapshot set up`() {
+        val seen = CopyOnWriteArrayList<FlutterSessionSnapshot>()
+        session.addListener(
+            object : FlutterSessionListener {
+                override fun onEvent(event: FlutterEvent) = Unit
+                override fun onStateChanged(state: SessionState) {
+                    if (state is SessionState.Connected && state.isolateId != null) seen += session.snapshot
+                }
+            },
+        )
+
+        session.connect(pasted())
+
+        val snapshot = seen.first()
+        assertEquals(SessionState.Connected(UI_ISOLATE), snapshot.state)
+        assertEquals(UI_ISOLATE, snapshot.uiIsolateId)
+        assertEquals(true, snapshot.structuredErrorsEnabled)
+    }
+
+    /** Events are handled in order: once a fresh live one is seen, those pushed before it were handled. */
+    private fun awaitEventsHandled() {
+        val marker = System.nanoTime()
+        vm.pushEvent(
+            "Extension",
+            fixture("event-frame.json").apply {
+                addProperty("timestamp", connectedAt + 10_000_000)
+                getAsJsonObject("extensionData").addProperty("marker", marker)
+            },
+        )
+        eventually(message = "the marker event") {
+            events.any { it.event.event.getAsJsonObject("extensionData")?.get("marker")?.asLong == marker }
+        }
     }
 
     @Test
