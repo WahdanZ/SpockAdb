@@ -117,13 +117,14 @@ class DtdAppIdentity(
         const val CONNECT_TIMEOUT_MS = 2_000L
 
         /**
-         * How long after its process the VM may start. A FlutterActivity starts its engine while
-         * the activity is created, well under a second after the fork on an emulator, a few
-         * seconds on a slow device; 5 s leaves room for that, and is still far below the
-         * difference between two processes that merely got the same pid on two devices. An
-         * add-to-app engine created later than this is rejected here and found through logcat.
+         * How long after its process the VM may start. Measured on an emulator (2026-10-02, debug
+         * sample, five cold starts from `am start`): 1.2–4.0 s, the first start slowest. A slow
+         * phone in debug can pass 5 s, so 15 s: still far below the gap between two processes
+         * that merely got the same pid on two devices, which have to start within the same few
+         * seconds to be confused at all. An add-to-app engine created later than this is
+         * rejected here and found through logcat.
          */
-        const val VM_START_LAG_MS = 5_000L
+        const val VM_START_LAG_MS = 15_000L
 
         /** The process start is read to the clock tick, on top of `btime`'s whole second. */
         const val START_SLACK_MS = 1_500L
