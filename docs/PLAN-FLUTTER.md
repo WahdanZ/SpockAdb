@@ -38,6 +38,26 @@ Decision: **no `spock_flutter` companion package in v1.** Its main job (tap/type
 | iOS in v1 | Simulator only, macOS only, **MCP tools only** (no tool-window UI yet) | The viewer is built around `IDevice`; UI comes after demand [FR16]. |
 | Tokens | Never stored; redacted in history, audit, timeline, logs; loopback `ws://` only | A VM Service token allows code execution [FR9]. |
 
+## Status — implemented vs validated (2026-10-02)
+
+"Implemented" means merged or in an open PR with green gates. "Validated" means checked on a real device
+or SDK, not only in unit tests. The Android flow comes first:
+**selected app → automatic discovery → Flutter session → Diagnose/Timeline correlation**. iOS (P6) waits for it.
+
+| Phase | Implemented | Validated on a device | Still pending |
+|---|---|---|---|
+| P0 sample | ✅ #154 merged | ✅ Android 14 emulator | iOS build (Xcode 26.3 storyboard needs the iOS 26.2 platform) |
+| P1 Flutter-aware Android | ✅ #155, #158 merged | ✅ prefs round trip, logcat, UI tree, Hive/SQLite (13 MB DB) | — |
+| P2 spike | ✅ #156 merged | ✅ S1–S10, S12 | S11 payload details, S13 simctl, S14–S23 (see FLUTTER-SPIKE.md) |
+| P3 target-neutral context | ✅ #157 merged | ✅ CI Plugin Verifier, all IDEs | — |
+| P4a client + session | ✅ #159, review fixed | ✅ DDS connect, 302 → DDS from the direct address, history by arrival, hot restart followed, HTTP logging restored | **H1** (connection type by probe) |
+| P4b DTD discovery | ✅ #161, reviewed (2 major) | ✅ DTD found and connected on Flutter 3.47.5 | **H2** (app identity by pid), review D1–D11, S22 (IDE-run app), S23 (Linux/Windows) |
+| P5a analyzers | ✅ #162, reviewed (3 major) | ⚠️ unit-tested on recorded **debug** payloads only | review A1–A15, **H3** device validation |
+| H Android hardening | ⬜ | ⬜ | all — see below |
+| P5b wiring | ⬜ | ⬜ | after H |
+| P6 iOS | ⬜ deferred until H and P5b | ⬜ | |
+| P7 docs | ⬜ | ⬜ | |
+
 ## Phases
 
 Order ships value early: P1 needs no VM Service and can release on its own.
@@ -99,6 +119,38 @@ Library and tests only: no UI, no MCP tool, no IDE discovery.
 - [ ] `FlutterSession` per project: discovery order DTD → Flutter plugin state → pasted URI → logcat; filter by the selected app's package (flavors) [FR22].
 - [ ] UI via `invokeLater` once there is UI (plugin rules).
 - **Gate:** connects to the P0 sample through DTD (newer SDK) and through the fallbacks (3.22) with `flutter run` attached; an IDE-run app (S22); hot reload still works while connected.
+
+### H — Android flow hardening (must, before P5b and P6) · ~4 days
+From the joint review of #159, #161 and #162 and the device experiments of 2026-10-02.
+
+- [ ] **H1 — connection type by probe, not by source** (#159). A pasted address is not proof of DDS: a manually forwarded
+  VM address looks the same. Experiment (Android 14, app started without `flutter run`): the direct VM answered
+  `getDartDevelopmentServiceVersion` with `-32601 Method not found`, and while that direct client stayed connected
+  `flutter attach` failed ("connection to device ended too early"); with no client it attached normally (**S10 confirmed**).
+  - After connecting, call `getDartDevelopmentServiceVersion` (read-only). DDS answers → writable session. Method not found → direct VM.
+  - A direct VM with no DDS is **not kept by default**: disconnect at once and report "the app is running without a debugger session —
+    start it with `flutter run`/`flutter attach`; connecting now would block them". An explicit "connect anyway, read-only" stays possible.
+  - A 302 to DDS (V1) stays the normal path for logcat/direct addresses while `flutter run` is attached.
+  - `VmServiceCandidate.ddsLikely` becomes a hint for ordering only; `readOnly` comes from the probe result.
+- [ ] **H2 — app identity by process, not by name** (#161, FR22, review D5). The DTD name gives the pubspec package and the device
+  model, which cannot tell apart two flavors of the same project (different application IDs, same `Package:`), nor two
+  emulators of the same image (same model). Experiment: `getVM().pid` (31058) equalled `pidof <applicationId>` on the device.
+  - Pre-filter and rank with the DTD name (workspace, package, model — normalised as flutter does, review D1/D2/D3).
+  - Confirm with `getVM().pid == pidof <selected applicationId>` on the **selected device**: a read-only call on a DDS candidate.
+  - No candidate confirms → none is used (fall back to the logcat path, which is keyed by the app's pid already).
+  - Several confirm (pid collision across devices) → ambiguous, ask.
+- [ ] **Review findings**: #161 D1–D11, #162 A1–A15 (A1 error grouping, A2 frame rows flooding the Timeline, A3 rebuild-storm false positives).
+- [ ] **H3 — device validation of the P5a assumptions** (each on the P0 sample, Android emulator):
+  - profile-mode `Flutter.Frame` payloads and a real jank fixture (`flutter run --profile`): budget from `_flutter.getDisplayRefreshRate`;
+  - rebuild-storm threshold against the sample's rebuild storm **and** against normal scrolling (`ListView.builder`) and an
+    indeterminate progress indicator, which must not be called a storm (review A3);
+  - HTTP profile paging: `updatedSince` returns updated in-flight requests; a 4xx/5xx whose body is never drained (review A7);
+  - hot restart: `errorsSinceReload` resets, RebuiltWidgets location ids restart with the new isolate (review A6), HTTP logging is re-enabled;
+  - Android back at the root destroys the engine: the session reports "isolate exited", not a hang.
+- **Gate (end to end, Android):** with an app selected in Spock and nothing pasted, discovery → session → Diagnose shows the
+  Flutter error from the P0 Layout screen next to its logcat context, in each of: `flutter run` on 3.22 (logcat → 302 → DDS),
+  `flutter run` on 3.47.5 (DTD), two flavors of the sample running together, two emulators of the same image. An app started
+  without a debugger session is reported, not connected.
 
 ### P5 — Cross-layer Diagnose + Timeline (must) · ~7 days
 
