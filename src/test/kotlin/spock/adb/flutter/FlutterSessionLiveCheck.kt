@@ -8,6 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import spock.adb.flutter.vmservice.ExtensionResults
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceClient
+import spock.adb.flutter.vmservice.VmServiceRedirectException
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -73,10 +74,21 @@ class FlutterSessionLiveCheck {
         }
     }
 
-    /** Read with a separate client, so the check does not trust the session it is checking. */
-    private fun httpLogging(uri: VmServiceUri): Boolean? = VmServiceClient.connect(uri).use { client ->
-        val selected = IsolateSelector(client).select() as? IsolateSelection.Selected ?: return null
-        ExtensionResults.bool(client.callServiceExtension(FlutterSession.HTTP_LOGGING, selected.isolate.id))
+    /**
+     * Read with a separate client, so the check does not trust the session it is checking. A
+     * direct device address hands its clients to DDS (spike S9), so this follows that once too.
+     */
+    private fun httpLogging(uri: VmServiceUri): Boolean? {
+        val client = try {
+            VmServiceClient.connect(uri)
+        } catch (e: VmServiceRedirectException) {
+            println("direct address handed to DDS: ${e.target}")
+            VmServiceClient.connect(e.target)
+        }
+        return client.use {
+            val selected = IsolateSelector(it).select() as? IsolateSelection.Selected ?: return null
+            ExtensionResults.bool(it.callServiceExtension(FlutterSession.HTTP_LOGGING, selected.isolate.id))
+        }
     }
 
     private fun FlutterEvent.label(): String? = extensionKind ?: kind
