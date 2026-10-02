@@ -371,10 +371,10 @@ class FlutterFollower(
 
         /**
          * How long one run keeps asking. It must outlast the service's waits: a VM announced up
-         * to [AppStartup.STARTUP_GRACE_MS] after its process, and a Flutter tool's forward
-         * holding Spock off for [AppStartup.FOREIGN_TOOL_HOLD_MS] after that, with room to spare.
+         * to [AppStartup.STARTUP_GRACE_MS] after its process, and a Flutter tool attaching for up to
+         * [AppStartup.TOOL_ATTACH_CAP_MS] after that, with room to spare.
          */
-        const val FOLLOW_BUDGET_MS = AppStartup.STARTUP_GRACE_MS + AppStartup.FOREIGN_TOOL_HOLD_MS + 15_000L
+        const val FOLLOW_BUDGET_MS = AppStartup.STARTUP_GRACE_MS + AppStartup.TOOL_ATTACH_CAP_MS + 15_000L
 
         /** The longest wait the service's suggestion is followed for. */
         const val MAX_DELAY_MS = 10_000L

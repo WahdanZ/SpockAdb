@@ -33,9 +33,16 @@ internal class AppStartup(val pids: Set<Long>, val startedAt: Long) {
     var foreignSince: Long? = null
         private set
 
-    /** Until when a VM not reachable, or without DDS, may still be `flutter run` attaching. */
+    /**
+     * Until when a VM not reachable, or without DDS, may still be `flutter run` attaching: while a
+     * Flutter tool forwards the VM, up to [TOOL_ATTACH_CAP_MS] from the announcement.
+     */
     val deadline: Long
-        get() = maxOf(startedAt + STARTUP_GRACE_MS, (vmAnnouncedAt ?: Long.MIN_VALUE / 2) + VM_LINE_GRACE_MS)
+        get() {
+            val announced = vmAnnouncedAt ?: Long.MIN_VALUE / 2
+            val toolCap = if (foreignSince != null) announced + TOOL_ATTACH_CAP_MS else Long.MIN_VALUE / 2
+            return maxOf(startedAt + STARTUP_GRACE_MS, announced + VM_LINE_GRACE_MS, toolCap)
+        }
 
     fun inWindow(now: Long): Boolean = now < deadline
 
@@ -90,24 +97,26 @@ internal class AppStartup(val pids: Set<Long>, val startedAt: Long) {
      * Why the direct VM must not be connected to yet, or null when it may be:
      * - in the first [DIRECT_PROBE_MIN_AGE_MS] after the process started or the VM announced
      *   itself, `flutter run` is forwarding and starting DDS;
-     * - while a Flutter tool holds a forward to the VM and DDS is not confirmed, it is attaching
-     *   or attached, and a client on the VM before DDS keeps DDS out (S10): no probe for up to
-     *   [FOREIGN_TOOL_HOLD_MS] from when the forward was first seen;
+     * - while a Flutter tool holds a forward to the VM it is attaching or attached, and a client on
+     *   the VM before DDS keeps DDS out (S10): no probe until [TOOL_SETTLE_MS] after the later of
+     *   the forward first seen and the announcement. Then a probe holds nothing either way — DDS
+     *   attached answers it with a redirect — and one without DDS is asked again at the spacing
+     *   below, inside the window [deadline] keeps open while the forward is there;
      * - and never twice within [DIRECT_PROBE_INTERVAL_MS].
      */
     fun directProbeWait(now: Long): FlutterAttachOutcome.NotReady? {
         val age = now - maxOf(startedAt, vmAnnouncedAt ?: startedAt)
-        val held = foreignSince?.let { now - it }
+        val settled = foreignSince?.let { maxOf(it, vmAnnouncedAt ?: it) + TOOL_SETTLE_MS }
         val since = lastDirectProbeAt?.let { now - it }
         return when {
             inWindow(now) && age < DIRECT_PROBE_MIN_AGE_MS -> FlutterAttachOutcome.NotReady(
                 "The app's VM appeared $age ms ago: waiting for `flutter run` to attach before asking it directly.",
                 DIRECT_PROBE_MIN_AGE_MS - age,
             )
-            held != null && held < FOREIGN_TOOL_HOLD_MS -> FlutterAttachOutcome.NotReady(
+            settled != null && now < settled -> FlutterAttachOutcome.NotReady(
                 "A Flutter tool is attaching to the app (it forwards the app's VM Service): Spock waits for its " +
                     "debugger session rather than connect to the VM itself.",
-                FlutterSessionService.RETRY_MS,
+                minOf(settled - now, FlutterSessionService.RETRY_MS),
             )
             since != null && since < DIRECT_PROBE_INTERVAL_MS -> FlutterAttachOutcome.NotReady(
                 "Waiting before asking the app's VM again: `flutter run` may still be attaching.",
@@ -143,11 +152,20 @@ internal class AppStartup(val pids: Set<Long>, val startedAt: Long) {
         const val DIRECT_PROBE_INTERVAL_MS = DtdAppIdentity.DIRECT_PROBE_INTERVAL_MS
 
         /**
-         * How long a Flutter tool's forward to the VM keeps Spock off the VM while DDS is not
-         * confirmed. Without a Dart Tooling Daemon (Flutter 3.22) nothing but a probe can confirm
-         * DDS, so this is also how long such an attach takes; after it a probe is allowed again —
-         * a forward made by hand, with no tool behind it, must not hold Spock off for ever.
+         * How long a Flutter tool's forward to the VM keeps Spock off the VM, from the later of the
+         * forward first seen and the announcement. The S10 risk is only between the announcement
+         * and DDS attaching, and the tool starts DDS right after it forwards the port, normally
+         * within seconds; once DDS is attached, a probe of the direct VM gets a redirect and holds
+         * nothing. Without a Dart Tooling Daemon (Flutter 3.22) only a probe confirms DDS, so this
+         * is about how long such an attach takes.
          */
-        const val FOREIGN_TOOL_HOLD_MS = 60_000L
+        const val TOOL_SETTLE_MS = 10_000L
+
+        /**
+         * While a Flutter tool forwards the VM, how long after the announcement a VM still without
+         * DDS is "the tool is attaching" rather than "no debugger session". After it, the normal
+         * rules: a forward made by hand, with no tool behind it, must not hold the verdict off for ever.
+         */
+        const val TOOL_ATTACH_CAP_MS = 60_000L
     }
 }

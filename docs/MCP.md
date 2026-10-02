@@ -740,8 +740,8 @@ VM is the selected app's process on the selected device; nothing is pasted. The 
 most about 3 seconds for that. An app that is not a Flutter app has no `flutter` key at all.
 While a Flutter tool is attaching, Spock does not connect to the app's VM itself — a client there
 before DDS would keep `flutter run` from starting it — so on a Flutter SDK with no Dart Tooling
-Daemon (3.22) the session can take up to a minute after `flutter run` starts, and `attach` says
-a Flutter tool is attaching meanwhile.
+Daemon (3.22) the session comes about 10–15 seconds after the VM starts, and `attach` says a
+Flutter tool is attaching meanwhile.
 
 ```json
 "flutter": {

@@ -48,9 +48,9 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
    `Flutter session: spock.adb.spock_flutter_sample on emulator-5554 — DDS, pid N (verified by
    dtd+pid+start)` and `Spock turned on HTTP recording for spock.adb.spock_flutter_sample (restored
    when Spock disconnects)`: within seconds on Flutter 3.47.5, where the Dart Tooling Daemon names
-   the app; on 3.22 (`logcat-pid`) up to a minute after the VM announces itself, because while
-   `flutter run` holds a forward to the VM Spock does not connect to the VM itself (it would keep
-   DDS out). `flutter run` itself must keep working: hot reload with `r`. idea.log shows every
+   the app; on 3.22 (`logcat-pid`) about 10–15 s after the VM announces itself (`The Dart VM service
+   is listening on …` in logcat), because for 10 s after `flutter run` forwards the VM Spock does not
+   connect to the VM itself (it could keep DDS out). `flutter run` itself must keep working: hot reload with `r`. idea.log shows every
    decision as `Flutter follower: …` and `Flutter attach for …` lines.
 2. **Flutter error beside its logcat context.** *Layout overflow* → *Overflow with a native warning*,
    then **Diagnose**. Expect the `flutterError` problem "Exception caught by rendering library: A

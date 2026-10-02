@@ -81,11 +81,20 @@ class FlutterSessionStartupTest {
 
     private fun announced() = Announced(VmServiceUri.parse(vm.uri), VM_DEVICE_PORT)
 
+    /** Direct connections made while the VM had no DDS. */
+    private var probesWithoutDds = 0
+
     /**
      * One call a second from the process start, for up to [seconds], until a final answer; the VM
-     * announces itself at [announceAt] s and gets DDS at [ddsAt] s. What each call answered.
+     * announces itself at [announceAt] s, a Flutter tool forwards it from [forwardAt] s, and DDS
+     * attaches at [ddsAt] s. What each call answered.
      */
-    private fun startUp(seconds: Int, announceAt: Int, ddsAt: Int?): List<Pair<Int, FlutterAttachOutcome>> {
+    private fun startUp(
+        seconds: Int,
+        announceAt: Int,
+        ddsAt: Int?,
+        forwardAt: Int? = null,
+    ): List<Pair<Int, FlutterAttachOutcome>> {
         val start = now
         vmLineAt = start + announceAt * 1_000L
         val answers = mutableListOf<Pair<Int, FlutterAttachOutcome>>()
@@ -93,7 +102,10 @@ class FlutterSessionStartupTest {
             now = start + second * 1_000L
             logcatFound = if (second >= announceAt) listOf(announced()) else emptyList()
             vm.dds = ddsAt != null && second >= ddsAt
+            if (forwardAt != null) foreign = second >= forwardAt
+            val before = sessionsMade
             val outcome = ensure(startedAt = start)
+            if (!vm.dds) probesWithoutDds += sessionsMade - before
             answers += second to outcome
             if (outcome is FlutterAttachOutcome.Connected || outcome is FlutterAttachOutcome.NoDdsSession) break
         }
@@ -127,24 +139,38 @@ class FlutterSessionStartupTest {
     }
 
     @Test
-    fun `a Flutter tool forwarding the VM keeps Spock off it, and says so`() {
-        foreign = true
-        val answers = startUp(seconds = 40, announceAt = 6, ddsAt = null)
+    fun `a Flutter tool forwarding the VM keeps Spock off it while it settles, and says so`() {
+        val settle = (AppStartup.TOOL_SETTLE_MS / 1_000).toInt()
+        val answers = startUp(seconds = 6 + settle - 1, announceAt = 6, ddsAt = null, forwardAt = 6)
 
-        assertEquals(0, sessionsMade, "never connected to the VM while a tool may be attaching")
+        assertEquals(0, sessionsMade, "not connected to the VM while the tool may be starting DDS")
         val last = answers.last().second as FlutterAttachOutcome.NotReady
         assertTrue(last.reason.contains("A Flutter tool is attaching"), last.reason)
         assertTrue(logged.any { "a Flutter tool forwards the VM Service's device port" in it }, "$logged")
     }
 
     @Test
-    fun `the tool's hold ends, and then the VM may be asked`() {
-        foreign = true
-        startUp(seconds = 10, announceAt = 6, ddsAt = null)
-        now += AppStartup.FOREIGN_TOOL_HOLD_MS
-        vm.dds = true
+    fun `DDS 12 s in, a tool forwarding - connected by about 14 s, with no probe before DDS`() {
+        val answers = startUp(seconds = 30, announceAt = 2, ddsAt = 12, forwardAt = 4)
 
-        assertTrue(ensure() is FlutterAttachOutcome.Connected)
+        val (second, outcome) = answers.last()
+        assertTrue(outcome is FlutterAttachOutcome.Connected, "$answers")
+        assertTrue(second <= 15, "connected at $second s")
+        assertTrue(probesWithoutDds <= 1, "$probesWithoutDds probes before DDS")
+    }
+
+    @Test
+    fun `a tool still attaching is asked again at the probe spacing, then the normal rules after the cap`() {
+        val answers = startUp(seconds = 90, announceAt = 6, ddsAt = null, forwardAt = 6)
+
+        val (second, outcome) = answers.last()
+        assertTrue(outcome is FlutterAttachOutcome.NoDdsSession, "$answers")
+        val cap = 6 + AppStartup.TOOL_ATTACH_CAP_MS / 1_000
+        assertTrue(second >= cap, "no debugger session only after the cap: $second s")
+        val probesBeforeCap = sessionsMade
+        assertTrue(probesBeforeCap > 1, "asked again while the tool attached")
+        val spacing = (AppStartup.DIRECT_PROBE_INTERVAL_MS / 1_000).toInt()
+        assertTrue(probesBeforeCap <= (second - 16) / spacing + 1, "$probesBeforeCap probes by $second s")
     }
 
     @Test
@@ -165,7 +191,7 @@ class FlutterSessionStartupTest {
         foreign = true
         vm.dds = true
         val held = ensure()
-        now += AppStartup.FOREIGN_TOOL_HOLD_MS
+        now += AppStartup.TOOL_SETTLE_MS
 
         assertTrue(held is FlutterAttachOutcome.NotReady, "$held")
         assertTrue(ensure() is FlutterAttachOutcome.Connected)
@@ -182,8 +208,7 @@ class FlutterSessionStartupTest {
 
     @Test
     fun `its decisions are logged, with no address or token`() {
-        foreign = true
-        startUp(seconds = 12, announceAt = 6, ddsAt = null)
+        startUp(seconds = 12, announceAt = 6, ddsAt = null, forwardAt = 6)
 
         assertTrue(
             logged.any { it.startsWith("Flutter attach for $APP_ID on emulator-5554: NotReady") },

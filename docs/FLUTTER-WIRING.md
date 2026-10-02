@@ -172,7 +172,11 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   running", and every run has a time budget instead of an attempt count. The VM announced itself 6 s after its
   process, so the startup window now runs from the announcement too (`AppStartup`: 15 s after the process, 15 s
   after the announcement). A Flutter tool's `adb forward` to the VM's device port, read from the adb server
-  (`host:list-forward`, no VM contact), keeps Spock off the VM for up to 60 s while DDS is unconfirmed — which,
-  without a DTD (3.22), is also how long the automatic attach takes. A "no DDS" verdict is re-checked every 30 s
-  with no VM contact until a tool forwards the VM. Every follower and attach decision is logged at INFO.
+  (`host:list-forward`, no VM contact), keeps Spock off the VM for 10 s after the later of the forward first seen
+  and the announcement (`TOOL_SETTLE_MS`): the S10 risk is only until DDS attaches, which the tool does right after
+  forwarding, and a probe once DDS is attached gets a redirect and holds nothing. Then a VM still without DDS is
+  probed again at the usual spacing while the forward stays, up to 60 s from the announcement
+  (`TOOL_ATTACH_CAP_MS`), after which the normal rules give "no debugger session". Expected attach on 3.22: about
+  10–15 s after the VM line. A "no DDS" verdict is re-checked every 30 s with no VM contact until a tool forwards
+  the VM. Every follower and attach decision is logged at INFO.
 
