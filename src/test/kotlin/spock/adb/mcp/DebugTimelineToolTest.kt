@@ -2,7 +2,9 @@ package spock.adb.mcp
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.mcp.tools.GetDebugTimelineTool
@@ -69,6 +71,37 @@ class DebugTimelineToolTest {
 
         assertTrue(result.isError)
         assertTrue(result.text().contains("app_lifecycle"))
+    }
+
+    @Test
+    fun `a category is matched by name first, and flutter alone names two`() {
+        assertEquals(TimelineCategory.FLUTTER_ERROR, TimelineCategory.parse("flutter_error"))
+        assertEquals(TimelineCategory.FLUTTER_FRAME, TimelineCategory.parse("Frame"))
+        assertEquals(TimelineCategory.APP_LIFECYCLE, TimelineCategory.parse("app"))
+        assertEquals(TimelineCategory.LOG, TimelineCategory.parse("LOG"))
+        assertNull(TimelineCategory.parse("flutter"))
+
+        val arguments = JsonObject().apply { add("categories", JsonArray().apply { add("flutter") }) }
+        val result = tool.answer(DebugTimeline(), "on", arguments, now)
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("flutter_frame"), result.text())
+    }
+
+    @Test
+    fun `the Flutter categories are in the schema and can be asked for`() {
+        val names = tool.inputSchema.getAsJsonObject("properties").getAsJsonObject("categories")
+            .getAsJsonObject("items").getAsJsonArray("enum").map { it.asString }
+        assertTrue(names.containsAll(listOf("flutter_error", "flutter_frame", "navigation", "http")), "$names")
+
+        val withRoute = DebugTimeline().apply {
+            record(TimelineEvent(now - 5_000, TimelineCategory.NAVIGATION, TimelineSeverity.INFO, "Navigator: /items"))
+            record(TimelineEvent(now - 4_000, TimelineCategory.HTTP, TimelineSeverity.ERROR, "GET / failed"))
+        }
+        val arguments = JsonObject().apply { add("categories", JsonArray().apply { add("navigation") }) }
+        val text = tool.answer(withRoute, "on", arguments, now).text()
+
+        assertTrue(text.contains("Navigator: /items"))
+        assertFalse(text.contains("GET / failed"))
     }
 
     @Test

@@ -1,0 +1,62 @@
+[
+  {
+    "timestamp": 1790887865666,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "route": {
+        "description": "MaterialPageRoute<dynamic>(/layout)",
+        "settings": {
+          "name": "/layout"
+        }
+      }
+    }
+  },
+  {
+    "timestamp": 1790887897094,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "route": {
+        "description": "MaterialPageRoute<dynamic>(/errors)",
+        "settings": {
+          "name": "/errors"
+        }
+      }
+    }
+  },
+  {
+    "timestamp": 1790887926371,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "route": {
+        "description": "MaterialPageRoute<dynamic>(/network)",
+        "settings": {
+          "name": "/network"
+        }
+      }
+    }
+  },
+  {
+    "timestamp": 1790887969977,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "route": {
+        "description": "MaterialPageRoute<dynamic>(/items)",
+        "settings": {
+          "name": "/items"
+        }
+      }
+    }
+  },
+  {
+    "timestamp": 1790887977797,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "route": {
+        "description": "MaterialPageRoute<dynamic>(/item/3)",
+        "settings": {
+          "name": "/item/3"
+        }
+      }
+    }
+  }
+]

@@ -782,6 +782,18 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
 - `app_lifecycle` — its process starting and dying, crashes and ANRs;
 - `log` — warnings and errors the app's own process logged, one event per log call with any stack
   trace in the detail;
+- `flutter_error`, `flutter_frame`, `navigation`, `http` — from a Flutter app's Dart VM Service,
+  recorded **only while a Flutter session is live**. This build does not open one yet (the
+  connection is wired in a later release), so for now these categories are always empty. Once it
+  does: framework errors (`Flutter.Error`: layout overflows, `build()` and gesture errors, with the
+  rendered report in the detail); bursts of frames over the display's budget, one event per burst
+  with the count and the worst times (in profile builds a warning when slow frames are frequent or
+  one froze, else info; info in debug, where frame times are not representative); the route `Navigator` reported; and failed `dart:io` HTTP requests (a
+  4xx is a warning; a 5xx or no response an error). Query strings are cut from URLs and route
+  names. A navigation event names one route and never says how it got there, because the app does
+  not say: after a push or replace it is the route now showing, after a pop the route that was
+  popped, after removing the current route the one now showing (or none). `flutter` alone is not
+  a category — ask for `flutter_error` or `flutter_frame`;
 - `spock_action`, `storage`, `background_work`, `device_condition` — what the tool window did;
 - `device` — devices connecting and disconnecting, and recording starting;
 - `mcp` — tool calls, this one excepted;
@@ -789,7 +801,9 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
 
 Device events (`activity`, `app_lifecycle`, `log`) are recorded only while the Spock ADB tool window
 has a device and app selected and **Record device events** is on. The first line of the result
-says what was being recorded, so an empty answer is not mistaken for a quiet app.
+says what was being recorded, so an empty answer is not mistaken for a quiet app. Flutter events
+carry the time the app stamped them, moved onto the host's clock like log lines; a slow frame is
+placed by its own start time, since the engine reports frame timings in batches.
 
 | Argument | Default | Meaning |
 |---|---|---|

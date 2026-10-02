@@ -12,6 +12,19 @@
   - **Diagnose** reports each unhandled Dart exception once, tells a missing plugin and a
     platform channel error apart, and says that Flutter's framework errors (overflow, `build()`)
     are not in logcat for a debug build. **Timeline** titles drop the engine's source prefix.
+  - **Diagnose** no longer blames a missing plugin when a native channel handler threw. A checked
+    exception in a handler (Kotlin throws them undeclared) makes Android's `DartMessenger` reply
+    with nothing, which Dart reads as `MissingPluginException` though the plugin is there; the
+    report now names the method, the channel and the exception the handler threw, so the fix is
+    looked for in the handler rather than in plugin registration. Nothing in the log links the two
+    lines, so the pairing is kept narrow — same process, within half a second, nothing else logged
+    in between — and the report says it is inferred.
+  - **`android_get_debug_timeline`** takes four new categories, `flutter_error`, `flutter_frame`,
+    `navigation` and `http`, so an agent can ask for a Flutter app's errors, bursts of slow
+    frames, routes and failed requests on their own. They stay empty until Spock records a live
+    Flutter session, which comes in a later release; clients that read the tool's schema see the
+    new values now. `flutter` on its own is refused rather than guessed at, since it could mean
+    either Flutter category.
   - **Logcat** has a *Flutter* view.
   - **App Storage** shows a Hive box (`*.hive`) as a key/type/value table and a SQLite database
     as its tables, row counts and first rows (read on the device with `sqlite3`, where it
