@@ -23,7 +23,8 @@ class DiagnoseCurrentScreenTool : AdbTool {
         "Diagnose the screen currently shown on the device for the selected app, in one call. " +
             "Returns the same bounded JSON report as android_get_debug_context with every " +
             "section — likelyProblems ranked first, then the current activity, the app's " +
-            "activity stack and fragments, process state, log problem counts, a UI and " +
+            "activity stack and fragments, process state, log problem counts, for a Flutter app " +
+            "its Dart VM Service session (framework errors beside their logcat context), a UI and " +
             "accessibility summary, runtime permissions, scheduled jobs and alarms, and device " +
             "conditions (Doze, standby bucket, battery, charger) — plus a screenshot of the same " +
             "moment. A failing section is reported under sectionErrors and never fails the call. " +

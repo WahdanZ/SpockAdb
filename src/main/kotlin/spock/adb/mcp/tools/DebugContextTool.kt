@@ -6,6 +6,9 @@ import spock.adb.diagnostics.DiagnosticCollector
 import spock.adb.diagnostics.DiagnosticSection
 import spock.adb.diagnostics.DiagnosticSections
 import spock.adb.diagnostics.DiagnosticShell
+import spock.adb.diagnostics.FlutterDiagnosticSource
+import spock.adb.diagnostics.FlutterSection
+import spock.adb.flutter.FlutterFollowerService
 
 /**
  * `android_get_debug_context` — the whole triage bundle in one call.
@@ -33,7 +36,9 @@ class DebugContextTool : AdbTool {
         "Start here when asked why a screen looks wrong, why an app crashed, or what state the " +
             "app is in. Returns a bounded JSON summary of the same moment: likelyProblems ranked " +
             "(crashes, ANRs, failed HTTP requests, exceptions, repeated errors), then the current " +
-            "screen, whether the app is running, log counts, a UI and accessibility summary, " +
+            "screen, whether the app is running, log counts, for a Flutter app its Dart VM Service " +
+            "session (framework errors with the log problems near them, frames, failed dart:io " +
+            "requests, routes), a UI and accessibility summary, " +
             "background work and device conditions. Raw logcat and the UI tree are not included; " +
             "each section names the tool that returns its detail under 'more'. Pass format=full " +
             "for the older text bundle with raw logcat and the UI tree."
@@ -100,12 +105,14 @@ class DebugContextTool : AdbTool {
             )
         }
 
+        val packageName = with(LogcatReader) { arguments.logcatPackage(context) }
         val probe = AndroidProbe(
             device = device.device,
             serialNumber = device.serialNumber,
-            packageName = with(LogcatReader) { arguments.logcatPackage(context) },
+            packageName = packageName,
             logWindowLines = arguments.optionalInt("maxLogcatLines", AndroidProbe.DEFAULT_LOG_WINDOW_LINES)
                 .coerceIn(1, MAX_LOGCAT_LINES),
+            flutter = flutterSource(sections, context, device, packageName),
         )
         val preamble = JsonObject().apply {
             add(
@@ -136,6 +143,22 @@ class DebugContextTool : AdbTool {
         }
         content.add(0, ToolContent.Text(DiagnosticCollector.render(report)))
         return ToolResult(content)
+    }
+
+    /**
+     * The app's Flutter session for the `flutter` section, attaching within its budget when there
+     * is none yet. Only when that section is asked for and a project is open: the session is the
+     * project's, found through its Dart Tooling Daemon. Null for an app that is not Flutter.
+     */
+    private fun flutterSource(
+        sections: List<DiagnosticSection<AndroidProbe>>,
+        context: ToolContext,
+        device: spock.adb.device.ConnectedDevice,
+        packageName: String?,
+    ): FlutterDiagnosticSource? {
+        if (FlutterSection !in sections) return null
+        val project = context.project ?: return null
+        return FlutterFollowerService.getInstance(project).diagnosticSource(device, packageName)
     }
 
     /** The 4.x bundle, byte for byte, for clients that parse its headings. */

@@ -26,6 +26,7 @@ import spock.adb.SpockAdbService
 import spock.adb.command.GetApplicationIDCommand
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.ScreenshotOperations
+import spock.adb.flutter.FlutterFollowerService
 import spock.adb.openIn
 import spock.adb.psiClassByNameFromProjct
 import spock.adb.ui.CollapsibleSection
@@ -246,6 +247,8 @@ class DiagnosePanel(
             device = target.device,
             serialNumber = target.serialNumber,
             packageName = app,
+            // Attaches to a Flutter app with no session yet, within the report's budget.
+            flutter = FlutterFollowerService.getInstance(project).diagnosticSource(target, app),
         )
         val preamble = JsonObject().apply {
             add(
