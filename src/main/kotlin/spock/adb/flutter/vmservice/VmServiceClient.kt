@@ -5,6 +5,7 @@ import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
+import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.WebSocket
 import java.net.http.WebSocketHandshakeException
@@ -415,13 +416,33 @@ class VmServiceClient private constructor(
             connectTimeoutMs: Long = DEFAULT_TIMEOUT_MS,
             maxQueuedEvents: Int = MAX_QUEUED_EVENTS,
             maxMessageChars: Int = MAX_MESSAGE_CHARS,
+        ): VmServiceClient = open(
+            uri.webSocketUri,
+            uri.redacted(),
+            VmServiceLimits(timeoutMs, connectTimeoutMs, maxQueuedEvents, maxMessageChars),
+            redirectFrom = uri,
+        )
+
+        /**
+         * The same JSON-RPC core for another loopback WebSocket service — the Dart Tooling
+         * Daemon, whose address is not a [VmServiceUri]. [label] must already be redacted: it
+         * is what every message names the service by. The caller vets [webSocketUri].
+         *
+         * @param redirectFrom the VM Service address being opened, when a `302` to DDS is to be
+         *   reported as a [VmServiceRedirectException]; null for services that never redirect.
+         */
+        internal fun open(
+            webSocketUri: URI,
+            label: String,
+            limits: VmServiceLimits,
+            redirectFrom: VmServiceUri? = null,
         ): VmServiceClient {
-            val client = VmServiceClient(uri.redacted(), timeoutMs, maxQueuedEvents, maxMessageChars)
+            val client = VmServiceClient(label, limits.timeoutMs, limits.maxQueuedEvents, limits.maxMessageChars)
             val handshake = http.newWebSocketBuilder()
-                .connectTimeout(Duration.ofMillis(connectTimeoutMs))
-                .buildAsync(uri.webSocketUri, client.Listener())
+                .connectTimeout(Duration.ofMillis(limits.connectTimeoutMs))
+                .buildAsync(webSocketUri, client.Listener())
             val failure: Throwable = try {
-                client.socket = handshake.get(connectTimeoutMs, TimeUnit.MILLISECONDS)
+                client.socket = handshake.get(limits.connectTimeoutMs, TimeUnit.MILLISECONDS)
                 return client
             } catch (e: ExecutionException) {
                 e.cause ?: e
@@ -436,10 +457,10 @@ class VmServiceClient private constructor(
             handshake.thenAccept { it.abort() }
             handshake.cancel(true)
             client.shutdown("could not connect", sendClose = false)
-            redirectOf(uri, failure)?.let { throw VmServiceRedirectException(it, uri.redacted()) }
+            redirectFrom?.let { from -> redirectOf(from, failure)?.let { throw VmServiceRedirectException(it, label) } }
             // The cause is not chained: JDK messages may quote the address, token included.
             val detail = failure.message?.takeIf { it.isNotBlank() }?.let { " (${Redaction.scrub(it)})" }.orEmpty()
-            throw VmServiceException("Could not connect to ${uri.redacted()}: ${failure.javaClass.simpleName}$detail")
+            throw VmServiceException("Could not connect to $label: ${failure.javaClass.simpleName}$detail")
         }
 
         /**
@@ -470,3 +491,11 @@ class VmServiceClient private constructor(
             JsonObject().apply { entries.forEach { (key, value) -> addProperty(key, value) } }
     }
 }
+
+/** How long a connection waits, and how much it holds. */
+internal class VmServiceLimits(
+    val timeoutMs: Long = VmServiceClient.DEFAULT_TIMEOUT_MS,
+    val connectTimeoutMs: Long = VmServiceClient.DEFAULT_TIMEOUT_MS,
+    val maxQueuedEvents: Int = VmServiceClient.MAX_QUEUED_EVENTS,
+    val maxMessageChars: Int = VmServiceClient.MAX_MESSAGE_CHARS,
+)
