@@ -155,9 +155,14 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   samples, first dropped, least round trip). A session opened with a pasted address (no device) has none; rows are
   then placed on the device's clock in UTC and the section pairs no log lines, and both say so.
 - **Correlation ids.** `likelyProblems` entries gained `id` (`p1`…), and a section can run a step after ranking
-  (`SectionReport.afterRanking`); `flutter.errors.groups[i]` carries `problem` (its own id) and `nearbyLogs`. Only log
-  problems listed in `likelyProblems` can be paired. `DiagnosticSection.appliesTo` leaves `flutter` out for an app
-  that is not Flutter.
+  (`SectionReport.afterRanking`); `flutter.errors.groups[i]` carries `problem` (its own id) and `nearbyLogs`.
+  `DiagnosticSection.appliesTo` leaves `flutter` out for an app that is not Flutter.
+- **Pairing before ranking (device gate, 2026-10-02).** Pairing only the top ten failed on the device: start-up
+  noise from minutes earlier (ziparchive, avc denied, hidden API, OpenGLRenderer) filled the list, and the app's own
+  warning 1.3 s before the overflow was not in it. Now the section pairs against every log problem before ranking
+  (`SectionReport.companions`), at most 5 per error, the closest first, and the collector lists each right after
+  its error — one that already ranks higher (a crash) stays where it is. `nearbyLogs` are ids in `likelyProblems`
+  again; `moreNearbyLogs` counts pairs below the cut, which happens only when the error itself is below it.
 - **Frames on the Timeline.** No frame rows in debug or an unknown build (§6's "debug frames produce no rows"); in
   profile, one row per burst per 2-second window. Frames are placed at batch time: no engine-clock offset is measured.
 - **Follower memory.** Terminal outcomes are remembered for the automatic triggers only; Diagnose always asks, since

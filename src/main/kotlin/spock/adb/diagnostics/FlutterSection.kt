@@ -19,6 +19,7 @@ import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.Redaction
 import spock.adb.flutter.vmservice.VmServiceException
 import java.time.ZoneOffset
+import java.util.IdentityHashMap
 import java.util.Locale
 
 /**
@@ -70,8 +71,9 @@ class FlutterDiagnosticSource(
  * connected"); and where errors are invisible — structured errors off, a profile build, an app that
  * replaced `FlutterError.onError` — the section says where to look instead.
  *
- * Each error group carries `nearbyLogs`: the ids of the log problems listed in `likelyProblems`
- * any of whose lines fell within [NEARBY_WINDOW_MS] of the group, widened by the clock's
+ * Each error group carries `nearbyLogs`: the ids, in `likelyProblems`, of the log problems any of
+ * whose lines fell within [NEARBY_WINDOW_MS] of the group — listed right after the error, however
+ * low they would rank alone — widened by the clock's
  * uncertainty, compared on the device's own epoch (design §3, §4a).
  *
  * Reads only; never starts rebuild recording, which writes to the app.
@@ -96,6 +98,9 @@ object FlutterSection : DiagnosticSection<AndroidProbe> {
     const val MAX_ERROR_GROUPS = 5
     const val MAX_HTTP_FAILURES = 5
     const val MAX_ROUTES = 5
+
+    /** Log problems paired with one Flutter error, the closest first. */
+    const val MAX_NEARBY_LOGS = 5
 }
 
 /** One report of [FlutterSection]: what it read, and its correlation step. */
@@ -107,6 +112,9 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
     private val live = source.live
     private val zone = live?.deviceTime?.zone ?: ZoneOffset.UTC
 
+    /** Each error group's problem → the log problems around it, closest first; from [pair]. */
+    private val paired = IdentityHashMap<LikelyProblem, List<LikelyProblem>>()
+
     /** Error groups as listed, with the problem each became and its JSON, for [correlate]. */
     private val groups = mutableListOf<Triple<FlutterErrorReader.Group, LikelyProblem, JsonObject>>()
 
@@ -117,7 +125,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
         if (live != null) readLive(live)
         source.note?.let { notes.add(Redaction.scrub(it)) }
         if (notes.size() > 0) data.add("notes", notes)
-        return SectionReport(data, problems, afterRanking = ::correlate)
+        return SectionReport(data, problems, afterRanking = ::correlate, companions = ::pair)
     }
 
     private fun readLive(live: FlutterDiagnosticSource.Live) {
@@ -241,23 +249,49 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
             .forEach(::add)
     }
 
-    /** Pairs each listed error group with the log problems around it, and points at its own entry. */
+    /**
+     * Before ranking, against every log problem the report found — not only those that will make
+     * the list: a warning the app logged a second before the error must not lose its place to the
+     * platform's start-up noise. Every occurrence counts, not only the last: a warning that
+     * repeated is near the error if any of its lines is. At most [FlutterSection.MAX_NEARBY_LOGS]
+     * per error, the closest first; the collector lists them right after the error.
+     */
+    private fun pair(all: List<LikelyProblem>): Map<LikelyProblem, List<LikelyProblem>> {
+        val time = live?.deviceTime ?: return emptyMap()
+        val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
+        val logs = all.filter { it.section == LogsSection.id }.mapNotNull { problem ->
+            val times = problem.seenAt.mapNotNull { time.logcatToEpoch(it, source.hostNowMs) }
+            times.takeIf { it.isNotEmpty() }?.let { problem to it }
+        }
+        groups.forEach { (group, problem, _) ->
+            val distance = { epochMs: Long ->
+                when {
+                    epochMs < group.firstSeenMs -> group.firstSeenMs - epochMs
+                    epochMs > group.lastSeenMs -> epochMs - group.lastSeenMs
+                    else -> 0L
+                }
+            }
+            val near = logs
+                .mapNotNull { (log, epochs) -> epochs.minOf(distance).takeIf { it <= window }?.let { log to it } }
+                .sortedBy { it.second }
+                .take(FlutterSection.MAX_NEARBY_LOGS)
+                .map { it.first }
+            if (near.isNotEmpty()) paired[problem] = near
+        }
+        return paired
+    }
+
+    /** Points each listed error group at its own entry and at the log problems paired with it. */
     private fun correlate(ranked: RankedProblems) {
         groups.forEach { (_, problem, json) -> ranked.idOf(problem)?.let { json.addProperty("problem", it) } }
         silentHandlerNote(ranked)
-        val time = live?.deviceTime ?: return
-        val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
-        // Every occurrence a log problem kept, not only its last: a warning that repeated is near
-        // the error if any of its lines is.
-        val logs = ranked.listed.mapNotNull { (id, problem) ->
-            if (problem.section != LogsSection.id) return@mapNotNull null
-            val times = problem.seenAt.mapNotNull { time.logcatToEpoch(it, source.hostNowMs) }
-            times.takeIf { it.isNotEmpty() }?.let { id to it }
-        }
-        groups.forEach { (group, _, json) ->
-            val range = (group.firstSeenMs - window)..(group.lastSeenMs + window)
-            val nearby = logs.filter { (_, epochs) -> epochs.any { it in range } }.map { it.first }
-            json.add("nearbyLogs", JsonArray().apply { nearby.forEach(::add) })
+        if (live?.deviceTime == null) return
+        groups.forEach { (_, problem, json) ->
+            val near = paired[problem].orEmpty()
+            val ids = near.mapNotNull(ranked::idOf)
+            json.add("nearbyLogs", JsonArray().apply { ids.forEach(::add) })
+            // Only when the error itself is below the cut: its companions follow it there.
+            if (near.size > ids.size) json.addProperty("moreNearbyLogs", near.size - ids.size)
         }
     }
 

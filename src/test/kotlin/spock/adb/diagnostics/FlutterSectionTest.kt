@@ -400,4 +400,64 @@ class FlutterSectionTest {
         val nearby = groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString }
         assertEquals(listOf(idOf(report, "exception: repeated")), nearby)
     }
+
+    @Test
+    fun `an app warning a second before the error is paired and shown, above older platform noise`() {
+        // The device gate of 2026-10-02: start-up noise from minutes earlier filled the top ten.
+        val noise = (1..12).map {
+            LikelyProblem(
+                "log",
+                Severity.WARNING,
+                "ziparchive: Unable to open '/data/app/base.dm' #$it",
+                count = 3,
+                lastSeen = "10-02 13:53:00.000",
+                section = LogsSection.id,
+            )
+        }
+        val app = LikelyProblem(
+            "log",
+            Severity.WARNING,
+            "SpockSample: Layout fixture: the overflow was just shown",
+            lastSeen = "10-02 13:59:58.700",
+            section = LogsSection.id,
+        )
+        val report = collect(live(errors = listOf(error(AT))), *(noise + app).toTypedArray())
+
+        val listed = report.getAsJsonArray("likelyProblems").map { it.asJsonObject["summary"].asString }
+        assertTrue(listed[0].contains("A RenderFlex overflowed"), "$listed")
+        assertEquals(app.summary, listed[1])
+        assertEquals(listOf("p2"), groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString })
+        val html = DiagnosePanel.SummaryHtml.render(ScreenDiagnosis(report))
+        assertTrue(html.contains("In logcat around it"), html)
+        assertTrue(html.contains("10-02 13:59:58.700 SpockSample: Layout fixture"), html)
+    }
+
+    @Test
+    fun `at most five log problems are paired with an error, the closest first`() {
+        // Eight inside the window, 100 ms apart, listed farthest first.
+        val near = (8 downTo 1).map { logProblem("exception: near $it", "10-02 14:00:00.${it}00") }
+        val report = collect(live(errors = listOf(error(AT))), *near.toTypedArray())
+
+        val ids = groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString }
+        val summaries = ids.map { id -> problemById(report, id)["summary"].asString }
+        assertEquals((1..FlutterSection.MAX_NEARBY_LOGS).map { "exception: near $it" }, summaries)
+    }
+
+    @Test
+    fun `a paired problem that already ranks higher is not moved down`() {
+        val crash = LikelyProblem(
+            LogProblemExtractor.TYPE_CRASH,
+            Severity.ERROR,
+            "FATAL EXCEPTION: main",
+            lastSeen = "10-02 14:00:01.000",
+            section = LogsSection.id,
+        )
+        val report = collect(live(errors = listOf(error(AT))), crash)
+
+        assertEquals("FATAL EXCEPTION: main", problemById(report, "p1")["summary"].asString)
+        assertEquals(listOf("p1"), groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString })
+    }
+
+    private fun problemById(report: JsonObject, id: String): JsonObject =
+        report.getAsJsonArray("likelyProblems").map { it.asJsonObject }.single { it["id"].asString == id }
 }

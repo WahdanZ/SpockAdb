@@ -40,14 +40,20 @@ interface DiagnosticSection<in P : DiagnosticProbe> {
 /**
  * What a section hands back: bounded data, and the problems it noticed.
  *
+ * [companions] runs before ranking, with every problem of every section: for each of this
+ * section's problems, the others' that belong with it — the log lines around a Flutter error. The
+ * ranking lists each right after its problem, so it makes the list whenever its problem does,
+ * however low it would rank alone; one that already ranks higher stays where it is.
+ *
  * [afterRanking] runs once every section is in and the problems are ranked and given their ids,
- * before the size cut: a section that relates its findings to another's — a Flutter error to the
- * log lines around it — adds that to its own [data] there. A failure in it costs only the addition.
+ * before the size cut: a section that relates its findings to another's adds that to its own
+ * [data] there. A failure in either costs only that step.
  */
 data class SectionReport(
     val data: JsonObject,
     val problems: List<LikelyProblem> = emptyList(),
     val afterRanking: ((RankedProblems) -> Unit)? = null,
+    val companions: ((List<LikelyProblem>) -> Map<LikelyProblem, List<LikelyProblem>>)? = null,
 )
 
 /**

@@ -14,7 +14,14 @@ import com.google.gson.JsonObject
  */
 class ScreenDiagnosis(val report: JsonObject) {
 
-    data class Problem(val severity: String, val summary: String, val count: Int, val id: String? = null)
+    data class Problem(
+        val severity: String,
+        val summary: String,
+        val count: Int,
+        val id: String? = null,
+        /** As logcat printed it, when known. */
+        val lastSeen: String? = null,
+    )
 
     /** Ranked as the collector ranked them. */
     val problems: List<Problem> = report.array("likelyProblems")?.mapNotNull { element ->
@@ -24,6 +31,7 @@ class ScreenDiagnosis(val report: JsonObject) {
             summary = problem.string("summary") ?: return@mapNotNull null,
             count = problem.int("count") ?: 1,
             id = problem.string("id"),
+            lastSeen = problem.string("lastSeen"),
         )
     }.orEmpty()
 

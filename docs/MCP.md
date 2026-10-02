@@ -716,7 +716,7 @@ that returns its detail, so the agent fetches it only when the summary points th
 | `schemaVersion` | yes | `2`. Bumped when a field changes meaning or goes away; adding one does not. |
 | `device` | yes | The device the report describes. |
 | `packageName` | yes | The app it is about, or `null` when none is known. Unless the call names one, the app selected in Spock's tool window, else the open project's. |
-| `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
+| `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. The log problems paired with a Flutter error (see `flutter`) follow it directly. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
 | `moreProblems` | no | How many problems were ranked below the cut. |
 | `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`, `deviceConditions`, `permissions` | per `include` | One short summary per section. `screen` also carries the app's `activityStack` (top first) and `fragments` when the app is in front. `flutter` is there only for a Flutter app (below). |
 | `sectionErrors` | no | `{section: reason}` for each section that failed. A failure never fails the call. |
@@ -774,10 +774,14 @@ Flutter tool is attaching meanwhile.
   a profile build, framework errors go to logcat instead and `notes` points at `logs`. No error is
   not proof of none: an app that replaced `FlutterError.onError` (a crash reporter) reports to
   neither, and `notes` says so — more firmly when the UI section shows an error on screen.
-- `nearbyLogs` pairs each Flutter error with the log problems (by `id` in `likelyProblems`) whose
-  last line fell within 2 seconds of it, widened by `clock.uncertaintyMs`. Both are compared on
-  the device's own clock: logcat prints the device's local time, so its stamps are moved by the
-  device's zone first. A log problem ranked below the cut has no id and is not listed.
+- `nearbyLogs` pairs each Flutter error with the log problems (by `id` in `likelyProblems`) any of
+  whose lines fell within 2 seconds of it, widened by `clock.uncertaintyMs` — at most 5, the
+  closest first. Both are compared on the device's own clock: logcat prints the device's local
+  time, so its stamps are moved by the device's zone first. A paired log problem is listed right
+  after its error in `likelyProblems`, however low it would rank alone, so start-up noise cannot
+  push it off the list; one that ranks higher already (a crash) keeps its place.
+  `moreNearbyLogs` counts pairs that did not make the list, which happens only when the error
+  itself did not.
 - `frames` is a verdict only in a profile build; `http` reads the VM's HTTP profile, while recording
   is on. Spock switches it on for a session it opened over DDS in a debug or profile build — unless
   **Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** is off — and back off

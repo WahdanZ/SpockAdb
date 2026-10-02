@@ -14,7 +14,9 @@
   - **Diagnose** has a *flutter* section: the app's framework errors since Spock connected (those
     from before are counted apart and said to be), each with the logcat problems from the same
     two seconds beside it, so the overflow and the warning it caused are read together; frame
-    times (a verdict only in a profile build); failed `dart:io` requests; the last routes. When it
+    times (a verdict only in a profile build); failed `dart:io` requests; the last routes. The log
+    problems beside an error are listed right after it, so a warning the app logged a second before
+    is not pushed out of the report by the platform's start-up noise. When it
     cannot connect it says why in words — the app is still starting, it runs without a debugger
     session, it is a release build — and it never reads silence as "no errors".
   - **Timeline** records the session: errors, routes, bursts of slow frames in profile builds,

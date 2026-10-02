@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
 import spock.adb.flutter.analysis.FlutterProblemTypes
+import java.util.IdentityHashMap
 
 /**
  * Runs sections and assembles their summaries into one bounded report.
@@ -56,7 +57,8 @@ class DiagnosticCollector(
         report.addProperty("schemaVersion", SCHEMA_VERSION)
         preamble.entrySet().forEach { (key, value) -> report.add(key, value) }
         report.addProperty("packageName", probe.packageName)
-        val listed = addProblems(report, reports.values.flatMap { it.problems })
+        val all = reports.values.flatMap { it.problems }
+        val listed = addProblems(report, all, companionsOf(reports.values, all))
         reports.forEach { (section, sectionReport) -> report.add(section.id, sectionReport.data) }
         if (errors.size() > 0) report.add("sectionErrors", errors)
         report.add("more", references(applicable, probe))
@@ -65,12 +67,22 @@ class DiagnosticCollector(
         return fitToBudget(report, reports.keys.map { it.id })
     }
 
-    /** Ranks [problems], lists the first [MAX_PROBLEMS] with their ids, and returns them as listed. */
-    private fun addProblems(report: JsonObject, problems: List<LikelyProblem>): List<Pair<String, LikelyProblem>> {
-        val ranked = problems.sortedWith(
-            compareBy<LikelyProblem> { it.severity.rank }
-                .thenBy { typePriority(it.type) }
-                .thenByDescending { it.count },
+    /**
+     * Ranks [problems], each of [companions] right after the problem it belongs with unless it
+     * already ranks higher, lists the first [MAX_PROBLEMS] with their ids, and returns them as listed.
+     */
+    private fun addProblems(
+        report: JsonObject,
+        problems: List<LikelyProblem>,
+        companions: Map<LikelyProblem, List<LikelyProblem>>,
+    ): List<Pair<String, LikelyProblem>> {
+        val ranked = withCompanions(
+            problems.sortedWith(
+                compareBy<LikelyProblem> { it.severity.rank }
+                    .thenBy { typePriority(it.type) }
+                    .thenByDescending { it.count },
+            ),
+            companions,
         )
         val listed = ranked.take(MAX_PROBLEMS).mapIndexed { index, problem -> "p${index + 1}" to problem }
         report.add(
@@ -79,6 +91,44 @@ class DiagnosticCollector(
         )
         if (ranked.size > MAX_PROBLEMS) report.addProperty("moreProblems", ranked.size - MAX_PROBLEMS)
         return listed
+    }
+
+    /** Every section's [SectionReport.companions], by problem identity; one that fails adds none. */
+    private fun companionsOf(
+        reports: Collection<SectionReport>,
+        all: List<LikelyProblem>,
+    ): Map<LikelyProblem, List<LikelyProblem>> {
+        val found = IdentityHashMap<LikelyProblem, List<LikelyProblem>>()
+        reports.forEach { report ->
+            val step = report.companions ?: return@forEach
+            runCatching { step(all) }
+                .onSuccess { found.putAll(it) }
+                .onFailure { log.warn("A section's pairing of problems failed", it) }
+        }
+        return found
+    }
+
+    /** [ranked], with each companion moved up to just after the first problem it belongs with. */
+    private fun withCompanions(
+        ranked: List<LikelyProblem>,
+        companions: Map<LikelyProblem, List<LikelyProblem>>,
+    ): List<LikelyProblem> {
+        if (companions.isEmpty()) return ranked
+        val rank = IdentityHashMap<LikelyProblem, Int>().apply { ranked.forEachIndexed { i, p -> put(p, i) } }
+        val moved = IdentityHashMap<LikelyProblem, LikelyProblem>()
+        ranked.forEach { anchor ->
+            companions[anchor].orEmpty().forEach { companion ->
+                val below = (rank[companion] ?: return@forEach) > (rank[anchor] ?: return@forEach)
+                if (below && companion !in moved) moved[companion] = anchor
+            }
+        }
+        return ranked.flatMap { problem ->
+            if (problem in moved) {
+                emptyList()
+            } else {
+                listOf(problem) + companions[problem].orEmpty().filter { moved[it] === problem }
+            }
+        }
     }
 
     /** Each section's [SectionReport.afterRanking]; one that fails adds nothing and costs nothing else. */
