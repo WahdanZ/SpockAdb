@@ -37,15 +37,16 @@ class DtdRegistryEntry(
  *
  * Every DTD writes `<dir>/<pid>` holding `{"wsUri", "epoch", "pid", "dartVersion",
  * "workspaceRoot"}` — what `dart tooling-daemon --list` reads (spike S12). When the daemon dies
- * its file stays, so an entry counts only while its pid is alive. The files are any local
- * process's to write: each is read leniently, a bad one is skipped, and an address that is not on
- * loopback is refused ([DtdUri.parse]).
+ * its file stays, so an entry counts only while its pid is alive and that process is not younger
+ * than the entry ([isRunning]). The files are any local process's to write: each is read
+ * leniently, a bad or oversized one is skipped, and an address that is not on loopback is
+ * refused ([DtdUri.parse]).
  *
- * Blocking (file reads); never throws. [dirs] and [pidAlive] are for tests.
+ * Blocking (file reads); never throws. [dirs] and [running] are for tests.
  */
 class DtdRegistry(
     private val dirs: List<Path> = defaultDirs(),
-    private val pidAlive: (Long) -> Boolean = ::isAlive,
+    private val running: (DtdRegistryEntry) -> Boolean = { isRunning(it) },
 ) {
 
     /** The live daemons, newest first. */
@@ -53,7 +54,7 @@ class DtdRegistry(
         dirs.distinct()
             .flatMap(::filesIn)
             .mapNotNull(::read)
-            .filter { pidAlive(it.pid) }
+            .filter(running)
             .distinctBy { it.uri }
             .sortedByDescending { it.epoch ?: 0L }
 
@@ -75,9 +76,9 @@ class DtdRegistry(
     }
 
     private fun read(file: Path): DtdRegistryEntry? {
-        val text = try {
-            if (Files.size(file) > MAX_FILE_BYTES) return null
-            Files.readString(file)
+        val bytes = try {
+            // Read up to the cap, not by a size asked first: the file can grow in between.
+            Files.newInputStream(file).use { it.readNBytes(MAX_FILE_BYTES + 1) }
         } catch (e: IOException) {
             log.info("Could not read the DTD registry file ${file.fileName}: ${e.message}")
             return null
@@ -85,12 +86,22 @@ class DtdRegistry(
             log.info("Could not read the DTD registry file ${file.fileName}: ${e.message}")
             return null
         }
-        return parse(text, file)
+        if (bytes.size > MAX_FILE_BYTES) {
+            log.info("Skipping the DTD registry file ${file.fileName}: larger than $MAX_FILE_BYTES bytes")
+            return null
+        }
+        return parse(String(bytes, Charsets.UTF_8), file)
     }
 
     companion object {
         /** A registry file is a few hundred bytes; anything far bigger is not one. */
-        private const val MAX_FILE_BYTES = 64 * 1024L
+        const val MAX_FILE_BYTES = 64 * 1024
+
+        /**
+         * How much later than its entry's `epoch` the process may seem to have started: the two
+         * are read from different clocks at different precisions. Beyond it, the pid is reused.
+         */
+        private const val START_ALLOWANCE_MS = 2_000L
 
         private val log = Logger.getInstance(DtdRegistry::class.java)
 
@@ -145,13 +156,37 @@ class DtdRegistry(
             return candidates.mapNotNull(::pathOrNull).distinct()
         }
 
-        /** A pid reused by an unrelated process passes; connecting to its address then fails, which is handled. */
+        /**
+         * Whether the daemon [entry] describes still runs: its pid is alive, and the process
+         * behind it did not start after the daemon wrote its `epoch` — then the pid was reused by
+         * something else. When either start time is unknown the pid alone decides; connecting to
+         * a reused pid's address fails, which is handled.
+         */
+        fun isRunning(
+            entry: DtdRegistryEntry,
+            alive: (Long) -> Boolean = ::isAlive,
+            startedAt: (Long) -> Long? = ::startMillis,
+        ): Boolean {
+            if (!alive(entry.pid)) return false
+            val epoch = entry.epoch ?: return true
+            val started = startedAt(entry.pid) ?: return true
+            return started <= epoch + START_ALLOWANCE_MS
+        }
+
         private fun isAlive(pid: Long): Boolean = try {
             ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
         } catch (_: SecurityException) {
             false
         } catch (_: UnsupportedOperationException) {
             false
+        }
+
+        private fun startMillis(pid: Long): Long? = try {
+            ProcessHandle.of(pid).flatMap { it.info().startInstant() }.map { it.toEpochMilli() }.orElse(null)
+        } catch (_: SecurityException) {
+            null
+        } catch (_: UnsupportedOperationException) {
+            null
         }
 
         private fun pathOrNull(path: String): Path? = try {

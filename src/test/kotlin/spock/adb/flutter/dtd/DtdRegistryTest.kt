@@ -47,7 +47,7 @@ class DtdRegistryTest {
         val dir = dir("dtd")
         write(dir, "1", entry(1, 1001, "/a"))
         write(dir, "2", entry(2, 1002, "/b"))
-        val entries = DtdRegistry(listOf(dir)) { it == 2L }.entries()
+        val entries = DtdRegistry(listOf(dir)) { it.pid == 2L }.entries()
         assertEquals(listOf(2L), entries.map { it.pid })
     }
 
@@ -157,8 +157,44 @@ class DtdRegistryTest {
         val dir = dir("dtd")
         val self = ProcessHandle.current().pid()
         val none = Int.MAX_VALUE.toLong()
-        write(dir, "$self", entry(self, 1001, "/a"))
-        write(dir, "$none", entry(none, 1002, "/b"))
+        val now = System.currentTimeMillis()
+        write(dir, "$self", entry(self, 1001, "/a", epoch = now))
+        write(dir, "$none", entry(none, 1002, "/b", epoch = now))
         assertEquals(listOf(self), DtdRegistry(listOf(dir)).entries().map { it.pid })
+    }
+
+    @Test
+    fun `a pid reused by a process younger than the entry is not the daemon`() {
+        val entry = DtdRegistry.parse(entry(7, 1007, "/a", epoch = 10_000L), temp.resolve("7"))!!
+        assertTrue(DtdRegistry.isRunning(entry, alive = { true }, startedAt = { 9_000L }))
+        assertTrue(DtdRegistry.isRunning(entry, alive = { true }, startedAt = { 11_500L }), "within the allowance")
+        assertFalse(DtdRegistry.isRunning(entry, alive = { true }, startedAt = { 60_000L }))
+        assertTrue(DtdRegistry.isRunning(entry, alive = { true }, startedAt = { null }), "start unknown")
+        assertFalse(DtdRegistry.isRunning(entry, alive = { false }, startedAt = { 9_000L }))
+        val noEpoch = DtdRegistry.parse("""{"wsUri":"ws://127.0.0.1:1/S=","pid":7}""", temp.resolve("7"))!!
+        assertTrue(DtdRegistry.isRunning(noEpoch, alive = { true }, startedAt = { 60_000L }))
+    }
+
+    @Test
+    fun `this process with an entry written before it started is a reused pid`() {
+        if (ProcessHandle.current().info().startInstant().isEmpty) return
+        val dir = dir("dtd")
+        val self = ProcessHandle.current().pid()
+        write(dir, "$self", entry(self, 1001, "/a", epoch = 1L))
+        assertTrue(DtdRegistry(listOf(dir)).entries().isEmpty())
+    }
+
+    @Test
+    fun `an oversized file is skipped, one at the cap is read`() {
+        val dir = dir("dtd")
+        fun padded(pid: Long, size: Int): String {
+            val head = entry(pid, 1000 + pid.toInt(), "/a").dropLast(1) + ""","pad":""""
+            val tail = "\"}"
+            return head + "x".repeat(size - head.length - tail.length) + tail
+        }
+        write(dir, "1", padded(1, DtdRegistry.MAX_FILE_BYTES))
+        write(dir, "2", padded(2, DtdRegistry.MAX_FILE_BYTES + 1))
+        assertEquals(DtdRegistry.MAX_FILE_BYTES.toLong(), Files.size(dir.resolve("1")))
+        assertEquals(listOf(1L), DtdRegistry(listOf(dir)) { true }.entries().map { it.pid })
     }
 }
