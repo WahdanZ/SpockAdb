@@ -3,13 +3,14 @@ package spock.adb.flutter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.ExtensionResults
-import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceClient
+import spock.adb.flutter.vmservice.VmServiceProbe
 import spock.adb.flutter.vmservice.VmServiceRedirectException
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.util.concurrent.CopyOnWriteArrayList
@@ -28,9 +29,10 @@ import java.util.concurrent.CopyOnWriteArrayList
  * closes, and checks that HTTP timeline logging is back where it was. `flutter run`'s hot reload
  * should keep working throughout. Nothing printed carries the token.
  *
- * A VM with no DDS in front of it (the app started without `flutter run`) is left at once, which
- * the check prints and accepts. `SPOCK_VM_SERVICE_ALLOW_DIRECT=1` keeps it instead, read-only —
- * and keeps `flutter attach` from starting DDS until the check ends.
+ * It first asks what answers with [VmServiceProbe] — one call on a connection closed at once. A VM
+ * with no DDS in front of it (the app started without `flutter run`) is then left alone, with
+ * nothing more sent, which the check prints and accepts. `SPOCK_VM_SERVICE_ALLOW_DIRECT=1` connects
+ * anyway, read-only — and keeps `flutter attach` from starting DDS until the check ends.
  */
 @EnabledIfEnvironmentVariable(named = FlutterSessionLiveCheck.URI_ENV, matches = ".+")
 class FlutterSessionLiveCheck {
@@ -39,6 +41,14 @@ class FlutterSessionLiveCheck {
     fun `connects to a running app, follows it, and leaves it as it found it`() {
         val pasted = System.getenv(URI_ENV)
         val seconds = System.getenv(SECONDS_ENV)?.toLongOrNull() ?: DEFAULT_SECONDS
+        val allowDirect = System.getenv(ALLOW_DIRECT_ENV) == "1"
+        val probed = VmServiceProbe.probe(VmServiceUri.parse(pasted))
+        println("probe: $probed")
+        if (probed is VmServiceProbe.Result.Unreachable) fail<Unit>(probed.reason)
+        if (probed == VmServiceProbe.Result.DirectNoDds && !allowDirect) {
+            println("connection kind: ${ConnectionKind.DIRECT_NO_DDS}; Spock does not stay, and sent nothing else")
+            return
+        }
         val before = httpLogging(VmServiceUri.parse(pasted))
         println("HTTP timeline logging before: $before")
 
@@ -54,15 +64,7 @@ class FlutterSessionLiveCheck {
             },
         )
         val candidate = PastedUriDiscovery(pasted).discover().single()
-        val allowDirect = System.getenv(ALLOW_DIRECT_ENV) == "1"
-        try {
-            session.connect(candidate, allowDirect)
-        } catch (e: NoDdsException) {
-            println("connection kind: ${ConnectionKind.DIRECT_NO_DDS}, not kept: ${e.message}")
-            assertTrue(session.state is SessionState.Disconnected, "state ${session.state}")
-            assertEquals(before, httpLogging(VmServiceUri.parse(pasted)))
-            return
-        }
+        session.connect(candidate, allowDirect)
         try {
             println("connected to $candidate at ${session.connectedAt}")
             println("connection kind: ${session.connectionKind}, read-only ${session.readOnly}")

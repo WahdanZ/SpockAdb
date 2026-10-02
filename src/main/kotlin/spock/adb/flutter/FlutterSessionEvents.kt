@@ -187,7 +187,8 @@ internal class EventHistory(private val capacity: Int = DEFAULT_CAPACITY) {
  * Changes are queued under the lock and delivered by whichever thread calls [flush] next; a
  * thread that finds another delivering leaves the queue to it, so a listener that calls back
  * into the session neither deadlocks nor reorders. A change goes to those listening when it was
- * queued, so a listener added late, with [enqueueFor] its catch-up, hears no change twice.
+ * queued and still listening when it is delivered, so a listener added late, with [enqueueFor]
+ * its catch-up, hears no change twice, and one removed hears nothing more.
  */
 internal class StateNotifier(private val listeners: CopyOnWriteArrayList<FlutterSessionListener>) {
 
@@ -218,6 +219,8 @@ internal class StateNotifier(private val listeners: CopyOnWriteArrayList<Flutter
     // A listener's bug must cost neither the other listeners nor the session's own work.
     @Suppress("TooGenericExceptionCaught")
     private fun deliver(delivery: Delivery) = delivery.to.forEach { listener ->
+        // Removed since the change was queued: it hears nothing more.
+        if (listener !in listeners) return@forEach
         val state = delivery.state
         try {
             listener.onStateChanged(state)

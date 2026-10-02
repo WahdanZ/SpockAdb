@@ -57,8 +57,8 @@ object VmServiceProbe {
      *
      * @throws VmServiceException when the call fails any other way.
      */
-    fun kindOf(client: VmServiceClient): ConnectionKind = try {
-        client.call(DDS_VERSION)
+    fun kindOf(client: VmServiceClient, timeoutMs: Long = client.defaultTimeoutMs): ConnectionKind = try {
+        client.call(DDS_VERSION, timeoutMs = timeoutMs)
         ConnectionKind.DDS
     } catch (e: VmServiceRpcException) {
         if (e.code != VmServiceRpcException.METHOD_NOT_FOUND) throw e

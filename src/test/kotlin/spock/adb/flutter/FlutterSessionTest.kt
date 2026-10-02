@@ -184,8 +184,11 @@ class FlutterSessionTest : FlutterSessionFixture() {
             },
         )
         eventually(message = "structuredErrors read on the new isolate") { session.structuredErrorsEnabled == true }
-        eventually(message = "logging on the new isolate") { writes(HTTP_LOGGING, restarted) == listOf("true") }
-        assertEquals(HttpRecording.EnabledBySpock, session.snapshot.httpRecording)
+        // The write reaches the app before its answer reaches the session: wait for the session.
+        eventually(message = "logging on the new isolate") {
+            session.snapshot.httpRecording == HttpRecording.EnabledBySpock
+        }
+        assertEquals(listOf("true"), writes(HTTP_LOGGING, restarted))
         assertEquals(1, extensionCalls(STRUCTURED_ERRORS, restarted).size)
         assertEquals(emptyList<String>(), writes(STRUCTURED_ERRORS))
     }
@@ -278,7 +281,8 @@ class FlutterSessionTest : FlutterSessionFixture() {
     @Test
     fun `close disconnects, closes the client and releases the candidate once`() {
         val candidate = tracking()
-        val client = session.connect(candidate)
+        session.connect(candidate)
+        val client = session.client!!
 
         session.close()
         session.close()
@@ -292,7 +296,7 @@ class FlutterSessionTest : FlutterSessionFixture() {
     @Test
     fun `a connection that cannot open leaves nothing behind`() {
         val freePort = ServerSocket(0).use { it.localPort }
-        val candidate = TrackingCandidate(VmServiceUri.parse("ws://127.0.0.1:$freePort/HXKQJZK_Rkw=/ws"), true)
+        val candidate = TrackingCandidate(VmServiceUri.parse("ws://127.0.0.1:$freePort/FAKEtoken_0000=/ws"), true)
 
         val error = assertThrows<VmServiceException> { session.connect(candidate) }
 
@@ -357,7 +361,8 @@ class FlutterSessionTest : FlutterSessionFixture() {
             },
         )
 
-        val client = session.connect(pasted())
+        session.connect(pasted())
+        val client = session.client!!
 
         assertTrue(thrown.get())
         assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
@@ -376,7 +381,8 @@ class FlutterSessionTest : FlutterSessionFixture() {
             override fun open(): VmServiceUri = uri
             override fun release() = error("adb is gone")
         }
-        val client = session.connect(candidate)
+        session.connect(candidate)
+        val client = session.client!!
 
         session.close()
 

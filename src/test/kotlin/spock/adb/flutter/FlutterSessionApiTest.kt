@@ -1,12 +1,15 @@
 package spock.adb.flutter
 
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import spock.adb.flutter.vmservice.FakeVmService
+import spock.adb.flutter.vmservice.FakeVmService.Companion.HTTP_LOGGING
 import spock.adb.flutter.vmservice.FakeVmService.Companion.STRUCTURED_ERRORS
 import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
@@ -15,9 +18,8 @@ import spock.adb.flutter.vmservice.NoUiIsolateException
 import spock.adb.flutter.vmservice.ReadOnlyConnectionException
 import spock.adb.flutter.vmservice.VmServiceClosedException
 import spock.adb.flutter.vmservice.VmServicePausedException
-import java.util.concurrent.CopyOnWriteArrayList
 
-/** What callers read off a session: the snapshot, a late listener's catch-up, and scrubbed calls. */
+/** What callers read off a session: the snapshot, and calls that are scrubbed and, when read-only, only reads. */
 class FlutterSessionApiTest : FlutterSessionFixture() {
 
     @Test
@@ -38,45 +40,6 @@ class FlutterSessionApiTest : FlutterSessionFixture() {
         assertNull(closed.vmStartTimeMs)
         assertNull(closed.operatingSystem)
         assertNull(closed.connectionKind)
-    }
-
-    @Test
-    fun `a listener added late with replayState hears the current state first, then changes, none twice`() {
-        session.connect(pasted())
-        val states = CopyOnWriteArrayList<SessionState>()
-        val late = object : FlutterSessionListener {
-            override fun onEvent(event: FlutterEvent) = Unit
-            override fun onStateChanged(state: SessionState) {
-                states += state
-            }
-        }
-
-        session.addListener(late, replayState = true)
-        assertEquals(listOf<SessionState>(SessionState.Connected(UI_ISOLATE)), states.toList())
-
-        session.close()
-        assertEquals(
-            listOf(SessionState.Connected(UI_ISOLATE), SessionState.Disconnected(FlutterSession.CLOSED_BY_SPOCK)),
-            states.toList(),
-        )
-    }
-
-    @Test
-    fun `a listener added late without replayState hears only later changes`() {
-        session.connect(pasted())
-        val states = CopyOnWriteArrayList<SessionState>()
-        session.addListener(
-            object : FlutterSessionListener {
-                override fun onEvent(event: FlutterEvent) = Unit
-                override fun onStateChanged(state: SessionState) {
-                    states += state
-                }
-            },
-        )
-
-        session.close()
-
-        assertEquals(listOf<SessionState>(SessionState.Disconnected(FlutterSession.CLOSED_BY_SPOCK)), states.toList())
     }
 
     @Test
@@ -117,15 +80,24 @@ class FlutterSessionApiTest : FlutterSessionFixture() {
     }
 
     @Test
-    fun `callUiExtension refuses a write on a read-only connection, and reads`() {
+    fun `on a read-only connection callUiExtension lets known reads through and refuses the rest`() {
         vm.dds = false
         session.connect(tracking(ddsLikely = false), allowDirect = true)
 
         assertThrows<ReadOnlyConnectionException> {
             session.callUiExtension(STRUCTURED_ERRORS, mapOf("enabled" to "false"))
         }
+        assertThrows<ReadOnlyConnectionException> { session.callUiExtension("ext.flutter.exit") }
+        assertThrows<ReadOnlyConnectionException> { session.callUiExtension("ext.flutter.reassemble") }
+        assertThrows<ReadOnlyConnectionException> { session.callUiExtension("ext.dart.io.clearHttpProfile") }
+        assertThrows<ReadOnlyConnectionException> {
+            session.callUiExtension(HTTP_LOGGING, mapOf("enabled" to "true"))
+        }
         assertEquals("true", session.callUiExtension(STRUCTURED_ERRORS).get("enabled").asString)
-        assertEquals(emptyList<String>(), writes(STRUCTURED_ERRORS))
+        assertEquals(false, session.callUiExtension(HTTP_LOGGING).get("enabled").asBoolean)
+        assertTrue(vm.requestsFor("ext.flutter.exit").isEmpty())
+        assertTrue(vm.requestsFor("ext.flutter.reassemble").isEmpty())
+        assertEquals(emptyList<String>(), writes(STRUCTURED_ERRORS) + writes(HTTP_LOGGING))
     }
 
     @Test
@@ -136,6 +108,15 @@ class FlutterSessionApiTest : FlutterSessionFixture() {
                 JsonObject().apply {
                     addProperty("fps", 60.0)
                     addProperty("note", "ws://127.0.0.1:1234/${FakeVmService.TOKEN}/ws")
+                    add(
+                        "nested",
+                        JsonObject().apply {
+                            add(
+                                "list",
+                                JsonArray().apply { add("see http://127.0.0.1:1234/${FakeVmService.TOKEN}/") },
+                            )
+                        },
+                    )
                 },
             )
         }
@@ -146,5 +127,37 @@ class FlutterSessionApiTest : FlutterSessionFixture() {
         assertEquals(60.0, rate.get("fps").asDouble)
         assertFalse(rate.toString().contains(FakeVmService.TOKEN), rate.toString())
         assertEquals("FlutterViewList", session.callVm("_flutter.listViews").get("type").asString)
+    }
+
+    @Test
+    fun `callVm sends service extensions and stream history elsewhere`() {
+        session.connect(pasted())
+
+        assertThrows<IllegalArgumentException> { session.callVm("ext.flutter.exit") }
+        assertThrows<IllegalArgumentException> { session.callVm("getStreamHistory") }
+
+        assertTrue(vm.requestsFor("ext.flutter.exit").isEmpty())
+        assertTrue(vm.requestsFor("getStreamHistory").isEmpty())
+    }
+
+    @Test
+    fun `on a read-only connection callVm refuses known mutators and lets reads through`() {
+        vm.dds = false
+        session.connect(tracking(ddsLikely = false), allowDirect = true)
+
+        val mutators = listOf(
+            "resume", "kill", "pause", "reloadSources", "evaluate", "evaluateInFrame", "invoke", "setFlag",
+            "setLibraryDebuggable", "addBreakpointWithScriptUri", "removeBreakpoint", "setIsolatePauseMode",
+            "clearCpuSamples", "requestHeapSnapshot",
+        )
+        mutators.forEach { method ->
+            assertThrows<ReadOnlyConnectionException>(method) { session.callVm(method) }
+        }
+
+        assertEquals("VM", session.callVm("getVM").get("type").asString)
+        assertEquals("FlutterViewList", session.callVm("_flutter.listViews").get("type").asString)
+        val isolate = JsonObject().apply { addProperty("isolateId", UI_ISOLATE) }
+        assertEquals(UI_ISOLATE, session.callVm("getIsolate", isolate).get("id").asString)
+        assertTrue(vm.requestsFor("resume").isEmpty() && vm.requestsFor("evaluate").isEmpty())
     }
 }

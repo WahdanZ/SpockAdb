@@ -18,6 +18,9 @@ sealed interface HttpRecording {
     /** It was on before Spock looked (DevTools, the IDE): left as it is, on close too. */
     data object AlreadyOn : HttpRecording
 
+    /** A debug or profile build whose isolate has not registered dart:io's extension yet. */
+    data object Pending : HttpRecording
+
     data class Off(val reason: Reason) : HttpRecording
 
     enum class Reason {
@@ -32,7 +35,8 @@ sealed interface HttpRecording {
 
         /**
          * The read or the switch failed. After a switch that got no answer, close still switches
-         * it off, in case the app applied it.
+         * it off, in case the app applied it. An unknown answer is asked again at the isolate's
+         * next extension or resume.
          */
         FAILED,
     }
@@ -52,32 +56,47 @@ internal class HttpLogging {
     /** UI isolates where Spock switched logging on. Kept across a lost connection: the app still has it on. */
     private val enabledBySpock = mutableSetOf<String>()
 
+    /** What [enable] found; [retry] when the answer is not known (a read failed, a write got none). */
+    class Outcome(val recording: HttpRecording, val retry: Boolean)
+
     /**
-     * Reads the flag on [isolateId] and switches it on if off. [stillAllowed] is asked right
-     * before the write, under the write lock; when it says no, nothing is written and null comes
-     * back. The isolate is recorded before the write: a write that times out may still be applied,
-     * and switching it off on close is harmless if it was not. Only a refusal un-records it.
+     * Reads the flag on [isolateId] — every time, also where Spock switched it on before: a write
+     * that got no answer may not have been applied — and switches it on if off. [stillAllowed] is
+     * asked right before the write, under the write lock; when it says no, nothing is written and
+     * null comes back.
      */
-    fun enable(connected: VmServiceClient, isolateId: String, stillAllowed: () -> Boolean): HttpRecording? {
-        if (synchronized(this) { isolateId in enabledBySpock }) return HttpRecording.EnabledBySpock
-        val enabled = readBool(connected, HTTP_LOGGING, isolateId)
-        if (enabled != false) return if (enabled == true) HttpRecording.AlreadyOn else failed
-        return writeLock.withLock {
+    fun enable(connected: VmServiceClient, isolateId: String, stillAllowed: () -> Boolean): Outcome? {
+        val ours = synchronized(this) { isolateId in enabledBySpock }
+        return when (readBool(connected, HTTP_LOGGING, isolateId)) {
+            true -> Outcome(if (ours) HttpRecording.EnabledBySpock else HttpRecording.AlreadyOn, retry = false)
+            null -> Outcome(failed, retry = true)
+            false -> switchOn(connected, isolateId, stillAllowed)
+        }
+    }
+
+    /**
+     * The isolate is recorded before the write: a write that times out may still be applied, and
+     * switching it off on close is harmless if it was not. Only a refusal un-records it.
+     */
+    private fun switchOn(connected: VmServiceClient, isolateId: String, stillAllowed: () -> Boolean): Outcome? =
+        writeLock.withLock {
             if (!stillAllowed()) return@withLock null
             synchronized(this) { enabledBySpock += isolateId }
             try {
                 connected.callServiceExtension(HTTP_LOGGING, isolateId, mapOf("enabled" to "true"))
-                HttpRecording.EnabledBySpock
+                Outcome(HttpRecording.EnabledBySpock, retry = false)
             } catch (e: VmServiceRpcException) {
                 synchronized(this) { enabledBySpock -= isolateId }
                 log.warn("Could not enable HTTP timeline logging: ${e.message}")
-                failed
+                Outcome(failed, retry = false)
             } catch (e: VmServiceException) {
                 log.warn("HTTP timeline logging may be on without an answer; close() switches it off: ${e.message}")
-                failed
+                Outcome(failed, retry = true)
             }
         }
-    }
+
+    /** Whether [restore] has anything to switch off. */
+    fun owesRestore(): Boolean = synchronized(this) { enabledBySpock.isNotEmpty() }
 
     /** An isolate that exited takes its flag with it. */
     fun forget(isolateId: String) = synchronized(this) { enabledBySpock -= isolateId }

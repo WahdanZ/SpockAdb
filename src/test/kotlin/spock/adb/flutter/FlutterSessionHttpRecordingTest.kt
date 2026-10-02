@@ -3,15 +3,18 @@ package spock.adb.flutter
 import com.google.gson.JsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.flutter.vmservice.FakeVmService
 import spock.adb.flutter.vmservice.FakeVmService.Companion.HTTP_LOGGING
+import spock.adb.flutter.vmservice.FakeVmService.Companion.STRUCTURED_ERRORS
 import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
 import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
 import spock.adb.flutter.vmservice.VmServiceClient
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 /** HTTP timeline logging: on only where allowed, and off on close only where Spock switched it on [FR10]. */
 class FlutterSessionHttpRecordingTest : FlutterSessionFixture() {
@@ -158,5 +161,82 @@ class FlutterSessionHttpRecordingTest : FlutterSessionFixture() {
                 }
             },
         )
+    }
+
+    @Test
+    fun `a switch-on lost on the way is not reported as on after a reconnect`() {
+        vm.on(HTTP_LOGGING) { params ->
+            // Never applied, never answered.
+            if (params.has("enabled")) {
+                FakeVmService.Reply.None
+            } else {
+                FakeVmService.Reply.Result(JsonObject().apply { addProperty("enabled", vm.httpLogging) })
+            }
+        }
+        val impatient = FlutterSession(connector = { VmServiceClient.connect(it, timeoutMs = 300) })
+        try {
+            impatient.connect(pasted())
+            assertEquals(off(HttpRecording.Reason.FAILED), impatient.snapshot.httpRecording)
+            vm.server.drop()
+            eventually { impatient.state is SessionState.Disconnected }
+
+            impatient.connect(pasted())
+
+            assertFalse(vm.httpLogging)
+            assertEquals(off(HttpRecording.Reason.FAILED), impatient.snapshot.httpRecording)
+        } finally {
+            impatient.close()
+        }
+    }
+
+    @Test
+    fun `a read that fails is asked again at the isolate's next extension`() {
+        val reads = AtomicInteger()
+        vm.on(HTTP_LOGGING) { params ->
+            when {
+                params.has("enabled") -> {
+                    vm.httpLogging = params.get("enabled").asString == "true"
+                    FakeVmService.Reply.Result(JsonObject().apply { addProperty("enabled", vm.httpLogging) })
+                }
+                reads.incrementAndGet() == 1 -> FakeVmService.Reply.Error(-32_000, "busy")
+                else -> FakeVmService.Reply.Result(JsonObject().apply { addProperty("enabled", vm.httpLogging) })
+            }
+        }
+        session.connect(pasted())
+        assertEquals(off(HttpRecording.Reason.FAILED), session.snapshot.httpRecording)
+
+        vm.pushEvent(
+            "Isolate",
+            isolateEvent("ServiceExtensionAdded", UI_ISOLATE, connectedAt + 1_000) {
+                addProperty("extensionRPC", "ext.flutter.extra")
+            },
+        )
+
+        eventually(message = "the retry") { session.snapshot.httpRecording == HttpRecording.EnabledBySpock }
+        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
+    }
+
+    @Test
+    fun `a debug build waiting for dart-io's extension reads as pending`() {
+        vm.addIsolate(UI_ISOLATE, listOf(STRUCTURED_ERRORS))
+
+        session.connect(pasted())
+
+        assertEquals(HttpRecording.Pending, session.snapshot.httpRecording)
+        assertEquals(0, extensionCalls(HTTP_LOGGING).size)
+    }
+
+    @Test
+    fun `with no UI isolate there is nothing to report`() {
+        session.connect(pasted())
+        assertEquals(HttpRecording.EnabledBySpock, session.snapshot.httpRecording)
+        vm.viewIsolates = null
+        vm.isolates.clear()
+        vm.addIsolate("isolates/0001", listOf("ext.dart.io.getVersion"))
+
+        vm.pushEvent("Isolate", isolateEvent("IsolateExit", UI_ISOLATE, connectedAt + 1_000))
+
+        eventually(message = "no Flutter isolate") { session.selection is IsolateSelection.NoFlutterIsolate }
+        assertNull(session.snapshot.httpRecording)
     }
 }

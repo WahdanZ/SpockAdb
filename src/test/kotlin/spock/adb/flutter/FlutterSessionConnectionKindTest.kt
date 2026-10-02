@@ -1,5 +1,6 @@
 package spock.adb.flutter
 
+import com.google.gson.JsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -14,8 +15,11 @@ import spock.adb.flutter.vmservice.FakeVmService.Companion.STRUCTURED_ERRORS
 import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
 import spock.adb.flutter.vmservice.NoDdsException
+import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceRpcException
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** What answers on connect, DDS or the VM itself, decides whether Spock stays and whether it writes (H1). */
 class FlutterSessionConnectionKindTest : FlutterSessionFixture() {
@@ -150,4 +154,76 @@ class FlutterSessionConnectionKindTest : FlutterSessionFixture() {
         assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
         assertFalse(vm.httpLogging)
     }
+
+    @Test
+    fun `no listener hears of a VM with no DDS while its socket is still open`() {
+        vm.dds = false
+        val clients = CopyOnWriteArrayList<VmServiceClient>()
+        val watched = FlutterSession(connector = { VmServiceClient.connect(it).also(clients::add) })
+        val openWhenTold = CopyOnWriteArrayList<Boolean>()
+        watched.addListener(
+            object : FlutterSessionListener {
+                override fun onEvent(event: FlutterEvent) = Unit
+                override fun onStateChanged(state: SessionState) {
+                    if (state is SessionState.Disconnected) openWhenTold += clients.any { it.isOpen }
+                }
+            },
+        )
+
+        assertThrows<NoDdsException> { watched.connect(pasted()) }
+
+        assertEquals(listOf(false), openWhenTold.toList())
+        assertEquals(listOf(DDS_VERSION), vm.methods())
+    }
+
+    @Test
+    fun `a connect closed before its probe answered asks on close, and restores only through DDS`() {
+        session.connect(pasted())
+        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
+        vm.server.drop()
+        eventually { session.state is SessionState.Disconnected }
+        val probes = AtomicInteger()
+        vm.on(DDS_VERSION) {
+            if (probes.incrementAndGet() == 1) FakeVmService.Reply.None else ddsVersion()
+        }
+
+        val connecting = Thread { runCatching { session.connect(pasted()) } }
+        connecting.start()
+        eventually(message = "the stuck probe") { probes.get() == 1 }
+        session.close()
+        connecting.join(5_000)
+
+        assertEquals(2, probes.get())
+        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
+        assertFalse(vm.httpLogging)
+    }
+
+    @Test
+    fun `a connect closed before its probe answered leaves logging alone when the answer is the VM itself`() {
+        session.connect(pasted())
+        vm.server.drop()
+        eventually { session.state is SessionState.Disconnected }
+        val probes = AtomicInteger()
+        vm.on(DDS_VERSION) {
+            when (probes.incrementAndGet()) {
+                1 -> FakeVmService.Reply.None
+                else -> FakeVmService.Reply.Error(FakeVmService.METHOD_NOT_FOUND, "Method not found")
+            }
+        }
+
+        val connecting = Thread { runCatching { session.connect(pasted()) } }
+        connecting.start()
+        eventually(message = "the stuck probe") { probes.get() == 1 }
+        session.close()
+        connecting.join(5_000)
+
+        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
+    }
+
+    private fun ddsVersion() = FakeVmService.Reply.Result(
+        JsonObject().apply {
+            addProperty("type", "Version")
+            addProperty("major", 1)
+        },
+    )
 }

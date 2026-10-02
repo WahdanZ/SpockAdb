@@ -110,7 +110,8 @@ class FlutterSession(
     var snapshot: FlutterSessionSnapshot = FlutterSessionSnapshot(SessionState.Disconnected("not connected"))
         private set
 
-    val client: VmServiceClient? get() = attempt?.client
+    /** The raw connection, for the session and its tests; callers go through [callUiExtension] and [callVm]. */
+    internal val client: VmServiceClient? get() = attempt?.client
 
     val state: SessionState get() = snapshot.state
 
@@ -147,19 +148,21 @@ class FlutterSession(
     val buildMode: FlutterBuild? get() = uiIsolate?.let { buildModeOf(it.extensionRpcs) }
 
     /**
-     * With [replayState], [listener] first hears the state as it is now, then every change after
-     * it, none twice — for a listener that arrives after [connect] and must not miss `Connected`.
+     * Registers [listener] once, however often it is added. With [replayState] it first hears the
+     * state as it is now, then every change after it, none twice — for a listener that arrives
+     * after [connect] and must not miss `Connected`. The catch-up is delivered on the session's
+     * thread, never the caller's (which may be the EDT).
      */
     fun addListener(listener: FlutterSessionListener, replayState: Boolean = false) {
         if (!replayState) {
-            listeners += listener
+            listeners.addIfAbsent(listener)
             return
         }
         synchronized(lock) {
-            listeners += listener
+            listeners.addIfAbsent(listener)
             notifier.enqueueFor(listener, snapshot.state)
         }
-        notifier.flush()
+        worker.execute { notifier.flush() }
     }
 
     fun removeListener(listener: FlutterSessionListener) {
@@ -168,8 +171,7 @@ class FlutterSession(
 
     /**
      * Opens [candidate], asks what answers ([connectionKind]), reads the VM, subscribes to
-     * [streams] and selects the UI isolate. Returns the client for calls the session does not
-     * wrap. Blocking. A [close] meanwhile ends it.
+     * [streams] and selects the UI isolate. Blocking. A [close] meanwhile ends it.
      *
      * @param allowDirect keep a connection to a VM with no DDS in front of it, read-only. It then
      * keeps `flutter run` and `flutter attach` from starting DDS until [close] — the developer's
@@ -177,7 +179,7 @@ class FlutterSession(
      * @param recordHttp switch HTTP timeline logging on where the connection and build allow it
      * (see [FlutterSessionSnapshot.httpRecording]); false leaves it alone.
      * @throws NoDdsException when the VM has no DDS in front of it and [allowDirect] is false: the
-     * connection is closed before anything else is called.
+     * connection is closed before anything else is called, and before any listener hears of it.
      * @throws VmServiceException when the connection or its first calls fail; nothing is left open,
      * and the state is [SessionState.Disconnected] with the reason.
      */
@@ -188,7 +190,7 @@ class FlutterSession(
         candidate: VmServiceCandidate,
         allowDirect: Boolean = false,
         recordHttp: Boolean = true,
-    ): VmServiceClient {
+    ) {
         val attempt = Attempt(candidate, recordHttp)
         synchronized(lock) {
             check(this.attempt == null) { "This session is already connected; close it first." }
@@ -203,10 +205,16 @@ class FlutterSession(
             val connected = openFollowingDds(attempt)
             hold(attempt, connected)
             val kind = VmServiceProbe.kindOf(connected)
-            if (kind == ConnectionKind.DIRECT_NO_DDS && !allowDirect) throw NoDdsException()
+            attempt.kind = kind
+            if (kind == ConnectionKind.DIRECT_NO_DDS && !allowDirect) {
+                // Spike S10: every moment held here can keep `flutter run`/`attach` from starting DDS.
+                // Abandoned here, so the socket is closed before any listener hears of it.
+                val refused = NoDdsException()
+                abandon(attempt, refused.message.orEmpty())
+                throw refused
+            }
             synchronized(lock) {
                 ensureCurrent(attempt)
-                attempt.kind = kind
                 snapshot = snapshot.copy(connectionKind = kind)
             }
             val description = connected.getVM()
@@ -225,7 +233,6 @@ class FlutterSession(
             selectionLock.withLock { applySelection(connected, IsolateSelector(connected).select(), keepChoice = true) }
             notifier.flush()
             synchronized(lock) { ensureCurrent(attempt) }
-            return connected
         } catch (e: Exception) {
             abandon(attempt, e.message ?: e.javaClass.simpleName)
             throw e
@@ -252,13 +259,14 @@ class FlutterSession(
      * timeline ask the app. The result comes scrubbed of VM Service addresses [FR9]. Blocking.
      *
      * Nothing is sent to a paused isolate, which would not answer; an isolate that pauses during
-     * the call costs [timeoutMs]. On a read-only connection, a call that sets a value (`enabled`,
-     * as Flutter's and dart:io's bool extensions take it) is refused.
+     * the call costs [timeoutMs]. On a read-only connection only known reads go through (the HTTP
+     * profile, and the HTTP-logging and structured-errors flags asked with no arguments); anything
+     * else — `ext.flutter.exit`, `reassemble`, any call with `enabled` — is refused.
      *
      * @throws VmServiceClosedException when not connected, or the connection ends meanwhile.
      * @throws VmServicePausedException when the UI isolate is paused in the debugger [FR12].
      * @throws NoUiIsolateException when no UI isolate is chosen ([selection] says why).
-     * @throws ReadOnlyConnectionException for a write on a read-only connection.
+     * @throws ReadOnlyConnectionException for anything but a known read on a read-only connection.
      */
     fun callUiExtension(method: String, params: Map<String, String> = emptyMap(), timeoutMs: Long? = null): JsonObject {
         val (connected, isolateId) = synchronized(lock) {
@@ -271,15 +279,26 @@ class FlutterSession(
     }
 
     /**
-     * Calls a VM-level RPC — `_flutter.listViews`, `_flutter.getDisplayRefreshRate`, `getVM` — for
-     * a read; the session does not police what is called. The result comes scrubbed [FR9]. Blocking.
+     * Calls a VM-level RPC for a read — `getVM`, `getIsolate`, `_flutter.listViews`,
+     * `_flutter.getDisplayRefreshRate`, `getVMTimelineMicros`. The result comes scrubbed [FR9].
+     * Blocking. Service extensions go through [callUiExtension]; `getStreamHistory` is not served,
+     * as its stdout bytes can carry the token.
      *
+     * @throws IllegalArgumentException for an `ext.*` method or `getStreamHistory`.
      * @throws VmServiceClosedException when not connected, or the connection ends meanwhile.
+     * @throws ReadOnlyConnectionException for a known mutator (`resume`, `evaluate…`, `set…`,
+     * `kill`…) on a read-only connection.
      */
     fun callVm(method: String, params: JsonObject = JsonObject(), timeoutMs: Long? = null): JsonObject {
-        val connected = client ?: throw VmServiceClosedException("not connected")
+        require(!method.startsWith(EXTENSION_PREFIX)) { "$method is a service extension: use callUiExtension." }
+        require(method != STREAM_HISTORY) { "$method is not served: its stdout bytes can carry the token." }
+        val connected = synchronized(lock) {
+            val connected = client ?: throw VmServiceClosedException("not connected")
+            if (readOnly && ReadOnlyCalls.isVmMutator(method)) throw ReadOnlyConnectionException(method)
+            connected
+        }
         val result = connected.call(method, params, timeoutMs ?: connected.defaultTimeoutMs)
-        return Redaction.scrubJson(result).asJsonObject
+        return Redaction.scrubExtensionResult(method, Redaction.scrubJson(result).asJsonObject)
     }
 
     /**
@@ -291,9 +310,13 @@ class FlutterSession(
         val closed = synchronized(lock) {
             attempt?.also { detach(SessionState.Disconnected(CLOSED_BY_SPOCK)) }
         }
-        notifier.flush()
+        // Listeners hear Disconnected once the socket is closed, not while it is (spike S10).
         // An attempt with no client yet is still opening its socket; connect ends it itself.
-        if (closed?.client != null) tearDown(closed)
+        try {
+            if (closed?.client != null) tearDown(closed)
+        } finally {
+            notifier.flush()
+        }
     }
 
     /**
@@ -345,8 +368,11 @@ class FlutterSession(
                 else -> attempt.client == null
             }
         }
-        notifier.flush()
-        if (ours) tearDown(attempt)
+        try {
+            if (ours) tearDown(attempt)
+        } finally {
+            notifier.flush()
+        }
     }
 
     /** Under the lock: the session lets go of its attempt and says why. */
@@ -362,8 +388,11 @@ class FlutterSession(
         try {
             if (connected != null && connected.isOpen) {
                 connected.failPendingCalls("the Flutter session is closing")
-                // A direct connection writes nothing; the isolates stay listed for a later DDS one.
-                if (attempt.kind == ConnectionKind.DDS) httpLogging.restore(connected)
+                // Only through DDS: a direct connection writes nothing, and the isolates stay listed
+                // for a later DDS one. A connect closed before its probe answered asks now — only
+                // when there is something to switch off.
+                val kind = attempt.kind ?: if (httpLogging.owesRestore()) kindOnClose(connected) else null
+                if (kind == ConnectionKind.DDS) httpLogging.restore(connected)
             }
         } finally {
             try {
@@ -429,12 +458,15 @@ class FlutterSession(
                     result.isolate
                 }
                 is IsolateSelection.Paused -> {
-                    snapshot = snapshot.copy(selection = result, uiIsolate = null)
+                    // No UI isolate: nothing to report, and the next one is decided afresh.
+                    httpLoggingCheckedFor = null
+                    snapshot = snapshot.copy(selection = result, uiIsolate = null, httpRecording = null)
                     setState(SessionState.Paused(result.isolate.id, result.isolate.pauseKind.orEmpty()))
                     null
                 }
                 is IsolateSelection.Ambiguous, is IsolateSelection.NoFlutterIsolate -> {
-                    snapshot = snapshot.copy(selection = result, uiIsolate = null)
+                    httpLoggingCheckedFor = null
+                    snapshot = snapshot.copy(selection = result, uiIsolate = null, httpRecording = null)
                     setState(SessionState.Connected(null))
                     null
                 }
@@ -476,12 +508,14 @@ class FlutterSession(
 
     /** Under [selectionLock]: switches logging on unless the connection stopped allowing it meanwhile. */
     private fun enableHttpLogging(connected: VmServiceClient, isolateId: String) {
-        val recording = httpLogging.enable(connected, isolateId) {
+        val outcome = httpLogging.enable(connected, isolateId) {
             synchronized(lock) { client === connected && !readOnly }
         } ?: return
         synchronized(lock) {
             if (client === connected && snapshot.uiIsolate?.id == isolateId) {
-                snapshot = snapshot.copy(httpRecording = recording)
+                snapshot = snapshot.copy(httpRecording = outcome.recording)
+                // An answer not known is asked again at the isolate's next extension or resume.
+                if (outcome.retry && httpLoggingCheckedFor == isolateId) httpLoggingCheckedFor = null
             }
         }
     }
@@ -501,6 +535,8 @@ class FlutterSession(
         if (reason != null) {
             snapshot = snapshot.copy(httpRecording = HttpRecording.Off(reason))
             if (reason != HttpRecording.Reason.RELEASE_OR_UNKNOWN_MODE) httpLoggingCheckedFor = isolate.id
+        } else if (HTTP_LOGGING !in rpcs) {
+            snapshot = snapshot.copy(httpRecording = HttpRecording.Pending)
         }
         val enable = reason == null && HTTP_LOGGING in rpcs
         if (enable) httpLoggingCheckedFor = isolate.id
@@ -621,8 +657,11 @@ class FlutterSession(
 
         const val HTTP_LOGGING = HttpLogging.HTTP_LOGGING
 
-        /** The argument that makes a bool extension set its value rather than report it. */
-        internal const val SET_PARAM = "enabled"
+        private const val EXTENSION_PREFIX = "ext."
+        private const val STREAM_HISTORY = "getStreamHistory"
+
+        /** Closing should be quick: a connection that cannot say what it is in this restores nothing. */
+        internal const val PROBE_ON_CLOSE_MS = 2_000L
         const val CLOSED_BY_SPOCK = "closed by Spock"
         private const val STATE_CHANGED = "Flutter.ServiceExtensionStateChanged"
 
@@ -669,10 +708,18 @@ private fun uiCallProblem(
         state is SessionState.Paused -> VmServicePausedException(state.isolateId, state.pauseKind)
         ui == null -> NoUiIsolateException(noUiIsolate(snapshot.selection))
         ui.paused -> VmServicePausedException(ui.id, ui.pauseKind.orEmpty())
-        snapshot.connectionKind != ConnectionKind.DDS && FlutterSession.SET_PARAM in params ->
+        snapshot.connectionKind != ConnectionKind.DDS && !ReadOnlyCalls.isReadExtension(method, params) ->
             ReadOnlyConnectionException(method)
         else -> null
     }
+}
+
+/** What [connected] is, asked while closing; null when it cannot say. */
+private fun kindOnClose(connected: VmServiceClient): ConnectionKind? = try {
+    VmServiceProbe.kindOf(connected, FlutterSession.PROBE_ON_CLOSE_MS)
+} catch (e: VmServiceException) {
+    log.warn("Could not tell DDS from the VM on close; HTTP logging stays as it is: ${e.message}")
+    null
 }
 
 /** Why there is no UI isolate to call, for a [NoUiIsolateException]. */
