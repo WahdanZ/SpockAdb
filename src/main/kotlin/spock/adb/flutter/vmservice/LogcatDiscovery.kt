@@ -2,6 +2,7 @@ package spock.adb.flutter.vmservice
 
 import com.android.ddmlib.AdbCommandRejectedException
 import com.android.ddmlib.IDevice
+import com.android.ddmlib.ShellCommandUnresponsiveException
 import com.intellij.openapi.diagnostic.Logger
 import spock.adb.ShellOutputReceiver
 import spock.adb.logcat.LogcatParser
@@ -45,17 +46,21 @@ object LogcatVmServiceParser {
  * Finds the VM Service of [packageName] from what the engine logged at startup.
  *
  * The address is the VM's own, not DDS's, so the candidate is [VmServiceCandidate.direct]: a
- * read-only last resort [FR1]. If the log buffer has rotated since the app started, nothing is
- * found. Opening the candidate forwards a free host port to the device port; releasing it
- * removes the forward.
+ * read-only last resort [FR1]. Once DDS owns the VM (`flutter run` attached), the VM answers a
+ * connection there with a redirect to DDS, which the session follows — and then it is a DDS
+ * connection. If the log buffer has rotated since the app started, nothing is found. Opening the
+ * candidate forwards a free host port to the device port; releasing it removes the forward.
  */
 class LogcatDiscovery(private val device: IDevice, private val packageName: String) : VmServiceDiscovery {
 
+    /** @throws VmServiceException when adb cannot read the app's pids or logcat. */
     override fun discover(): List<VmServiceCandidate> {
-        val pids = device.pidsOf(packageName, SHELL_SECONDS).mapNotNull { it.toIntOrNull() }.toSet()
+        val pids = adb("list the processes of $packageName") {
+            device.pidsOf(packageName, SHELL_SECONDS).mapNotNull { it.toIntOrNull() }.toSet()
+        }
         if (pids.isEmpty()) return emptyList()
         val receiver = ShellOutputReceiver()
-        device.executeShellCommand(LOGCAT_COMMAND, receiver, SHELL_SECONDS, TimeUnit.SECONDS)
+        adb("read logcat") { device.executeShellCommand(LOGCAT_COMMAND, receiver, SHELL_SECONDS, TimeUnit.SECONDS) }
         val found = LogcatVmServiceParser.latest(receiver.toString(), pids) ?: return emptyList()
         return listOf(ForwardedCandidate(device, found.uri))
     }
@@ -89,20 +94,11 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
             }
         }
 
-        private fun forward(): Int {
+        private fun forward(): Int = adb("forward device port ${deviceUri.port}") {
             val port = freeLocalPort()
-            val problem: Exception = try {
-                device.createForward(port, deviceUri.port)
-                localPort = port
-                return port
-            } catch (e: IOException) {
-                e
-            } catch (e: AdbCommandRejectedException) {
-                e
-            } catch (e: AdbTimeoutException) {
-                e
-            }
-            throw VmServiceException("Could not forward device port ${deviceUri.port}: ${problem.message}", problem)
+            device.createForward(port, deviceUri.port)
+            localPort = port
+            port
         }
 
         /** A port nothing on the host listens on now; adb takes it a moment later. */
@@ -112,6 +108,25 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
 
     private companion object {
         const val SHELL_SECONDS = 10L
+
+        /**
+         * Runs an adb step, turning ddmlib's failures into a [VmServiceException] saying [what]
+         * failed, so a caller handles one exception type for discovery and connection alike.
+         */
+        inline fun <T> adb(what: String, step: () -> T): T {
+            val problem: Exception = try {
+                return step()
+            } catch (e: IOException) {
+                e
+            } catch (e: AdbCommandRejectedException) {
+                e
+            } catch (e: ShellCommandUnresponsiveException) {
+                e
+            } catch (e: AdbTimeoutException) {
+                e
+            }
+            throw VmServiceException("Could not $what: ${problem.message ?: problem.javaClass.simpleName}", problem)
+        }
 
         /** Only the `flutter` tag: the engine announces there, and the whole buffer can be megabytes. */
         const val LOGCAT_COMMAND = "logcat -d -v threadtime -s flutter"

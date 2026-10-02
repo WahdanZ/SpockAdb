@@ -8,8 +8,10 @@ import com.google.gson.JsonPrimitive
  * One `streamNotify` from the VM Service, already passed through [Redaction.scrubEvent].
  *
  * [event] is the protocol's `Event` object; the accessors read the fields most callers need.
+ * [duringListen] says it arrived while this client's `streamListen` for [streamId] was still
+ * waiting for its answer — which is when DDS replays a stream's history to a new subscriber.
  */
-class VmServiceEvent(val streamId: String, val event: JsonObject) {
+class VmServiceEvent(val streamId: String, val event: JsonObject, val duringListen: Boolean = false) {
 
     /** `IsolateStart`, `Extension`, `PauseBreakpoint`, `Logging`, … */
     val kind: String? get() = event.string("kind")

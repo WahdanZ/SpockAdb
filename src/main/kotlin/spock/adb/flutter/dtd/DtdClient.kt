@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
+import spock.adb.flutter.vmservice.VmServiceLimits
 import spock.adb.flutter.vmservice.VmServiceRpcException
 import spock.adb.flutter.vmservice.VmServiceUri
 
@@ -125,7 +126,8 @@ class DtdClient private constructor(
         ): DtdClient {
             val label = "the Dart Tooling Daemon at ${uri.redacted()}"
             val failure: VmServiceException = try {
-                return DtdClient(uri, VmServiceClient.open(uri.webSocketUri, label, timeoutMs, connectTimeoutMs))
+                val limits = VmServiceLimits(timeoutMs, connectTimeoutMs)
+                return DtdClient(uri, VmServiceClient.open(uri.webSocketUri, label, limits))
             } catch (e: VmServiceException) {
                 e
             }
