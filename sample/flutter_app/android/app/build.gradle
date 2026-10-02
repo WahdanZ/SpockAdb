@@ -23,6 +23,11 @@ if (flutterVersionName == null) {
     flutterVersionName = "1.0"
 }
 
+// A second copy of the sample beside the first, as two flavors of one project would be: same
+// code and pubspec package, another application ID. Off unless asked for, e.g.
+// `flutter run --android-project-arg spockAppIdSuffix=.second` (see README.md).
+def spockAppIdSuffix = (project.findProperty("spockAppIdSuffix") ?: "").toString()
+
 android {
     namespace = "spock.adb.spock_flutter_sample"
     compileSdk = flutter.compileSdkVersion
@@ -36,6 +41,10 @@ android {
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "spock.adb.spock_flutter_sample"
+        applicationIdSuffix = spockAppIdSuffix.isEmpty() ? null : spockAppIdSuffix
+        // The launcher label names the copy, so the two can be told apart on the device.
+        manifestPlaceholders["appLabel"] =
+            spockAppIdSuffix.isEmpty() ? "Spock Flutter Sample" : "Spock Flutter Sample ($spockAppIdSuffix)"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdk = flutter.minSdkVersion

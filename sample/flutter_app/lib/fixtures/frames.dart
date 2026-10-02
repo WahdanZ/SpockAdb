@@ -3,8 +3,12 @@ import 'package:flutter/scheduler.dart';
 
 import 'common.dart';
 
-/// Slow frames and a rebuild storm. Frame times mean something only in a profile build
-/// (`flutter run --profile`); a debug build is slow everywhere.
+/// Slow frames, a rebuild storm, and an animation that must not read as one. Frame times mean
+/// something only in a profile build (`flutter run --profile`); a debug build is slow everywhere.
+///
+/// The indeterminate progress indicator redraws every frame inside Flutter's own widgets, which
+/// the inspector's rebuild counts leave out, so it should add frames and no reported rebuilds.
+/// Scrolling *List → detail routes* (500 items) is the other case that must not be reported.
 class FramesScreen extends StatefulWidget {
   const FramesScreen({super.key});
 
@@ -15,12 +19,14 @@ class FramesScreen extends StatefulWidget {
 class _FramesScreenState extends State<FramesScreen> {
   bool _slowFrames = false;
   bool _rebuildStorm = false;
+  bool _progress = false;
 
   @override
   Widget build(BuildContext context) {
     return FixtureScaffold(
       title: 'Frames and rebuilds',
-      note: 'Slow frames: every frame busy-waits 40 ms. Rebuild storm: a counter rebuilds every frame.',
+      note: 'Slow frames: every frame busy-waits 40 ms. Rebuild storm: a counter rebuilds every frame. '
+          'Indeterminate progress: animates every frame and is not a rebuild storm.',
       children: [
         IdButton(
           id: 'frames_slow',
@@ -32,8 +38,14 @@ class _FramesScreenState extends State<FramesScreen> {
           label: _rebuildStorm ? 'Stop rebuild storm' : 'Start rebuild storm',
           onPressed: () => setState(() => _rebuildStorm = !_rebuildStorm),
         ),
+        IdButton(
+          id: 'frames_progress',
+          label: _progress ? 'Stop indeterminate progress' : 'Start indeterminate progress',
+          onPressed: () => setState(() => _progress = !_progress),
+        ),
         if (_slowFrames) const _SlowSpinner(),
         if (_rebuildStorm) const _RebuildStorm(),
+        if (_progress) const Center(child: CircularProgressIndicator()),
       ],
     );
   }
