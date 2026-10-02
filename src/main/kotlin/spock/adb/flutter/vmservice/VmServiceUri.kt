@@ -1,8 +1,8 @@
 package spock.adb.flutter.vmservice
 
+import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.net.URISyntaxException
-import java.io.ByteArrayOutputStream
 
 /**
  * A Dart VM Service address, normalised to the WebSocket form a client connects to:
@@ -60,6 +60,9 @@ class VmServiceUri private constructor(
         private val NOT_TOKENS = setOf("ws", "devtools")
 
         private const val HEX = 16
+
+        /** `%XX`. */
+        private const val ESCAPE_CHARS = 3
 
         /** A VM Service auth code: base64url, padded with `=` (Dart encodes 8 random bytes). */
         private val TOKEN = Regex("""[A-Za-z0-9_\-]+=*""")
@@ -155,11 +158,12 @@ class VmServiceUri private constructor(
             val bytes = ByteArrayOutputStream()
             var index = 0
             while (index < text.length) {
-                val high = if (text[index] == '%' && index + 2 <= text.lastIndex) Character.digit(text[index + 1], HEX) else -1
+                val escape = text[index] == '%' && index + 2 <= text.lastIndex
+                val high = if (escape) Character.digit(text[index + 1], HEX) else -1
                 val low = if (high >= 0) Character.digit(text[index + 2], HEX) else -1
                 if (low >= 0) {
                     bytes.write(high * HEX + low)
-                    index += 3
+                    index += ESCAPE_CHARS
                 } else {
                     if (bytes.size() > 0) out.append(bytes.toString(Charsets.UTF_8)).also { bytes.reset() }
                     out.append(text[index])

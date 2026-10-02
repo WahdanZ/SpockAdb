@@ -77,7 +77,8 @@ class VmServiceUriTest {
 
     @Test
     fun `a uri parameter is percent-decoded, twice if need be, and a plus stays a plus`() {
-        assertEquals(expected, ws("http://127.0.0.1:9100/?uri=ws%253A%252F%252F127.0.0.1%253A50300%252FHXKQJZK_Rkw%253D%252Fws"))
+        val doubled = "http://127.0.0.1:9100/?uri=ws%253A%252F%252F127.0.0.1%253A50300%252FHXKQJZK_Rkw%253D%252Fws"
+        assertEquals(expected, ws(doubled))
         assertEquals("a+b=/ü%zz%4", VmServiceUri.decodePercent("a+b%3D%2F%C3%BC%zz%4"))
     }
 

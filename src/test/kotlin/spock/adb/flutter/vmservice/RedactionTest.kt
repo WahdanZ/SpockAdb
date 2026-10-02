@@ -56,7 +56,8 @@ class RedactionTest {
     @Test
     fun `a uri parameter the pattern cannot read encoded is read again decoded`() {
         // A token character itself percent-encoded (%4A is J): only the decoded form shows the token.
-        val scrubbed = Redaction.scrub("http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FHXKQ%4AZK_Rkw%3D%2Fws")
+        val link = "http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FHXKQ%4AZK_Rkw%3D%2Fws"
+        val scrubbed = Redaction.scrub(link)
         assertFalse(scrubbed.contains("HXKQ"), scrubbed)
         assertEquals("http://127.0.0.1:9100/#/?uri=ws://127.0.0.1:50300/<redacted>/ws", scrubbed)
     }
@@ -78,15 +79,15 @@ class RedactionTest {
     @Test
     fun `json is scrubbed in a copy, strings at any depth`() {
         val data = JsonParser.parseString(
-            """{"details":"at http://127.0.0.1:50300/HXKQJZK_Rkw=/","nested":[{"uri":"ws://[::1]:1/HXKQJZK_Rkw=/ws"}],"n":3}""",
+            """{"details":"at http://127.0.0.1:50300/HXKQJZK_Rkw=/",""" +
+                """"nested":[{"uri":"ws://[::1]:1/HXKQJZK_Rkw=/ws"}],"n":3}""",
         )
         val scrubbed = Redaction.scrubJson(data).toString()
         assertFalse(scrubbed.contains("HXKQJZK"), scrubbed)
         assertTrue(data.toString().contains("HXKQJZK"), "the original is left as it was")
-        assertEquals("<redacted>", Redaction.scrubExtensionResult(
-            "ext.flutter.connectedVmServiceUri",
-            JsonObject().apply { addProperty("value", "http://127.0.0.1:50300/HXKQJZK_Rkw=/") },
-        ).get("value").asString)
+        val answer = JsonObject().apply { addProperty("value", "http://127.0.0.1:50300/HXKQJZK_Rkw=/") }
+        val redacted = Redaction.scrubExtensionResult("ext.flutter.connectedVmServiceUri", answer)
+        assertEquals("<redacted>", redacted.get("value").asString)
     }
 
     @Test

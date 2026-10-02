@@ -38,7 +38,7 @@ object Redaction {
     private const val EQUALS = "(?:=|${PERCENT}3[Dd])"
     private const val OPEN = """(?:\[|${PERCENT}5[Bb])"""
     private const val CLOSE = "(?:]|${PERCENT}5[Dd])"
-    private const val IPV6 = "$OPEN(?:$COLON${COLON}1?|0(?:${COLON}0){6}${COLON}[01])$CLOSE"
+    private const val IPV6 = "$OPEN(?:$COLON${COLON}1?|0(?:${COLON}0){6}$COLON[01])$CLOSE"
     private const val HOST = """(?:127\.0\.0\.1|0\.0\.0\.0|[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]|$IPV6)"""
     private const val SCHEME = """[A-Za-z][A-Za-z0-9+.\-]*$COLON$SLASH$SLASH"""
 
