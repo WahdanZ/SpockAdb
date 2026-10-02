@@ -2,7 +2,9 @@ package spock.adb.mcp
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.mcp.tools.GetDebugTimelineTool
@@ -69,6 +71,20 @@ class DebugTimelineToolTest {
 
         assertTrue(result.isError)
         assertTrue(result.text().contains("app_lifecycle"))
+    }
+
+    @Test
+    fun `a category is matched by name first, and flutter alone names two`() {
+        assertEquals(TimelineCategory.FLUTTER_ERROR, TimelineCategory.parse("flutter_error"))
+        assertEquals(TimelineCategory.FLUTTER_FRAME, TimelineCategory.parse("Frame"))
+        assertEquals(TimelineCategory.APP_LIFECYCLE, TimelineCategory.parse("app"))
+        assertEquals(TimelineCategory.LOG, TimelineCategory.parse("LOG"))
+        assertNull(TimelineCategory.parse("flutter"))
+
+        val arguments = JsonObject().apply { add("categories", JsonArray().apply { add("flutter") }) }
+        val result = tool.answer(DebugTimeline(), "on", arguments, now)
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("flutter_frame"), result.text())
     }
 
     @Test

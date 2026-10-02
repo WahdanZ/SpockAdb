@@ -21,10 +21,17 @@ class SkillToolNamesTest {
     private val registered = ToolRegistry.all().map { it.name }.toSet()
 
     /**
-     * `android_get_debug_timeline`'s category values share the `flutter_` prefix (`flutter_error`,
-     * `flutter_frame`) and are documented next to it; they are argument values, not tools.
+     * `android_get_debug_timeline`'s category values that share the `flutter_` prefix, documented
+     * next to it: argument values, not tools. Named one by one, so a future `flutter_` *tool*
+     * missing from the registry is still caught.
      */
-    private val categoryValues = TimelineCategory.entries.map { it.name.lowercase() }.toSet()
+    private val categoryValues = setOf("flutter_error", "flutter_frame")
+
+    @Test
+    fun `the allowed category values are timeline categories`() {
+        val names = TimelineCategory.entries.map { it.name.lowercase() }
+        assertTrue(names.containsAll(categoryValues), "$categoryValues are not all in $names")
+    }
 
     @Test
     fun `every documented tool name is a registered tool`() {
