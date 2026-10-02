@@ -98,6 +98,9 @@ class FlutterSessionService(private val project: Project) : Disposable {
     /** Guards the fields below. Never held across a connect, a close or a listener. */
     private val lock = Any()
     private val listeners = CopyOnWriteArrayList<FlutterSessionServiceListener>()
+
+    /** What Spock switched on and still owes switching off, across sessions. */
+    private val httpOwners = HttpOwners()
     private val startups = object : LinkedHashMap<String, AppStartup>() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AppStartup>?) = size > MAX_STARTUPS
     }
@@ -557,6 +560,8 @@ class FlutterSessionService(private val project: Project) : Disposable {
         pidsAllowed: Set<Long>? = null,
     ): Held? {
         val session = newSession()
+        session.httpOwners = httpOwners
+        session.httpOwnerSerial = identity?.serial
         // Before it connects, so what a listener adds to it hears what DDS replays on connect.
         listeners.forEach { listener ->
             runCatching { listener.sessionCreated(session) }
@@ -666,6 +671,8 @@ class FlutterSessionService(private val project: Project) : Disposable {
     ): AppStartup = synchronized(lock) {
         val key = startupKey(serial, applicationId)
         startups[key]?.takeIf { it.pids == pids } ?: run {
+            // A new process: what Spock owed the old one's isolates went with it.
+            httpOwners.retainPids(serial, pids)
             val oldestAge = timings.values.mapNotNull { it?.ageMs }.maxOrNull()
             AppStartup(pids, startedAt ?: oldestAge?.let { clock() - it } ?: clock()).also { startups[key] = it }
         }

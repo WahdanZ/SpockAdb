@@ -221,7 +221,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
     private fun http(live: FlutterDiagnosticSource.Live) = JsonObject().apply {
         val recording = live.snapshot.httpRecording
         addProperty("recording", FlutterWords.recording(recording))
-        if (recording != HttpRecording.EnabledBySpock && recording != HttpRecording.AlreadyOn) return@apply
+        if (recording !in RECORDING) return@apply
         val profile = try {
             HttpProfileReader.read(live.reads.httpProfile())
         } catch (e: VmServiceException) {
@@ -331,6 +331,9 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
 
     private companion object {
         const val MAX_NOTE_CHARS = 400
+
+        /** dart:io is recording: there is a profile to read. */
+        val RECORDING = setOf(HttpRecording.EnabledBySpock, HttpRecording.AdoptedBySpock, HttpRecording.AlreadyOn)
         const val NOT_KEPT =
             "Spock connected before it kept this session's events; what the app reports from now on is counted."
         const val CLOCK_UNKNOWN =
@@ -387,6 +390,8 @@ internal object FlutterWords {
 
     fun recording(recording: HttpRecording?): String = when (recording) {
         HttpRecording.EnabledBySpock -> "on: Spock turned it on, and turns it off again when it disconnects"
+        HttpRecording.AdoptedBySpock ->
+            "on: Spock turned it on in an earlier session that ended first, and turns it off when it disconnects"
         HttpRecording.AlreadyOn -> "on: it was on already (DevTools or the IDE), and Spock leaves it as it is"
         HttpRecording.Pending -> "pending: dart:io has not registered its HTTP extension in the app yet"
         is HttpRecording.Off -> when (recording.reason) {

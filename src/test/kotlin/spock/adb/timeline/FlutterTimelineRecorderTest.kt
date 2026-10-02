@@ -11,6 +11,7 @@ import spock.adb.flutter.FlutterBuild
 import spock.adb.flutter.FlutterSession
 import spock.adb.flutter.FlutterSessionChange
 import spock.adb.flutter.FlutterSessionService
+import spock.adb.flutter.HttpOwners
 import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.IdentityCheck
 import spock.adb.flutter.analysis.FlutterFixtures
@@ -148,6 +149,27 @@ class FlutterTimelineRecorderTest {
 
         assertTrue(rows.any { it.title == "Flutter session ended: $APP — Spock disconnected" }, "$rows")
         assertTrue(rows.any { it.title == "Spock switched HTTP recording back off for $APP" }, "$rows")
+    }
+
+    @Test
+    fun `logging an earlier session left on is adopted, and the row says so`() {
+        val owners = HttpOwners().apply { record(HttpOwners.key(SERIAL, 12345, UI_ISOLATE)) }
+        vm.httpLogging = true
+        session.httpOwners = owners
+        session.httpOwnerSerial = SERIAL
+        connect()
+        eventually(message = "adopted") { session.snapshot.httpRecording == HttpRecording.AdoptedBySpock }
+
+        recorder.tick()
+
+        assertTrue(
+            rows.any {
+                it.title == "Spock's HTTP recording for $APP from the earlier session is still on; " +
+                    "Spock will switch it off when it disconnects"
+            },
+            "$rows",
+        )
+        assertTrue(rows.none { it.title.startsWith("Spock turned on HTTP recording") })
     }
 
     @Test

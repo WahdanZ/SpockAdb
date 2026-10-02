@@ -184,4 +184,11 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   (`TOOL_ATTACH_CAP_MS`), after which the normal rules give "no debugger session". Expected attach on 3.22: about
   10–15 s after the VM line. A "no DDS" verdict is re-checked every 30 s with no VM contact until a tool forwards
   the VM. Every follower and attach decision is logged at INFO.
+- **HTTP recording owned across sessions (device gate, 2026-10-02).** A session whose DDS died with `flutter run`
+  could not switch off the HTTP recording it had switched on, and the next session on the same isolate (`flutter
+  attach`) read it as `AlreadyOn` and left it on. `FlutterSessionService` now remembers per (serial, pid, isolate)
+  what Spock switched on and has not switched off (`HttpOwners`, bounded, dropped when the pid changes); a session
+  on that isolate adopts it (`HttpRecording.AdoptedBySpock`), switches it off on close through DDS, and the Timeline
+  says "Spock's HTTP recording for <app> from the earlier session is still on; Spock will switch it off when it
+  disconnects". Spock's VM Service forwards are logged at INFO as they are made and removed.
 

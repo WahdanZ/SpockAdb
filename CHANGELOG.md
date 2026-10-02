@@ -30,7 +30,8 @@
     is checked again now and then, so a later `flutter attach` is found.
   - To see failed requests, Spock switches on Dart's HTTP recording for the session — only through
     `flutter run`'s debugger service, only in debug and profile builds — and switches it back off
-    when it disconnects, leaving it alone if something else turned it on. **Settings → Tools → Spock
+    when it disconnects, leaving it alone if something else turned it on. If the connection ends
+    before it can (`flutter run` stopped), the next session on the same app process takes that over. **Settings → Tools → Spock
     ADB → Record Flutter HTTP traffic automatically** turns that off.
   - **`android_get_debug_context`** and **`android_diagnose_current_screen`** return the same
     *flutter* section; each `likelyProblems` entry now has an `id`, which the section's errors point

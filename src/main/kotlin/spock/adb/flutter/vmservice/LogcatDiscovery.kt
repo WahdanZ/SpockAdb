@@ -88,6 +88,7 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
             val port = localPort ?: return
             localPort = null
             SpockForwards.released(device.serialNumber, port)
+            log.info("Removing Spock's forward tcp:$port -> tcp:${deviceUri.port} on ${device.serialNumber}")
             try {
                 device.removeForward(port)
             } catch (e: IOException) {
@@ -107,6 +108,7 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
                 .onFailure { SpockForwards.released(device.serialNumber, port) }
                 .getOrThrow()
             localPort = port
+            log.info("Forwarded tcp:$port -> tcp:${deviceUri.port} on ${device.serialNumber} for the VM Service")
             port
         }
 

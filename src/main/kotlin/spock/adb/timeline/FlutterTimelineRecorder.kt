@@ -336,21 +336,24 @@ class FlutterTimelineRecorder(
 
     /** Under [lock]: one row when Spock turned HTTP recording on for this session. */
     private fun checkRecording(followed: Followed) {
-        if (followed.enabledBySpock || followed.session.snapshot.httpRecording != HttpRecording.EnabledBySpock) return
+        if (followed.enabledBySpock) return
+        val title = when (followed.session.snapshot.httpRecording) {
+            HttpRecording.EnabledBySpock ->
+                "Spock turned on HTTP recording for ${followed.app} (restored when Spock disconnects)"
+            HttpRecording.AdoptedBySpock ->
+                "Spock's HTTP recording for ${followed.app} from the earlier session is still on; " +
+                    "Spock will switch it off when it disconnects"
+            else -> return
+        }
         followed.enabledBySpock = true
-        row(
-            followed,
-            clock(),
-            TimelineSeverity.INFO,
-            category = TimelineCategory.HTTP,
-            title = "Spock turned on HTTP recording for ${followed.app} (restored when Spock disconnects)",
-        )
+        row(followed, clock(), TimelineSeverity.INFO, category = TimelineCategory.HTTP, title = title)
     }
 
     /** Off the lock: a VM call. Failed requests, one row per request id. */
     private fun pollHttp(followed: Followed) {
         val snapshot = followed.session.snapshot
         val recording = snapshot.httpRecording == HttpRecording.EnabledBySpock ||
+            snapshot.httpRecording == HttpRecording.AdoptedBySpock ||
             snapshot.httpRecording == HttpRecording.AlreadyOn
         val due = clock() - followed.lastHttpPollAt >= HTTP_POLL_MS
         val live = snapshot.state is SessionState.Connected && snapshot.uiIsolateId != null

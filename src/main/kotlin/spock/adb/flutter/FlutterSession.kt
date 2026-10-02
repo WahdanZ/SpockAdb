@@ -91,8 +91,22 @@ class FlutterSession(
     private var httpLoggingCheckedFor: String? = null
     private var structuredErrorsReadFor: String? = null
 
+    /**
+     * Where Spock's switching HTTP logging on is remembered across sessions, and the device it is
+     * keyed by; set by [FlutterSessionService] before [connect]. Null keeps it to this session.
+     */
+    internal var httpOwners: HttpOwners? = null
+    internal var httpOwnerSerial: String? = null
+
     /** What Spock switched on, so [close] switches it off. */
-    private val httpLogging = HttpLogging()
+    private val httpLogging = HttpLogging(
+        owners = { httpOwners },
+        keyOf = { isolateId ->
+            val serial = httpOwnerSerial
+            val pid = snapshot.vmPid
+            if (serial != null && pid != null) HttpOwners.key(serial, pid, isolateId) else null
+        },
+    )
 
     /** One per session: a reconnect's replay of events already delivered is recognised. */
     private val history = EventHistory()
