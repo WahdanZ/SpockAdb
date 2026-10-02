@@ -14,9 +14,10 @@ import spock.adb.flutter.vmservice.VmServiceUri
  *
  * [uri] is the app's DDS address (spike S12). [name] reads `Kind: Flutter - Device: <device> -
  * Package: <package>`; [kind], [deviceModel] and [packageName] are its parts, null when the name
- * has another shape. [deviceModel] is how `flutter` names the device — `ro.product.model` with
- * spaces for underscores — and [packageName] is the pubspec `name`, not the Android
- * applicationId.
+ * has another shape. [deviceModel] is how `flutter` names the device — `ro.product.model` as adb
+ * and `flutter` reword it ([DtdDiscovery.normalise]) — and [packageName] is the pubspec `name`,
+ * not the Android applicationId. The name is any registered client's to choose, so it is kept
+ * to one line of at most [MAX_NAME_CHARS].
  */
 class DtdVmService(
     val uri: VmServiceUri,
@@ -35,6 +36,10 @@ class DtdVmService(
         private val KIND = Regex("""^\s*Kind:\s*(.*?)\s*(?:\s-\s+(?:Device|Package):|$)""")
         private val DEVICE = Regex("""\bDevice:\s*(.*?)\s*(?:\s-\s+Package:|$)""")
         private val PACKAGE = Regex("""\bPackage:\s*(\S+)\s*$""")
+        private val CONTROL = Regex("""\p{Cntrl}""")
+
+        /** Far longer than any `Kind: … - Device: … - Package: …` flutter writes. */
+        const val MAX_NAME_CHARS = 200
 
         /**
          * The apps in a `VmServicesResponse`. An entry whose address is missing, unreadable or
@@ -45,7 +50,7 @@ class DtdVmService(
             return services.mapNotNull { element ->
                 val service = element as? JsonObject ?: return@mapNotNull null
                 val uri = service.text("uri")?.let(VmServiceUri::parseOrNull) ?: return@mapNotNull null
-                val name = service.text("name").orEmpty()
+                val name = cleanName(service.text("name").orEmpty())
                 DtdVmService(
                     uri = uri,
                     name = name,
@@ -55,6 +60,9 @@ class DtdVmService(
                 )
             }
         }
+
+        /** Control characters — newlines included — become spaces, then the name is capped. */
+        private fun cleanName(raw: String): String = raw.replace(CONTROL, " ").take(MAX_NAME_CHARS)
 
         private fun Regex.part(name: String): String? = find(name)?.groupValues?.get(1)?.ifBlank { null }
 
@@ -114,6 +122,12 @@ class DtdClient private constructor(
         /** A loopback connect that takes longer is to a pid reused by something that is not a DTD. */
         const val CONNECT_TIMEOUT_MS = 2_000L
 
+        /** Spock subscribes to nothing on a daemon, so any event is unasked for: hold few. */
+        const val MAX_QUEUED_EVENTS = 16
+
+        /** A `getVmServices` answer is a few hundred bytes per app; a megabyte is a fault. */
+        const val MAX_MESSAGE_CHARS = 1024 * 1024
+
         /**
          * Opens a connection to the daemon at [uri].
          *
@@ -126,7 +140,7 @@ class DtdClient private constructor(
         ): DtdClient {
             val label = "the Dart Tooling Daemon at ${uri.redacted()}"
             val failure: VmServiceException = try {
-                val limits = VmServiceLimits(timeoutMs, connectTimeoutMs)
+                val limits = VmServiceLimits(timeoutMs, connectTimeoutMs, MAX_QUEUED_EVENTS, MAX_MESSAGE_CHARS)
                 return DtdClient(uri, VmServiceClient.open(uri.webSocketUri, label, limits))
             } catch (e: VmServiceException) {
                 e

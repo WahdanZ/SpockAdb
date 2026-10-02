@@ -117,4 +117,36 @@ class DtdClientTest {
         assertEquals(listOf("my_app", "cli_tool", null, null), parsed.map { it.packageName })
         assertEquals(listOf("Flutter", "Dart", null, null), parsed.map { it.kind })
     }
+
+    @Test
+    fun `a daemon answering the upgrade with a redirect is a DtdException, and the redirect is not followed`() {
+        FakeDtd().use { target ->
+            dtd.server.redirectTo = target.wsUri
+            val error = assertThrows<DtdException> { services() }
+            assertFalse(error.message!!.contains(FakeDtd.SECRET), error.message)
+            assertTrue(target.server.handshakePaths.isEmpty(), "followed to ${target.server.handshakePaths}")
+        }
+    }
+
+    @Test
+    fun `an answer past the message cap fails the call instead of being held`() {
+        val huge = "x".repeat(DtdClient.MAX_MESSAGE_CHARS)
+        dtd.vmServices = FakeDtd.response("ws://127.0.0.1:3/T=/ws" to huge)
+        assertThrows<DtdException> { services() }
+    }
+
+    @Test
+    fun `a name is one line, and capped`() {
+        val parsed = DtdVmService.parse(
+            FakeDtd.response(
+                "ws://127.0.0.1:1/T=/ws" to "Kind: Flutter - Device: Pixel\\n8\\u0007 - Package: my_app",
+                "ws://127.0.0.1:2/T=/ws" to "Kind: Flutter - Device: " + "d".repeat(500) + " - Package: long_app",
+            ),
+        )
+        assertEquals("Kind: Flutter - Device: Pixel 8  - Package: my_app", parsed[0].name)
+        assertEquals("Pixel 8", parsed[0].deviceModel)
+        assertEquals("my_app", parsed[0].packageName)
+        assertEquals(DtdVmService.MAX_NAME_CHARS, parsed[1].name.length)
+        assertNull(parsed[1].packageName)
+    }
 }
