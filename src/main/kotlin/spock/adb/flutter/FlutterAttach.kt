@@ -47,21 +47,6 @@ sealed interface FlutterAttachOutcome {
     data class Failed(val message: String) : FlutterAttachOutcome
 }
 
-/**
- * What a connected session says about DDS (plan H1): [Dds] is shared and writable, [DirectNoDds]
- * is the VM's own address with nothing in front, [Unreachable] did not connect.
- *
- * A local stand-in for #159's probe (`getDartDevelopmentServiceVersion`), which is being built
- * in parallel; [FlutterSessionService.ddsProbe] adapts to it once it lands.
- */
-sealed interface DdsProbeResult {
-    object Dds : DdsProbeResult
-
-    object DirectNoDds : DdsProbeResult
-
-    data class Unreachable(val reason: String) : DdsProbeResult
-}
-
 /** A change of the project's current Flutter session. */
 sealed interface FlutterSessionChange {
 

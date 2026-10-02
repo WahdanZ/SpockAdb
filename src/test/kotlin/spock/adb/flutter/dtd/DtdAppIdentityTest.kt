@@ -9,10 +9,13 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import spock.adb.flutter.dtd.DtdAppIdentity.Result
 import spock.adb.flutter.dtd.DtdAppIdentity.VmProcess
 import spock.adb.flutter.vmservice.FakeVmService
+import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.VmServiceException
+import spock.adb.flutter.vmservice.VmServiceProbe
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -40,9 +43,22 @@ class DtdAppIdentityTest {
     )
 
     @Test
-    fun `the VM's pid and start are read with one getVM and nothing else`() {
+    fun `the VM's pid and start are read with the DDS probe and one getVM, nothing else`() {
         assertEquals(VmProcess(12345L, 1727776800000L), DtdAppIdentity.readVmProcess(VmServiceUri.parse(vm.uri)))
-        assertEquals(listOf("getVM"), vm.requests.map { it.get("method").asString })
+        assertEquals(listOf(VmServiceProbe.DDS_VERSION, "getVM"), vm.requests.map { it.get("method").asString })
+    }
+
+    @Test
+    fun `a DTD address that is a VM with no DDS gets nothing past the probe, and is not asked again at once`() {
+        vm.dds = false
+        assertThrows<NoDdsException> { DtdAppIdentity.readVmProcess(VmServiceUri.parse(vm.uri)) }
+        assertEquals(listOf(VmServiceProbe.DDS_VERSION), vm.requests.map { it.get("method").asString })
+
+        val identity = DtdAppIdentity(clock = { now })
+        val direct = FakeDtd.candidate(VmServiceUri.parse(vm.uri))
+        assertSame(Result.None, identity.confirm(listOf(direct), mapOf(12345L to null)))
+        assertSame(Result.None, identity.confirm(listOf(direct), mapOf(12345L to null)))
+        assertEquals(2, vm.requestsFor(VmServiceProbe.DDS_VERSION).size, "the second confirm did not connect")
     }
 
     @Test

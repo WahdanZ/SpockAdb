@@ -3,8 +3,11 @@ package spock.adb.flutter.dtd
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
+import spock.adb.flutter.vmservice.ConnectionKind
+import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
+import spock.adb.flutter.vmservice.VmServiceProbe
 import spock.adb.flutter.vmservice.VmServiceRedirectException
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.util.concurrent.ConcurrentHashMap
@@ -18,12 +21,13 @@ import java.util.concurrent.ConcurrentHashMap
  * same pid — so a candidate is the selected app when its VM runs as one of the app's pids on the
  * selected device **and** started within [VM_START_LAG_MS] of that process.
  *
- * Each candidate is asked over a bare connection — `getVM` only: no stream, no write — closed at
- * once, before any [spock.adb.flutter.FlutterSession] is made, so nothing ever changes in an app
- * that turns out to be another. DTD lists DDS addresses, which any number of clients share. One
- * that turns out to be a VM's own (it answers with a redirect to DDS) is not asked again within
- * [DIRECT_PROBE_INTERVAL_MS], as for any direct VM (spike S10), until S22 shows what an IDE's DTD
- * lists.
+ * Each candidate is asked over a bare connection — H1's DDS probe, then `getVM` only: no stream,
+ * no write — closed at once, before any [spock.adb.flutter.FlutterSession] is made, so nothing
+ * ever changes in an app that turns out to be another. DTD lists DDS addresses, which any number
+ * of clients share. An address that turns out to be a VM's own — it redirects to DDS, or it is a
+ * VM with no DDS, which gets nothing past the probe ([VmServiceProbe.kindOf]) — is not asked
+ * again within [DIRECT_PROBE_INTERVAL_MS], as for any direct VM (spike S10), until S22 shows what
+ * an IDE's DTD lists.
  *
  * Blocking: call from a pooled thread. Never throws; a candidate that does not answer is not
  * confirmed. [vmProcess] and [clock] are for tests.
@@ -94,6 +98,10 @@ class DtdAppIdentity(
         }
         return try {
             vmProcess(uri)?.also { if (it.viaRedirect) directAskedAt[key] = now }
+        } catch (_: NoDdsException) {
+            directAskedAt[key] = now
+            log.info("$candidate is a VM with no DDS in front of it: not the app's DDS")
+            null
         } catch (e: VmServiceException) {
             // Messages from the client are redacted.
             log.info("Could not read the process of $candidate: ${e.message}")
@@ -132,8 +140,10 @@ class DtdAppIdentity(
         /**
          * The process the VM at [uri] runs in, from one `getVM` on a connection of its own; null
          * when the answer names no pid. A VM address handing its clients to DDS is followed there
-         * once.
+         * once. The connection first asks what answers ([VmServiceProbe.kindOf]); a VM with no
+         * DDS gets nothing more.
          *
+         * @throws NoDdsException when the VM itself answered, with no DDS in front of it.
          * @throws VmServiceException when the VM does not answer. The message is redacted.
          */
         fun readVmProcess(uri: VmServiceUri): VmProcess? {
@@ -144,7 +154,10 @@ class DtdAppIdentity(
                 redirected = true
                 open(e.target)
             }
-            val vm = client.use { it.getVM() }
+            val vm = client.use {
+                if (VmServiceProbe.kindOf(it) == ConnectionKind.DIRECT_NO_DDS) throw NoDdsException()
+                it.getVM()
+            }
             val pid = pidOf(vm) ?: return null
             return VmProcess(pid, longOf(vm, "startTime"), redirected)
         }

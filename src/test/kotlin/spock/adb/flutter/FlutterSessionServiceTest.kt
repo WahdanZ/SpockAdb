@@ -23,10 +23,12 @@ import spock.adb.flutter.dtd.DtdAppIdentity
 import spock.adb.flutter.dtd.DtdCandidate
 import spock.adb.flutter.dtd.FakeDtd
 import spock.adb.flutter.vmservice.FakeVmService
+import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceCandidate
 import spock.adb.flutter.vmservice.VmServiceDiscovery
 import spock.adb.flutter.vmservice.VmServiceException
+import spock.adb.flutter.vmservice.VmServiceProbe
 import spock.adb.flutter.vmservice.VmServiceSource
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.io.IOException
@@ -63,7 +65,6 @@ class FlutterSessionServiceTest {
     private val probed = mutableListOf<Int>()
 
     private var now = 1_000_000L
-    private var probe: DdsProbeResult = DdsProbeResult.Dds
     private var sessionsMade = 0
     private val changes = mutableListOf<FlutterSessionChange>()
     private val parent: Disposable = Disposer.newDisposable()
@@ -87,7 +88,6 @@ class FlutterSessionServiceTest {
             probed += uri.port
             vms[uri.port]
         })
-        ddsProbe = { probe }
         newSession = {
             synchronized(this@FlutterSessionServiceTest) { sessionsMade++ }
             FlutterSession()
@@ -352,6 +352,16 @@ class FlutterSessionServiceTest {
     }
 
     @Test
+    fun `connect refuses a VM with no DDS unless asked to keep it, read-only`() {
+        vm.dds = false
+        assertThrows<NoDdsException> { service.connect(live(VmServiceSource.PASTED, true)) }
+        assertNull(service.current)
+        val kept = service.connect(live(VmServiceSource.PASTED, true), allowDirect = true)
+        assertTrue(kept.readOnly)
+        assertSame(kept, service.current)
+    }
+
+    @Test
     fun `a failed connect leaves no session`() {
         val port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
         assertThrows<VmServiceException> { service.connect(candidate(VmServiceSource.PASTED, port)) }
@@ -490,7 +500,7 @@ class FlutterSessionServiceTest {
 
     @Test
     fun `ensureSession - a VM without DDS inside the window is not ready, and not probed again at once`() {
-        probe = DdsProbeResult.DirectNoDds
+        vm.dds = false
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
         val old = now - FlutterSessionService.DIRECT_PROBE_MIN_AGE_MS
         assertTrue(ensure(startedAt = old) is FlutterAttachOutcome.NotReady)
@@ -504,8 +514,28 @@ class FlutterSessionServiceTest {
     }
 
     @Test
+    fun `ensureSession - no DDS is not ready inside the window, then terminal after it, with no further probe`() {
+        vm.dds = false
+        logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
+        val started = now - FlutterSessionService.DIRECT_PROBE_MIN_AGE_MS
+        assertTrue(ensure(startedAt = started) is FlutterAttachOutcome.NotReady)
+        assertEquals(1, vm.requestsFor(VmServiceProbe.DDS_VERSION).size)
+        assertTrue(vm.requestsFor("streamListen").isEmpty(), "refused before anything else was called")
+
+        now = started + FlutterSessionService.STARTUP_GRACE_MS
+        val noDds = ensure() as FlutterAttachOutcome.NoDdsSession
+        assertTrue(noDds.message.contains("without a debugger session"), noDds.message)
+        assertEquals(2, vm.requestsFor(VmServiceProbe.DDS_VERSION).size)
+
+        now += 60_000
+        assertTrue(ensure() is FlutterAttachOutcome.NoDdsSession)
+        assertEquals(2, vm.requestsFor(VmServiceProbe.DDS_VERSION).size, "no further direct probe")
+        assertNull(service.current)
+    }
+
+    @Test
     fun `ensureSession - a VM without DDS past the window is terminal for that pid, and a new pid starts over`() {
-        probe = DdsProbeResult.DirectNoDds
+        vm.dds = false
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
         val started = now - FlutterSessionService.STARTUP_GRACE_MS - 1
         val noDds = ensure(startedAt = started) as FlutterAttachOutcome.NoDdsSession
@@ -522,11 +552,11 @@ class FlutterSessionServiceTest {
 
     @Test
     fun `ensureSession - after no DDS, a later flutter attach is found through the DTD`() {
-        probe = DdsProbeResult.DirectNoDds
+        vm.dds = false
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
         assertTrue(ensure(startedAt = now - 60_000) is FlutterAttachOutcome.NoDdsSession)
 
-        probe = DdsProbeResult.Dds
+        vm.dds = true
         dtdFound = listOf(liveDtdApp())
         val attached = ensure() as FlutterAttachOutcome.Connected
         assertEquals(IdentityCheck.DTD_PID_START, attached.identity.verifiedBy)
@@ -534,18 +564,18 @@ class FlutterSessionServiceTest {
 
     @Test
     fun `ensureSession - disconnect and resetAttach forget a no-DDS verdict`() {
-        probe = DdsProbeResult.DirectNoDds
+        vm.dds = false
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
         assertTrue(ensure(startedAt = now - 60_000) is FlutterAttachOutcome.NoDdsSession)
         service.resetAttach()
-        probe = DdsProbeResult.Dds
+        vm.dds = true
         assertTrue(ensure(startedAt = now - 60_000) is FlutterAttachOutcome.Connected)
     }
 
     @Test
     fun `ensureSession - the device's process age decides the window when the caller does not`() {
         timings[APP_PID] = ProcessTiming(PROCESS_START, ageMs = 3_600_000)
-        probe = DdsProbeResult.DirectNoDds
+        vm.dds = false
         logcatFound = listOf(live(VmServiceSource.LOGCAT, ddsLikely = false))
         assertTrue(ensure() is FlutterAttachOutcome.NoDdsSession, "an app running for an hour is not starting")
     }

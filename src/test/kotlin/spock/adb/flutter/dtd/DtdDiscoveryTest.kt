@@ -65,7 +65,6 @@ class DtdDiscoveryTest {
         val found = discovery(app).candidates().single()
         assertEquals(VmServiceSource.DTD, found.source)
         assertTrue(found.ddsLikely)
-        assertFalse(found.direct)
         assertEquals(WorkspaceMatch.EXACT, found.workspaceMatch)
         assertEquals("ws://127.0.0.1:6001/Tok6001=/ws", found.open().webSocketUri.toString())
     }

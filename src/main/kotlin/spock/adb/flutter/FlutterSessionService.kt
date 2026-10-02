@@ -15,6 +15,7 @@ import spock.adb.flutter.dtd.DtdAppIdentity
 import spock.adb.flutter.dtd.DtdCandidate
 import spock.adb.flutter.dtd.DtdDiscovery
 import spock.adb.flutter.vmservice.LogcatDiscovery
+import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.Redaction
 import spock.adb.flutter.vmservice.VmServiceCandidate
@@ -61,10 +62,6 @@ class FlutterSessionService(private val project: Project) : Disposable {
         { device, id -> device.pidsOf(id, ADB_SECONDS).mapNotNull(String::toLongOrNull).toSet() }
     internal var processTiming: (IDevice, Long) -> ProcessTiming? = ::readProcessTiming
     internal var dtdIdentity: DtdAppIdentity = DtdAppIdentity()
-
-    /** Until #159's H1 probe lands: a direct candidate the VM did not hand to DDS has no DDS. */
-    internal var ddsProbe: (FlutterSession) -> DdsProbeResult =
-        { if (it.readOnly) DdsProbeResult.DirectNoDds else DdsProbeResult.Dds }
     internal var newSession: () -> FlutterSession = { FlutterSession() }
     internal var background: (Runnable) -> Future<*> = { ApplicationManager.getApplication().executeOnPooledThread(it) }
     internal var onEdt: () -> Boolean = { ApplicationManager.getApplication()?.isDispatchThread == true }
@@ -210,16 +207,26 @@ class FlutterSessionService(private val project: Project) : Disposable {
 
     /**
      * Connects to [candidate] for [identity], closing the session before it — and any connect
-     * still opening — first. Kept whatever the connection is: a direct VM stays read-only
-     * ([FlutterSession.readOnly]). Blocking.
+     * still opening — first. A VM with no DDS in front of it is refused unless [allowDirect]: then
+     * it is kept read-only, and keeps `flutter run`/`flutter attach` from starting DDS until it is
+     * closed (spike S10) — the developer's explicit choice. [recordHttp] as in
+     * [FlutterSession.connect]. Blocking.
      *
+     * @throws NoDdsException when the VM has no DDS and [allowDirect] is false; [current] is then
+     * null.
      * @throws VmServiceException when the connection fails, or another connect or [disconnect]
      * ended it first; [current] is then null.
      * @throws IllegalStateException once the project is closing.
      */
-    fun connect(candidate: VmServiceCandidate, identity: AppIdentity? = null): FlutterSession {
+    fun connect(
+        candidate: VmServiceCandidate,
+        identity: AppIdentity? = null,
+        allowDirect: Boolean = false,
+        recordHttp: Boolean = true,
+    ): FlutterSession {
         checkOffEdt()
-        return checkNotNull(open(candidate, identity) { true }) { "A session kept by choice is never refused." }.session
+        val held = open(candidate, identity, allowDirect, recordHttp)
+        return checkNotNull(held) { "A session with no pid to check is never refused." }.session
     }
 
     /** [connect] to what [discover] found. */
@@ -465,53 +472,56 @@ class FlutterSessionService(private val project: Project) : Disposable {
     }
 
     /**
-     * Connects to [found] and keeps it if it is DDS's — and, for a logcat address, if its VM runs
-     * as one of the app's pids; maps what it is not to an outcome.
+     * Connects to [found] — refused by the session when no DDS answers ([NoDdsException]) — and,
+     * for a logcat address, keeps it only if its VM runs as one of the app's pids; maps what it
+     * is not to an outcome.
      */
     private fun attach(found: IdentifiedCandidate, startup: Startup, inWindow: Boolean): FlutterAttachOutcome {
-        var probe: DdsProbeResult = DdsProbeResult.Dds
-        var vmPid: Long? = null
+        val pidsAllowed = startup.pids.takeIf { found.identity.verifiedBy == IdentityCheck.LOGCAT_PID }
         val kept = try {
-            open(found.candidate, found.identity) { session ->
-                probe = ddsProbe(session)
-                vmPid = DtdAppIdentity.pidOf(session.vm)
-                probe == DdsProbeResult.Dds &&
-                    (found.identity.verifiedBy != IdentityCheck.LOGCAT_PID || vmPid in startup.pids)
-            }
-        } catch (e: VmServiceException) {
-            probe = DdsProbeResult.Unreachable(e.message.orEmpty())
-            null
-        } catch (e: IllegalStateException) {
-            return FlutterAttachOutcome.Failed(e.message.orEmpty())
-        }
-        if (kept != null) return FlutterAttachOutcome.Connected(kept.session, kept.identity ?: found.identity, false)
-        return when (val result = probe) {
-            DdsProbeResult.Dds -> FlutterAttachOutcome.Failed(
-                "The VM at ${found.candidate} runs as pid $vmPid, not as one of ${found.identity.applicationId}'s " +
-                    "${startup.pids}.",
-            )
-            is DdsProbeResult.Unreachable -> if (inWindow) {
-                FlutterAttachOutcome.NotReady("The app's VM Service did not answer yet: ${result.reason}", RETRY_MS)
-            } else {
-                FlutterAttachOutcome.Failed(result.reason)
-            }
-            DdsProbeResult.DirectNoDds -> if (inWindow) {
+            open(found.candidate, found.identity, allowDirect = false, recordHttp = true, pidsAllowed = pidsAllowed)
+        } catch (e: NoDdsException) {
+            // Before VmServiceException, which it is: a VM with no DDS is an answer, not a failure.
+            return if (inWindow) {
                 FlutterAttachOutcome.NotReady(
                     "The app's VM has no DDS yet: `flutter run` may still be attaching.",
                     RETRY_MS,
                 )
             } else {
                 startup.noDds = found.identity
-                FlutterAttachOutcome.NoDdsSession(found.identity, NO_DDS_MESSAGE)
+                FlutterAttachOutcome.NoDdsSession(found.identity, e.message ?: NO_DDS_MESSAGE)
             }
+        } catch (e: VmServiceException) {
+            return if (inWindow) {
+                FlutterAttachOutcome.NotReady("The app's VM Service did not answer yet: ${e.message}", RETRY_MS)
+            } else {
+                FlutterAttachOutcome.Failed(e.message.orEmpty())
+            }
+        } catch (e: IllegalStateException) {
+            return FlutterAttachOutcome.Failed(e.message.orEmpty())
+        }
+        return if (kept != null) {
+            FlutterAttachOutcome.Connected(kept.session, kept.identity ?: found.identity, false)
+        } else {
+            FlutterAttachOutcome.Failed(
+                "The VM at ${found.candidate} is not one of ${found.identity.applicationId}'s " +
+                    "processes ${startup.pids}.",
+            )
         }
     }
 
     /**
      * Opens a session on [candidate] without the lock, published as [connecting] meanwhile, and
-     * makes it [current] when [keep] says so; else closes it and returns null.
+     * makes it [current] — unless [pidsAllowed] is given and the VM runs as none of them: then it
+     * is closed and null returned.
      */
-    private fun open(candidate: VmServiceCandidate, identity: AppIdentity?, keep: (FlutterSession) -> Boolean): Held? {
+    private fun open(
+        candidate: VmServiceCandidate,
+        identity: AppIdentity?,
+        allowDirect: Boolean,
+        recordHttp: Boolean,
+        pidsAllowed: Set<Long>? = null,
+    ): Held? {
         val session = newSession()
         val (previous, opening) = synchronized(lock) {
             check(!disposed) { "The project is closed." }
@@ -526,23 +536,19 @@ class FlutterSessionService(private val project: Project) : Disposable {
         val previousLive = previous?.takeIf { lostReported !== it.session }
         var result: Held? = null
         try {
-            session.connect(candidate)
-            if (!keep(session)) return null
-            val withPid = identity?.let { if (it.pid != null) it else it.copy(pid = DtdAppIdentity.pidOf(session.vm)) }
-            result = synchronized(lock) {
-                if (connecting !== session || disposed) return@synchronized null
-                connecting = null
-                Held(session, withPid).also { held = it }
-            }
-            if (result == null) {
-                throw VmServiceClosedException("another connection took its place, or the project closed")
-            }
+            session.connect(candidate, allowDirect, recordHttp)
+            // H1's pid is an Int; Spock's identity carries pids as Long, as `pidof` reads them.
+            val vmPid = session.snapshot.vmPid?.toLong()
+            if (pidsAllowed != null && vmPid !in pidsAllowed) return null
+            val published = publish(session, identity?.let { if (it.pid != null) it else it.copy(pid = vmPid) })
+            result = published
+            val identityNow = published.identity
             notify(
-                previousLive?.let { FlutterSessionChange.Replaced(it.session, it.identity, session, withPid) }
-                    ?: FlutterSessionChange.Connected(session, withPid),
+                previousLive?.let { FlutterSessionChange.Replaced(it.session, it.identity, session, identityNow) }
+                    ?: FlutterSessionChange.Connected(session, identityNow),
             )
             watch(session)
-            return result
+            return published
         } finally {
             if (result == null) {
                 synchronized(lock) { if (connecting === session) connecting = null }
@@ -552,6 +558,20 @@ class FlutterSessionService(private val project: Project) : Disposable {
                 }
             }
         }
+    }
+
+    /**
+     * Makes [session] [current], unless another connect, a [disconnect] or [dispose] ended it
+     * while it was opening.
+     *
+     * @throws VmServiceClosedException when one did.
+     */
+    private fun publish(session: FlutterSession, identity: AppIdentity?): Held = synchronized(lock) {
+        if (connecting !== session || disposed) {
+            throw VmServiceClosedException("another connection took its place, or the project closed")
+        }
+        connecting = null
+        Held(session, identity).also { held = it }
     }
 
     /** Reports [session] lost when it drops while it is [current]; Spock's own closes report themselves. */
