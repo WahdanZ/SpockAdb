@@ -1,7 +1,8 @@
 # Flutter wiring (H / P5b core) — design
 
-Status: design, 2026-10-02. Wave 1 (H1 on #159, H2 + D1–D11 on #161, A1–A15 on #162) is reviewed, fixed and merged
-together on `feature/flutter-h-wiring`; this is built on that branch. Nothing here is implemented yet. Plan: [PLAN-FLUTTER.md](PLAN-FLUTTER.md), phase H.
+Status: implemented on `feature/flutter-h-wiring` (2026-10-02), not yet validated on a device. Wave 1 (H1 on #159,
+H2 + D1–D11 on #161, A1–A15 on #162) is reviewed, fixed and merged together on that branch. Plan:
+[PLAN-FLUTTER.md](PLAN-FLUTTER.md), phase H. Where the code differs from this design, §8 says how and why.
 
 The flow it completes, with nothing pasted:
 
@@ -139,3 +140,30 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
 - exact ownership: Spock restores only what it enabled, and never touches logging that was already on;
 - a Settings switch, "Record Flutter HTTP traffic automatically", default on;
 - a Timeline row when Spock turns it on and when it restores it, and the `flutter` section says which.
+
+## 8. As built — where the code differs
+
+- **Who owns what.** `FlutterFollower` is a plain class (testable without the IDE); the project service is
+  `FlutterFollowerService`, which owns it and the `FlutterEventLog`, wires the triggers (`SpockSelection`, the
+  Timeline's process starts, Diagnose) and builds Diagnose's `FlutterDiagnosticSource`. `FlutterTimelineRecorder` is
+  owned by `DebugTimelineService`, whose timeline it records into, and records only while **Record device events** is on.
+- **Events from before `Connected`.** `FlutterSessionServiceListener` gained `sessionCreated(session)`, called before
+  the session connects: DDS replays history during `connect`, before any `Connected` change, so the log and the
+  recorder subscribe there and drop the events of a session that never becomes current.
+- **The clock.** `FlutterSession.deviceTime` is a `DeviceTimeSlot`; `FlutterSessionService.ensureSession` measures it
+  once per session on a pooled thread, on the device it verified (`DeviceTimeSampler`, `date '+%s%3N %z'`, 5
+  samples, first dropped, least round trip). A session opened with a pasted address (no device) has none; rows are
+  then placed on the device's clock in UTC and the section pairs no log lines, and both say so.
+- **Correlation ids.** `likelyProblems` entries gained `id` (`p1`…), and a section can run a step after ranking
+  (`SectionReport.afterRanking`); `flutter.errors.groups[i]` carries `problem` (its own id) and `nearbyLogs`. Only log
+  problems listed in `likelyProblems` can be paired. `DiagnosticSection.appliesTo` leaves `flutter` out for an app
+  that is not Flutter.
+- **Frames on the Timeline.** No frame rows in debug or an unknown build (§6's "debug frames produce no rows"); in
+  profile, one row per burst per 2-second window. Frames are placed at batch time: no engine-clock offset is measured.
+- **Follower memory.** Terminal outcomes are remembered for the automatic triggers only; Diagnose always asks, since
+  `flutter attach` may have run since. Backoff 0.5/1/2/4 s then 4 s again, at most 8 retries, or the service's
+  `retryAfterMs` when longer.
+- **Not built here:** a rebuild recording window, the logcat fallback for errors when structured errors are off (the
+  section points at `logs` instead), `flutter_app_status`, and the check that the session clock and `DeviceClock`
+  agree (the H gate does that by eye).
+
