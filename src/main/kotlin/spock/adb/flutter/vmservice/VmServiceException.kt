@@ -45,6 +45,21 @@ class NoDdsException : VmServiceException(
         "because a direct connection would block them.",
 )
 
+/**
+ * The UI isolate is paused in the debugger: an extension runs on its event loop and would not
+ * answer until it resumes, so the call is not made [FR12].
+ */
+class VmServicePausedException(val isolateId: String, val pauseKind: String) :
+    VmServiceException("The app is paused in the debugger ($pauseKind).")
+
+/** No UI isolate to call: none runs Flutter, or several do and none has been chosen yet. */
+class NoUiIsolateException(reason: String) : VmServiceException(reason)
+
+/** A call that would change the app, refused on a connection that only watches. */
+class ReadOnlyConnectionException(method: String) : VmServiceException(
+    "$method would change the app, and this connection only watches it (no Dart Development Service).",
+)
+
 /** No answer within the call's timeout. The request is forgotten; a late answer is dropped. */
 class VmServiceTimeoutException(val method: String, val timeoutMs: Long) :
     VmServiceException("$method got no answer in $timeoutMs ms")

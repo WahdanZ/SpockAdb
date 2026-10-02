@@ -70,6 +70,9 @@ class FlutterSessionLiveCheck {
             println("selection: ${session.selection?.let(::describe)}")
             println("UI isolate ${session.uiIsolateId}, build ${session.buildMode}")
             println("structuredErrors ${session.structuredErrorsEnabled}")
+            val snapshot = session.snapshot
+            println("HTTP recording ${snapshot.httpRecording}")
+            println("VM pid ${snapshot.vmPid}, started ${snapshot.vmStartTimeMs}, on ${snapshot.operatingSystem}")
             Thread.sleep(seconds * MILLIS)
             events.groupingBy { "${if (it.history) "history" else "live"} ${it.streamId} ${it.label()}" }
                 .eachCount()

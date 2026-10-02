@@ -1,17 +1,23 @@
 package spock.adb.flutter
 
 import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
 import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.ExtensionResults
 import spock.adb.flutter.vmservice.HandedToDdsCandidate
 import spock.adb.flutter.vmservice.NoDdsException
+import spock.adb.flutter.vmservice.NoUiIsolateException
+import spock.adb.flutter.vmservice.ReadOnlyConnectionException
+import spock.adb.flutter.vmservice.Redaction
 import spock.adb.flutter.vmservice.VmServiceCandidate
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceClosedException
 import spock.adb.flutter.vmservice.VmServiceEvent
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.flutter.vmservice.VmServiceListener
+import spock.adb.flutter.vmservice.VmServicePausedException
+import spock.adb.flutter.vmservice.VmServiceProbe
 import spock.adb.flutter.vmservice.VmServiceRedirectException
 import spock.adb.flutter.vmservice.VmServiceRpcException
 import spock.adb.flutter.vmservice.VmServiceUri
@@ -46,8 +52,10 @@ import kotlin.concurrent.withLock
  * - `structuredErrors` is only read, never set. Debug builds already have it on (spike S3), and
  *   switching it would change where the app reports its errors for every other tool.
  * - `httpEnableTimelineLogging` is off by default (spike S4) and P5 needs it for HTTP failures, so
- *   it is switched on for each new UI isolate — and off again on [close], only where Spock was the
- *   one that switched it on. Only a [ConnectionKind.DDS] connection writes: a direct one kept by
+ *   it is switched on for each new UI isolate — only on a [ConnectionKind.DDS] connection, in a
+ *   debug or profile build, and when the caller's `recordHttp` allows — and off again on [close],
+ *   only where Spock was the one that switched it on; one that was already on is never touched.
+ *   [FlutterSessionSnapshot.httpRecording] says which, or why not. A direct connection kept by
  *   opt-in makes no writes at all. A direct address the VM hands to DDS on connect answers the
  *   probe as DDS, and is a DDS connection like any other.
  */
@@ -59,7 +67,7 @@ class FlutterSession(
 ) : AutoCloseable {
 
     /** One [connect]: whoever ends it — [close], a lost connection, a failure — tears down this one. */
-    private class Attempt(@Volatile var candidate: VmServiceCandidate) {
+    private class Attempt(@Volatile var candidate: VmServiceCandidate, val recordHttp: Boolean) {
         /** Set under the session's lock, and only while this is the session's attempt. */
         @Volatile
         var client: VmServiceClient? = null
@@ -78,16 +86,13 @@ class FlutterSession(
     /** Serialises selection and per-isolate set-up, which make VM Service calls. */
     private val selectionLock = ReentrantLock()
 
-    /** Orders switching HTTP logging on against switching it back off. */
-    private val writeLock = ReentrantLock()
-
     @Volatile
     private var attempt: Attempt? = null
     private var httpLoggingCheckedFor: String? = null
     private var structuredErrorsReadFor: String? = null
 
-    /** UI isolates where Spock switched HTTP timeline logging on, so [close] switches it off. */
-    private val httpLoggingEnabledBySpock = mutableSetOf<String>()
+    /** What Spock switched on, so [close] switches it off. */
+    private val httpLogging = HttpLogging()
 
     /** One per session: a reconnect's replay of events already delivered is recognised. */
     private val history = EventHistory()
@@ -139,18 +144,22 @@ class FlutterSession(
      * A hint from the UI isolate's extensions: the inspector is registered only in debug builds,
      * and the rest of `ext.flutter.*` in profile builds too. Release builds have no VM Service.
      */
-    val buildMode: FlutterBuild?
-        get() {
-            val rpcs = uiIsolate?.extensionRpcs ?: return null
-            return when {
-                rpcs.any { it.startsWith(FlutterIsolate.INSPECTOR_PREFIX) } -> FlutterBuild.DEBUG
-                rpcs.any { it.startsWith(FlutterIsolate.FLUTTER_EXTENSION_PREFIX) } -> FlutterBuild.PROFILE
-                else -> null
-            }
-        }
+    val buildMode: FlutterBuild? get() = uiIsolate?.let { buildModeOf(it.extensionRpcs) }
 
-    fun addListener(listener: FlutterSessionListener) {
-        listeners += listener
+    /**
+     * With [replayState], [listener] first hears the state as it is now, then every change after
+     * it, none twice — for a listener that arrives after [connect] and must not miss `Connected`.
+     */
+    fun addListener(listener: FlutterSessionListener, replayState: Boolean = false) {
+        if (!replayState) {
+            listeners += listener
+            return
+        }
+        synchronized(lock) {
+            listeners += listener
+            notifier.enqueueFor(listener, snapshot.state)
+        }
+        notifier.flush()
     }
 
     fun removeListener(listener: FlutterSessionListener) {
@@ -165,6 +174,8 @@ class FlutterSession(
      * @param allowDirect keep a connection to a VM with no DDS in front of it, read-only. It then
      * keeps `flutter run` and `flutter attach` from starting DDS until [close] — the developer's
      * explicit choice, never a default.
+     * @param recordHttp switch HTTP timeline logging on where the connection and build allow it
+     * (see [FlutterSessionSnapshot.httpRecording]); false leaves it alone.
      * @throws NoDdsException when the VM has no DDS in front of it and [allowDirect] is false: the
      * connection is closed before anything else is called.
      * @throws VmServiceException when the connection or its first calls fail; nothing is left open,
@@ -173,26 +184,25 @@ class FlutterSession(
     // Anything that escapes — the VM Service failing, or a bug — must not leave a socket open or
     // the session half set: it is cleaned up and rethrown as it was.
     @Suppress("TooGenericExceptionCaught")
-    fun connect(candidate: VmServiceCandidate, allowDirect: Boolean = false): VmServiceClient {
-        val attempt = Attempt(candidate)
+    fun connect(
+        candidate: VmServiceCandidate,
+        allowDirect: Boolean = false,
+        recordHttp: Boolean = true,
+    ): VmServiceClient {
+        val attempt = Attempt(candidate, recordHttp)
         synchronized(lock) {
             check(this.attempt == null) { "This session is already connected; close it first." }
             this.attempt = attempt
-            // What was read on a lost connection is stale. httpLoggingEnabledBySpock is kept: the
+            // What was read on a lost connection is stale. What httpLogging switched on is kept: the
             // app still has logging on, and close() must still switch it off.
             structuredErrorsReadFor = null
             httpLoggingCheckedFor = null
-            snapshot = snapshot.copy(
-                selection = null,
-                uiIsolate = null,
-                structuredErrorsEnabled = null,
-                connectionKind = null,
-            )
+            snapshot = snapshot.withoutConnection().copy(selection = null, structuredErrorsEnabled = null)
         }
         try {
             val connected = openFollowingDds(attempt)
             hold(attempt, connected)
-            val kind = probe(connected)
+            val kind = VmServiceProbe.kindOf(connected)
             if (kind == ConnectionKind.DIRECT_NO_DDS && !allowDirect) throw NoDdsException()
             synchronized(lock) {
                 ensureCurrent(attempt)
@@ -203,6 +213,11 @@ class FlutterSession(
             synchronized(lock) {
                 ensureCurrent(attempt)
                 vm = description
+                snapshot = snapshot.copy(
+                    vmPid = description.number("pid")?.toInt(),
+                    vmStartTimeMs = description.number("startTime")?.toLong(),
+                    operatingSystem = description.string("operatingSystem"),
+                )
                 setState(SessionState.Connected(null))
             }
             notifier.flush()
@@ -233,6 +248,41 @@ class FlutterSession(
     }
 
     /**
+     * Calls the service extension [method] on the UI isolate, for a read: what Diagnose and the
+     * timeline ask the app. The result comes scrubbed of VM Service addresses [FR9]. Blocking.
+     *
+     * Nothing is sent to a paused isolate, which would not answer; an isolate that pauses during
+     * the call costs [timeoutMs]. On a read-only connection, a call that sets a value (`enabled`,
+     * as Flutter's and dart:io's bool extensions take it) is refused.
+     *
+     * @throws VmServiceClosedException when not connected, or the connection ends meanwhile.
+     * @throws VmServicePausedException when the UI isolate is paused in the debugger [FR12].
+     * @throws NoUiIsolateException when no UI isolate is chosen ([selection] says why).
+     * @throws ReadOnlyConnectionException for a write on a read-only connection.
+     */
+    fun callUiExtension(method: String, params: Map<String, String> = emptyMap(), timeoutMs: Long? = null): JsonObject {
+        val (connected, isolateId) = synchronized(lock) {
+            val connected = client
+            uiCallProblem(snapshot, connected, method, params)?.let { throw it }
+            checkNotNull(connected) to checkNotNull(snapshot.uiIsolateId)
+        }
+        val result = connected.callServiceExtension(method, isolateId, params, timeoutMs ?: connected.defaultTimeoutMs)
+        return Redaction.scrubJson(result).asJsonObject
+    }
+
+    /**
+     * Calls a VM-level RPC — `_flutter.listViews`, `_flutter.getDisplayRefreshRate`, `getVM` — for
+     * a read; the session does not police what is called. The result comes scrubbed [FR9]. Blocking.
+     *
+     * @throws VmServiceClosedException when not connected, or the connection ends meanwhile.
+     */
+    fun callVm(method: String, params: JsonObject = JsonObject(), timeoutMs: Long? = null): JsonObject {
+        val connected = client ?: throw VmServiceClosedException("not connected")
+        val result = connected.call(method, params, timeoutMs ?: connected.defaultTimeoutMs)
+        return Redaction.scrubJson(result).asJsonObject
+    }
+
+    /**
      * Switches HTTP timeline logging back off where Spock switched it on, closes the connection
      * and releases what discovery set up (an `adb forward`). Blocking but brief: calls still
      * waiting — a stuck re-selection, a connect — are failed first. Safe to repeat.
@@ -259,25 +309,14 @@ class FlutterSession(
         connector(handed.open())
     }
 
-    /**
-     * The first call on a new connection, before any stream or extension: a client on a VM with no
-     * DDS must leave before it does anything else. Only "method not found" means the VM itself;
-     * any other failure is the connection's, and fails it.
-     */
-    private fun probe(connected: VmServiceClient): ConnectionKind = try {
-        connected.call(DDS_VERSION)
-        ConnectionKind.DDS
-    } catch (e: VmServiceRpcException) {
-        if (e.code != VmServiceRpcException.METHOD_NOT_FOUND) throw e
-        ConnectionKind.DIRECT_NO_DDS
-    }
-
     /** Makes [connected] the attempt's client — unless [close] came first, which ends it here. */
     private fun hold(attempt: Attempt, connected: VmServiceClient) {
         val held = synchronized(lock) {
             if (this.attempt === attempt) {
                 attempt.client = connected
-                connectedAt = clock()
+                val now = clock()
+                connectedAt = now
+                snapshot = snapshot.copy(connectedAtHostMs = now)
                 history.newConnection()
             }
             this.attempt === attempt
@@ -313,7 +352,7 @@ class FlutterSession(
     /** Under the lock: the session lets go of its attempt and says why. */
     private fun detach(state: SessionState.Disconnected) {
         attempt = null
-        snapshot = snapshot.copy(uiIsolate = null, connectionKind = null)
+        snapshot = snapshot.withoutConnection()
         setState(state)
     }
 
@@ -324,23 +363,13 @@ class FlutterSession(
             if (connected != null && connected.isOpen) {
                 connected.failPendingCalls("the Flutter session is closing")
                 // A direct connection writes nothing; the isolates stay listed for a later DDS one.
-                if (attempt.kind == ConnectionKind.DDS) restoreHttpLogging(connected)
+                if (attempt.kind == ConnectionKind.DDS) httpLogging.restore(connected)
             }
         } finally {
             try {
                 connected?.close()
             } finally {
                 release(attempt.candidate)
-            }
-        }
-    }
-
-    private fun listen(connected: VmServiceClient, streamId: String) {
-        try {
-            connected.streamListen(streamId)
-        } catch (e: VmServiceRpcException) {
-            if (e.code != VmServiceRpcException.STREAM_ALREADY_SUBSCRIBED) {
-                log.warn("Could not listen to $streamId: ${e.message}")
             }
         }
     }
@@ -395,6 +424,7 @@ class FlutterSession(
                         selection = result,
                         uiIsolate = result.isolate,
                         structuredErrorsEnabled = kept,
+                        httpRecording = snapshot.httpRecording.takeIf { httpLoggingCheckedFor == result.isolate.id },
                     )
                     result.isolate
                 }
@@ -431,9 +461,7 @@ class FlutterSession(
             val rpcs = isolate.extensionRpcs
             val readErrors = FlutterIsolate.STRUCTURED_ERRORS in rpcs && structuredErrorsReadFor != isolateId
             if (readErrors) structuredErrorsReadFor = isolateId
-            val enableLogging = !readOnly && HTTP_LOGGING in rpcs && httpLoggingCheckedFor != isolateId
-            if (enableLogging) httpLoggingCheckedFor = isolateId
-            readErrors to enableLogging
+            readErrors to (httpLoggingCheckedFor != isolateId && decideHttp(isolate))
         }
         if (readErrors) {
             val enabled = readBool(connected, FlutterIsolate.STRUCTURED_ERRORS, isolateId)
@@ -446,45 +474,37 @@ class FlutterSession(
         if (enableLogging) enableHttpLogging(connected, isolateId)
     }
 
-    /**
-     * The isolate is recorded before the write: a write that times out may still be applied, and
-     * switching it off on close is harmless if it was not. Only a refusal un-records it.
-     */
+    /** Under [selectionLock]: switches logging on unless the connection stopped allowing it meanwhile. */
     private fun enableHttpLogging(connected: VmServiceClient, isolateId: String) {
-        if (readBool(connected, HTTP_LOGGING, isolateId) != false) return
-        writeLock.withLock {
-            synchronized(lock) {
-                if (client !== connected || readOnly) return
-                httpLoggingEnabledBySpock += isolateId
-            }
-            try {
-                connected.callServiceExtension(HTTP_LOGGING, isolateId, mapOf("enabled" to "true"))
-            } catch (e: VmServiceRpcException) {
-                synchronized(lock) { httpLoggingEnabledBySpock -= isolateId }
-                log.warn("Could not enable HTTP timeline logging: ${e.message}")
-            } catch (e: VmServiceException) {
-                log.warn("HTTP timeline logging may be on without an answer; close() switches it off: ${e.message}")
+        val recording = httpLogging.enable(connected, isolateId) {
+            synchronized(lock) { client === connected && !readOnly }
+        } ?: return
+        synchronized(lock) {
+            if (client === connected && snapshot.uiIsolate?.id == isolateId) {
+                snapshot = snapshot.copy(httpRecording = recording)
             }
         }
     }
 
-    /** Every isolate Spock switched on that is still alive; a paused one is left, as it would not answer. */
-    private fun restoreHttpLogging(connected: VmServiceClient) = writeLock.withLock {
-        val isolateIds = synchronized(lock) {
-            httpLoggingEnabledBySpock.toList().also { httpLoggingEnabledBySpock.clear() }
+    /**
+     * Under the lock: whether to switch HTTP logging on for [isolate] now. When not, the snapshot
+     * says why; a build mode not known yet is decided again as the isolate's extensions register.
+     */
+    private fun decideHttp(isolate: FlutterIsolate): Boolean {
+        val rpcs = isolate.extensionRpcs
+        val reason = when {
+            attempt?.recordHttp != true -> HttpRecording.Reason.SETTING_OFF
+            readOnly -> HttpRecording.Reason.NOT_DDS
+            buildModeOf(rpcs) == null -> HttpRecording.Reason.RELEASE_OR_UNKNOWN_MODE
+            else -> null
         }
-        isolateIds.forEach { isolateId ->
-            try {
-                val params = JsonObject().apply { addProperty("isolateId", isolateId) }
-                val isolate = FlutterIsolate.from(connected.call("getIsolate", params, RESTORE_TIMEOUT_MS))
-                if (isolate != null && !isolate.paused) {
-                    val off = mapOf("enabled" to "false")
-                    connected.callServiceExtension(HTTP_LOGGING, isolateId, off, RESTORE_TIMEOUT_MS)
-                }
-            } catch (e: VmServiceException) {
-                log.warn("Could not switch HTTP timeline logging back off: ${e.message}")
-            }
+        if (reason != null) {
+            snapshot = snapshot.copy(httpRecording = HttpRecording.Off(reason))
+            if (reason != HttpRecording.Reason.RELEASE_OR_UNKNOWN_MODE) httpLoggingCheckedFor = isolate.id
         }
+        val enable = reason == null && HTTP_LOGGING in rpcs
+        if (enable) httpLoggingCheckedFor = isolate.id
+        return enable
     }
 
     /** Under the lock; listeners hear of it at the next [StateNotifier.flush]. */
@@ -539,7 +559,7 @@ class FlutterSession(
     }
 
     private fun onIsolateExit(event: VmServiceEvent, affectsSelection: Boolean) {
-        event.isolateId?.let { httpLoggingEnabledBySpock -= it }
+        event.isolateId?.let(httpLogging::forget)
         if (affectsSelection) reselectSoon()
     }
 
@@ -599,18 +619,16 @@ class FlutterSession(
          */
         val DEFAULT_STREAMS = listOf("Isolate", "Debug", "Extension", "Logging")
 
-        const val HTTP_LOGGING = "ext.dart.io.httpEnableTimelineLogging"
+        const val HTTP_LOGGING = HttpLogging.HTTP_LOGGING
 
-        /** Served by DDS only; the VM itself answers it with "method not found". */
-        const val DDS_VERSION = "getDartDevelopmentServiceVersion"
+        /** The argument that makes a bool extension set its value rather than report it. */
+        internal const val SET_PARAM = "enabled"
         const val CLOSED_BY_SPOCK = "closed by Spock"
         private const val STATE_CHANGED = "Flutter.ServiceExtensionStateChanged"
 
         /** A hot restart registers dozens of extensions within this; they cost one re-selection. */
         private const val RESELECT_DELAY_MS = 100L
 
-        /** Closing should be quick: an isolate that does not answer in this keeps its logging. */
-        private const val RESTORE_TIMEOUT_MS = 2_000L
         private const val WORKER_IDLE_SECONDS = 5L
     }
 }
@@ -627,10 +645,53 @@ private fun release(candidate: VmServiceCandidate) {
     }
 }
 
-/** Called with no `enabled` argument, a bool extension only reports its value. */
-private fun readBool(connected: VmServiceClient, extension: String, isolateId: String): Boolean? = try {
-    ExtensionResults.bool(connected.callServiceExtension(extension, isolateId))
-} catch (e: VmServiceException) {
-    log.warn("Could not read $extension: ${e.message}")
-    null
+private fun listen(connected: VmServiceClient, streamId: String) {
+    try {
+        connected.streamListen(streamId)
+    } catch (e: VmServiceRpcException) {
+        if (e.code != VmServiceRpcException.STREAM_ALREADY_SUBSCRIBED) {
+            log.warn("Could not listen to $streamId: ${e.message}")
+        }
+    }
 }
+
+/** Why [method] cannot be sent to the UI isolate now, or null when it can. */
+private fun uiCallProblem(
+    snapshot: FlutterSessionSnapshot,
+    connected: VmServiceClient?,
+    method: String,
+    params: Map<String, String>,
+): VmServiceException? {
+    val state = snapshot.state
+    val ui = snapshot.uiIsolate
+    return when {
+        connected == null -> VmServiceClosedException("not connected")
+        state is SessionState.Paused -> VmServicePausedException(state.isolateId, state.pauseKind)
+        ui == null -> NoUiIsolateException(noUiIsolate(snapshot.selection))
+        ui.paused -> VmServicePausedException(ui.id, ui.pauseKind.orEmpty())
+        snapshot.connectionKind != ConnectionKind.DDS && FlutterSession.SET_PARAM in params ->
+            ReadOnlyConnectionException(method)
+        else -> null
+    }
+}
+
+/** Why there is no UI isolate to call, for a [NoUiIsolateException]. */
+private fun noUiIsolate(selection: IsolateSelection?): String = when (selection) {
+    is IsolateSelection.Ambiguous -> "Several Flutter isolates are running; choose one first."
+    is IsolateSelection.NoFlutterIsolate -> selection.reason
+    is IsolateSelection.Paused -> selection.message
+    is IsolateSelection.Selected, null -> "No Flutter isolate is selected yet."
+}
+
+/**
+ * A hint from an isolate's extensions: the inspector is registered only in debug builds, and the
+ * rest of `ext.flutter.*` in profile builds too. Release builds have no VM Service.
+ */
+private fun buildModeOf(rpcs: Set<String>): FlutterBuild? = when {
+    rpcs.any { it.startsWith(FlutterIsolate.INSPECTOR_PREFIX) } -> FlutterBuild.DEBUG
+    rpcs.any { it.startsWith(FlutterIsolate.FLUTTER_EXTENSION_PREFIX) } -> FlutterBuild.PROFILE
+    else -> null
+}
+
+private fun JsonObject.number(key: String): Number? =
+    (get(key) as? JsonPrimitive)?.takeIf { it.isNumber }?.asNumber

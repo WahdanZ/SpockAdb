@@ -1,7 +1,6 @@
 package spock.adb.flutter
 
 import com.google.gson.JsonObject
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -11,19 +10,14 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.FakeVmService
-import spock.adb.flutter.vmservice.FakeVmService.Companion.DDS_VERSION
 import spock.adb.flutter.vmservice.FakeVmService.Companion.HTTP_LOGGING
 import spock.adb.flutter.vmservice.FakeVmService.Companion.STRUCTURED_ERRORS
 import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
 import spock.adb.flutter.vmservice.FakeVmService.Companion.fixture
 import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
-import spock.adb.flutter.vmservice.NoDdsException
-import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceCandidate
-import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
-import spock.adb.flutter.vmservice.VmServiceRpcException
 import spock.adb.flutter.vmservice.VmServiceSource
 import spock.adb.flutter.vmservice.VmServiceUri
 import java.net.ServerSocket
@@ -31,65 +25,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-class FlutterSessionTest {
-
-    private val vm = FakeVmService()
-    private val connectedAt = 1_727_776_801_500L
-    private val session = FlutterSession(clock = { connectedAt })
-    private val events = CopyOnWriteArrayList<FlutterEvent>()
-
-    init {
-        session.addListener(
-            object : FlutterSessionListener {
-                override fun onEvent(event: FlutterEvent) {
-                    events += event
-                }
-            },
-        )
-    }
-
-    @AfterEach
-    fun tearDown() {
-        session.close()
-        vm.close()
-    }
-
-    /** A candidate that counts its releases, so the `adb forward` clean-up can be checked. */
-    private class TrackingCandidate(private val uri: VmServiceUri, ddsLikely: Boolean) :
-        VmServiceCandidate(VmServiceSource.LOGCAT, ddsLikely) {
-        @Volatile
-        var released = 0
-        override val description: String get() = uri.redacted()
-        override fun open(): VmServiceUri = uri
-        override fun release() {
-            released++
-        }
-    }
-
-    private fun pasted() = PastedUriDiscovery(vm.uri).discover().single()
-
-    private fun tracking(ddsLikely: Boolean = true) = TrackingCandidate(VmServiceUri.parse(vm.uri), ddsLikely)
-
-    private fun extensionCalls(method: String, isolateId: String? = null) =
-        vm.requestsFor(method).map { it.getAsJsonObject("params") }
-            .filter { isolateId == null || it.get("isolateId").asString == isolateId }
-
-    private fun writes(method: String, isolateId: String? = null) =
-        extensionCalls(method, isolateId).filter { it.has("enabled") }.map { it.get("enabled").asString }
-
-    private fun FakeVmService.methods() = requests.map { it.get("method").asString }
-
-    private fun stateChanged(value: String, timestamp: Long, isolateId: String = UI_ISOLATE) =
-        isolateEvent("Extension", isolateId, timestamp) {
-            addProperty("extensionKind", "Flutter.ServiceExtensionStateChanged")
-            add(
-                "extensionData",
-                JsonObject().apply {
-                    addProperty("extension", STRUCTURED_ERRORS)
-                    addProperty("value", value)
-                },
-            )
-        }
+class FlutterSessionTest : FlutterSessionFixture() {
 
     @Test
     fun `connect picks the isolate behind the Flutter view and reads the VM`() {
@@ -234,7 +170,11 @@ class FlutterSessionTest {
         vm.pushEvent("Isolate", isolateEvent("IsolateStart", restarted, connectedAt + 1_001))
 
         eventually(message = "the new isolate") { session.uiIsolateId == restarted }
-        eventually(message = "logging on the new isolate") { writes(HTTP_LOGGING, restarted) == listOf("true") }
+        // dart:io registers first; until a Flutter extension says debug or profile, nothing is switched.
+        eventually(message = "the mode not known yet") {
+            session.snapshot.httpRecording == HttpRecording.Off(HttpRecording.Reason.RELEASE_OR_UNKNOWN_MODE)
+        }
+        assertEquals(emptyList<String>(), writes(HTTP_LOGGING, restarted))
         assertNull(session.structuredErrorsEnabled)
 
         vm.pushEvent(
@@ -244,6 +184,8 @@ class FlutterSessionTest {
             },
         )
         eventually(message = "structuredErrors read on the new isolate") { session.structuredErrorsEnabled == true }
+        eventually(message = "logging on the new isolate") { writes(HTTP_LOGGING, restarted) == listOf("true") }
+        assertEquals(HttpRecording.EnabledBySpock, session.snapshot.httpRecording)
         assertEquals(1, extensionCalls(STRUCTURED_ERRORS, restarted).size)
         assertEquals(emptyList<String>(), writes(STRUCTURED_ERRORS))
     }
@@ -276,144 +218,6 @@ class FlutterSessionTest {
 
         assertEquals(listViewsCalls, vm.requestsFor("_flutter.listViews").size)
         assertEquals(UI_ISOLATE, session.uiIsolateId)
-    }
-
-    @Test
-    fun `HTTP logging that was off is switched on, and off again on close`() {
-        session.connect(pasted())
-
-        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
-        assertTrue(vm.httpLogging)
-
-        session.close()
-
-        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
-        assertFalse(vm.httpLogging)
-    }
-
-    @Test
-    fun `HTTP logging that was already on is left alone, on connect and on close`() {
-        vm.httpLogging = true
-
-        session.connect(pasted())
-        session.close()
-
-        assertEquals(1, extensionCalls(HTTP_LOGGING).size)
-        assertEquals(emptyList<String>(), writes(HTTP_LOGGING))
-        assertTrue(vm.httpLogging)
-    }
-
-    @Test
-    fun `what answers is asked first, before any stream, VM read or extension call`() {
-        session.connect(pasted())
-
-        val methods = vm.methods()
-        assertEquals(DDS_VERSION, methods.first())
-        assertEquals(1, methods.count { it == DDS_VERSION })
-        assertTrue(methods.indexOf("getVM") > 0 && methods.indexOf("streamListen") > 0, methods.toString())
-    }
-
-    @Test
-    fun `a pasted address of a VM with no DDS is left at once, having called nothing else`() {
-        vm.dds = false
-
-        val error = assertThrows<NoDdsException> { session.connect(pasted()) }
-
-        assertTrue(error.message!!.contains("without a debugger session"), error.message)
-        assertTrue(error.message!!.contains("flutter attach"), error.message)
-        assertEquals(listOf(DDS_VERSION), vm.methods())
-        assertTrue(vm.server.closeFrameReceived.await(2, TimeUnit.SECONDS))
-        assertEquals(SessionState.Disconnected(error.message!!), session.state)
-        assertNull(session.client)
-        assertNull(session.connectionKind)
-        assertTrue(session.readOnly)
-        assertFalse(vm.httpLogging)
-    }
-
-    @Test
-    fun `a VM with no DDS found through logcat is left too, and its forward released`() {
-        vm.dds = false
-        val candidate = tracking(ddsLikely = false)
-
-        assertThrows<NoDdsException> { session.connect(candidate) }
-
-        assertEquals(listOf(DDS_VERSION), vm.methods())
-        assertEquals(1, candidate.released)
-    }
-
-    @Test
-    fun `a VM with no DDS is kept only when asked, and then read but never written`() {
-        vm.dds = false
-        val candidate = tracking(ddsLikely = false)
-
-        session.connect(candidate, allowDirect = true)
-
-        assertEquals(ConnectionKind.DIRECT_NO_DDS, session.connectionKind)
-        assertTrue(session.readOnly)
-        assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
-        assertEquals(true, session.structuredErrorsEnabled)
-        assertEquals(DDS_VERSION, vm.methods().first())
-        session.close()
-
-        assertEquals(emptyList<String>(), writes(HTTP_LOGGING) + writes(STRUCTURED_ERRORS))
-        assertFalse(vm.httpLogging)
-        assertEquals(1, candidate.released)
-    }
-
-    @Test
-    fun `a candidate not marked as DDS that answers as DDS is a DDS connection`() {
-        session.connect(tracking(ddsLikely = false))
-
-        assertEquals(ConnectionKind.DDS, session.connectionKind)
-        assertFalse(session.readOnly)
-        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
-    }
-
-    @Test
-    fun `asking with DDS allowed is no different on DDS`() {
-        session.connect(pasted(), allowDirect = true)
-
-        assertEquals(ConnectionKind.DDS, session.connectionKind)
-        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
-    }
-
-    @Test
-    fun `a probe that fails any other way fails the connection`() {
-        vm.on(DDS_VERSION) { FakeVmService.Reply.Error(-32_000, "Server error") }
-        val candidate = tracking()
-
-        val error = assertThrows<VmServiceRpcException> { session.connect(candidate, allowDirect = true) }
-
-        assertEquals(DDS_VERSION, error.method)
-        assertEquals(listOf(DDS_VERSION), vm.methods())
-        assertEquals(SessionState.Disconnected(error.message!!), session.state)
-        assertNull(session.connectionKind)
-        assertEquals(1, candidate.released)
-    }
-
-    @Test
-    fun `a direct address the VM redirects to DDS is followed, and the connection is then DDS's`() {
-        FakeVmService().use { dds ->
-            vm.dds = false
-            vm.server.redirectTo = dds.uri
-            val candidate = tracking(ddsLikely = false)
-
-            session.connect(candidate)
-
-            assertEquals(SessionState.Connected(UI_ISOLATE), session.state)
-            assertEquals(ConnectionKind.DDS, session.connectionKind)
-            assertFalse(session.readOnly)
-            assertEquals(DDS_VERSION, dds.methods().first())
-            val ddsWrites = dds.requestsFor(HTTP_LOGGING).map { it.getAsJsonObject("params") }
-                .filter { it.has("enabled") }.map { it.get("enabled").asString }
-            assertEquals(listOf("true"), ddsWrites)
-            assertTrue(vm.requests.isEmpty())
-
-            session.close()
-
-            assertFalse(dds.httpLogging)
-            assertEquals(1, candidate.released)
-        }
     }
 
     @Test
@@ -469,19 +273,6 @@ class FlutterSessionTest {
         assertEquals(1, candidate.released)
         assertNull(session.client)
         assertTrue(states.last() is SessionState.Disconnected)
-    }
-
-    @Test
-    fun `after a lost connection, a reconnect still switches off the logging Spock switched on`() {
-        session.connect(pasted())
-        vm.server.drop()
-        eventually { session.state is SessionState.Disconnected }
-
-        session.connect(pasted())
-        session.close()
-
-        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
-        assertFalse(vm.httpLogging)
     }
 
     @Test
@@ -596,29 +387,6 @@ class FlutterSessionTest {
     }
 
     @Test
-    fun `a switch-on that times out may still apply, so close still switches it off`() {
-        vm.on(HTTP_LOGGING) { params ->
-            when (params.get("enabled")?.asString) {
-                // Applied by the app, but the answer never comes.
-                "true" -> FakeVmService.Reply.None.also { vm.httpLogging = true }
-                else -> {
-                    params.get("enabled")?.let { vm.httpLogging = it.asString == "true" }
-                    FakeVmService.Reply.Result(JsonObject().apply { addProperty("enabled", vm.httpLogging) })
-                }
-            }
-        }
-        val impatient = FlutterSession(connector = { VmServiceClient.connect(it, timeoutMs = 300) })
-        try {
-            impatient.connect(pasted())
-        } finally {
-            impatient.close()
-        }
-
-        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
-        assertFalse(vm.httpLogging)
-    }
-
-    @Test
     fun `a burst of extension registrations while no isolate is chosen costs one re-selection`() {
         vm.viewIsolates = null
         vm.isolates.clear()
@@ -715,24 +483,6 @@ class FlutterSessionTest {
     }
 
     @Test
-    fun `logging switched on through DDS is switched off through DDS, never through a direct connection`() {
-        session.connect(pasted())
-        vm.server.drop()
-        eventually { session.state is SessionState.Disconnected }
-
-        vm.dds = false
-        session.connect(tracking(ddsLikely = false), allowDirect = true)
-        session.close()
-        assertEquals(listOf("true"), writes(HTTP_LOGGING, UI_ISOLATE))
-
-        vm.dds = true
-        session.connect(pasted())
-        session.close()
-        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
-        assertFalse(vm.httpLogging)
-    }
-
-    @Test
     fun `a reconnect's replay of events already delivered is dropped`() {
         val old = fixture("event-frame.json").apply { addProperty("timestamp", connectedAt - 1_000) }
         vm.replayOnListen = { stream -> if (stream == "Extension") vm.pushEvent("Extension", old) }
@@ -765,21 +515,6 @@ class FlutterSessionTest {
         assertEquals(SessionState.Connected(UI_ISOLATE), snapshot.state)
         assertEquals(UI_ISOLATE, snapshot.uiIsolateId)
         assertEquals(true, snapshot.structuredErrorsEnabled)
-    }
-
-    /** Events are handled in order: once a fresh live one is seen, those pushed before it were handled. */
-    private fun awaitEventsHandled() {
-        val marker = System.nanoTime()
-        vm.pushEvent(
-            "Extension",
-            fixture("event-frame.json").apply {
-                addProperty("timestamp", connectedAt + 10_000_000)
-                getAsJsonObject("extensionData").addProperty("marker", marker)
-            },
-        )
-        eventually(message = "the marker event") {
-            events.any { it.event.event.getAsJsonObject("extensionData")?.get("marker")?.asLong == marker }
-        }
     }
 
     @Test
