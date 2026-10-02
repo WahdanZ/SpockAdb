@@ -1,6 +1,13 @@
 package spock.adb.flutter
 
+import com.google.gson.JsonObject
+import com.google.gson.JsonPrimitive
+import com.intellij.openapi.diagnostic.Logger
 import spock.adb.flutter.vmservice.VmServiceEvent
+import spock.adb.flutter.vmservice.string
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Where a [FlutterSession] stands. */
 sealed interface SessionState {
@@ -17,10 +24,26 @@ sealed interface SessionState {
 }
 
 /**
+ * What a [FlutterSession] knows, as one value: read [FlutterSession.snapshot] once and the state,
+ * the UI isolate and the structured-errors flag agree with each other, which separate reads of
+ * the session's properties need not. A `Connected` state with an isolate is published only once
+ * that isolate is set up, so [structuredErrorsEnabled] is already read then.
+ */
+data class FlutterSessionSnapshot(
+    val state: SessionState,
+    val selection: IsolateSelection? = null,
+    val uiIsolate: FlutterIsolate? = null,
+    /** Null until read, or when the UI isolate has no inspector (profile builds). */
+    val structuredErrorsEnabled: Boolean? = null,
+) {
+    val uiIsolateId: String? get() = uiIsolate?.id
+}
+
+/**
  * A VM Service event as the session hands it on.
  *
  * [history] marks an event DDS replayed on subscribe — it happened before Spock connected — so a
- * caller can show it without treating it as something the app just did.
+ * caller can show it without treating it as something the app just did. See [EventHistory].
  */
 class FlutterEvent(val event: VmServiceEvent, val history: Boolean) {
     val streamId: String get() = event.streamId
@@ -40,44 +63,133 @@ class FlutterEvent(val event: VmServiceEvent, val history: Boolean) {
 interface FlutterSessionListener {
     fun onEvent(event: FlutterEvent)
 
-    /** On whichever thread changed it: the caller's during [FlutterSession.connect], else the event thread. */
+    /**
+     * In the order the state changed, one call at a time, and never while the session holds its
+     * lock — so a listener may call back into the session. On whichever session thread is
+     * delivering: the caller's during [FlutterSession.connect], else the event or session thread.
+     * [state] may already be stale when it arrives; act on [FlutterSession.snapshot].
+     */
     fun onStateChanged(state: SessionState) = Unit
 }
 
 /**
- * Tells replayed events from live ones and drops repeats.
+ * Tells replayed events from live ones and drops repeated replays. One per session, kept across
+ * reconnects, so a reconnect's replay of what the last connection already delivered is dropped.
  *
  * DDS replays up to 10 000 past `Extension`, `Logging`, `Stdout` and `Stderr` events to each new
- * subscriber, so a re-subscribe would deliver the same events twice. An event is a repeat when
- * its timestamp, isolate, kind, extension kind and content all match one seen recently. The
- * content is part of the key because two log records can share a millisecond.
+ * subscriber — only those four, so an `Isolate`, `Debug` or `Service` event is never history and
+ * always drives the session. The replay is sent from DDS's `streamListen` handler, before its
+ * answer, so an event that arrived while Spock's `streamListen` for its stream was still waiting
+ * ([VmServiceEvent.duringListen]) is history. Timestamps are on the device's clock, which may be
+ * hours off the host's, so they are only a hint, and only against each other: an event older than
+ * the newest replayed one on its stream, in this connection, is history too.
+ *
+ * A repeat is a replayed event whose timestamp, isolate, kind, extension kind and content all
+ * match one seen recently; the content key is a log record's sequence number and text, a write's
+ * first bytes, or an extension event's top-level values — exact strings, not a hash, so two
+ * distinct events never collide by chance. A live event is never dropped.
  */
-internal class EventHistory(private val connectedAt: Long, private val capacity: Int = DEFAULT_CAPACITY) {
+internal class EventHistory(private val capacity: Int = DEFAULT_CAPACITY) {
 
     private data class Key(
+        val streamId: String,
         val timestamp: Long,
         val isolateId: String?,
         val kind: String?,
         val extensionKind: String?,
-        val content: Int,
+        val content: String,
     )
 
     private val seen = object : LinkedHashMap<Key, Unit>(capacity, LOAD_FACTOR, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, Unit>?): Boolean = size > capacity
     }
 
-    /** Null for a repeat; otherwise the event, marked as history when it predates the connection. */
+    /** Stream → the newest timestamp replayed on it in this connection. */
+    private val newestReplayed = HashMap<String, Long>()
+
+    /** A new connection replays again; what was seen stays seen. */
+    @Synchronized
+    fun newConnection() = newestReplayed.clear()
+
+    /** Null for a repeated replay; otherwise the event, marked as history when it was replayed. */
     @Synchronized
     fun accept(event: VmServiceEvent): FlutterEvent? {
-        val timestamp = event.timestamp ?: return FlutterEvent(event, history = false)
-        val key = Key(timestamp, event.isolateId, event.kind, event.extensionKind, event.event.toString().hashCode())
-        if (seen.put(key, Unit) != null) return null
-        return FlutterEvent(event, history = timestamp < connectedAt)
+        if (event.streamId !in REPLAYED_STREAMS) return FlutterEvent(event, history = false)
+        val timestamp = event.timestamp ?: return FlutterEvent(event, history = event.duringListen)
+        val history = event.duringListen || timestamp < (newestReplayed[event.streamId] ?: Long.MIN_VALUE)
+        val content = contentOf(event.event)
+        val key = Key(event.streamId, timestamp, event.isolateId, event.kind, event.extensionKind, content)
+        val repeat = seen.put(key, Unit) != null
+        if (!history) return FlutterEvent(event, history = false)
+        if (repeat) return null
+        newestReplayed.merge(event.streamId, timestamp, ::maxOf)
+        return FlutterEvent(event, history = true)
+    }
+
+    private fun contentOf(event: JsonObject): String {
+        val record = event.get("logRecord") as? JsonObject
+        val data = event.get("extensionData") as? JsonObject
+        return when {
+            record != null -> {
+                val message = (record.get("message") as? JsonObject)?.string("valueAsString")
+                    ?: record.string("message")
+                "${record.get("sequenceNumber")}:${message.orEmpty().take(CONTENT_CHARS)}"
+            }
+            event.has("bytes") -> event.string("bytes").orEmpty().let { "${it.length}:${it.take(CONTENT_CHARS)}" }
+            data != null -> data.entrySet().filter { it.value is JsonPrimitive }
+                .joinToString(",") { "${it.key}=${it.value}" }.take(DATA_CHARS)
+            else -> ""
+        }
     }
 
     companion object {
         /** As many as DDS replays, so a whole replay can be recognised. */
         const val DEFAULT_CAPACITY = 10_000
         private const val LOAD_FACTOR = 0.75f
+        private const val CONTENT_CHARS = 64
+        private const val DATA_CHARS = 256
+
+        /** The streams DDS keeps and replays. */
+        val REPLAYED_STREAMS = setOf("Extension", "Logging", "Stdout", "Stderr")
+    }
+}
+
+/**
+ * Hands state changes to [listeners] in order, one at a time, outside the session's lock.
+ * Changes are queued under the lock and delivered by whichever thread calls [flush] next; a
+ * thread that finds another delivering leaves the queue to it, so a listener that calls back
+ * into the session neither deadlocks nor reorders.
+ */
+internal class StateNotifier(private val listeners: CopyOnWriteArrayList<FlutterSessionListener>) {
+
+    private val queue = ConcurrentLinkedQueue<SessionState>()
+    private val delivering = AtomicBoolean()
+
+    fun enqueue(state: SessionState) {
+        queue += state
+    }
+
+    fun flush() {
+        while (queue.isNotEmpty() && delivering.compareAndSet(false, true)) {
+            try {
+                while (true) deliver(queue.poll() ?: break)
+            } finally {
+                delivering.set(false)
+            }
+        }
+    }
+
+    // A listener's bug must cost neither the other listeners nor the session's own work.
+    @Suppress("TooGenericExceptionCaught")
+    private fun deliver(state: SessionState) = listeners.forEach { listener ->
+        try {
+            listener.onStateChanged(state)
+        } catch (e: Exception) {
+            log.warn("Flutter session listener failed on $state", e)
+        }
+    }
+
+    private companion object {
+        val log = Logger.getInstance(StateNotifier::class.java)
     }
 }

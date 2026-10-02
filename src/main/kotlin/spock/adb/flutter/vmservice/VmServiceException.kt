@@ -24,6 +24,15 @@ class VmServiceRpcException(
     }
 }
 
+/**
+ * The VM answered the WebSocket upgrade with a redirect instead of a `101`: the Dart Development
+ * Service has taken it over, and [target] is DDS's address. dart:io follows the redirect; the
+ * JDK's client does not, so the caller connects to [target] itself. The message leaves the
+ * address out.
+ */
+class VmServiceRedirectException(val target: VmServiceUri, from: String) :
+    VmServiceException("$from hands its clients to the Dart Development Service")
+
 /** No answer within the call's timeout. The request is forgotten; a late answer is dropped. */
 class VmServiceTimeoutException(val method: String, val timeoutMs: Long) :
     VmServiceException("$method got no answer in $timeoutMs ms")

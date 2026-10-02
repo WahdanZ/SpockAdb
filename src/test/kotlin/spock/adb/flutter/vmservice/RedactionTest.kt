@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.Base64
 
@@ -25,6 +26,68 @@ class RedactionTest {
             "http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2F<redacted>%2Fws",
             Redaction.scrub("http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FHXKQJZK_Rkw%3D%2Fws"),
         )
+    }
+
+    @Test
+    fun `tokens without padding, without a scheme, and encoded in every way DevTools does are scrubbed`() {
+        assertEquals("http://127.0.0.1:50300/<redacted>/", Redaction.scrub("http://127.0.0.1:50300/HXKQJZK_Rkw/"))
+        assertEquals("http://localhost:50300/<redacted>", Redaction.scrub("http://localhost:50300/HXKQJZK_Rkw"))
+        assertEquals(
+            "listening on 127.0.0.1:50300/<redacted>/",
+            Redaction.scrub("listening on 127.0.0.1:50300/HXKQJZK_Rkw=/"),
+        )
+        assertEquals("[::1]:50300/<redacted>/ws", Redaction.scrub("[::1]:50300/HXKQJZK_Rkw=/ws"))
+        assertEquals(
+            "http://[0:0:0:0:0:0:0:1]:50300/<redacted>/",
+            Redaction.scrub("http://[0:0:0:0:0:0:0:1]:50300/HXKQJZK_Rkw=/"),
+        )
+        assertEquals(
+            "ws%3A%2F%2F%5B%3A%3A1%5D%3A50300%2F<redacted>%2Fws",
+            Redaction.scrub("ws%3A%2F%2F%5B%3A%3A1%5D%3A50300%2FHXKQJZK_Rkw%3D%2Fws"),
+        )
+        assertEquals(
+            "?uri=ws%253A%252F%252F127.0.0.1%253A50300%252F<redacted>%252Fws",
+            Redaction.scrub("?uri=ws%253A%252F%252F127.0.0.1%253A50300%252FHXKQJZK_Rkw%253D%252Fws"),
+        )
+        assertEquals("ws://127.0.0.1:50300/<redacted>/ws", Redaction.scrub("ws://127.0.0.1:50300/HXKQJZK_Rkw%3D/ws"))
+        assertEquals("http://0.0.0.0:50300/<redacted>/", Redaction.scrub("http://0.0.0.0:50300/HXKQJZK_Rkw=/"))
+    }
+
+    @Test
+    fun `a uri parameter the pattern cannot read encoded is read again decoded`() {
+        // A token character itself percent-encoded (%4A is J): only the decoded form shows the token.
+        val link = "http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FHXKQ%4AZK_Rkw%3D%2Fws"
+        val scrubbed = Redaction.scrub(link)
+        assertFalse(scrubbed.contains("HXKQ"), scrubbed)
+        assertEquals("http://127.0.0.1:9100/#/?uri=ws://127.0.0.1:50300/<redacted>/ws", scrubbed)
+    }
+
+    @Test
+    fun `paths off loopback, and loopback paths that are not tokens, are left alone`() {
+        listOf(
+            "https://api.x.com/Zm9v=",
+            "https://api.example.com:8443/Zm9vYmFyYmF6=/items",
+            "https://pub.dev/packages/vm_service",
+            "http://10.0.2.2:8080/AbCdEfGh123=",
+            "http://127.0.0.1:9100/inspector?theme=dark",
+            "http://127.0.0.1:9100/devtools/",
+            "http://127.0.0.1:9100/cpu-profiler",
+            "see build/127.0.0.1:80/x",
+        ).forEach { text -> assertEquals(text, Redaction.scrub(text)) }
+    }
+
+    @Test
+    fun `json is scrubbed in a copy, strings at any depth`() {
+        val data = JsonParser.parseString(
+            """{"details":"at http://127.0.0.1:50300/HXKQJZK_Rkw=/",""" +
+                """"nested":[{"uri":"ws://[::1]:1/HXKQJZK_Rkw=/ws"}],"n":3}""",
+        )
+        val scrubbed = Redaction.scrubJson(data).toString()
+        assertFalse(scrubbed.contains("HXKQJZK"), scrubbed)
+        assertTrue(data.toString().contains("HXKQJZK"), "the original is left as it was")
+        val answer = JsonObject().apply { addProperty("value", "http://127.0.0.1:50300/HXKQJZK_Rkw=/") }
+        val redacted = Redaction.scrubExtensionResult("ext.flutter.connectedVmServiceUri", answer)
+        assertEquals("<redacted>", redacted.get("value").asString)
     }
 
     @Test

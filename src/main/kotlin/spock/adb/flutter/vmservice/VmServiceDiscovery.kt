@@ -35,6 +35,17 @@ abstract class VmServiceCandidate(
     override fun toString(): String = description
 }
 
+/**
+ * [original]'s VM handed Spock to DDS at [target] (a [VmServiceRedirectException]): DDS is
+ * shared, so this is not [direct]. Releasing it releases [original] — its `adb forward`.
+ */
+internal class HandedToDdsCandidate(val original: VmServiceCandidate, private val target: VmServiceUri) :
+    VmServiceCandidate(original.source, ddsLikely = true) {
+    override val description: String get() = "${original.description}, handed to DDS at ${target.redacted()}"
+    override fun open(): VmServiceUri = target
+    override fun release() = original.release()
+}
+
 /** Finds VM Services. Blocking: call it from a pooled thread. */
 fun interface VmServiceDiscovery {
     fun discover(): List<VmServiceCandidate>
