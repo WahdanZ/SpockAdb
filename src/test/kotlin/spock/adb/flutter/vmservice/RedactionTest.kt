@@ -15,50 +15,50 @@ class RedactionTest {
 
     @Test
     fun `tokens are scrubbed from every address form`() {
-        assertEquals("http://127.0.0.1:50300/<redacted>/", Redaction.scrub("http://127.0.0.1:50300/HXKQJZK_Rkw=/"))
-        assertEquals("http://127.0.0.1:50300/<redacted>", Redaction.scrub("http://127.0.0.1:50300/HXKQJZK_Rkw="))
-        assertEquals("ws://[::1]:50300/<redacted>/ws", Redaction.scrub("ws://[::1]:50300/HXKQJZK_Rkw=/ws"))
+        assertEquals("http://127.0.0.1:50300/<redacted>/", Redaction.scrub("http://127.0.0.1:50300/FAKEtoken_0000=/"))
+        assertEquals("http://127.0.0.1:50300/<redacted>", Redaction.scrub("http://127.0.0.1:50300/FAKEtoken_0000="))
+        assertEquals("ws://[::1]:50300/<redacted>/ws", Redaction.scrub("ws://[::1]:50300/FAKEtoken_0000=/ws"))
         assertEquals(
             "http://127.0.0.1:9100?uri=http://127.0.0.1:50300/<redacted>/",
-            Redaction.scrub("http://127.0.0.1:9100?uri=http://127.0.0.1:50300/HXKQJZK_Rkw=/"),
+            Redaction.scrub("http://127.0.0.1:9100?uri=http://127.0.0.1:50300/FAKEtoken_0000=/"),
         )
         assertEquals(
             "http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2F<redacted>%2Fws",
-            Redaction.scrub("http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FHXKQJZK_Rkw%3D%2Fws"),
+            Redaction.scrub("http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FFAKEtoken_0000%3D%2Fws"),
         )
     }
 
     @Test
     fun `tokens without padding, without a scheme, and encoded in every way DevTools does are scrubbed`() {
-        assertEquals("http://127.0.0.1:50300/<redacted>/", Redaction.scrub("http://127.0.0.1:50300/HXKQJZK_Rkw/"))
-        assertEquals("http://localhost:50300/<redacted>", Redaction.scrub("http://localhost:50300/HXKQJZK_Rkw"))
+        assertEquals("http://127.0.0.1:50300/<redacted>/", Redaction.scrub("http://127.0.0.1:50300/FAKEtoken_0000/"))
+        assertEquals("http://localhost:50300/<redacted>", Redaction.scrub("http://localhost:50300/FAKEtoken_0000"))
         assertEquals(
             "listening on 127.0.0.1:50300/<redacted>/",
-            Redaction.scrub("listening on 127.0.0.1:50300/HXKQJZK_Rkw=/"),
+            Redaction.scrub("listening on 127.0.0.1:50300/FAKEtoken_0000=/"),
         )
-        assertEquals("[::1]:50300/<redacted>/ws", Redaction.scrub("[::1]:50300/HXKQJZK_Rkw=/ws"))
+        assertEquals("[::1]:50300/<redacted>/ws", Redaction.scrub("[::1]:50300/FAKEtoken_0000=/ws"))
         assertEquals(
             "http://[0:0:0:0:0:0:0:1]:50300/<redacted>/",
-            Redaction.scrub("http://[0:0:0:0:0:0:0:1]:50300/HXKQJZK_Rkw=/"),
+            Redaction.scrub("http://[0:0:0:0:0:0:0:1]:50300/FAKEtoken_0000=/"),
         )
         assertEquals(
             "ws%3A%2F%2F%5B%3A%3A1%5D%3A50300%2F<redacted>%2Fws",
-            Redaction.scrub("ws%3A%2F%2F%5B%3A%3A1%5D%3A50300%2FHXKQJZK_Rkw%3D%2Fws"),
+            Redaction.scrub("ws%3A%2F%2F%5B%3A%3A1%5D%3A50300%2FFAKEtoken_0000%3D%2Fws"),
         )
         assertEquals(
             "?uri=ws%253A%252F%252F127.0.0.1%253A50300%252F<redacted>%252Fws",
-            Redaction.scrub("?uri=ws%253A%252F%252F127.0.0.1%253A50300%252FHXKQJZK_Rkw%253D%252Fws"),
+            Redaction.scrub("?uri=ws%253A%252F%252F127.0.0.1%253A50300%252FFAKEtoken_0000%253D%252Fws"),
         )
-        assertEquals("ws://127.0.0.1:50300/<redacted>/ws", Redaction.scrub("ws://127.0.0.1:50300/HXKQJZK_Rkw%3D/ws"))
-        assertEquals("http://0.0.0.0:50300/<redacted>/", Redaction.scrub("http://0.0.0.0:50300/HXKQJZK_Rkw=/"))
+        assertEquals("ws://127.0.0.1:50300/<redacted>/ws", Redaction.scrub("ws://127.0.0.1:50300/FAKEtoken_0000%3D/ws"))
+        assertEquals("http://0.0.0.0:50300/<redacted>/", Redaction.scrub("http://0.0.0.0:50300/FAKEtoken_0000=/"))
     }
 
     @Test
     fun `a uri parameter the pattern cannot read encoded is read again decoded`() {
         // A token character itself percent-encoded (%4A is J): only the decoded form shows the token.
-        val link = "http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FHXKQ%4AZK_Rkw%3D%2Fws"
+        val link = "http://127.0.0.1:9100/#/?uri=ws%3A%2F%2F127.0.0.1%3A50300%2FFAKE%74oken_0000%3D%2Fws"
         val scrubbed = Redaction.scrub(link)
-        assertFalse(scrubbed.contains("HXKQ"), scrubbed)
+        assertFalse(scrubbed.contains("FAKE"), scrubbed)
         assertEquals("http://127.0.0.1:9100/#/?uri=ws://127.0.0.1:50300/<redacted>/ws", scrubbed)
     }
 
@@ -79,13 +79,13 @@ class RedactionTest {
     @Test
     fun `json is scrubbed in a copy, strings at any depth`() {
         val data = JsonParser.parseString(
-            """{"details":"at http://127.0.0.1:50300/HXKQJZK_Rkw=/",""" +
-                """"nested":[{"uri":"ws://[::1]:1/HXKQJZK_Rkw=/ws"}],"n":3}""",
+            """{"details":"at http://127.0.0.1:50300/FAKEtoken_0000=/",""" +
+                """"nested":[{"uri":"ws://[::1]:1/FAKEtoken_0000=/ws"}],"n":3}""",
         )
         val scrubbed = Redaction.scrubJson(data).toString()
-        assertFalse(scrubbed.contains("HXKQJZK"), scrubbed)
-        assertTrue(data.toString().contains("HXKQJZK"), "the original is left as it was")
-        val answer = JsonObject().apply { addProperty("value", "http://127.0.0.1:50300/HXKQJZK_Rkw=/") }
+        assertFalse(scrubbed.contains("FAKEtoken"), scrubbed)
+        assertTrue(data.toString().contains("FAKEtoken"), "the original is left as it was")
+        val answer = JsonObject().apply { addProperty("value", "http://127.0.0.1:50300/FAKEtoken_0000=/") }
         val redacted = Redaction.scrubExtensionResult("ext.flutter.connectedVmServiceUri", answer)
         assertEquals("<redacted>", redacted.get("value").asString)
     }
@@ -139,7 +139,7 @@ class RedactionTest {
                     add(
                         "message",
                         JsonObject().apply {
-                            addProperty("valueAsString", "DDS at http://127.0.0.1:50300/HXKQJZK_Rkw=/")
+                            addProperty("valueAsString", "DDS at http://127.0.0.1:50300/FAKEtoken_0000=/")
                         },
                     )
                 },

@@ -3,6 +3,7 @@ package spock.adb.flutter
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
+import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.VmServiceEvent
 import spock.adb.flutter.vmservice.string
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -28,6 +29,9 @@ sealed interface SessionState {
  * the UI isolate and the structured-errors flag agree with each other, which separate reads of
  * the session's properties need not. A `Connected` state with an isolate is published only once
  * that isolate is set up, so [structuredErrorsEnabled] is already read then.
+ *
+ * The connection's own facts — [connectionKind], [connectedAtHostMs] and the VM's identity — are
+ * null while not connected.
  */
 data class FlutterSessionSnapshot(
     val state: SessionState,
@@ -35,8 +39,31 @@ data class FlutterSessionSnapshot(
     val uiIsolate: FlutterIsolate? = null,
     /** Null until read, or when the UI isolate has no inspector (profile builds). */
     val structuredErrorsEnabled: Boolean? = null,
+    /** What answered on connect. Only [ConnectionKind.DDS] is written to. */
+    val connectionKind: ConnectionKind? = null,
+    /** When the connection opened, on the host's clock (the session's clock). */
+    val connectedAtHostMs: Long? = null,
+    /** `getVM().pid`: the app's process on the device. */
+    val vmPid: Int? = null,
+    /** `getVM().startTime`: when the VM started, epoch ms on the **device's** clock. */
+    val vmStartTimeMs: Long? = null,
+    /** `getVM().operatingSystem`: `android`, `ios`, `macos`… */
+    val operatingSystem: String? = null,
+    /** HTTP timeline logging on the UI isolate; null until decided for it. */
+    val httpRecording: HttpRecording? = null,
 ) {
     val uiIsolateId: String? get() = uiIsolate?.id
+
+    /** This, with the facts of the connection that ended taken out. */
+    internal fun withoutConnection(): FlutterSessionSnapshot = copy(
+        uiIsolate = null,
+        connectionKind = null,
+        connectedAtHostMs = null,
+        vmPid = null,
+        vmStartTimeMs = null,
+        operatingSystem = null,
+        httpRecording = null,
+    )
 }
 
 /**
@@ -67,7 +94,8 @@ interface FlutterSessionListener {
      * In the order the state changed, one call at a time, and never while the session holds its
      * lock — so a listener may call back into the session. On whichever session thread is
      * delivering: the caller's during [FlutterSession.connect], else the event or session thread.
-     * [state] may already be stale when it arrives; act on [FlutterSession.snapshot].
+     * [state] may already be stale when it arrives; act on [FlutterSession.snapshot]. A listener
+     * added with `replayState` first hears the state at the time it was added.
      */
     fun onStateChanged(state: SessionState) = Unit
 }
@@ -158,15 +186,24 @@ internal class EventHistory(private val capacity: Int = DEFAULT_CAPACITY) {
  * Hands state changes to [listeners] in order, one at a time, outside the session's lock.
  * Changes are queued under the lock and delivered by whichever thread calls [flush] next; a
  * thread that finds another delivering leaves the queue to it, so a listener that calls back
- * into the session neither deadlocks nor reorders.
+ * into the session neither deadlocks nor reorders. A change goes to those listening when it was
+ * queued and still listening when it is delivered, so a listener added late, with [enqueueFor]
+ * its catch-up, hears no change twice, and one removed hears nothing more.
  */
 internal class StateNotifier(private val listeners: CopyOnWriteArrayList<FlutterSessionListener>) {
 
-    private val queue = ConcurrentLinkedQueue<SessionState>()
+    private class Delivery(val state: SessionState, val to: List<FlutterSessionListener>)
+
+    private val queue = ConcurrentLinkedQueue<Delivery>()
     private val delivering = AtomicBoolean()
 
     fun enqueue(state: SessionState) {
-        queue += state
+        queue += Delivery(state, listeners.toList())
+    }
+
+    /** [state] for [listener] alone: the state as it was when the listener was added. */
+    fun enqueueFor(listener: FlutterSessionListener, state: SessionState) {
+        queue += Delivery(state, listOf(listener))
     }
 
     fun flush() {
@@ -181,7 +218,10 @@ internal class StateNotifier(private val listeners: CopyOnWriteArrayList<Flutter
 
     // A listener's bug must cost neither the other listeners nor the session's own work.
     @Suppress("TooGenericExceptionCaught")
-    private fun deliver(state: SessionState) = listeners.forEach { listener ->
+    private fun deliver(delivery: Delivery) = delivery.to.forEach { listener ->
+        // Removed since the change was queued: it hears nothing more.
+        if (listener !in listeners) return@forEach
+        val state = delivery.state
         try {
             listener.onStateChanged(state)
         } catch (e: Exception) {
