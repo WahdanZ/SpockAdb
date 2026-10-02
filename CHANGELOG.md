@@ -21,6 +21,11 @@
     failed requests, and the session starting and ending — including the Flutter engine going away
     when Back leaves the root screen. Device and log times are lined up with the device's measured
     clock and time zone, which logcat and the Dart VM do not share.
+  - Spock never connects to the app's VM while `flutter run` or `flutter attach` may be starting
+    its debugger session — a client there first would make it fail. On Flutter 3.22, which has no
+    Dart Tooling Daemon to name the session, that makes the automatic attach take up to a minute;
+    Diagnose says a Flutter tool is attaching meanwhile. An app started without a debugger session
+    is checked again now and then, so a later `flutter attach` is found.
   - To see failed requests, Spock switches on Dart's HTTP recording for the session — only through
     `flutter run`'s debugger service, only in debug and profile builds — and switches it back off
     when it disconnects, leaving it alone if something else turned it on. **Settings → Tools → Spock

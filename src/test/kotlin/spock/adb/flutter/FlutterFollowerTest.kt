@@ -50,6 +50,10 @@ class FlutterFollowerTest {
     /** Runs inside the attach call, as if the selection changed while it was connecting. */
     private var duringAttach: () -> Unit = {}
 
+    /** The follower's clock: the test moves it as the scheduler's delays pass. */
+    private var now = 1_000_000L
+    private val logged = mutableListOf<String>()
+
     private val follower = FlutterFollower(
         attach = { device, app, startedAt, _, record ->
             calls += Call(device.serialNumber, app, startedAt, record)
@@ -61,7 +65,17 @@ class FlutterFollowerTest {
         recordHttp = { recordHttp },
         scheduler = scheduler,
         background = { CompletableFuture.runAsync(it) },
+        clock = { now },
+        info = { synchronized(logged) { logged += it } },
     )
+
+    /** Runs the next task after its delay has passed on the follower's clock; its delay. */
+    private fun runNext(): Long {
+        val next = scheduler.tasks.first { !it.future.isDone }
+        now += next.delayMs
+        next.future.run()
+        return next.delayMs
+    }
 
     @AfterEach
     fun tearDown() = follower.dispose()
@@ -69,7 +83,7 @@ class FlutterFollowerTest {
     @Test
     fun `a selection change asks once`() {
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
         assertEquals(listOf(APP), calls.map { it.applicationId })
         assertEquals(0, scheduler.due)
@@ -79,7 +93,7 @@ class FlutterFollowerTest {
     @Test
     fun `the same selection again asks nothing more`() {
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
         follower.follow(device, APP)
 
         assertEquals(0, scheduler.due)
@@ -90,10 +104,10 @@ class FlutterFollowerTest {
     fun `an app that is not Flutter, or a release build, is never attached to`() {
         builds[APP] = null
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
         builds[OTHER_APP] = FlutterBuild.RELEASE
         follower.follow(device, OTHER_APP)
-        scheduler.runNext()
+        runNext()
 
         assertEquals(emptyList<Call>(), calls)
         assertEquals(0, scheduler.due)
@@ -110,47 +124,35 @@ class FlutterFollowerTest {
     @Test
     fun `not ready is retried with backoff until an outcome that is not`() {
         repeat(4) { outcomes += notReady() }
-        outcomes += FlutterAttachOutcome.NotFound("nothing named the app's VM Service")
         follower.follow(device, APP)
 
-        val delays = (1..5).map { scheduler.runNext() }
+        val delays = (1..5).map { runNext() }
 
         assertEquals(listOf(0L) + FlutterFollower.BACKOFF_MS, delays)
         assertEquals(5, calls.size)
-        assertEquals(0, scheduler.due, "a terminal outcome ends the retries")
+        assertEquals(0, scheduler.due, "connected: nothing more to ask")
     }
 
     @Test
     fun `the service's suggestion is waited for when it is longer than the step`() {
         outcomes += FlutterAttachOutcome.NotReady("the direct VM is probed later", 2_700)
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
-        assertEquals(2_700L, scheduler.runNext())
-    }
-
-    @Test
-    fun `the retries stop when the attempts are spent`() {
-        repeat(FlutterFollower.MAX_ATTEMPTS + 5) { outcomes += notReady() }
-        follower.follow(device, APP)
-
-        repeat(FlutterFollower.MAX_ATTEMPTS + 1) { scheduler.runNext() }
-
-        assertEquals(FlutterFollower.MAX_ATTEMPTS + 1, calls.size)
-        assertEquals(0, scheduler.due)
+        assertEquals(2_700L, runNext())
     }
 
     @Test
     fun `a selection change stops the retries of the old app`() {
         repeat(3) { outcomes += notReady() }
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
         assertEquals(1, scheduler.due, "a retry is due")
 
         follower.follow(device, OTHER_APP)
 
         assertEquals(1, scheduler.due, "the old retry is cancelled; the new app's attempt is due")
-        scheduler.runNext()
+        runNext()
         assertEquals(listOf(APP, OTHER_APP), calls.map { it.applicationId })
     }
 
@@ -162,54 +164,33 @@ class FlutterFollowerTest {
             follower.follow(other, APP)
         }
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
         assertEquals(1, scheduler.due, "only the new device's attempt; the old NotReady scheduled nothing")
         assertEquals(null, follower.lastOutcome, "the old device's answer is not the new selection's")
     }
 
     @Test
-    fun `a terminal outcome is not asked again for the same process, and a new pid asks again`() {
-        outcomes += FlutterAttachOutcome.NoDdsSession(identity(), FlutterSessionService.NO_DDS_MESSAGE)
-        follower.follow(device, APP)
-        scheduler.runNext()
-        follower.follow(device, OTHER_APP)
-        scheduler.runNext()
-        follower.follow(device, APP)
-        scheduler.runNext()
-
-        assertEquals(listOf(APP, OTHER_APP), calls.map { it.applicationId }, "remembered for pid 4242")
-
-        pids = setOf(5151)
-        follower.follow(device, OTHER_APP)
-        scheduler.runNext()
-        follower.follow(device, APP)
-        scheduler.runNext()
-
-        assertEquals(listOf(APP, OTHER_APP, OTHER_APP, APP), calls.map { it.applicationId })
-    }
-
-    @Test
     fun `a new pid starts the backoff over`() {
         repeat(3) { outcomes += notReady() }
         follower.follow(device, APP)
-        scheduler.runNext()
-        scheduler.runNext()
+        runNext()
+        runNext()
         pids = setOf(5151)
 
-        scheduler.runNext()
+        runNext()
 
-        assertEquals(FlutterFollower.BACKOFF_MS.first(), scheduler.runNext())
+        assertEquals(FlutterFollower.BACKOFF_MS.first(), runNext())
     }
 
     @Test
     fun `the app's process start asks at once, with when it started`() {
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
         follower.processStarted(device.serialNumber, APP, pid = 5151, hostMs = 1_000_000)
         pids = setOf(5151)
-        scheduler.runNext()
+        runNext()
 
         assertEquals(listOf(null, 1_000_000L), calls.map { it.startedAt })
     }
@@ -217,7 +198,7 @@ class FlutterFollowerTest {
     @Test
     fun `another app's process start is not ours`() {
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
         follower.processStarted(device.serialNumber, OTHER_APP, pid = 5151, hostMs = 1)
         follower.processStarted(other.serialNumber, APP, pid = 5151, hostMs = 1)
@@ -229,7 +210,7 @@ class FlutterFollowerTest {
     fun `the Settings switch is passed as it is at each attempt`() {
         recordHttp = false
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
         assertEquals(listOf(false), calls.map { it.recordHttp })
     }
@@ -238,17 +219,17 @@ class FlutterFollowerTest {
     fun `adb failing to list the app's processes is retried`() {
         pids = null
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
         assertEquals(emptyList<Call>(), calls)
         assertEquals(1, scheduler.due)
     }
 
     @Test
-    fun `Diagnose asks even when a terminal outcome is remembered`() {
-        outcomes += FlutterAttachOutcome.NotFound("nothing")
+    fun `Diagnose asks even when there is no debugger session`() {
+        outcomes += FlutterAttachOutcome.NoDdsSession(identity(), FlutterSessionService.NO_DDS_MESSAGE)
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
 
         val outcome = follower.attachNow(device, APP, FlutterBuild.DEBUG, budgetMs = 5_000)
 
@@ -288,7 +269,7 @@ class FlutterFollowerTest {
     @Test
     fun `a NotReady from Diagnose for the selected app keeps the backoff going`() {
         follower.follow(device, APP)
-        scheduler.runNext()
+        runNext()
         outcomes += notReady()
 
         follower.attachNow(device, APP, FlutterBuild.DEBUG, budgetMs = 5_000)
@@ -307,6 +288,143 @@ class FlutterFollowerTest {
         assertEquals(emptyList<Call>(), calls)
     }
 
+    @Test
+    fun `the retries stop when the run's time is spent, not after a count`() {
+        repeat(MANY) { outcomes += notReady() }
+        follower.follow(device, APP)
+        val start = now
+
+        while (scheduler.due > 0) runNext()
+
+        assertTrue(now - start <= FlutterFollower.FOLLOW_BUDGET_MS, "${now - start} ms")
+        assertTrue(now - start > FlutterFollower.FOLLOW_BUDGET_MS - FlutterFollower.BACKOFF_MS.last() * 2)
+        assertTrue(logged.any { it.contains("giving up on $APP on emulator-5554") }, "$logged")
+    }
+
+    @Test
+    fun `a process start pidof does not see yet is asked again until it does`() {
+        // Seen on emulator-5554: ActivityManager logs the start 2 s before the process has its name.
+        follower.follow(device, APP)
+        pids = emptySet()
+        runNext()
+        follower.processStarted(device.serialNumber, APP, pid = 4405, hostMs = now)
+
+        runNext()
+        runNext()
+        assertEquals(emptyList<Call>(), calls, "not running yet: nothing to attach to")
+        assertEquals(1, scheduler.due, "but asked again")
+        pids = setOf(4405)
+        runNext()
+
+        assertEquals(1, calls.size)
+        assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `an app selected while not running waits for its process`() {
+        pids = emptySet()
+        follower.follow(device, APP)
+        runNext()
+
+        assertEquals(0, scheduler.due)
+        assertTrue(logged.any { "waiting for its process to start" in it }, "$logged")
+    }
+
+    @Test
+    fun `a failure and nothing found yet are asked again`() {
+        outcomes += FlutterAttachOutcome.Failed("the VM did not answer")
+        outcomes += FlutterAttachOutcome.NotFound("nothing logged yet")
+        follower.follow(device, APP)
+
+        repeat(3) { runNext() }
+
+        assertEquals(3, calls.size)
+        assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `no debugger session is checked again, and a later flutter attach is connected`() {
+        outcomes += FlutterAttachOutcome.NoDdsSession(identity(), FlutterSessionService.NO_DDS_MESSAGE)
+        follower.follow(device, APP)
+        runNext()
+
+        assertEquals(FlutterFollower.NO_DDS_RECHECK_MS, runNext())
+        assertEquals(2, calls.size)
+        assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `no debugger session is checked a bounded number of times`() {
+        repeat(MANY) { outcomes += FlutterAttachOutcome.NoDdsSession(identity(), FlutterSessionService.NO_DDS_MESSAGE) }
+        follower.follow(device, APP)
+
+        while (scheduler.due > 0) runNext()
+
+        assertEquals(FlutterFollower.NO_DDS_RECHECKS + 1, calls.size)
+    }
+
+    @Test
+    fun `the selected app's session lost starts a run, with no device log`() {
+        follower.follow(device, APP)
+        runNext()
+
+        follower.sessionChanged(FlutterSessionChange.Disconnected(FlutterSession(), identity(), "connection closed"))
+        runNext()
+
+        assertEquals(2, calls.size)
+    }
+
+    @Test
+    fun `Spock disconnecting on purpose does not reconnect`() {
+        follower.follow(device, APP)
+        runNext()
+
+        follower.sessionChanged(
+            FlutterSessionChange.Disconnected(
+                FlutterSession(),
+                identity(),
+                FlutterSessionService.DISCONNECTED_BY_SPOCK,
+            ),
+        )
+
+        assertEquals(0, scheduler.due)
+    }
+
+    @Test
+    fun `another app's session taking the selected app's place is followed by the selected app again, later`() {
+        follower.follow(device, APP)
+        runNext()
+        val otherApp = AppIdentity(device.serialNumber, OTHER_APP, 5151, IdentityCheck.DTD_PID_START)
+
+        follower.sessionChanged(FlutterSessionChange.Replaced(FlutterSession(), identity(), FlutterSession(), otherApp))
+
+        assertEquals(FlutterFollower.REFOLLOW_DELAY_MS, runNext())
+        assertEquals(listOf(APP, APP), calls.map { it.applicationId })
+    }
+
+    @Test
+    fun `the follower's own session changes start nothing`() {
+        follower.follow(device, APP)
+        runNext()
+
+        follower.sessionChanged(FlutterSessionChange.Connected(FlutterSession(), identity()))
+
+        assertEquals(0, scheduler.due)
+    }
+
+    @Test
+    fun `its log lines carry no VM Service address`() {
+        outcomes += FlutterAttachOutcome.NotReady("The VM at ws://127.0.0.1:41234/$TOKEN/ws did not answer.", 500)
+        outcomes += FlutterAttachOutcome.Failed("http://127.0.0.1:41234/$TOKEN/ refused")
+        follower.follow(device, APP)
+        repeat(3) { runNext() }
+        follower.attachNow(device, APP, FlutterBuild.DEBUG, budgetMs = 5_000)
+
+        assertTrue(logged.size >= 4, "$logged")
+        assertTrue(logged.none { TOKEN in it || TOKEN.removeSuffix("=") in it }, "$logged")
+        assertTrue(logged.any { "selection changed: following $APP on emulator-5554" in it }, "$logged")
+    }
+
     private fun notReady() = FlutterAttachOutcome.NotReady("the app is starting", FlutterSessionService.RETRY_MS / 4)
 
     private fun identity() = AppIdentity(device.serialNumber, APP, 4242, IdentityCheck.LOGCAT_PID)
@@ -321,6 +439,10 @@ class FlutterFollowerTest {
         const val APP = "spock.adb.spock_flutter_sample"
         const val OTHER_APP = "spock.adb.spock_flutter_sample.second"
         const val SLOW_MS = 1_000L
+        const val MANY = 200
+
+        /** The fake token the other token tests use. */
+        const val TOKEN = spock.adb.flutter.vmservice.FakeVmService.TOKEN
 
         fun device(serial: String) = ConnectedDevice(
             mockk<IDevice>(relaxed = true),

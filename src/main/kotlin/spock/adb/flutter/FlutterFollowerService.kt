@@ -47,6 +47,7 @@ class FlutterFollowerService(private val project: Project) : Disposable {
     init {
         Disposer.register(this, follower)
         sessions.addListener(this, eventLog)
+        sessions.addListener(this, follower::sessionChanged)
         SpockSelection.getInstance(project).addListener(this) { snapshot, changes ->
             if (SpockSelection.Change.DEVICE in changes || SpockSelection.Change.APP in changes) {
                 follower.follow(snapshot.device?.takeIf { it.info.isUsable }, snapshot.app)
@@ -83,7 +84,9 @@ class FlutterFollowerService(private val project: Project) : Disposable {
             snapshot = session.snapshot,
             buildMode = session.buildMode,
             events = eventLog.contents(session),
-            deviceTime = session.deviceTime.await(READ_BUDGET_MS),
+            // A session this report just opened is still measuring its clock: five `date` round
+            // trips can take longer than one read.
+            deviceTime = session.deviceTime.await(if (connected.reused) READ_BUDGET_MS else NEW_CLOCK_WAIT_MS),
             reads = object : FlutterDiagnosticSource.Reads {
                 override fun refreshRate(): Double? = readRefreshRate(session)
 
@@ -100,6 +103,9 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
         /** Each read of a live session Diagnose makes, and the wait for its clock. */
         const val READ_BUDGET_MS = 2_000L
+
+        /** The wait for the clock of a session the report itself just opened. */
+        const val NEW_CLOCK_WAIT_MS = 5_000L
 
         private const val ADB_SECONDS = 5L
 

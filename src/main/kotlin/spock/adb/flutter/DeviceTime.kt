@@ -95,11 +95,14 @@ data class DeviceTime(
         private val OFFSET = Regex("""^([+-])(\d{2}):?(\d{2})$""")
 
         /**
-         * What [COMMAND] or [SECONDS_COMMAND] printed, or null when it is neither: a `date` that
-         * printed `%3N` literally, an error, nothing. A whole-seconds answer reads as such.
+         * What [COMMAND] or [SECONDS_COMMAND] printed — its last non-blank line — or null when it
+         * is neither: a `date` that printed `%3N` literally, an error, nothing. A whole-seconds
+         * answer reads as such.
          */
         fun parse(output: String): Reading? {
-            val parts = output.trim().split(Regex("""\s+"""))
+            // The last line: a shell may print a warning (a locale, a MOTD) before the answer.
+            val line = output.lines().lastOrNull { it.isNotBlank() } ?: return null
+            val parts = line.trim().split(Regex("""\s+"""))
             val stamp = parts.firstOrNull()?.takeIf { parts.size == 2 && NUMBER.matches(it) } ?: return null
             val zone = zoneOf(parts[1]) ?: return null
             val value = stamp.toLongOrNull() ?: return null
@@ -154,14 +157,14 @@ class DeviceTimeSampler(
     private val run: (String) -> String,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    /** Null when the device answers neither command readably. */
-    fun sample(): DeviceTime? {
-        val precise = samples(DeviceTime.COMMAND)
+    /** Null when the device answers neither command readably. [count] samples of each command. */
+    fun sample(count: Int = DeviceTime.SAMPLES): DeviceTime? {
+        val precise = samples(DeviceTime.COMMAND, count)
         DeviceTime.fromSamples(precise)?.takeIf { it.millisecondPrecision }?.let { return it }
-        return DeviceTime.fromSamples(samples(DeviceTime.SECONDS_COMMAND))
+        return DeviceTime.fromSamples(samples(DeviceTime.SECONDS_COMMAND, count))
     }
 
-    private fun samples(command: String): List<DeviceTime.Sample> = (1..DeviceTime.SAMPLES).map {
+    private fun samples(command: String, count: Int): List<DeviceTime.Sample> = (1..count).map {
         val sent = clock()
         val output = run(command)
         DeviceTime.Sample(sent, clock(), output)
@@ -171,10 +174,14 @@ class DeviceTimeSampler(
         private const val ADB_SECONDS = 5L
         private val log = Logger.getInstance(DeviceTimeSampler::class.java)
 
-        /** [device]'s clock, or null when adb fails or the device's `date` cannot be read. */
-        fun measure(device: IDevice): DeviceTime? {
+        /**
+         * [device]'s clock, or null when adb fails or the device's `date` cannot be read. One
+         * [samples] reads the zone and the clock to a round trip — enough to place a log line to
+         * the second.
+         */
+        fun measure(device: IDevice, samples: Int = DeviceTime.SAMPLES): DeviceTime? {
             val sampler = DeviceTimeSampler({ command -> shell(device, command) })
-            return sampler.sample().also {
+            return sampler.sample(samples).also {
                 if (it == null) log.info("Could not read the device's clock with `date`")
             }
         }

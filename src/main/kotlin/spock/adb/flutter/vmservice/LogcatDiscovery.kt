@@ -16,8 +16,11 @@ import com.android.ddmlib.TimeoutException as AdbTimeoutException
 /** Reads the engine's VM Service announcement out of `logcat -v threadtime` output. */
 object LogcatVmServiceParser {
 
-    /** The address [pid] announced; its port is the device's, so it needs an `adb forward`. */
-    data class Announcement(val pid: Int, val uri: VmServiceUri)
+    /**
+     * The address [pid] announced; its port is the device's, so it needs an `adb forward`.
+     * [stamp] is the line's `threadtime` stamp: the device's local time.
+     */
+    data class Announcement(val pid: Int, val uri: VmServiceUri, val stamp: String = "")
 
     /**
      * `The Dart VM service is listening on http://…` since Flutter 3.10, `Observatory listening
@@ -36,7 +39,7 @@ object LogcatVmServiceParser {
             val entry = LogcatParser.parse(line.trimEnd()) ?: return@forEach
             if (entry.pid !in pids) return@forEach
             val address = ANNOUNCEMENT.find(entry.message)?.groupValues?.get(1) ?: return@forEach
-            VmServiceUri.parseOrNull(address)?.let { latest = Announcement(entry.pid, it) }
+            VmServiceUri.parseOrNull(address)?.let { latest = Announcement(entry.pid, it, entry.timestamp) }
         }
         return latest
     }
@@ -63,11 +66,11 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
         val receiver = ShellOutputReceiver()
         adb("read logcat") { device.executeShellCommand(LOGCAT_COMMAND, receiver, SHELL_SECONDS, TimeUnit.SECONDS) }
         val found = LogcatVmServiceParser.latest(receiver.toString(), pids) ?: return emptyList()
-        return listOf(ForwardedCandidate(device, found.uri))
+        return listOf(ForwardedCandidate(device, found.uri, found.stamp))
     }
 
-    private class ForwardedCandidate(private val device: IDevice, private val deviceUri: VmServiceUri) :
-        VmServiceCandidate(VmServiceSource.LOGCAT, ddsLikely = false) {
+    private class ForwardedCandidate(private val device: IDevice, private val deviceUri: VmServiceUri, stamp: String) :
+        AnnouncedCandidate(deviceUri.port, stamp) {
 
         private var localPort: Int? = null
 
@@ -84,6 +87,7 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
         override fun release() {
             val port = localPort ?: return
             localPort = null
+            SpockForwards.released(device.serialNumber, port)
             try {
                 device.removeForward(port)
             } catch (e: IOException) {
@@ -97,7 +101,11 @@ class LogcatDiscovery(private val device: IDevice, private val packageName: Stri
 
         private fun forward(): Int = adb("forward device port ${deviceUri.port}") {
             val port = freeLocalPort()
-            device.createForward(port, deviceUri.port)
+            // Recorded first: a forward listed a moment later must not pass for a Flutter tool's.
+            SpockForwards.made(device.serialNumber, port)
+            runCatching { device.createForward(port, deviceUri.port) }
+                .onFailure { SpockForwards.released(device.serialNumber, port) }
+                .getOrThrow()
             localPort = port
             port
         }

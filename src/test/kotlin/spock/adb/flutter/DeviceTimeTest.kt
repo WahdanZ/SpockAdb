@@ -134,4 +134,12 @@ class DeviceTimeTest {
     private companion object {
         const val BASE = 1_727_870_587_000L
     }
+
+    @Test
+    fun `a line the shell printed before the answer is not the answer`() {
+        assertEquals(
+            DeviceTime.Reading(1_727_870_587_412, berlin, true),
+            DeviceTime.parse("WARNING: linker: unused DT entry\n1727870587412 +0200\n\n"),
+        )
+    }
 }

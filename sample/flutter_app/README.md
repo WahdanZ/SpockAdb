@@ -44,11 +44,14 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
 `spock.adb.spock_flutter_sample`, keep **Record device events** on in the Timeline tab, and keep
 **Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** on.
 
-1. **Automatic attach, verified DDS session.** `flutter run` (debug). Within a few seconds of the app
-   starting, the Timeline shows `Flutter session: spock.adb.spock_flutter_sample on emulator-5554 —
-   DDS, pid N (verified by dtd+pid+start)` — `logcat-pid` on Flutter 3.22, where no Dart Tooling Daemon
-   lists the app — and `Spock turned on HTTP recording for spock.adb.spock_flutter_sample (restored
-   when Spock disconnects)`. `flutter run` itself must keep working: hot reload with `r`.
+1. **Automatic attach, verified DDS session.** `flutter run` (debug). The Timeline shows
+   `Flutter session: spock.adb.spock_flutter_sample on emulator-5554 — DDS, pid N (verified by
+   dtd+pid+start)` and `Spock turned on HTTP recording for spock.adb.spock_flutter_sample (restored
+   when Spock disconnects)`: within seconds on Flutter 3.47.5, where the Dart Tooling Daemon names
+   the app; on 3.22 (`logcat-pid`) up to a minute after the VM announces itself, because while
+   `flutter run` holds a forward to the VM Spock does not connect to the VM itself (it would keep
+   DDS out). `flutter run` itself must keep working: hot reload with `r`. idea.log shows every
+   decision as `Flutter follower: …` and `Flutter attach for …` lines.
 2. **Flutter error beside its logcat context.** *Layout overflow* → *Overflow with a native warning*,
    then **Diagnose**. Expect the `flutterError` problem "Exception caught by rendering library: A
    RenderFlex overflowed by … — Row at lib/fixtures/layout.dart:…" and under it *In logcat around it:*

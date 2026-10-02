@@ -166,4 +166,13 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
 - **Not built here:** a rebuild recording window, the logcat fallback for errors when structured errors are off (the
   section points at `logs` instead), `flutter_app_status`, and the check that the session clock and `DeviceClock`
   agree (the H gate does that by eye).
+- **Device gate, 2026-10-02 (emulator-5554, 3.22.2), and what changed.** The first run never attached by itself:
+  the follower's attempt on "Process started" found no pid — Android logs the start ~2 s before the process has its
+  name, so `pidof` is empty — and stopped. Now a run triggered by a process start (or a lost session) retries "not
+  running", and every run has a time budget instead of an attempt count. The VM announced itself 6 s after its
+  process, so the startup window now runs from the announcement too (`AppStartup`: 15 s after the process, 15 s
+  after the announcement). A Flutter tool's `adb forward` to the VM's device port, read from the adb server
+  (`host:list-forward`, no VM contact), keeps Spock off the VM for up to 60 s while DDS is unconfirmed — which,
+  without a DTD (3.22), is also how long the automatic attach takes. A "no DDS" verdict is re-checked every 30 s
+  with no VM contact until a tool forwards the VM. Every follower and attach decision is logged at INFO.
 

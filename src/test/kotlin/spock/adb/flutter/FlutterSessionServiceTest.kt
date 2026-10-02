@@ -95,6 +95,9 @@ class FlutterSessionServiceTest {
         }
         clock = { now }
         onEdt = { false }
+        // Never the real adb server on the machine running the tests.
+        foreignForward = { _, _ -> false }
+        stampToHost = { _, _ -> null }
         background = { FutureTask(it, null).also { task -> Thread(task).start() } }
         addListener(parent) { synchronized(changes) { changes += it } }
     }
@@ -147,7 +150,7 @@ class FlutterSessionServiceTest {
         service.discover(device, applicationId, pasted)
 
     private fun ensure(startedAt: Long? = null, build: FlutterBuild? = null) =
-        service.ensureSession(device, APP_ID, startedAt, build)
+        service.ensureSession(device, APP_ID, startedAt, build, recordHttp = true)
 
     private fun changeKinds() = synchronized(changes) { changes.map { it::class.simpleName } }
 
@@ -623,7 +626,8 @@ class FlutterSessionServiceTest {
     @Test
     fun `ensureSession - the Settings switch decides whether a new session records HTTP`() {
         dtdFound = listOf(liveDtdApp())
-        val outcome = service.ensureSession(device, APP_ID, recordHttp = false) as FlutterAttachOutcome.Connected
+        val outcome = service.ensureSession(device, APP_ID, null, null, recordHttp = false)
+            as FlutterAttachOutcome.Connected
 
         FakeVmService.eventually(message = "the HTTP decision") { outcome.session.snapshot.httpRecording != null }
         assertEquals(HttpRecording.Off(HttpRecording.Reason.SETTING_OFF), outcome.session.snapshot.httpRecording)

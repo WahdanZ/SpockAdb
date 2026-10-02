@@ -3,6 +3,7 @@ package spock.adb.flutter
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
 import spock.adb.device.ConnectedDevice
+import spock.adb.flutter.vmservice.Redaction
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Future
 import java.util.concurrent.ScheduledThreadPoolExecutor
@@ -11,23 +12,28 @@ import java.util.concurrent.TimeoutException
 
 /**
  * Decides **when** to attach to the selected Flutter app (design §2), so a developer never
- * pastes an address: on a selection change, when the selected app's process starts, and when
- * Diagnose asks. It only calls [FlutterSessionService.ensureSession]; which session that gives,
- * and how, is the service's business.
+ * pastes an address: on a selection change, when the selected app's process starts, when its
+ * session is lost or taken by another app's, and when Diagnose asks. It only calls
+ * [FlutterSessionService.ensureSession]; which session that gives, and how, is the service's
+ * business — including what it remembers about a process with no DDS.
  *
  * Gates first, so nothing is attempted against an app that has no VM Service to find: the
  * selected app must be a Flutter app, by its APK, and not a release build.
  *
- * [FlutterAttachOutcome.NotReady] is retried with backoff — [BACKOFF_MS], then the last step
- * again, up to [MAX_ATTEMPTS] — on [scheduler]'s thread, never the EDT, until the outcome is
- * anything else or the selection or the app's pid changes. The service turns a process past its
- * startup window into a terminal outcome itself, so the loop ends there. A terminal outcome
- * (no DDS, nothing found) is remembered per (device, app, pids) and not asked again by the
- * automatic triggers until the app runs as another process; Diagnose always asks, as the
- * developer may have run `flutter attach` since.
+ * Every trigger starts a run with a time budget, [FOLLOW_BUDGET_MS] from its anchor — the
+ * process start when known — rather than a count of attempts: a slow device takes longer, not
+ * more tries. Within it, an answer that is not final is asked again with backoff ([BACKOFF_MS],
+ * the last step repeating, or the service's own `retryAfterMs` when longer): not ready, nothing
+ * found yet, failed, and — right after a process start, before Android has named the process —
+ * not running. [FlutterAttachOutcome.NoDdsSession] is final for the process but not for ever:
+ * it is asked again every [NO_DDS_RECHECK_MS], which costs adb reads and no VM contact until a
+ * Flutter tool forwards the VM, up to [NO_DDS_RECHECKS] times. A run stops on a selection
+ * change, a new trigger, or [dispose].
  *
  * Thread-safe. Everything blocking runs on [scheduler] or the caller's pooled thread.
  */
+// Each seam is one collaborator; a holder object would only rename them.
+@Suppress("LongParameterList")
 class FlutterFollower(
     private val attach: Attach,
     /** Null for an app that is not Flutter. Blocking: adb, cached per install. */
@@ -39,6 +45,9 @@ class FlutterFollower(
     private val scheduler: Scheduler = Scheduler.daemon(),
     /** Runs [attachNow]'s call so its caller can stop waiting; a pooled thread in production. */
     private val background: (Runnable) -> Future<*> = scheduler::submit,
+    private val clock: () -> Long = System::currentTimeMillis,
+    /** Where decisions are logged, at INFO; every line is scrubbed of VM Service addresses first. */
+    private val info: (String) -> Unit = { log.info(it) },
 ) : Disposable {
 
     /** [FlutterSessionService.ensureSession], as the follower calls it. */
@@ -82,27 +91,32 @@ class FlutterFollower(
         }
     }
 
-    private data class Target(val device: ConnectedDevice, val applicationId: String) {
-        val serial: String get() = device.serialNumber
+    /** Why a run started, for the log and for what "not running" means in it. */
+    enum class Trigger(val label: String, val expectsProcess: Boolean) {
+        SELECTION("selection changed", false),
+        PROCESS_START("process started", true),
+        SESSION_LOST("session lost", true),
+        SESSION_TAKEN("another app's session took its place", false),
     }
 
-    private data class Key(val serial: String, val applicationId: String, val pids: Set<Long>)
+    private data class Target(val device: ConnectedDevice, val applicationId: String) {
+        val serial: String get() = device.serialNumber
+        override fun toString(): String = "$applicationId on $serial"
+    }
 
     private val lock = Any()
 
     /** Bumped by every trigger and by [dispose]: an attempt of an older generation stops. */
     private var generation = 0L
     private var target: Target? = null
+    private var trigger = Trigger.SELECTION
     private var processStartedAt: Long? = null
+    private var anchor = 0L
     private var pids: Set<Long>? = null
-    private var attempt = 0
+    private var step = 0
+    private var noDdsChecks = 0
     private var pending: Future<*>? = null
     private var disposed = false
-
-    private val terminal = object : LinkedHashMap<Key, FlutterAttachOutcome>() {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, FlutterAttachOutcome>?) =
-            size > MAX_REMEMBERED
-    }
 
     /** What the last attempt for the selected app came to; null before one, or for a non-Flutter app. */
     @Volatile
@@ -121,8 +135,8 @@ class FlutterFollower(
                 if (same && next != null) target = next
                 return
             }
-            restart(next, startedAt = null)
             lastOutcome = null
+            restart(next, Trigger.SELECTION, startedAt = null)
         }
     }
 
@@ -136,13 +150,38 @@ class FlutterFollower(
             val now = target ?: return
             if (disposed || now.serial != serial || now.applicationId != applicationId) return
             if (pids?.contains(pid) == true && pending != null) return
-            restart(now, startedAt = hostMs)
+            restart(now, Trigger.PROCESS_START, startedAt = hostMs)
         }
     }
 
     /**
-     * Diagnose's trigger: attaches to [applicationId] on [device] now — whatever was remembered —
-     * and waits at most [budgetMs] for the answer. Past it, the attach goes on, and the answer is
+     * The project's session changed. The selected app's session lost — the app stopped, `flutter
+     * run` ended — starts a run, as a process start would, with no device log needed. Another
+     * app's session taking its place (another package's Diagnose) starts one after
+     * [REFOLLOW_DELAY_MS], so that report reads its session first. Cheap.
+     */
+    fun sessionChanged(change: FlutterSessionChange) {
+        synchronized(lock) {
+            val now = target ?: return
+            if (disposed) return
+            val lost = change is FlutterSessionChange.Disconnected && isTarget(change.identity, now) &&
+                change.reason != FlutterSessionService.DISCONNECTED_BY_SPOCK
+            val taken = when (change) {
+                is FlutterSessionChange.Connected -> !isTarget(change.identity, now)
+                is FlutterSessionChange.Replaced ->
+                    isTarget(change.previousIdentity, now) && !isTarget(change.identity, now)
+                is FlutterSessionChange.Disconnected -> false
+            }
+            when {
+                lost -> restart(now, Trigger.SESSION_LOST, startedAt = null)
+                taken -> restart(now, Trigger.SESSION_TAKEN, startedAt = null, delayMs = REFOLLOW_DELAY_MS)
+            }
+        }
+    }
+
+    /**
+     * Diagnose's trigger: attaches to [applicationId] on [device] now and waits at most
+     * [budgetMs] for the answer. Past it, the attach goes on, and the answer is
      * [FlutterAttachOutcome.NotReady]. A NotReady for the selected app keeps the backoff going,
      * so the next report finds the session. Blocking: call from a pooled thread.
      */
@@ -152,6 +191,7 @@ class FlutterFollower(
         build: FlutterBuild,
         budgetMs: Long,
     ): FlutterAttachOutcome {
+        say("Diagnose asks for $applicationId on ${device.serialNumber} (${build.label} build)")
         if (build == FlutterBuild.RELEASE) return FlutterAttachOutcome.ReleaseBuild(device.serialNumber, applicationId)
         val startedAt = synchronized(lock) {
             processStartedAt.takeIf { target?.serial == device.serialNumber && target?.applicationId == applicationId }
@@ -171,6 +211,7 @@ class FlutterFollower(
             Thread.currentThread().interrupt()
             null
         } ?: FlutterAttachOutcome.NotReady(STILL_ATTACHING, BACKOFF_MS.first())
+        say("Diagnose's attach for $applicationId on ${device.serialNumber}: ${answer.logLine()}")
         if (answer is FlutterAttachOutcome.NotReady) keepTrying(device.serialNumber, applicationId)
         return answer
     }
@@ -186,16 +227,21 @@ class FlutterFollower(
         scheduler.shutdown()
     }
 
-    /** Under [lock]: a new generation for [next], tried at once. */
-    private fun restart(next: Target?, startedAt: Long?) {
+    /** Under [lock]: a new run for [next], tried after [delayMs]. */
+    private fun restart(next: Target?, why: Trigger, startedAt: Long?, delayMs: Long = 0) {
         generation++
         pending?.cancel(false)
         pending = null
         target = next
+        trigger = why
         processStartedAt = startedAt
+        anchor = startedAt ?: clock()
         pids = null
-        attempt = 0
-        if (next != null) schedule(0)
+        step = 0
+        noDdsChecks = 0
+        if (next == null) return
+        say("${why.label}: following $next" + if (delayMs > 0) " in $delayMs ms" else "")
+        schedule(delayMs)
     }
 
     /** Under [lock]. */
@@ -209,8 +255,9 @@ class FlutterFollower(
         val now = target ?: return@synchronized
         if (disposed || now.serial != serial || now.applicationId != applicationId) return@synchronized
         if (pending?.isDone == false) return@synchronized
-        attempt = 0
-        schedule(BACKOFF_MS.first())
+        step = 0
+        anchor = maxOf(anchor, clock())
+        retry(null, "Diagnose found it not ready")
     }
 
     // An attempt that throws — a bug, adb going away — must not end the follower's thread.
@@ -226,71 +273,124 @@ class FlutterFollower(
     private fun attemptOnce(generationNow: Long) {
         val now = synchronized(lock) { target?.takeIf { generation == generationNow && !disposed } } ?: return
         val build = buildOf(now.device, now.applicationId)
-        // Not Flutter, or a release build: nothing to attach to, and nothing said about it.
-        if (build == null || build == FlutterBuild.RELEASE) return
-        val key = keyToTry(now, generationNow) ?: return
+        if (build == null || build == FlutterBuild.RELEASE) {
+            say("$now is ${build?.let { "a ${it.label} build" } ?: "not a Flutter app"}: not attaching")
+            return
+        }
+        if (!running(now, generationNow)) return
         val startedAt = synchronized(lock) { processStartedAt }
         val outcome = attach.ensure(now.device, now.applicationId, startedAt, build, recordHttp())
         synchronized(lock) {
             if (generation != generationNow) return
             lastOutcome = outcome
-            when (outcome) {
-                is FlutterAttachOutcome.NotReady -> retry(outcome.retryAfterMs)
-                is FlutterAttachOutcome.NoDdsSession, is FlutterAttachOutcome.NotFound -> terminal[key] = outcome
-                else -> pending = null
-            }
+            say("$now (${build.label} build): ${outcome.logLine()}")
+            decide(outcome)
         }
     }
 
     /**
-     * What to remember this attempt's outcome by, from the app's pids now; null when there is
-     * nothing to try: the app is not running, adb failed (retried), the selection moved on, or a
-     * terminal outcome is remembered for these pids.
+     * Whether the app runs as some pid now. When not, a retry is scheduled if adb failed, or if
+     * the run expects a process: a process start is logged before Android has named the process,
+     * so `pidof` finds nothing for a moment — 2 s on emulator-5554 (2026-10-02), long enough to
+     * end the first follower here.
      */
-    private fun keyToTry(now: Target, generationNow: Long): Key? {
+    private fun running(now: Target, generationNow: Long): Boolean {
         val found = pidsOf(now.device, now.applicationId)
         synchronized(lock) {
-            if (generation != generationNow) return null
-            if (found == null) {
-                retry(null)
-                return null
+            if (generation != generationNow) return false
+            when {
+                found == null -> retry(null, "adb could not list $now's processes")
+                found.isEmpty() && trigger.expectsProcess -> retry(null, "$now is not running yet")
+                found.isEmpty() -> say("$now is not running; waiting for its process to start")
+                else -> {
+                    // A new process starts the backoff over: what the old one taught is not about it.
+                    if (found != pids) {
+                        step = 0
+                        noDdsChecks = 0
+                    }
+                    pids = found
+                    return true
+                }
             }
-            if (found.isEmpty()) return null
-            // A new process starts the backoff over: what the old one taught is not about it.
-            if (found != pids) attempt = 0
-            pids = found
-            return Key(now.serial, now.applicationId, found).takeIf { it !in terminal }
+            return false
         }
     }
 
-    /** Under [lock]: the next attempt after the backoff step, or none once the steps are spent. */
-    private fun retry(suggestedMs: Long?) {
-        if (attempt >= MAX_ATTEMPTS) {
+    /** Under [lock]: what to do after [outcome]. */
+    private fun decide(outcome: FlutterAttachOutcome) {
+        when (outcome) {
+            is FlutterAttachOutcome.NotReady -> retry(outcome.retryAfterMs, "not ready")
+            is FlutterAttachOutcome.NotFound -> retry(null, "nothing found yet")
+            is FlutterAttachOutcome.Failed -> retry(null, "the attach failed")
+            is FlutterAttachOutcome.NotRunning ->
+                if (trigger.expectsProcess) retry(null, "not running yet") else pending = null
+            is FlutterAttachOutcome.NoDdsSession -> recheckNoDds()
+            is FlutterAttachOutcome.Connected,
+            is FlutterAttachOutcome.Ambiguous,
+            is FlutterAttachOutcome.ReleaseBuild,
+            -> pending = null
+        }
+    }
+
+    /** Under [lock]: the next attempt after the backoff step, or none once the run's time is spent. */
+    private fun retry(suggestedMs: Long?, why: String) {
+        val stepMs = BACKOFF_MS[step.coerceAtMost(BACKOFF_MS.lastIndex)]
+        val delay = maxOf(stepMs, suggestedMs?.coerceAtMost(MAX_DELAY_MS) ?: 0)
+        val spent = clock() - anchor
+        if (spent + delay > FOLLOW_BUDGET_MS) {
+            say("giving up on ${target ?: "the app"} after $spent ms: $why")
             pending = null
             return
         }
-        val step = BACKOFF_MS[attempt.coerceAtMost(BACKOFF_MS.lastIndex)]
-        attempt++
-        schedule(maxOf(step, suggestedMs?.coerceAtMost(MAX_DELAY_MS) ?: 0))
+        step++
+        say("$why; asking again in $delay ms")
+        schedule(delay)
     }
+
+    /** Under [lock]: no DDS now is not no DDS for ever — someone may run `flutter attach`. */
+    private fun recheckNoDds() {
+        if (noDdsChecks >= NO_DDS_RECHECKS) {
+            say("no debugger session after $noDdsChecks checks; asking again at the next trigger")
+            pending = null
+            return
+        }
+        noDdsChecks++
+        say("no debugger session; checking again in $NO_DDS_RECHECK_MS ms")
+        schedule(NO_DDS_RECHECK_MS)
+    }
+
+    private fun isTarget(identity: AppIdentity?, target: Target): Boolean =
+        identity?.serial == target.serial && identity.applicationId == target.applicationId
+
+    /** Every line goes through here: a VM Service address in a reason must not reach the log. */
+    private fun say(line: String) = info(Redaction.scrub("Flutter follower: $line"))
 
     companion object {
         /** ≈0.5, 1, 2, 4 s; the last step repeats. */
         val BACKOFF_MS = listOf(500L, 1_000L, 2_000L, 4_000L)
 
         /**
-         * Enough to outlast the service's startup window ([FlutterSessionService.STARTUP_GRACE_MS])
-         * from the first attempt, after which it answers with something final.
+         * How long one run keeps asking. It must outlast the service's waits: a VM announced up
+         * to [AppStartup.STARTUP_GRACE_MS] after its process, and a Flutter tool's forward
+         * holding Spock off for [AppStartup.FOREIGN_TOOL_HOLD_MS] after that, with room to spare.
          */
-        const val MAX_ATTEMPTS = 8
+        const val FOLLOW_BUDGET_MS = AppStartup.STARTUP_GRACE_MS + AppStartup.FOREIGN_TOOL_HOLD_MS + 15_000L
 
         /** The longest wait the service's suggestion is followed for. */
         const val MAX_DELAY_MS = 10_000L
 
+        /** How often a process with no debugger session is asked about again. */
+        const val NO_DDS_RECHECK_MS = 30_000L
+
+        /** Ten minutes of re-checks; a selection change or a new process starts them again. */
+        const val NO_DDS_RECHECKS = 20
+
+        /** How long another app's session is left before the selected app's is opened again. */
+        const val REFOLLOW_DELAY_MS = 15_000L
+
         const val STILL_ATTACHING = "Spock is still connecting to the app's Dart VM Service: the app is starting, " +
             "or `flutter run` is still attaching."
 
-        private const val MAX_REMEMBERED = 32
         private const val IDLE_SECONDS = 30L
         private val log = Logger.getInstance(FlutterFollower::class.java)
     }
