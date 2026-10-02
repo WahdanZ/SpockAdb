@@ -2,6 +2,7 @@ package spock.adb.flutter.analysis
 
 import com.google.gson.JsonParser
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -68,21 +69,51 @@ class RebuildTrackerTest {
         tracker.accept(
             frame(0, """[7, 1, 8, 3]""", """"newLocations": {"file:///p/lib/clock.dart": [7, 12, 5, 8, 20, 9]}"""),
         )
-        (1 until RebuildTracker.MIN_RUN_FRAMES).forEach { tracker.accept(frame(it, "[7, 1]")) }
+        // 61 frames at 60 Hz: one second from the first frame's start to the last's.
+        (1..60).forEach { tracker.accept(frame(it, "[7, 1]")) }
 
         val report = tracker.report(windowMs = 1_000)
         val hint = report.problems.single()
         assertEquals(Severity.INFO, hint.severity)
         assertEquals("frequentRebuilds", hint.type)
         assertEquals(
-            "Widget at lib/clock.dart:12:5 rebuilt 60 times in 60 frames, in every one of 60 frames in a row " +
-                "(60/s, 1.0 per frame)",
+            "Widget at lib/clock.dart:12:5 rebuilt 61 times in 61 frames, in every frame for 1.0 s (61 frames) " +
+                "(61/s, 1.0 per frame)",
             hint.summary,
         )
-        assertEquals(60, hint.count)
-        assertEquals(60, report.top.first().longestRun)
+        assertEquals(61, hint.count)
+        assertEquals(61, report.top.first().longestRunFrames)
+        assertEquals(1_000L, report.top.first().longestRunMs)
         // Built three times in one frame and never again: nothing to report.
         assertEquals(8, report.top[1].id)
+    }
+
+    @Test
+    fun `the run is a second at any refresh rate`() {
+        val at120Hz = RebuildTracker()
+        // 60 frames at 120 Hz is half a second: not yet.
+        (0 until 60).forEach { at120Hz.accept(frame(it, "[7, 1]", spacingUs = 8_334)) }
+        assertTrue(at120Hz.report().problems.isEmpty())
+
+        (60..120).forEach { at120Hz.accept(frame(it, "[7, 1]", spacingUs = 8_334)) }
+        assertEquals(121, at120Hz.report().problems.single().count)
+    }
+
+    @Test
+    fun `frames far apart are not every frame, and untimed frames count to sixty`() {
+        // An idle app tapped once every 2 s: each tap rebuilds the widget in the only frame drawn.
+        val taps = RebuildTracker()
+        (0 until 10).forEach { taps.accept(frame(it, "[7, 1]", spacingUs = 2_000_000)) }
+        assertTrue(taps.report().problems.isEmpty())
+        assertEquals(1, taps.report().top.single().longestRunFrames)
+
+        val untimed = RebuildTracker()
+        (0 until RebuildRuns.MIN_RUN_FRAMES).forEach {
+            val untimedFrame = """{"events": [7, 1]}"""
+            untimed.accept(FlutterFixtures.event(FlutterExtensionEvent.REBUILT_WIDGETS, it.toLong(), untimedFrame))
+        }
+        assertEquals(1, untimed.report().problems.size)
+        assertNull(untimed.report().top.single().longestRunMs)
     }
 
     @Test
@@ -90,24 +121,52 @@ class RebuildTrackerTest {
         val tracker = RebuildTracker()
         // A fling: three new list items every other frame for four seconds, 1.5 a frame on average.
         (0 until 240).forEach { tracker.accept(frame(it, if (it % 2 == 0) "[5, 3]" else "[]")) }
-        // A run one frame short of the threshold, twice.
-        (240 until 299).forEach { tracker.accept(frame(it, "[6, 1]")) }
-        tracker.accept(frame(299, "[]"))
-        (300 until 359).forEach { tracker.accept(frame(it, "[6, 1]")) }
+        // Runs a frame short of a second, twice.
+        (240..299).forEach { tracker.accept(frame(it, "[6, 1]")) }
+        tracker.accept(frame(300, "[]"))
+        (301..360).forEach { tracker.accept(frame(it, "[6, 1]")) }
 
         val report = tracker.report()
 
         assertTrue(report.problems.isEmpty(), "${report.problems}")
         assertEquals(1.0, report.top.first { it.id == 5 }.perFrame, 0.01)
-        assertEquals(RebuildTracker.MIN_RUN_FRAMES - 1, report.top.first { it.id == 6 }.longestRun)
+        assertEquals(60, report.top.first { it.id == 6 }.longestRunFrames)
     }
 
     @Test
     fun `a list's worth of widgets rebuilt on every frame is a warning`() {
         val tracker = RebuildTracker()
-        (0 until RebuildTracker.MIN_RUN_FRAMES).forEach { tracker.accept(frame(it, "[9, 12]")) }
+        (0..60).forEach { tracker.accept(frame(it, "[9, 12]")) }
 
         assertEquals(Severity.WARNING, tracker.report().problems.single().severity)
+    }
+
+    @Test
+    fun `a looping animation is reported with the hint that it may be expected, never as a warning`() {
+        val names = """"locations": {"file:///p/lib/fixtures/frames.dart": {"ids": [1, 2, 3, 4],
+            "lines": [73, 76, 90, 110], "columns": [12, 16, 12, 33],
+            "names": ["AnimatedBuilder", "Spinner", "RotationTransition", "_RebuildStorm"]}}"""
+        val tracker = RebuildTracker()
+        // AnimatedBuilder and the widget its builder makes; a RotationTransition (twelve of them);
+        // and a storm that started on another frame.
+        tracker.accept(frame(0, "[1, 1, 2, 1, 3, 12]", names))
+        (1..60).forEach { tracker.accept(frame(it, "[1, 1, 2, 1, 3, 12, 4, 1]")) }
+        (61..62).forEach { tracker.accept(frame(it, "[1, 1, 2, 1, 3, 12, 4, 1]")) }
+
+        val problems = tracker.report().problems.associateBy { it.summary.substringBefore(" at ") }
+
+        assertTrue(problems.values.all { it.severity == Severity.INFO }, "${problems.values}")
+        val animated = problems.getValue("AnimatedBuilder").summary
+        assertTrue(animated.endsWith(" — expected if this widget animates continuously"), animated)
+        assertTrue(problems.getValue("RotationTransition").summary.endsWith("animates continuously"))
+        assertTrue(
+            problems.getValue("Spinner").summary.endsWith(
+                " — in step with AnimatedBuilder (line 73): expected if it builds this",
+            ),
+            problems.getValue("Spinner").summary,
+        )
+        val storm = problems.getValue("_RebuildStorm").summary
+        assertFalse(storm.contains("expected"), storm)
     }
 
     @Test
@@ -170,12 +229,12 @@ class RebuildTrackerTest {
         assertNull(report.windowMs)
     }
 
-    private fun frame(index: Int, counts: String, extra: String = ""): FlutterExtensionEvent {
+    private fun frame(index: Int, counts: String, extra: String = "", spacingUs: Long = 16_667): FlutterExtensionEvent {
         val more = if (extra.isEmpty()) "" else ", $extra"
         return FlutterFixtures.event(
             FlutterExtensionEvent.REBUILT_WIDGETS,
             1_000L + index * 16,
-            """{"startTime": ${index * 16_667L}, "frameNumber": $index, "events": $counts$more}""",
+            """{"startTime": ${index * spacingUs}, "frameNumber": $index, "events": $counts$more}""",
         )
     }
 }

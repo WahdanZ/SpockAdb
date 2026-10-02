@@ -2,6 +2,7 @@ package spock.adb.flutter.analysis
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import spock.adb.diagnostics.DiagnosticShell
 import spock.adb.diagnostics.LikelyProblem
 import spock.adb.diagnostics.LikelyProblem.Severity
 import java.util.Locale
@@ -21,6 +22,10 @@ import java.util.Locale
  *   opened after the IDE's rebuild counts were on — sees ids it was never told about.
  *   [seedLocations] takes the full map from `ext.flutter.inspector.widgetLocationIdMap` to fill
  *   that gap; an id still unknown is reported by number.
+ *
+ * A location is reported when it was built in every frame for [RebuildRuns.MIN_RUN_MS] (see there
+ * why every frame, and not an average). That cannot tell a rebuild storm from an animation that
+ * loops on purpose, so the hint names the animation case rather than hiding it.
  *
  * Location ids are per isolate: a hot restart starts a new isolate that numbers them again, so
  * an event from another isolate starts the window over. Events DDS replayed on connect are left
@@ -45,9 +50,14 @@ class RebuildTracker {
         val perSecond: Double?,
         val perFrame: Double,
         /** The most frames in a row in which this location was built at least once. */
-        val longestRun: Int,
+        val longestRunFrames: Int,
+        /** How long that run lasted, first frame start to last; null when frames had no start time. */
+        val longestRunMs: Long?,
     ) {
         val label: String get() = location?.toString() ?: "Widget location #$id"
+
+        /** An animation widget (`AnimatedBuilder`, `*Transition`, `Animated*`, …): built every frame by design. */
+        val animates: Boolean get() = location?.name?.let(ANIMATION::matches) == true
     }
 
     data class Report(
@@ -62,11 +72,9 @@ class RebuildTracker {
     private val locations = mutableMapOf<Int, Location>()
     private val counts = mutableMapOf<Int, Long>()
 
-    /** Per location: frames in a row built at least once, at least [HEAVY_REBUILDS_PER_FRAME] times. */
-    private val runs = mutableMapOf<Int, Int>()
-    private val heavyRuns = mutableMapOf<Int, Int>()
-    private val longestRuns = mutableMapOf<Int, Int>()
-    private val longestHeavyRuns = mutableMapOf<Int, Int>()
+    /** Runs of frames each location was built in; [heavyRuns] counts only [HEAVY_REBUILDS_PER_FRAME] or more. */
+    private val runs = RebuildRuns()
+    private val heavyRuns = RebuildRuns()
     private var frames = 0
     private var firstFrameUs: Long? = null
     private var lastFrameUs: Long? = null
@@ -92,15 +100,16 @@ class RebuildTracker {
             val count = pair.getOrNull(1)?.takeIf { it > 0 }
             if (id != null && count != null) built.merge(id, count, Long::plus)
         }
+        val start = FlutterJson.long(data, "startTime")
         synchronized(lock) {
             follow(event.isolateId)
             FlutterJson.obj(data, "locations")?.let(::readLocations)
             FlutterJson.obj(data, "newLocations")?.let(::readLegacyLocations)
             built.forEach { (id, count) -> counts.merge(id, count, Long::plus) }
-            extendRuns(runs, longestRuns, built.keys)
-            extendRuns(heavyRuns, longestHeavyRuns, built.filterValues { it >= HEAVY_REBUILDS_PER_FRAME }.keys)
+            runs.frame(start, built.keys)
+            heavyRuns.frame(start, built.filterValues { it >= HEAVY_REBUILDS_PER_FRAME }.keys)
             frames++
-            FlutterJson.long(data, "startTime")?.let { start ->
+            if (start != null) {
                 if (firstFrameUs == null) firstFrameUs = start
                 lastFrameUs = start
             }
@@ -126,44 +135,67 @@ class RebuildTracker {
                     rebuilds = rebuilds,
                     perSecond = seconds?.let { rebuilds / it },
                     perFrame = if (frames == 0) 0.0 else rebuilds.toDouble() / frames,
-                    longestRun = longestRuns[id] ?: 0,
+                    longestRunFrames = runs.longest(id)?.frames ?: 0,
+                    longestRunMs = runs.longest(id)?.spanMs,
                 )
             }
-        val frequent = ranked.filter { it.longestRun >= MIN_RUN_FRAMES }
+        val frequent = ranked.filter { runs.longest(it.id)?.sustained == true }
         Report(
             frames = frames,
             windowMs = window,
             top = ranked.take(limit),
-            problems = frequent.take(limit).map(::problem),
+            problems = frequent.take(limit).map { problem(it, frequent) },
         )
     }
 
     /**
-     * A hint, worded as what was seen: "rebuilt N times in M frames". A WARNING only when the
-     * location was built [HEAVY_REBUILDS_PER_FRAME] times in each frame of a run as long.
+     * A hint, worded as what was seen: "rebuilt N times in M frames, in every frame for T". An
+     * animation widget is built every frame by design, so its hint says that is expected while it
+     * animates; so does the hint of a widget whose run started on the same frame as an animation's,
+     * which that animation's builder probably makes. Never suppressed: a looping animation nobody
+     * sees is worth knowing about too. A WARNING only when a widget that is not an animation was
+     * built [HEAVY_REBUILDS_PER_FRAME] times in every frame of a sustained run.
      */
-    private fun problem(widget: WidgetRebuilds): LikelyProblem {
+    private fun problem(widget: WidgetRebuilds, frequent: List<WidgetRebuilds>): LikelyProblem {
         val rate = widget.perSecond?.let { String.format(Locale.ROOT, "%.0f/s, ", it) }.orEmpty()
         val perFrame = String.format(Locale.ROOT, "%.1f", widget.perFrame)
-        val heavy = (longestHeavyRuns[widget.id] ?: 0) >= MIN_RUN_FRAMES
+        val run = widget.longestRunMs
+            ?.let { String.format(Locale.ROOT, "%.1f s (%d frames)", it / MILLIS_PER_SECOND, widget.longestRunFrames) }
+            ?: "${widget.longestRunFrames} frames"
+        val driver = driver(widget, frequent)
+        val hint = when {
+            widget.animates -> ANIMATES_HINT
+            driver == null -> ""
+            driver.location?.file == widget.location?.file ->
+                " — in step with ${driver.location?.name} (line ${driver.location?.line}): expected if it builds this"
+            else -> " — in step with ${driver.label}: expected if it builds this"
+        }
+        val heavy = !widget.animates && heavyRuns.longest(widget.id)?.sustained == true
+        val seen = "${widget.label} rebuilt ${widget.rebuilds} times in $frames frames, in every frame for $run " +
+            "(${rate}$perFrame per frame)"
         return LikelyProblem(
             type = TYPE,
             severity = if (heavy) Severity.WARNING else Severity.INFO,
-            summary = "${widget.label} rebuilt ${widget.rebuilds} times in $frames frames, in every one of " +
-                "${widget.longestRun} frames in a row (${rate}$perFrame per frame)",
+            // Clipped before the hint, so a long label cannot cut off why it may be fine.
+            summary = DiagnosticShell.clip(seen, DiagnosticShell.MAX_VALUE_CHARS - hint.length) + hint,
             count = widget.rebuilds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             section = FLUTTER_SECTION,
         )
     }
 
-    /** Locations built in this frame extend their run; every other run ends. */
-    private fun extendRuns(current: MutableMap<Int, Int>, longest: MutableMap<Int, Int>, built: Set<Int>) {
-        current.keys.retainAll(built)
-        built.forEach { id ->
-            val run = (current[id] ?: 0) + 1
-            current[id] = run
-            longest[id] = maxOf(longest[id] ?: 0, run)
-        }
+    /**
+     * The animation whose run started on the same frame as [widget]'s, if any. Of several, the one
+     * in the same file closest above it: a builder's widgets are written inside the animation that
+     * builds them.
+     */
+    private fun driver(widget: WidgetRebuilds, frequent: List<WidgetRebuilds>): WidgetRebuilds? {
+        val startUs = runs.longest(widget.id)?.startUs ?: return null
+        val inStep = frequent.filter { it.animates && it.id != widget.id && runs.longest(it.id)?.startUs == startUs }
+        val here = widget.location ?: return inStep.firstOrNull()
+        return inStep
+            .filter { it.location != null && it.location.file == here.file && it.location.line <= here.line }
+            .maxByOrNull { it.location?.line ?: 0 }
+            ?: inStep.firstOrNull()
     }
 
     /** A new isolate numbers locations from scratch: what was counted under the old ids is dropped. */
@@ -174,8 +206,6 @@ class RebuildTracker {
             counts.clear()
             runs.clear()
             heavyRuns.clear()
-            longestRuns.clear()
-            longestHeavyRuns.clear()
             frames = 0
             firstFrameUs = null
             lastFrameUs = null
@@ -223,29 +253,17 @@ class RebuildTracker {
         const val TYPE = FlutterProblemTypes.FREQUENT_REBUILDS
 
         /**
-         * How many frames in a row a location must be built in to be reported: at 60 Hz, a second.
-         *
-         * A frame's count cannot tell a rebuild from a first build: the inspector's hook ignores
-         * `builtOnce`, and counts per creation location, not per element (Flutter 3.22,
-         * `_onRebuildWidget`). So scrolling a `ListView.builder` counts each item that scrolls in
-         * at its `itemBuilder`'s location, and a burst of new items can average one or more per
-         * frame. What a first build cannot do is repeat in **every** frame for a second: that
-         * takes something that ticks — an animation, a stream, a `setState` in a listener, a
-         * parent recreating the widget — or a scroll fast enough to bring a new item in on each
-         * frame for a whole second. An indeterminate progress indicator animates inside the
-         * framework's own widgets, which are not counted, so it adds frames and no builds.
-         *
-         * Not validated on a device yet (plan H3): the sample's Frames screen has the cases.
-         */
-        const val MIN_RUN_FRAMES = 60
-
-        /**
-         * Builds per frame, in every frame of a [MIN_RUN_FRAMES] run, that make the hint a
-         * warning: a list's worth of widgets rebuilt on every frame, which no scroll produces.
+         * Builds per frame, in every frame of a sustained run, that make the hint a warning: a
+         * list's worth of widgets rebuilt on every frame, which no scroll produces.
          */
         const val HEAVY_REBUILDS_PER_FRAME = 10L
 
         const val DEFAULT_LIMIT = 10
+
+        /** Flutter's animation widgets, which rebuild on every tick of their animation by design. */
+        private val ANIMATION = Regex("""Animated[A-Z]\w*|TweenAnimationBuilder|\w+Transition""")
+
+        private const val ANIMATES_HINT = " — expected if this widget animates continuously"
 
         private const val LEGACY_STRIDE = 3
         private const val MILLIS_PER_SECOND = 1000.0
