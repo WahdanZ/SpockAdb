@@ -136,6 +136,18 @@ class DtdClientTest {
     }
 
     @Test
+    fun `a VM Service address in a name is scrubbed`() {
+        val parsed = DtdVmService.parse(
+            FakeDtd.response(
+                "ws://127.0.0.1:1/T=/ws" to
+                    "Kind: Flutter - Device: ws://127.0.0.1:2/${FakeDtd.VM_TOKEN}/ws - Package: a",
+            ),
+        ).single()
+        assertFalse(parsed.name.contains(FakeDtd.VM_TOKEN), parsed.name)
+        assertFalse(parsed.toString().contains(FakeDtd.VM_TOKEN), parsed.toString())
+    }
+
+    @Test
     fun `a name is one line, and capped`() {
         val parsed = DtdVmService.parse(
             FakeDtd.response(

@@ -3,6 +3,7 @@ package spock.adb.flutter.dtd
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
+import spock.adb.flutter.vmservice.Redaction
 import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.flutter.vmservice.VmServiceLimits
@@ -61,8 +62,11 @@ class DtdVmService(
             }
         }
 
-        /** Control characters — newlines included — become spaces, then the name is capped. */
-        private fun cleanName(raw: String): String = raw.replace(CONTROL, " ").take(MAX_NAME_CHARS)
+        /**
+         * Control characters — newlines included — become spaces, any VM Service address or token
+         * in it is scrubbed (the name ends up in logs and descriptions), then the name is capped.
+         */
+        private fun cleanName(raw: String): String = Redaction.scrub(raw.replace(CONTROL, " ")).take(MAX_NAME_CHARS)
 
         private fun Regex.part(name: String): String? = find(name)?.groupValues?.get(1)?.ifBlank { null }
 
