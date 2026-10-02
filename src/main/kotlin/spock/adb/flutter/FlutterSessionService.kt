@@ -77,6 +77,11 @@ class FlutterSessionService(private val project: Project) : Disposable {
         AdbForwards.foreignTo(device.serialNumber, port)
     }
 
+    /** Whether Android's freezer holds one of these pids ([ProcessFreezer]); null when it cannot say. */
+    internal var frozen: (ConnectedDevice, String, Set<Long>) -> Boolean? = { device, applicationId, pids ->
+        ProcessFreezer.check(device.device, applicationId, pids)
+    }
+
     /** Where attach decisions are logged, at INFO. Never an address or a token. */
     internal var info: (String) -> Unit = { log.info(it) }
     internal var background: (Runnable) -> Future<*> = { ApplicationManager.getApplication().executeOnPooledThread(it) }
@@ -351,6 +356,15 @@ class FlutterSessionService(private val project: Project) : Disposable {
         timings: Map<Long, ProcessTiming?>,
         notes: MutableList<String>,
     ): FlutterAttachOutcome {
+        // A frozen process answers nothing: no VM contact, and no point asking again soon.
+        if (frozen(device, attempt.applicationId, startup.pids) == true) {
+            return FlutterAttachOutcome.NotReady(
+                "Android froze ${attempt.applicationId} in the background (cached-app freezer): bring it to the " +
+                    "foreground, and Spock connects.",
+                FROZEN_RETRY_MS,
+                frozen = true,
+            )
+        }
         val inWindow = startup.inWindow(clock())
         return when (val dtd = dtdEvidence(device, attempt.applicationId, timings, notes)) {
             is DtdEvidence.Found -> attach(dtd.found, startup, inWindow, attempt.recordHttp)
@@ -706,6 +720,9 @@ class FlutterSessionService(private val project: Project) : Disposable {
 
         /** The retry suggested with [FlutterAttachOutcome.NotReady]; callers back off from it. */
         const val RETRY_MS = 1_000L
+
+        /** The retry suggested for a frozen process: it waits for the developer, not for a moment. */
+        const val FROZEN_RETRY_MS = 30_000L
 
         /** [FlutterSessionChange.Disconnected.reason] when [disconnect] closed the session. */
         const val DISCONNECTED_BY_SPOCK = "Disconnected by Spock."

@@ -44,6 +44,9 @@ class FlutterSessionStartupTest {
     private var vmLineAt: Long? = null
     private val logged = mutableListOf<String>()
 
+    /** Whether Android's freezer holds the app; null when the device does not say. */
+    private var isFrozen: Boolean? = false
+
     private val service = FlutterSessionService(project).apply {
         dtdDiscovery = { _, _ -> emptyList() }
         logcatDiscovery = { _, _ -> VmServiceDiscovery { logcatFound } }
@@ -60,6 +63,7 @@ class FlutterSessionStartupTest {
         // Never the real adb server on the machine running the tests.
         foreignForward = { _, _ -> foreign }
         stampToHost = { _, _ -> vmLineAt }
+        frozen = { _, _, _ -> isFrozen }
         info = { line -> synchronized(logged) { logged += line } }
     }
 
@@ -215,6 +219,33 @@ class FlutterSessionStartupTest {
             "$logged",
         )
         assertTrue(logged.none { it.contains(FakeVmService.TOKEN) || it.contains("ws://") }, "$logged")
+    }
+
+    @Test
+    fun `a frozen app is not ready, and its VM is not asked`() {
+        isFrozen = true
+        logcatFound = listOf(announced())
+        vmLineAt = now - 59_000
+        vm.dds = true
+
+        val outcome = ensure(startedAt = now - 60_000) as FlutterAttachOutcome.NotReady
+
+        assertTrue(outcome.frozen)
+        assertTrue(outcome.reason.contains("cached-app freezer"), outcome.reason)
+        assertEquals(0, sessionsMade)
+
+        isFrozen = false
+        assertTrue(ensure() is FlutterAttachOutcome.Connected, "thawed: connected")
+    }
+
+    @Test
+    fun `a device that does not say whether the app is frozen is asked as before`() {
+        isFrozen = null
+        logcatFound = listOf(announced())
+        vmLineAt = now - 59_000
+        vm.dds = true
+
+        assertTrue(ensure(startedAt = now - 60_000) is FlutterAttachOutcome.Connected)
     }
 
     private companion object {

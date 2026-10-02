@@ -53,8 +53,11 @@ class FlutterFollowerService(private val project: Project) : Disposable {
                 follower.follow(snapshot.device?.takeIf { it.info.isUsable }, snapshot.app)
             }
         }
-        DebugTimelineService.getInstance(project).addProcessStartListener(this) { serial, app, pid, hostMs ->
-            follower.processStarted(serial, app, pid, hostMs)
+        DebugTimelineService.getInstance(project).let { timeline ->
+            timeline.addProcessStartListener(this) { serial, app, pid, hostMs ->
+                follower.processStarted(serial, app, pid, hostMs)
+            }
+            timeline.addForegroundListener(this, follower::foreground)
         }
     }
 

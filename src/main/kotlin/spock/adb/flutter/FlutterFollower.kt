@@ -97,6 +97,7 @@ class FlutterFollower(
         PROCESS_START("process started", true),
         SESSION_LOST("session lost", true),
         SESSION_TAKEN("another app's session took its place", false),
+        FOREGROUND("came to the foreground", true),
     }
 
     private data class Target(val device: ConnectedDevice, val applicationId: String) {
@@ -115,6 +116,13 @@ class FlutterFollower(
     private var pids: Set<Long>? = null
     private var step = 0
     private var noDdsChecks = 0
+    private var frozenChecks = 0
+
+    /** Waiting, without spending the run's time, for the frozen app to come to the foreground. */
+    private var parked = false
+
+    /** The run ended without a session: the next foreground starts another. */
+    private var gaveUp = false
     private var pending: Future<*>? = null
     private var disposed = false
 
@@ -151,6 +159,19 @@ class FlutterFollower(
             if (disposed || now.serial != serial || now.applicationId != applicationId) return
             if (pids?.contains(pid) == true && pending != null) return
             restart(now, Trigger.PROCESS_START, startedAt = hostMs)
+        }
+    }
+
+    /**
+     * One of the selected app's activities resumed (the Timeline's device recorder saw it). While
+     * the follower waits for a frozen app, or has given up, that is the moment to try again: the
+     * app runs again, and Android has thawed it. Cheap: safe under the recorder's lock.
+     */
+    fun foreground(serial: String, applicationId: String) {
+        synchronized(lock) {
+            val now = target ?: return
+            if (disposed || now.serial != serial || now.applicationId != applicationId) return
+            if (parked || gaveUp) restart(now, Trigger.FOREGROUND, startedAt = null)
         }
     }
 
@@ -239,6 +260,9 @@ class FlutterFollower(
         pids = null
         step = 0
         noDdsChecks = 0
+        frozenChecks = 0
+        parked = false
+        gaveUp = false
         if (next == null) return
         say("${why.label}: following $next" + if (delayMs > 0) " in $delayMs ms" else "")
         schedule(delayMs)
@@ -318,8 +342,10 @@ class FlutterFollower(
 
     /** Under [lock]: what to do after [outcome]. */
     private fun decide(outcome: FlutterAttachOutcome) {
+        parked = false
         when (outcome) {
-            is FlutterAttachOutcome.NotReady -> retry(outcome.retryAfterMs, "not ready")
+            is FlutterAttachOutcome.NotReady ->
+                if (outcome.frozen) park() else retry(outcome.retryAfterMs, "not ready")
             is FlutterAttachOutcome.NotFound -> retry(null, "nothing found yet")
             is FlutterAttachOutcome.Failed -> retry(null, "the attach failed")
             is FlutterAttachOutcome.NotRunning ->
@@ -338,8 +364,12 @@ class FlutterFollower(
         val delay = maxOf(stepMs, suggestedMs?.coerceAtMost(MAX_DELAY_MS) ?: 0)
         val spent = clock() - anchor
         if (spent + delay > FOLLOW_BUDGET_MS) {
-            say("giving up on ${target ?: "the app"} after $spent ms: $why")
+            say(
+                "giving up on ${target ?: "the app"} after $spent ms: $why; " +
+                    "trying again when it comes to the foreground",
+            )
             pending = null
+            gaveUp = true
             return
         }
         step++
@@ -347,11 +377,29 @@ class FlutterFollower(
         schedule(delay)
     }
 
+    /**
+     * Under [lock]: the app is frozen in the background. No probes and no time spent: the next
+     * foreground re-arms the run, and a slow check — `dumpsys` only — covers a foreground the
+     * device log did not show (Record device events off), up to [FROZEN_CHECKS] times.
+     */
+    private fun park() {
+        parked = true
+        if (frozenChecks >= FROZEN_CHECKS) {
+            say("${target ?: "the app"} stays frozen; waiting for it to come to the foreground")
+            pending = null
+            return
+        }
+        frozenChecks++
+        say("${target ?: "the app"} is frozen in the background; waiting for it to come to the foreground")
+        schedule(FlutterSessionService.FROZEN_RETRY_MS)
+    }
+
     /** Under [lock]: no DDS now is not no DDS for ever — someone may run `flutter attach`. */
     private fun recheckNoDds() {
         if (noDdsChecks >= NO_DDS_RECHECKS) {
             say("no debugger session after $noDdsChecks checks; asking again at the next trigger")
             pending = null
+            gaveUp = true
             return
         }
         noDdsChecks++
@@ -384,6 +432,9 @@ class FlutterFollower(
 
         /** Ten minutes of re-checks; a selection change or a new process starts them again. */
         const val NO_DDS_RECHECKS = 20
+
+        /** Slow checks of a frozen app before only a foreground re-arms the follower: ten minutes. */
+        const val FROZEN_CHECKS = 20
 
         /** How long another app's session is left before the selected app's is opened again. */
         const val REFOLLOW_DELAY_MS = 15_000L

@@ -27,7 +27,9 @@
     its debugger session — a client there first would make it fail. On Flutter 3.22, which has no
     Dart Tooling Daemon to name the session, Spock therefore connects about 10–15 seconds after the
     app's Dart VM starts; Diagnose says a Flutter tool is attaching meanwhile. An app started without a debugger session
-    is checked again now and then, so a later `flutter attach` is found.
+    is checked again now and then, so a later `flutter attach` is found. An app Android has frozen
+    in the background is reported as such, not as a failure, and Spock connects as soon as it comes
+    back to the foreground.
   - To see failed requests, Spock switches on Dart's HTTP recording for the session — only through
     `flutter run`'s debugger service, only in debug and profile builds — and switches it back off
     when it disconnects, leaving it alone if something else turned it on. If the connection ends

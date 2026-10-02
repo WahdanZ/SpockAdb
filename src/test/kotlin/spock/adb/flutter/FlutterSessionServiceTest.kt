@@ -98,6 +98,7 @@ class FlutterSessionServiceTest {
         // Never the real adb server on the machine running the tests.
         foreignForward = { _, _ -> false }
         stampToHost = { _, _ -> null }
+        frozen = { _, _, _ -> null }
         background = { FutureTask(it, null).also { task -> Thread(task).start() } }
         addListener(parent) { synchronized(changes) { changes += it } }
     }

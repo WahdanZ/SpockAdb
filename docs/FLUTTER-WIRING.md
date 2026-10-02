@@ -191,4 +191,11 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   on that isolate adopts it (`HttpRecording.AdoptedBySpock`), switches it off on close through DDS, and the Timeline
   says "Spock's HTTP recording for <app> from the earlier session is still on; Spock will switch it off when it
   disconnects". Spock's VM Service forwards are logged at INFO as they are made and removed.
+- **Cached-app freezer (device gate, 2026-10-03).** An app left in the background overnight was frozen by Android
+  (`isFrozen=true` in `dumpsys activity processes`, API 34): its VM answered nothing, four attaches timed out, the
+  follower gave up, and nothing re-armed it when the app came back. Now the service reads the freezer state before
+  any VM contact (`ProcessFreezer`) and answers `NotReady(frozen = true)` with the reason in words; the follower parks
+  without spending its time budget (a `dumpsys`-only check every 30 s, at most 20), and the Timeline's device recorder
+  re-arms it when one of the app's activities resumes — as it does a follower that gave up. Unknown freezer state
+  keeps the old behaviour.
 

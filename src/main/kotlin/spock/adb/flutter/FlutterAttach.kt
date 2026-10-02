@@ -25,8 +25,12 @@ sealed interface FlutterAttachOutcome {
      * The process is up, but its VM or DDS is not reachable yet — no address in logcat, not yet
      * registered with a Dart Tooling Daemon, or a VM without DDS while `flutter run` may still be
      * attaching. Ask again after [retryAfterMs].
+     *
+     * [frozen] when Android's cached-app freezer has frozen the process ([ProcessFreezer]): it
+     * answers nothing until it comes to the foreground, so asking again soon is pointless.
      */
-    data class NotReady(val reason: String, val retryAfterMs: Long) : FlutterAttachOutcome
+    data class NotReady(val reason: String, val retryAfterMs: Long, val frozen: Boolean = false) :
+        FlutterAttachOutcome
 
     /**
      * The app runs without a debugger session: its VM answered directly, with no DDS, after the
@@ -94,7 +98,8 @@ fun FlutterAttachOutcome.logLine(): String = Redaction.scrub(
             "Connected (${if (reused) "reused" else "new"}), pid ${identity.pid}, ${identity.verifiedBy.label}"
         is FlutterAttachOutcome.NotRunning -> "NotRunning"
         is FlutterAttachOutcome.ReleaseBuild -> "ReleaseBuild"
-        is FlutterAttachOutcome.NotReady -> "NotReady, retry after $retryAfterMs ms: $reason"
+        is FlutterAttachOutcome.NotReady ->
+            "NotReady${if (frozen) " (frozen)" else ""}, retry after $retryAfterMs ms: $reason"
         is FlutterAttachOutcome.NoDdsSession -> "NoDdsSession, pid ${identity.pid}"
         is FlutterAttachOutcome.Ambiguous -> "Ambiguous, ${candidates.size} candidates: $reason"
         is FlutterAttachOutcome.NotFound -> "NotFound: $reason"

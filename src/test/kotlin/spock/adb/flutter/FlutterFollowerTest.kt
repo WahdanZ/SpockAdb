@@ -435,6 +435,65 @@ class FlutterFollowerTest {
         reused = false,
     )
 
+    @Test
+    fun `a frozen app parks the follower, and its coming to the foreground connects it`() {
+        outcomes += frozen()
+        follower.follow(device, APP)
+        runNext()
+
+        assertTrue(logged.any { "is frozen in the background" in it }, "$logged")
+        assertEquals(1, scheduler.due, "only a slow check")
+        assertEquals(FlutterSessionService.FROZEN_RETRY_MS, scheduler.tasks.last().delayMs)
+
+        follower.foreground(device.serialNumber, APP)
+        assertEquals(0L, runNext(), "asked at once")
+
+        assertEquals(2, calls.size)
+        assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `a frozen app does not spend the run's time`() {
+        repeat(FlutterFollower.FROZEN_CHECKS) { outcomes += frozen() }
+        follower.follow(device, APP)
+
+        while (scheduler.due > 0) runNext()
+
+        assertEquals(FlutterFollower.FROZEN_CHECKS + 1, calls.size, "checked slowly, never given up for time")
+        assertTrue(logged.none { "giving up" in it }, "$logged")
+    }
+
+    @Test
+    fun `a follower that gave up is re-armed when the app comes to the foreground`() {
+        repeat(MANY) { outcomes += notReady() }
+        follower.follow(device, APP)
+        while (scheduler.due > 0) runNext()
+        assertTrue(logged.any { "giving up" in it })
+        outcomes.clear()
+
+        follower.foreground(device.serialNumber, APP)
+        runNext()
+
+        assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `a foreground with a session, or of another app, starts nothing`() {
+        follower.follow(device, APP)
+        runNext()
+
+        follower.foreground(device.serialNumber, APP)
+        follower.foreground(device.serialNumber, OTHER_APP)
+
+        assertEquals(0, scheduler.due)
+    }
+
+    private fun frozen() = FlutterAttachOutcome.NotReady(
+        "Android froze $APP in the background (cached-app freezer): bring it to the foreground, and Spock connects.",
+        FlutterSessionService.FROZEN_RETRY_MS,
+        frozen = true,
+    )
+
     private companion object {
         const val APP = "spock.adb.spock_flutter_sample"
         const val OTHER_APP = "spock.adb.spock_flutter_sample.second"

@@ -77,7 +77,12 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
    on its VM, so a `flutter attach` afterwards works. On 3.47.5 the next Diagnose finds it through
    the Dart Tooling Daemon and connects; on 3.22 the "no DDS" verdict holds for that process until
    the app restarts.
-8. **Two copies, two emulators.** The second copy below, both running: select each in turn — the
+8. **Frozen in the background.** Leave the app in the background until Android freezes it
+   (`adb shell dumpsys activity processes spock.adb.spock_flutter_sample` shows `isFrozen=true`;
+   minutes to hours), select it: Diagnose's `flutter.attach` says Android froze it, and idea.log shows
+   `Flutter follower: … is frozen in the background`. Bring it to the foreground: the session row follows
+   within seconds, with nothing pressed in Spock.
+9. **Two copies, two emulators.** The second copy below, both running: select each in turn — the
    session row names the selected one's pid. Two emulators of one image: the session follows the
    selected emulator's serial.
 

@@ -366,7 +366,11 @@ internal object FlutterWords {
                 "$app is not running on ${outcome.serial}: there is no Flutter session."
             is FlutterAttachOutcome.ReleaseBuild ->
                 "$app is a release build: it has no Dart VM Service, so there is nothing to connect to."
-            is FlutterAttachOutcome.NotReady -> "The app is starting; Flutter session not ready yet. ${outcome.reason}"
+            is FlutterAttachOutcome.NotReady -> if (outcome.frozen) {
+                outcome.reason
+            } else {
+                "The app is starting; Flutter session not ready yet. ${outcome.reason}"
+            }
             is FlutterAttachOutcome.NoDdsSession -> outcome.message
             is FlutterAttachOutcome.Ambiguous ->
                 "Several running Flutter apps pass as $app and Spock does not guess between them: " +

@@ -40,12 +40,22 @@ class DeviceEventRecorder(
      */
     private val onEnded: (String) -> Unit = {},
     private val readFragments: (String) -> List<FragmentData> = { InspectionOperations(target.device).fragments(it) },
-    /**
-     * The app's process [pid] started, at host ms: the Flutter follower attaches then. Called
-     * under the recorder's lock, so it must only hand the work on.
-     */
-    private val onProcessStarted: (pid: Int, hostMs: Long) -> Unit = { _, _ -> },
+    /** What the app did that others act on — the Flutter follower attaches then. */
+    private val appEvents: AppEvents = AppEvents.NONE,
 ) {
+
+    /** Called under the recorder's lock: hand the work on, do not do it here. */
+    interface AppEvents {
+        /** The app's process [pid] started, at host ms. */
+        fun processStarted(pid: Int, hostMs: Long) = Unit
+
+        /** One of the app's activities resumed: the app is in the foreground. */
+        fun foreground() = Unit
+
+        companion object {
+            val NONE = object : AppEvents {}
+        }
+    }
 
     private val log = Logger.getInstance(DeviceEventRecorder::class.java)
     private val lock = Any()
@@ -123,7 +133,7 @@ class DeviceEventRecorder(
         )
         synchronized(lock) {
             if (stopped) return
-            classifier = LogcatTimelineClassifier(packageName, pids, target.serialNumber, onProcessStarted)
+            classifier = LogcatTimelineClassifier(packageName, pids, target.serialNumber, appEvents::processStarted)
             stream = logcat
             logcat.start()
             tick = AppExecutorUtil.getAppScheduledExecutorService()
@@ -229,7 +239,10 @@ class DeviceEventRecorder(
 
     private fun emit(event: TimelineEvent) {
         sink(event)
-        if (event.category == TimelineCategory.ACTIVITY && event.title.endsWith(" resumed")) scheduleFragmentRead()
+        if (event.category == TimelineCategory.ACTIVITY && event.title.endsWith(" resumed")) {
+            scheduleFragmentRead()
+            appEvents.foreground()
+        }
     }
 
     /** Called with [lock] held. */

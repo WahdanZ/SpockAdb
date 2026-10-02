@@ -64,6 +64,15 @@ class DebugTimelineService(private val project: Project) : Disposable {
     /** Told when the followed app's process starts; see [addProcessStartListener]. */
     private val processStartListeners = CopyOnWriteArrayList<ProcessStartListener>()
 
+    /** Told when the followed app comes to the foreground; see [addForegroundListener]. */
+    private val foregroundListeners = CopyOnWriteArrayList<ForegroundListener>()
+
+    /** One of the selected app's activities resumed, seen in the device log the recorder reads. */
+    fun interface ForegroundListener {
+        /** On the recorder's thread, under its lock: hand the work on, do not do it here. */
+        fun foreground(serial: String, packageName: String)
+    }
+
     /** The selected app's process started, seen in the device log the recorder reads. */
     fun interface ProcessStartListener {
         /** On the recorder's thread, under its lock: hand the work on, do not do it here. */
@@ -159,6 +168,15 @@ class DebugTimelineService(private val project: Project) : Disposable {
         processStartListeners += listener
     }
 
+    /**
+     * Calls [listener] whenever one of the followed app's activities resumes, until [parent] is
+     * disposed. Only while device events are recorded.
+     */
+    fun addForegroundListener(parent: Disposable, listener: ForegroundListener) {
+        if (!Disposer.tryRegister(parent, Disposable { foregroundListeners -= listener })) return
+        foregroundListeners += listener
+    }
+
     /** A note the developer adds, to find the moment they saw the bug. */
     fun addMarker(note: String) {
         record(TimelineCategory.MARKER, TimelineSeverity.INFO, note.ifBlank { "Marker" })
@@ -201,8 +219,11 @@ class DebugTimelineService(private val project: Project) : Disposable {
             onEnded = { reason ->
                 ApplicationManager.getApplication().invokeLater({ recorderEnded(started, reason) }) { disposed }
             },
-            onProcessStarted = { pid, hostMs ->
-                processStartListeners.forEach { it.processStarted(device.serialNumber, app, pid.toLong(), hostMs) }
+            appEvents = object : DeviceEventRecorder.AppEvents {
+                override fun processStarted(pid: Int, hostMs: Long) =
+                    processStartListeners.forEach { it.processStarted(device.serialNumber, app, pid.toLong(), hostMs) }
+
+                override fun foreground() = foregroundListeners.forEach { it.foreground(device.serialNumber, app) }
             },
         )
         recorder = started.also { it.start() }

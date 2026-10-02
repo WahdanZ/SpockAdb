@@ -47,6 +47,8 @@ class FlutterSectionTest {
             FlutterAttachOutcome.NotRunning(SERIAL, APP) to "not running",
             FlutterAttachOutcome.ReleaseBuild(SERIAL, APP) to "release build",
             FlutterAttachOutcome.NotReady("No address yet.", 1_000) to "the app is starting",
+            FlutterAttachOutcome.NotReady("Android froze $APP (cached-app freezer).", 30_000, frozen = true)
+                to "cached-app freezer",
             FlutterAttachOutcome.NoDdsSession(identity, FlutterSessionService.NO_DDS_MESSAGE) to "without a debugger",
             FlutterAttachOutcome.Ambiguous(listOf(candidate, candidate), "choose one") to "does not guess",
             FlutterAttachOutcome.NotFound("nothing logged an address") to "No Flutter session found",
