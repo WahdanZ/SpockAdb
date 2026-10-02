@@ -31,14 +31,24 @@ enum class TimelineCategory(val label: String) {
     DEVICE_CONDITION("Conditions"),
     DEVICE("Device"),
     LOG("Log"),
+    FLUTTER_ERROR("Flutter"),
+    FLUTTER_FRAME("Frame"),
+    NAVIGATION("Navigation"),
+    HTTP("HTTP"),
     MCP("Agent"),
     MARKER("Marker"),
     ;
 
     companion object {
-        /** Matches a label or a name, case-insensitively, for tool arguments. */
-        fun parse(text: String): TimelineCategory? = entries.firstOrNull {
-            it.name.equals(text, ignoreCase = true) || it.label.equals(text, ignoreCase = true)
+        /**
+         * Matches a name (`flutter_error`), else a label (`Frame`), case-insensitively, for tool
+         * arguments. A label that is also the stem of several names is refused rather than read as
+         * one of them: `flutter` could mean `flutter_error` or `flutter_frame`.
+         */
+        fun parse(text: String): TimelineCategory? {
+            entries.firstOrNull { it.name.equals(text, ignoreCase = true) }?.let { return it }
+            if (entries.count { it.name.startsWith(text + "_", ignoreCase = true) } > 1) return null
+            return entries.singleOrNull { it.label.equals(text, ignoreCase = true) }
         }
     }
 }

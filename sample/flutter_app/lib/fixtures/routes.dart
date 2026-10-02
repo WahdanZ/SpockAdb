@@ -12,7 +12,7 @@ class ItemListScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Items')),
       body: ListView.builder(
-        itemCount: 50,
+        itemCount: 500,
         itemBuilder: (context, index) => Semantics(
           identifier: 'item_$index',
           child: ListTile(
