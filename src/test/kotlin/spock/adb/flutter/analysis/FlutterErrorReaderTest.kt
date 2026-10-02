@@ -55,7 +55,73 @@ class FlutterErrorReaderTest {
         assertEquals("10-01 20:57:00.680", result.problems[0].lastSeen)
         assertEquals(5, result.liveCount)
         assertEquals(0, result.historyCount)
-        assertEquals(4, result.errorsSinceReload)
+        // The last event says 4 errors came before it: five since the reload, itself included.
+        assertEquals(5, result.errorsSinceReload)
+        // Device epoch ms, for lining a group up with logcat.
+        assertEquals(1790887895144, result.groups[0].firstSeenMs)
+        assertEquals(result.groups[0].last.timestampMs, result.groups[0].lastSeenMs)
+    }
+
+    @Test
+    fun `the same overflow at two sites is two problems, at one site with other numbers one`() {
+        fun overflow(at: Long, pixels: Int, line: Int) = FlutterFixtures.event(
+            FlutterExtensionEvent.ERROR,
+            at,
+            """{"description": "Exception caught by rendering library", "properties": [
+                 {"type": "ErrorSummary", "description": "A RenderFlex overflowed by $pixels pixels on the right."},
+                 {"name": "The relevant error-causing widget was", "children": [
+                   {"description": "Row Row:file:///home/dev/app/lib/screen.dart:$line:17"}]}]}""",
+        )
+
+        val result = FlutterErrorReader.summarise(
+            listOf(overflow(1, 219, 30), overflow(2, 12, 30), overflow(3, 219, 31)),
+            ZoneOffset.UTC,
+        )
+
+        assertEquals(listOf(2, 1), result.problems.map { it.count })
+        assertTrue(result.problems[0].summary.endsWith("Row at lib/screen.dart:30:17"), result.problems[0].summary)
+        assertTrue(result.problems[1].summary.endsWith("Row at lib/screen.dart:31:17"), result.problems[1].summary)
+    }
+
+    @Test
+    fun `a headline over several lines reads as one`() {
+        val event = FlutterFixtures.event(
+            FlutterExtensionEvent.ERROR,
+            1,
+            """{"description": "Exception caught by widgets library", "properties": [{"type": "ErrorSummary",
+               "description": "'package:app/a.dart': Failed assertion: line 3 pos 7: 'x':\n   is not true.\n"}]}""",
+        )
+
+        assertEquals(
+            "'package:app/a.dart': Failed assertion: line 3 pos 7: 'x': is not true.",
+            FlutterErrorReader.read(event).headline,
+        )
+    }
+
+    @Test
+    fun `a raw VM Service token and URL queries never leave the reader or the timeline`() {
+        val token = "AbCdEf12_xYz"
+        val link = "http://127.0.0.1:9102/#/inspector?uri=http%3A%2F%2F127.0.0.1%3A52511%2F$token%3D%2F" +
+            "&inspectorRef=inspector-0"
+        val event = FlutterFixtures.event(
+            FlutterExtensionEvent.ERROR,
+            1,
+            """{"description": "Exception caught by image resource service", "properties": [{"type": "ErrorSummary",
+               "description": "HTTP request failed, statusCode: 403, https://cdn.example.com/a.png?sig=s3cr3t"}],
+               "renderedErrorText": "To inspect this widget in Flutter DevTools, visit: $link\nThe image is gone."}""",
+        )
+
+        val error = FlutterErrorReader.read(event)
+        val problem = FlutterErrorReader.summarise(listOf(event)).problems.single()
+        val row = FlutterTimelineMapper.error(error)
+
+        val texts = listOf(error.headline!!, error.renderedText, problem.summary, row.title, row.detail)
+        texts.forEach { text ->
+            assertFalse(text.contains(token), text)
+            assertFalse(text.contains("s3cr3t"), text)
+        }
+        assertTrue(error.headline!!.endsWith("https://cdn.example.com/a.png"), error.headline)
+        assertTrue(error.renderedText.contains("visit: http://127.0.0.1:9102/\n"), error.renderedText)
     }
 
     @Test
@@ -75,10 +141,12 @@ class FlutterErrorReaderTest {
     }
 
     @Test
-    fun `the DevTools link in the first error's full text keeps its token scrubbed`() {
+    fun `the DevTools link in the first error's full text loses its query, token and all`() {
         val first = FlutterErrorReader.read(events.first())
 
-        assertTrue(first.renderedText.contains("inspectorRef=inspector-0"))
+        val link = "in Flutter DevTools, visit:\nhttp://127.0.0.1:9102/\n"
+        assertTrue(first.renderedText.contains(link), first.renderedText)
+        assertFalse(first.renderedText.contains("uri="), first.renderedText)
         assertFalse(Regex("""%2F[A-Za-z0-9_-]+%3D""").containsMatchIn(first.renderedText), first.renderedText)
     }
 

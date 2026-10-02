@@ -132,7 +132,7 @@
         1
       ],
       "newLocations": {
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/main.dart": [
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/main.dart": [
           7,
           16,
           29,
@@ -185,7 +185,7 @@
           92,
           33
         ],
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/routes.dart": [
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/routes.dart": [
           91,
           36,
           12,
@@ -214,7 +214,7 @@
           13,
           35
         ],
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/common.dart": [
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/common.dart": [
           92,
           13,
           12,
@@ -243,7 +243,7 @@
           19,
           17
         ],
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/network.dart": [
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/network.dart": [
           160,
           42,
           12,
@@ -263,7 +263,7 @@
           54,
           9
         ],
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/errors.dart": [
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/errors.dart": [
           167,
           51,
           12,
@@ -304,7 +304,7 @@
           59,
           26
         ],
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/layout.dart": [
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/layout.dart": [
           207,
           18,
           12,
@@ -321,7 +321,7 @@
           33,
           15
         ],
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/frames.dart": [
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/frames.dart": [
           210,
           21,
           12,
@@ -334,7 +334,7 @@
         ]
       },
       "locations": {
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/main.dart": {
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/main.dart": {
           "ids": [
             7,
             8,
@@ -412,7 +412,7 @@
             "Icon"
           ]
         },
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/routes.dart": {
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/routes.dart": {
           "ids": [
             91,
             124,
@@ -458,7 +458,7 @@
             "Text"
           ]
         },
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/common.dart": {
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/common.dart": {
           "ids": [
             92,
             109,
@@ -504,7 +504,7 @@
             "SizedBox"
           ]
         },
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/network.dart": {
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/network.dart": {
           "ids": [
             160,
             161,
@@ -538,7 +538,7 @@
             "ResultText"
           ]
         },
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/errors.dart": {
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/errors.dart": {
           "ids": [
             167,
             168,
@@ -600,7 +600,7 @@
             "Text"
           ]
         },
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/layout.dart": {
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/layout.dart": {
           "ids": [
             207,
             208,
@@ -630,7 +630,7 @@
             "Text"
           ]
         },
-        "file:///Users/ahmedwahdan/IdeaProjects/spockAdb/sample/flutter_app/lib/fixtures/frames.dart": {
+        "file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/frames.dart": {
           "ids": [
             210,
             211,

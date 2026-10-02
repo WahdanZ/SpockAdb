@@ -88,6 +88,41 @@ class FrameStatsTest {
     }
 
     @Test
+    fun `smooth frames are no note even in a debug build`() {
+        val smooth = (1L..10L).map { frame(it, 4_000, 6_000) }
+
+        assertTrue(FrameStats.analyse(smooth, 60.0, FlutterBuild.DEBUG).problems.isEmpty())
+        assertTrue(FrameStats.analyse(smooth, 60.0, build = null).problems.isEmpty())
+    }
+
+    @Test
+    fun `one slow frame in a thousand is a note, not jank`() {
+        val mostlySmooth = (1L..1_000L).map { frame(it, if (it == 500L) 30_000 else 4_000, 6_000) }
+
+        val problem = FrameStats.analyse(mostlySmooth, 60.0, FlutterBuild.PROFILE).problems.single()
+
+        assertEquals(Severity.INFO, problem.severity)
+        assertTrue(problem.summary.startsWith("A few slow frames: 1 of 1000 frames"), problem.summary)
+    }
+
+    @Test
+    fun `jank is frequent slow frames, or one frozen frame`() {
+        // 60 of 1000 is 6 %: over the 5 % line.
+        val frequent = (1L..1_000L).map { frame(it, if (it % 50 < 3) 30_000 else 4_000, 6_000) }
+        assertEquals(Severity.WARNING, severity(frequent, FlutterBuild.PROFILE))
+
+        // 40 of 1000 is 4 %: under it.
+        val rare = (1L..1_000L).map { frame(it, if (it % 50 < 2) 30_000 else 4_000, 6_000) }
+        assertEquals(Severity.INFO, severity(rare, FlutterBuild.PROFILE))
+
+        val frozen = (1L..1_000L).map { frame(it, if (it == 500L) 800_000 else 4_000, 6_000) }
+        assertEquals(Severity.WARNING, severity(frozen, FlutterBuild.RELEASE))
+    }
+
+    private fun severity(events: List<FlutterExtensionEvent>, build: FlutterBuild) =
+        FrameStats.analyse(events, 60.0, build).problems.single().severity
+
+    @Test
     fun `replayed start-up frames are left out unless asked for`() {
         val history = FlutterFixtures.events(FlutterExtensionEvent.FRAME, history = true)
 

@@ -24,6 +24,9 @@ import java.time.ZoneId
  * happened before Spock connected rather than just now. Their absence proves nothing: frame
  * events evict old errors from DDS's replay buffer (spike S6).
  *
+ * Text the app wrote is scrubbed of VM Service tokens and of URL query strings as it is read, so
+ * nothing downstream — a problem, a timeline row — sees either.
+ *
  * Pure: no device, no IDE.
  */
 object FlutterErrorReader {
@@ -33,13 +36,16 @@ object FlutterErrorReader {
         val timestampMs: Long,
         /** `Exception caught by rendering library`. */
         val description: String,
-        /** `A RenderFlex overflowed by 219 pixels on the right.` */
+        /** `A RenderFlex overflowed by 219 pixels on the right.`, on one line. */
         val headline: String?,
         /** What was thrown: `StateError`, `ArgumentError`, `assertion`; null when not stated. */
         val thrown: String?,
         /** `Row at lib/fixtures/layout.dart:30:17`, when the error names the widget. */
         val widget: String?,
-        /** The app's count of errors before this one since the last hot reload; -1 when absent. */
+        /**
+         * As the app sends it: how many errors it reported **before** this one since the last hot
+         * reload (0 for the first, which is the one that carries the full report); -1 when absent.
+         */
         val errorsSinceReload: Int,
         val renderedText: String,
         val history: Boolean,
@@ -52,21 +58,32 @@ object FlutterErrorReader {
             ).joinToString(" — ")
     }
 
-    /** Errors that read the same, counted together. */
+    /**
+     * Errors from the same site that read the same, counted together. [problems][Result.problems]
+     * are in the same order, one per group.
+     */
     data class Group(
         val first: FlutterError,
         val last: FlutterError,
         val count: Int,
         /** How many of [count] happened before Spock connected. */
         val historyCount: Int,
-    )
+    ) {
+        /** Epoch ms on the device's clock, to line the group up with log lines of the same time. */
+        val firstSeenMs: Long get() = first.timestampMs
+        val lastSeenMs: Long get() = last.timestampMs
+    }
 
     data class Result(
         val groups: List<Group>,
         val problems: List<LikelyProblem>,
         val liveCount: Int,
         val historyCount: Int,
-        /** From the latest error: how many the app had seen since its last hot reload, or null. */
+        /**
+         * How many errors the app has reported since its last hot reload, the latest included, or
+         * null when it did not say. Read from the latest error, so it covers errors from before
+         * Spock connected that DDS no longer replays.
+         */
         val errorsSinceReload: Int?,
     )
 
@@ -80,16 +97,16 @@ object FlutterErrorReader {
         val rendered = clean(FlutterJson.string(data, "renderedErrorText").orEmpty())
         val headline = properties.firstOrNull { FlutterJson.string(it, "type") == ERROR_SUMMARY }
             ?.let { FlutterJson.string(it, "description") }
-            ?.let(::clean)
+            ?.let(::oneLine)
             ?.takeIf { it.isNotBlank() }
             ?: rendered.lineSequence().map { it.trim() }.firstOrNull { it.startsWith(ANOTHER) }
-                ?.removePrefix(ANOTHER)?.trim()
+                ?.removePrefix(ANOTHER)?.let(::oneLine)
         val thrown = properties.firstNotNullOfOrNull { property ->
             FlutterJson.string(property, "description")?.let { THROWN.find(it)?.groupValues?.get(1) }
         }
         return FlutterError(
             timestampMs = event.timestampMs,
-            description = FlutterJson.string(data, "description")?.let(::clean)?.takeIf { it.isNotBlank() }
+            description = FlutterJson.string(data, "description")?.let(::oneLine)?.takeIf { it.isNotBlank() }
                 ?: DEFAULT_DESCRIPTION,
             headline = headline,
             thrown = thrown,
@@ -117,7 +134,7 @@ object FlutterErrorReader {
             problems = grouped.map { problem(it, zone) },
             liveCount = errors.count { !it.history },
             historyCount = errors.count { it.history },
-            errorsSinceReload = errors.lastOrNull()?.errorsSinceReload?.takeIf { it >= 0 },
+            errorsSinceReload = errors.lastOrNull()?.errorsSinceReload?.takeIf { it >= 0 }?.plus(1),
         )
     }
 
@@ -155,14 +172,21 @@ object FlutterErrorReader {
         return "$name at ${shortSourcePath(file)}:$position"
     }
 
-    /** Digits differ between otherwise identical errors (overflow pixels, ids); they count as one. */
+    /**
+     * Digits in the headline differ between repeats of one error (overflow pixels, an id), so they
+     * count as one. The widget's `file:line:col` is the site and is kept as it is: the same
+     * overflow in two rows of a layout is two problems to fix.
+     */
     private fun groupKey(error: FlutterError): String =
-        (error.description + "|" + error.headline + "|" + error.widget).replace(DIGITS, "#")
+        listOf(error.description, error.headline?.replace(DIGITS, "#"), error.widget).joinToString("|")
 
-    private fun clean(text: String): String = Redaction.scrub(text)
+    private fun clean(text: String): String = stripUrlQueries(Redaction.scrub(text))
+
+    /** A multi-line summary (an assertion's message, a wrapped description) on one line. */
+    private fun oneLine(text: String): String = clean(text).replace(WHITESPACE, " ").trim()
 
     /** The problem type a [LikelyProblem] from a `Flutter.Error` carries. */
-    const val TYPE = "flutterError"
+    const val TYPE = FlutterProblemTypes.FLUTTER_ERROR
 
     private const val ERROR_SUMMARY = "ErrorSummary"
     private const val ANOTHER = "Another exception was thrown:"
@@ -172,4 +196,5 @@ object FlutterErrorReader {
     private val THROWN = Regex("""^The following (.+?) was thrown\b""")
     private val WIDGET_LOCATION = Regex("""^(\S+)\s.*?((?:file|package):\S+?):(\d+:\d+)\s*$""")
     private val DIGITS = Regex("""\d+""")
+    private val WHITESPACE = Regex("""\s+""")
 }

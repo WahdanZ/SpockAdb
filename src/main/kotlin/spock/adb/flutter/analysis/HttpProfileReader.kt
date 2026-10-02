@@ -30,15 +30,22 @@ object HttpProfileReader {
         /** Query and fragment stripped; host and path kept. */
         val url: String,
         val status: Int?,
+        /** Query strings stripped from any URL in it. */
         val error: String?,
         val startTimeUs: Long?,
-        /** When the response finished, or the request failed; null while in flight. */
+        /**
+         * When the response body was read to its end, or the request failed; null while in flight.
+         * An app that reads the status and never drains the body leaves it null for good.
+         */
         val endTimeUs: Long?,
     ) {
         val inFlight: Boolean get() = endTimeUs == null && error == null
 
-        /** A request still in flight has not failed yet, even when a 4xx/5xx status is already in. */
-        val failed: Boolean get() = error != null || (!inFlight && status != null && status >= HTTP_CLIENT_ERROR)
+        /**
+         * An error, or a 4xx/5xx status. The status is final once the headers are in, so a request
+         * whose body is still being read — or never will be — has failed when its status says so.
+         */
+        val failed: Boolean get() = error != null || (status != null && status >= HTTP_CLIENT_ERROR)
 
         val durationMs: Long?
             get() = if (startTimeUs != null && endTimeUs != null) (endTimeUs - startTimeUs) / MICROS_PER_MILLI else null
@@ -71,8 +78,8 @@ object HttpProfileReader {
 
     /**
      * One problem of type `network` (the type logcat's HTTP failures carry) per distinct failure:
-     * WARNING for a 4xx, ERROR for a 5xx or a request that never got a response. Requests in
-     * flight are not failures.
+     * WARNING for a 4xx, ERROR for a 5xx or a request that never got a response. A request in
+     * flight with no status yet is not a failure.
      */
     fun problems(requests: List<Request>): List<LikelyProblem> {
         val groups = linkedMapOf<String, MutableList<Request>>()
@@ -84,7 +91,7 @@ object HttpProfileReader {
         return groups.values.map { failures ->
             val request = failures.first()
             LikelyProblem(
-                type = LogProblemExtractor.TYPE_NETWORK,
+                type = FlutterProblemTypes.NETWORK,
                 severity = severity(request),
                 summary = summary(request),
                 count = failures.size,
@@ -111,7 +118,8 @@ object HttpProfileReader {
         val uri = FlutterJson.string(json, "uri") ?: return null
         val requestData = FlutterJson.obj(json, "request")
         val response = FlutterJson.obj(json, "response")
-        val error = FlutterJson.string(requestData, "error") ?: FlutterJson.string(response, "error")
+        val error = (FlutterJson.string(requestData, "error") ?: FlutterJson.string(response, "error"))
+            ?.let(::stripUrlQueries)
         return Request(
             id = id,
             method = FlutterJson.string(json, "method") ?: FlutterJson.string(requestData, "method") ?: "?",

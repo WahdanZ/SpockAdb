@@ -115,21 +115,32 @@ object FrameStats {
         )
     }
 
+    /**
+     * Nothing when every frame made its budget. In profile and release, a WARNING only when slow
+     * frames are frequent enough to see ([isJanky]); fewer is an INFO with the same numbers. In
+     * debug, or an unknown build, always an INFO.
+     */
     private fun problem(
         frames: List<Frame>,
         over: List<Frame>,
         budgetMs: Double,
         build: FlutterBuild?,
     ): LikelyProblem? {
-        if (frames.isEmpty()) return null
+        if (over.isEmpty()) return null
         val worst = frames.maxBy { maxOf(it.buildUs, it.rasterUs) }
         val counts = "${over.size} of ${frames.size} frames over the ${ms(budgetMs)} budget; " +
             "worst: build ${ms(worst.buildUs / MICROS_PER_MILLI)}, raster ${ms(worst.rasterUs / MICROS_PER_MILLI)}"
         return when (build) {
-            FlutterBuild.PROFILE, FlutterBuild.RELEASE -> if (over.isEmpty()) {
-                null
-            } else {
+            FlutterBuild.PROFILE, FlutterBuild.RELEASE -> if (isJanky(frames.size, over)) {
                 LikelyProblem(TYPE, Severity.WARNING, "Janky frames: $counts", over.size, section = FLUTTER_SECTION)
+            } else {
+                LikelyProblem(
+                    TYPE,
+                    Severity.INFO,
+                    "A few slow frames: $counts",
+                    over.size,
+                    section = FLUTTER_SECTION,
+                )
             }
             FlutterBuild.DEBUG, null -> LikelyProblem(
                 TYPE,
@@ -140,6 +151,17 @@ object FrameStats {
                 section = FLUTTER_SECTION,
             )
         }
+    }
+
+    /**
+     * Slow frames a user sees: at least [JANK_MIN_FRAMES] of them making up [JANK_MIN_RATIO] of
+     * the frames, or a single frozen one. One slow frame in thousands is a hiccup, not jank. The
+     * thresholds await device validation (plan H3).
+     */
+    fun isJanky(frameCount: Int, over: List<Frame>): Boolean {
+        val frozen = over.any { maxOf(it.buildUs, it.rasterUs) / MICROS_PER_MILLI >= FROZEN_FRAME_MS }
+        val frequent = over.size >= JANK_MIN_FRAMES && over.size >= frameCount * JANK_MIN_RATIO
+        return frozen || frequent
     }
 
     /** Nearest-rank percentiles; null for no frames. */
@@ -156,10 +178,19 @@ object FrameStats {
     internal fun ms(value: Double): String = String.format(Locale.ROOT, "%.1f ms", value)
 
     /** The problem type for frame timings, a warning or a note. */
-    const val TYPE = "jank"
+    const val TYPE = FlutterProblemTypes.JANK
 
     /** Assumed when the app does not answer `_flutter.getDisplayRefreshRate`. */
     const val DEFAULT_FPS = 60.0
+
+    /** Fewer slow frames than this is never jank, however short the recording. */
+    const val JANK_MIN_FRAMES = 3
+
+    /** One frame in twenty over budget: three dropped frames a second at 60 Hz, a visible stutter. */
+    const val JANK_MIN_RATIO = 0.05
+
+    /** Android vitals' frozen frame: one this long is a visible freeze on its own. */
+    const val FROZEN_FRAME_MS = 700.0
 
     private const val MIN_FPS = 1.0
     private const val MAX_FPS = 1000.0

@@ -45,7 +45,7 @@
         },
         "connectionInfo": {
           "localPort": 46110,
-          "remoteAddress": "34.227.237.26",
+          "remoteAddress": "203.0.113.10",
           "remotePort": 443
         },
         "contentLength": 0,
@@ -85,7 +85,7 @@
         "compressionState": "HttpClientResponseCompressionState.notCompressed",
         "connectionInfo": {
           "localPort": 46110,
-          "remoteAddress": "34.227.237.26",
+          "remoteAddress": "203.0.113.10",
           "remotePort": 443
         },
         "contentLength": 0,

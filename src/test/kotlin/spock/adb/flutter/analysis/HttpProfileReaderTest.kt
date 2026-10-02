@@ -73,6 +73,36 @@ class HttpProfileReaderTest {
     }
 
     @Test
+    fun `a 404 whose body is never read has failed, though it never finishes`() {
+        val undrained = """{"id": "9", "method": "GET", "uri": "https://httpbin.org/status/404", "startTime": 1000000,
+            "response": {"startTime": 1400000, "statusCode": 404}}"""
+        val waiting = """{"id": "10", "method": "GET", "uri": "https://httpbin.org/delay/9", "startTime": 1000000,
+            "request": {"method": "GET"}}"""
+
+        val (notFound, inFlight) = HttpProfileReader.read(profileOf(listOf(undrained, waiting))).requests
+
+        assertTrue(notFound.inFlight)
+        assertTrue(notFound.failed)
+        assertFalse(inFlight.failed)
+        val problem = HttpProfileReader.problems(listOf(notFound, inFlight)).single()
+        assertEquals("GET /status/404 (httpbin.org) returned HTTP 404", problem.summary)
+        val row = FlutterTimelineMapper.httpFailure(notFound)!!
+        assertEquals("The response body had not been read to its end.", row.detail)
+    }
+
+    @Test
+    fun `a URL in an error message loses its query string`() {
+        val failed = """{"id": "1", "method": "GET", "uri": "https://api.example.com/me?session=abc",
+            "startTime": 1000000, "endTime": 1500000,
+            "request": {"error": "HttpException: Connection closed, uri = https://api.example.com/me?session=abc"}}"""
+
+        val request = HttpProfileReader.read(profileOf(listOf(failed))).requests.single()
+
+        assertEquals("HttpException: Connection closed, uri = https://api.example.com/me", request.error)
+        assertFalse(HttpProfileReader.problems(listOf(request)).single().summary.contains("session"))
+    }
+
+    @Test
     fun `a later page replaces the requests it repeats`() {
         val finished = request("-812882566", "https://httpbin.org/status/200", status = 200)
         val update = HttpProfileReader.read(profileOf(listOf(finished))).requests
