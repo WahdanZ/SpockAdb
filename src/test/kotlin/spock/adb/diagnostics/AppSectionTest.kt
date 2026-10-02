@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.flutter.FlutterAttachOutcome
 import spock.adb.flutter.FlutterBuild
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -38,7 +39,11 @@ class AppSectionTest {
     private val commands = mutableListOf<String>()
 
     /** A probe whose APK listing answers with [listed], or times out when it is null. */
-    private fun probe(listed: String?, packageDump: String = dumpsys): AndroidProbe {
+    private fun probe(
+        listed: String?,
+        packageDump: String = dumpsys,
+        flutter: FlutterDiagnosticSource? = null,
+    ): AndroidProbe {
         val device = mockk<IDevice>(relaxed = true)
         val command = slot<String>()
         val receiver = slot<IShellOutputReceiver>()
@@ -58,7 +63,7 @@ class AppSectionTest {
             receiver.captured.flush()
         }
         // A serial of its own, so no other test's answer is remembered for this one.
-        return AndroidProbe(device, "emulator-${UUID.randomUUID()}", pkg)
+        return AndroidProbe(device, "emulator-${UUID.randomUUID()}", pkg, flutter = flutter)
     }
 
     @Test
@@ -95,5 +100,15 @@ class AppSectionTest {
         assertEquals("debug", AppSection.collect(probe).data["flutter"].asString)
 
         assertEquals(1, commands.count { it == FlutterBuild.listingCommand(pkg) }, "$commands")
+    }
+
+    @Test
+    fun `with the app's session in the report, the note points at the flutter section`() {
+        val source = FlutterDiagnosticSource(pkg, FlutterBuild.DEBUG, FlutterAttachOutcome.NotRunning("x", pkg))
+        val data = AppSection.collect(probe(listed = null, flutter = source)).data
+
+        assertEquals("debug", data["flutter"].asString, "the build already known is used")
+        assertEquals(AppSection.FLUTTER_SECTION_NOTE, data["flutterNote"].asString)
+        assertFalse(commands.contains(FlutterBuild.listingCommand(pkg)), "$commands")
     }
 }

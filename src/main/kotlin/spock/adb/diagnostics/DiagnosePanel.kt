@@ -381,6 +381,11 @@ class DiagnosePanel(
                     append("<li><b>").append(problem.severity.uppercase()).append("</b> ")
                     append(escape(problem.summary))
                     if (problem.count > 1) append(" ×").append(problem.count)
+                    // A Flutter error's logcat context, so the two are read together.
+                    result.nearby[problem.id]?.let { logs ->
+                        append("<br><i>In logcat around it:</i> ")
+                        append(logs.joinToString("; ") { escape(it.summary) })
+                    }
                     append("</li>")
                 }
                 append("</ul>")

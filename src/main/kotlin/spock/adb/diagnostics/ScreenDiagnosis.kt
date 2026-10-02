@@ -14,7 +14,7 @@ import com.google.gson.JsonObject
  */
 class ScreenDiagnosis(val report: JsonObject) {
 
-    data class Problem(val severity: String, val summary: String, val count: Int)
+    data class Problem(val severity: String, val summary: String, val count: Int, val id: String? = null)
 
     /** Ranked as the collector ranked them. */
     val problems: List<Problem> = report.array("likelyProblems")?.mapNotNull { element ->
@@ -23,8 +23,23 @@ class ScreenDiagnosis(val report: JsonObject) {
             severity = problem.string("severity") ?: "info",
             summary = problem.string("summary") ?: return@mapNotNull null,
             count = problem.int("count") ?: 1,
+            id = problem.string("id"),
         )
     }.orEmpty()
+
+    /**
+     * For a listed Flutter error, the listed log problems near it in time, by the error's problem
+     * id: what the `flutter` section paired them with, so they are shown together.
+     */
+    val nearby: Map<String, List<Problem>> = run {
+        val byId = problems.filter { it.id != null }.associateBy { it.id }
+        report.obj(FlutterSection.id)?.obj("errors")?.array("groups")?.mapNotNull { element ->
+            val group = element as? JsonObject ?: return@mapNotNull null
+            val problemId = group.string("problem") ?: return@mapNotNull null
+            val logs = group.array("nearbyLogs")?.mapNotNull { byId[it.asStringOrEmpty()] }.orEmpty()
+            logs.takeIf { it.isNotEmpty() }?.let { problemId to it }
+        }.orEmpty().toMap()
+    }
 
     /** Problems the collector dropped to stay within its size budget. */
     val moreProblems: Int = report.int("moreProblems") ?: 0
@@ -41,6 +56,7 @@ class ScreenDiagnosis(val report: JsonObject) {
         screen?.let { add("Screen" to describeScreen(it)) }
         report.obj(AppSection.id)?.let { add("Process" to describeApp(it)) }
         report.obj(LogsSection.id)?.let { add("Logs" to describeLogs(it)) }
+        report.obj(FlutterSection.id)?.let { add("Flutter" to describeFlutter(it)) }
         report.obj(UiSection.id)?.let { add("UI" to describeUi(it)) }
         report.obj(PermissionsSection.id)?.let { add("Permissions" to describePermissions(it)) }
         report.obj(BackgroundWorkSection.id)?.let { add("Background work" to describeWork(it)) }
@@ -79,6 +95,20 @@ class ScreenDiagnosis(val report: JsonObject) {
     private fun describeLogs(logs: JsonObject): String =
         "${logs.int("errors") ?: 0} error(s), ${logs.int("warnings") ?: 0} warning(s) in the last " +
             "${logs.int("windowLines") ?: 0} lines; ${logs.int("appLines") ?: 0} from the app"
+
+    /** How the attach went, then, for a live session, what it counted. */
+    private fun describeFlutter(flutter: JsonObject): String = buildList {
+        flutter.string("attach")?.let(::add)
+        flutter.obj("errors")?.let { errors ->
+            val before = errors.int("beforeSpockConnected") ?: 0
+            add(
+                "${errors.int("sinceConnected") ?: 0} error(s) since Spock connected" +
+                    if (before > 0) ", $before before" else "",
+            )
+        }
+        flutter.obj("http")?.let { http -> http.int("failed")?.let { add("$it failed request(s)") } }
+        flutter.array("notes")?.joinText(" ")?.takeIf { it.isNotBlank() }?.let(::add)
+    }.joinToString(" · ")
 
     private fun describeUi(ui: JsonObject): String {
         val a11y = ui.obj("accessibility")

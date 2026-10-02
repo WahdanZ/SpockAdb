@@ -32,6 +32,7 @@ object DiagnosticSections {
         ScreenSection,
         AppSection,
         LogsSection,
+        FlutterSection,
         UiSection,
         BackgroundWorkSection,
         DeviceConditionsSection,
@@ -159,7 +160,10 @@ object AppSection : DiagnosticSection<AndroidProbe> {
             flutter?.let { addProperty("flutter", it.label) }
             // Structured errors are a debug-build behaviour: profile and release have no
             // inspector to send them to, so for those builds there is nothing missing to explain.
-            if (flutter == FlutterBuild.DEBUG) addProperty("flutterNote", FLUTTER_ERRORS_NOTE)
+            // With a `flutter` section the errors are there, so the note points at it.
+            if (flutter == FlutterBuild.DEBUG) {
+                addProperty("flutterNote", if (probe.flutter != null) FLUTTER_SECTION_NOTE else FLUTTER_ERRORS_NOTE)
+            }
         }
         val problems = if (pids.isEmpty()) {
             listOf(
@@ -180,13 +184,8 @@ object AppSection : DiagnosticSection<AndroidProbe> {
      * Best effort, and one `unzip -l` per install rather than per report: a `dumpsys` or a
      * listing that fails or times out leaves the section without the Flutter fields.
      */
-    private fun flutterBuild(probe: AndroidProbe, app: String): FlutterBuild? {
-        val dumpsys = runCatching { DiagnosticShell.run(probe.device, "dumpsys package ${ShellQuote.quote(app)}") }
-            .getOrNull() ?: return null
-        return FlutterBuildCache.shared.detect(probe.serialNumber, app, dumpsys) {
-            DiagnosticShell.run(probe.device, FlutterBuild.listingCommand(app))
-        }
-    }
+    private fun flutterBuild(probe: AndroidProbe, app: String): FlutterBuild? =
+        probe.flutter?.build ?: FlutterBuildCache.shared.detectOn(probe.device, probe.serialNumber, app)
 
     /**
      * Mobile debug builds have structured errors on by default, so layout, build() and gesture
@@ -198,6 +197,11 @@ object AppSection : DiagnosticSection<AndroidProbe> {
             "not logcat, so this report does not include them. Read them with the Dart MCP server's " +
             "get_runtime_errors, or in the Flutter run console. Unhandled async exceptions and plugin " +
             "failures do reach logcat and are listed below."
+
+    /** [FLUTTER_ERRORS_NOTE] when Spock has the app's session: the errors are in the report after all. */
+    const val FLUTTER_SECTION_NOTE =
+        "Flutter framework errors (layout overflow, build() and gesture errors) go to the Dart VM Service, " +
+            "not logcat: they are in the `flutter` section, read from the app's session."
 }
 
 /**

@@ -1,0 +1,365 @@
+package spock.adb.diagnostics
+
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import spock.adb.flutter.AppIdentity
+import spock.adb.flutter.DeviceTime
+import spock.adb.flutter.FlutterAttachOutcome
+import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterEventLog
+import spock.adb.flutter.FlutterSessionSnapshot
+import spock.adb.flutter.HttpRecording
+import spock.adb.flutter.analysis.FlutterErrorReader
+import spock.adb.flutter.analysis.FlutterExtensionEvent
+import spock.adb.flutter.analysis.FlutterTimelineMapper
+import spock.adb.flutter.analysis.FrameStats
+import spock.adb.flutter.analysis.HttpProfileReader
+import spock.adb.flutter.analysis.logcatTime
+import spock.adb.flutter.vmservice.ConnectionKind
+import spock.adb.flutter.vmservice.Redaction
+import spock.adb.flutter.vmservice.VmServiceException
+import java.time.ZoneOffset
+import java.util.Locale
+
+/**
+ * What Diagnose knows of a Flutter app, gathered by whoever builds the probe (the Diagnose tab,
+ * `android_get_debug_context`) before the report runs: how the attach went, and — when it gave
+ * a session — what that session holds. [FlutterSection] only reads it, so it is tested with
+ * plain values.
+ *
+ * @param outcome null when nobody could ask: no project to look in; [note] says why.
+ */
+class FlutterDiagnosticSource(
+    val applicationId: String,
+    /** From the APK: [FlutterBuild.RELEASE] has no session to look for. */
+    val build: FlutterBuild,
+    val outcome: FlutterAttachOutcome?,
+    val note: String? = null,
+    val live: Live? = null,
+    /** The host's now, to place logcat's yearless stamps. */
+    val hostNowMs: Long = System.currentTimeMillis(),
+) {
+    /** A connected session's state. */
+    class Live(
+        val identity: AppIdentity,
+        val snapshot: FlutterSessionSnapshot,
+        /** The session's guess from the UI isolate's extensions; null when it has none yet. */
+        val buildMode: FlutterBuild?,
+        /** Null when the event log does not hold this session (it connected before the log started). */
+        val events: FlutterEventLog.Contents?,
+        /** Null while not measured, or when the device would not say. */
+        val deviceTime: DeviceTime?,
+        val reads: Reads,
+    )
+
+    /** What the section asks the app: blocking calls, each bounded by the builder. */
+    interface Reads {
+        /** `_flutter.getDisplayRefreshRate`; null when the app will not say. */
+        fun refreshRate(): Double?
+
+        /** `ext.dart.io.getHttpProfile`, scrubbed. May throw [VmServiceException]. */
+        fun httpProfile(): JsonObject?
+    }
+}
+
+/**
+ * `flutter`: the app's Flutter session, for a Flutter app — none at all for any other app.
+ *
+ * Never says "no errors" from silence. Every attach outcome is reported in words; a live
+ * session's errors are counted since Spock connected, the ones DDS replayed apart ("before Spock
+ * connected"); and where errors are invisible — structured errors off, a profile build, an app that
+ * replaced `FlutterError.onError` — the section says where to look instead.
+ *
+ * Each error group carries `nearbyLogs`: the ids of the log problems listed in `likelyProblems`
+ * whose last line fell within [NEARBY_WINDOW_MS] of the group, widened by the clock's
+ * uncertainty, compared on the device's own epoch (design §3, §4a).
+ *
+ * Reads only; never starts rebuild recording, which writes to the app.
+ */
+object FlutterSection : DiagnosticSection<AndroidProbe> {
+    override val id = "flutter"
+
+    /** No tool returns more yet; the section is the whole answer. */
+    override val detail: DetailRef? = null
+
+    override fun appliesTo(probe: AndroidProbe): Boolean = probe.flutter != null
+
+    override fun collect(probe: AndroidProbe): SectionReport {
+        val source = probe.flutter ?: error("Not a Flutter app.")
+        return FlutterSectionReport(source).build()
+    }
+
+    /** Log lines this close to a Flutter error, before the clock's uncertainty, are its context. */
+    const val NEARBY_WINDOW_MS = 2_000L
+
+    /** Bounds, like every section's. */
+    const val MAX_ERROR_GROUPS = 5
+    const val MAX_HTTP_FAILURES = 5
+    const val MAX_ROUTES = 5
+}
+
+/** One report of [FlutterSection]: what it read, and its correlation step. */
+internal class FlutterSectionReport(private val source: FlutterDiagnosticSource) {
+
+    private val data = JsonObject()
+    private val notes = JsonArray()
+    private val problems = mutableListOf<LikelyProblem>()
+    private val live = source.live
+    private val zone = live?.deviceTime?.zone ?: ZoneOffset.UTC
+
+    /** Error groups as listed, with the problem each became and its JSON, for [correlate]. */
+    private val groups = mutableListOf<Triple<FlutterErrorReader.Group, LikelyProblem, JsonObject>>()
+
+    fun build(): SectionReport {
+        data.addProperty("attach", Redaction.scrub(FlutterWords.attach(source)))
+        data.addProperty("connected", live != null)
+        data.addProperty("build", (live?.buildMode ?: source.build).label)
+        if (live != null) readLive(live)
+        source.note?.let { notes.add(Redaction.scrub(it)) }
+        if (notes.size() > 0) data.add("notes", notes)
+        return SectionReport(data, problems, afterRanking = ::correlate)
+    }
+
+    private fun readLive(live: FlutterDiagnosticSource.Live) {
+        data.add("identity", identity(live))
+        data.add("clock", clock(live.deviceTime))
+        val events = live.events
+        if (events == null) notes.add(NOT_KEPT)
+        data.add("errors", errors(live, events?.errors.orEmpty()))
+        data.add("frames", frames(live, events?.frames.orEmpty()))
+        data.add("http", http(live))
+        data.add("navigation", navigation(events?.navigation.orEmpty()))
+    }
+
+    private fun identity(live: FlutterDiagnosticSource.Live) = JsonObject().apply {
+        val snapshot = live.snapshot
+        addProperty("serial", live.identity.serial)
+        addProperty("applicationId", live.identity.applicationId)
+        addProperty("pid", live.identity.pid ?: snapshot.vmPid?.toLong())
+        addProperty("verifiedBy", live.identity.verifiedBy.label)
+        addProperty("connectionKind", FlutterWords.connection(snapshot.connectionKind))
+        addProperty("structuredErrors", FlutterWords.onOff(snapshot.structuredErrorsEnabled))
+        addProperty("httpRecording", FlutterWords.recording(snapshot.httpRecording))
+    }
+
+    private fun clock(time: DeviceTime?) = JsonObject().apply {
+        if (time == null) {
+            addProperty("note", CLOCK_UNKNOWN)
+            return@apply
+        }
+        addProperty("zone", time.zone.id)
+        addProperty("uncertaintyMs", time.uncertaintyMs)
+        time.note?.let { addProperty("note", it) }
+    }
+
+    private fun errors(live: FlutterDiagnosticSource.Live, events: List<FlutterExtensionEvent>): JsonObject {
+        val result = FlutterErrorReader.summarise(events, zone)
+        val listed = JsonArray()
+        result.groups.zip(result.problems).take(FlutterSection.MAX_ERROR_GROUPS).forEach { (group, problem) ->
+            val json = groupJson(group, problem)
+            listed.add(json)
+            groups += Triple(group, problem, json)
+        }
+        problems += result.problems
+        errorNotes(live.snapshot, result.liveCount + result.historyCount)
+        return JsonObject().apply {
+            addProperty("sinceConnected", result.liveCount)
+            addProperty("beforeSpockConnected", result.historyCount)
+            result.errorsSinceReload?.let { addProperty("sinceReload", it) }
+            add("groups", listed)
+            if (result.groups.size > listed.size()) addProperty("moreGroups", result.groups.size - listed.size())
+        }
+    }
+
+    private fun groupJson(group: FlutterErrorReader.Group, problem: LikelyProblem) = JsonObject().apply {
+        addProperty("summary", problem.summary)
+        addProperty("count", group.count)
+        if (group.historyCount > 0) addProperty("beforeSpockConnected", group.historyCount)
+        addProperty("firstSeen", deviceStamp(group.firstSeenMs))
+        addProperty("lastSeen", deviceStamp(group.lastSeenMs))
+    }
+
+    /** Where errors are when they are not here. */
+    private fun errorNotes(snapshot: FlutterSessionSnapshot, seen: Int) {
+        val structured = snapshot.structuredErrorsEnabled
+        when {
+            structured == false -> notes.add(STRUCTURED_OFF)
+            structured == null && live?.buildMode == FlutterBuild.PROFILE -> notes.add(PROFILE_ERRORS)
+            seen == 0 -> notes.add(
+                "No Flutter.Error since Spock connected" +
+                    (snapshot.connectedAtHostMs?.let { " at ${hostStamp(it)}" }.orEmpty()) +
+                    ". That is not proof of none: $CUSTOM_HANDLER",
+            )
+        }
+    }
+
+    private fun frames(live: FlutterDiagnosticSource.Live, events: List<FlutterExtensionEvent>) = JsonObject().apply {
+        if (events.none { !it.history }) {
+            addProperty("note", "No frames since Spock connected: an idle app reports none.")
+            return@apply
+        }
+        val fps = runCatching { live.reads.refreshRate() }.getOrNull()
+        val report = FrameStats.analyse(events, fps, live.buildMode)
+        addProperty("frames", report.frames.size)
+        addProperty("budgetMs", round(report.budgetMs))
+        if (!report.budgetMeasured) addProperty("budgetAssumed", "${FrameStats.DEFAULT_FPS.toInt()} Hz")
+        addProperty("overBudget", report.overBudget.size)
+        report.build?.let { add("buildMs", distribution(it)) }
+        report.raster?.let { add("rasterMs", distribution(it)) }
+        if (live.buildMode != FlutterBuild.PROFILE) addProperty("note", NOT_REPRESENTATIVE)
+        problems += report.problems
+    }
+
+    private fun http(live: FlutterDiagnosticSource.Live) = JsonObject().apply {
+        val recording = live.snapshot.httpRecording
+        addProperty("recording", FlutterWords.recording(recording))
+        if (recording != HttpRecording.EnabledBySpock && recording != HttpRecording.AlreadyOn) return@apply
+        val profile = try {
+            HttpProfileReader.read(live.reads.httpProfile())
+        } catch (e: VmServiceException) {
+            addProperty("note", Redaction.scrub("Could not read the HTTP profile: ${e.message}"))
+            return@apply
+        }
+        val requests = HttpProfileReader.merge(emptyList(), profile.requests)
+        val failed = requests.filter { it.failed }
+        addProperty("requests", requests.size)
+        addProperty("failed", failed.size)
+        add(
+            "failures",
+            JsonArray().apply {
+                failed.takeLast(FlutterSection.MAX_HTTP_FAILURES).forEach { add(HttpProfileReader.summary(it)) }
+            },
+        )
+        addProperty("note", HTTP_SCOPE)
+        problems += HttpProfileReader.problems(requests)
+    }
+
+    private fun navigation(events: List<FlutterExtensionEvent>) = JsonArray().apply {
+        val placement = FlutterTimelineMapper.Placement(zone)
+        events.takeLast(FlutterSection.MAX_ROUTES)
+            .mapNotNull { FlutterTimelineMapper.navigation(it, placement)?.title }
+            .forEach(::add)
+    }
+
+    /** Pairs each listed error group with the log problems around it, and points at its own entry. */
+    private fun correlate(ranked: RankedProblems) {
+        groups.forEach { (_, problem, json) -> ranked.idOf(problem)?.let { json.addProperty("problem", it) } }
+        silentHandlerNote(ranked)
+        val time = live?.deviceTime ?: return
+        val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
+        val logs = ranked.listed.mapNotNull { (id, problem) ->
+            if (problem.section != LogsSection.id) return@mapNotNull null
+            val stamp = problem.lastSeen ?: return@mapNotNull null
+            time.logcatToEpoch(stamp, source.hostNowMs)?.let { id to it }
+        }
+        groups.forEach { (group, _, json) ->
+            val range = (group.firstSeenMs - window)..(group.lastSeenMs + window)
+            val nearby = logs.filter { (_, epochMs) -> epochMs in range }.map { it.first }
+            json.add("nearbyLogs", JsonArray().apply { nearby.forEach(::add) })
+        }
+    }
+
+    /**
+     * The screen shows an error, structured errors are on, and none arrived: an app that
+     * replaced `FlutterError.onError` hides it from both channels. Read from the UI section.
+     */
+    private fun silentHandlerNote(ranked: RankedProblems) {
+        if (live?.snapshot?.structuredErrorsEnabled != true || groups.isNotEmpty()) return
+        val texts = ranked.sections[UiSection.id]?.getAsJsonArray("text") ?: return
+        val shown = texts.mapNotNull { it.takeIf { e -> e.isJsonPrimitive }?.asString }
+            .firstOrNull { ERROR_ON_SCREEN.containsMatchIn(it) } ?: return
+        notes.add(
+            DiagnosticShell.clip(
+                "The screen shows \"$shown\", yet no Flutter.Error arrived: $CUSTOM_HANDLER",
+                MAX_NOTE_CHARS,
+            ),
+        )
+        if (!data.has("notes")) data.add("notes", notes)
+    }
+
+    /** As logcat prints the device's time, so a group reads like the log lines beside it. */
+    private fun deviceStamp(epochMs: Long): String = logcatTime(epochMs, zone)
+
+    private fun hostStamp(hostMs: Long): String {
+        val deviceMs = live?.deviceTime?.let { hostMs + it.epochOffsetMs } ?: hostMs
+        return deviceStamp(deviceMs)
+    }
+
+    private fun distribution(value: FrameStats.Distribution) = JsonObject().apply {
+        addProperty("p50", round(value.p50Ms))
+        addProperty("p90", round(value.p90Ms))
+        addProperty("worst", round(value.worstMs))
+    }
+
+    private fun round(value: Double): Double = String.format(Locale.ROOT, "%.1f", value).toDouble()
+
+    private companion object {
+        const val MAX_NOTE_CHARS = 400
+        const val NOT_KEPT =
+            "Spock connected before it kept this session's events; what the app reports from now on is counted."
+        const val CLOCK_UNKNOWN =
+            "The device's clock is not measured yet: times below are UTC, and no log lines are paired."
+        const val NOT_REPRESENTATIVE = "Not a profile build: frame times are not representative."
+        const val CUSTOM_HANDLER = "an app that replaced FlutterError.onError (a crash reporter: Crashlytics, " +
+            "Sentry) reports framework errors to neither the VM Service nor logcat."
+        const val STRUCTURED_OFF =
+            "Structured errors are off: Flutter framework errors are printed to logcat instead — see `logs`."
+        const val PROFILE_ERRORS =
+            "A profile build has no inspector: Flutter framework errors are printed to logcat — see `logs`."
+        const val HTTP_SCOPE = "dart:io traffic only (package:http, dio); cupertino_http, cronet_http and " +
+            "native SDKs are not visible."
+
+        /** What an error on screen reads like: the overflow banner's text, the red screen's. */
+        val ERROR_ON_SCREEN = Regex("""overflowed by|RenderFlex|Exception caught by|was thrown building""")
+    }
+}
+
+/** A [FlutterAttachOutcome] and the session's facts, in words a developer and an agent can act on. */
+internal object FlutterWords {
+
+    fun attach(source: FlutterDiagnosticSource): String {
+        val app = source.applicationId
+        return when (val outcome = source.outcome) {
+            null -> source.note ?: "Spock did not look for a Flutter session."
+            is FlutterAttachOutcome.Connected ->
+                "Connected to ${outcome.identity}" + if (outcome.reused) "." else ", just now."
+            is FlutterAttachOutcome.NotRunning ->
+                "$app is not running on ${outcome.serial}: there is no Flutter session."
+            is FlutterAttachOutcome.ReleaseBuild ->
+                "$app is a release build: it has no Dart VM Service, so there is nothing to connect to."
+            is FlutterAttachOutcome.NotReady -> "The app is starting; Flutter session not ready yet. ${outcome.reason}"
+            is FlutterAttachOutcome.NoDdsSession -> outcome.message
+            is FlutterAttachOutcome.Ambiguous ->
+                "Several running Flutter apps pass as $app and Spock does not guess between them: " +
+                    outcome.candidates.joinToString("; ") { it.identity.toString() } + ". ${outcome.reason}"
+            is FlutterAttachOutcome.NotFound -> "No Flutter session found for $app: ${outcome.reason}"
+            is FlutterAttachOutcome.Failed -> "Could not connect to $app's Flutter session: ${outcome.message}"
+        }.trim()
+    }
+
+    fun connection(kind: ConnectionKind?): String = when (kind) {
+        ConnectionKind.DDS -> "dds"
+        ConnectionKind.DIRECT_NO_DDS -> "direct VM, no DDS (read-only)"
+        null -> "unknown"
+    }
+
+    fun onOff(value: Boolean?): String = when (value) {
+        true -> "on"
+        false -> "off"
+        null -> "unknown"
+    }
+
+    fun recording(recording: HttpRecording?): String = when (recording) {
+        HttpRecording.EnabledBySpock -> "on: Spock turned it on, and turns it off again when it disconnects"
+        HttpRecording.AlreadyOn -> "on: it was on already (DevTools or the IDE), and Spock leaves it as it is"
+        HttpRecording.Pending -> "pending: dart:io has not registered its HTTP extension in the app yet"
+        is HttpRecording.Off -> when (recording.reason) {
+            HttpRecording.Reason.SETTING_OFF ->
+                "off: \"Record Flutter HTTP traffic automatically\" is off in Settings → Tools → Spock ADB"
+            HttpRecording.Reason.NOT_DDS -> "off: not a DDS connection, so Spock changes nothing in the app"
+            HttpRecording.Reason.RELEASE_OR_UNKNOWN_MODE -> "off: the build mode is not known yet"
+            HttpRecording.Reason.FAILED -> "off: switching it on failed"
+        }
+        null -> "not decided yet"
+    }
+}

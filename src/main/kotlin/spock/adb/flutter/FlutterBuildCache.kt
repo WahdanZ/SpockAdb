@@ -1,5 +1,10 @@
 package spock.adb.flutter
 
+import com.android.ddmlib.IDevice
+import spock.adb.ShellOutputReceiver
+import spock.adb.ShellQuote
+import java.util.concurrent.TimeUnit
+
 /**
  * Flutter detection, remembered per install.
  *
@@ -35,6 +40,22 @@ class FlutterBuildCache(private val capacity: Int = DEFAULT_CAPACITY) {
         return build
     }
 
+    /**
+     * [detect] on [device]: reads `dumpsys package` and, for an install not listed before, the
+     * APK listing. Null when [packageName] is not a Flutter app, or adb fails. Blocking.
+     */
+    fun detectOn(device: IDevice, serial: String, packageName: String): FlutterBuild? {
+        val dumpsys = runCatching { shell(device, "dumpsys package ${ShellQuote.quote(packageName)}") }
+            .getOrNull() ?: return null
+        return detect(serial, packageName, dumpsys) { shell(device, FlutterBuild.listingCommand(packageName)) }
+    }
+
+    private fun shell(device: IDevice, command: String): String {
+        val receiver = ShellOutputReceiver()
+        device.executeShellCommand(command, receiver, SHELL_SECONDS, TimeUnit.SECONDS)
+        return receiver.toString()
+    }
+
     private fun keyOf(serial: String, packageName: String, dumpsys: String): Key? {
         val versionCode = VERSION_CODE.find(dumpsys)?.groupValues?.get(1) ?: return null
         val updated = LAST_UPDATE_TIME.find(dumpsys)?.groupValues?.get(1)?.trim() ?: return null
@@ -43,6 +64,7 @@ class FlutterBuildCache(private val capacity: Int = DEFAULT_CAPACITY) {
 
     companion object {
         private const val DEFAULT_CAPACITY = 64
+        private const val SHELL_SECONDS = 20L
         private const val LOAD_FACTOR = 0.75f
 
         private val VERSION_CODE = Regex("""\bversionCode=(\S+)""")

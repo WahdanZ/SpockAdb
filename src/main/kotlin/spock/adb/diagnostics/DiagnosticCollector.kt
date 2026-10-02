@@ -3,6 +3,7 @@ package spock.adb.diagnostics
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import spock.adb.flutter.analysis.FlutterProblemTypes
 
 /**
  * Runs sections and assembles their summaries into one bounded report.
@@ -32,8 +33,9 @@ class DiagnosticCollector(
         val deadline = nanoTime() + budgetNanos
         val reports = linkedMapOf<DiagnosticSection<P>, SectionReport>()
         val errors = JsonObject()
+        val applicable = sections.filter { it.appliesTo(probe) }
 
-        sections.forEach { section ->
+        applicable.forEach { section ->
             if (nanoTime() > deadline) {
                 errors.addProperty(section.id, SKIPPED)
                 return@forEach
@@ -53,25 +55,39 @@ class DiagnosticCollector(
         report.addProperty("schemaVersion", SCHEMA_VERSION)
         preamble.entrySet().forEach { (key, value) -> report.add(key, value) }
         report.addProperty("packageName", probe.packageName)
-        addProblems(report, reports.values.flatMap { it.problems })
+        val listed = addProblems(report, reports.values.flatMap { it.problems })
         reports.forEach { (section, sectionReport) -> report.add(section.id, sectionReport.data) }
         if (errors.size() > 0) report.add("sectionErrors", errors)
-        report.add("more", references(sections, probe))
+        report.add("more", references(applicable, probe))
+        afterRanking(reports, listed)
 
         return fitToBudget(report, reports.keys.map { it.id })
     }
 
-    private fun addProblems(report: JsonObject, problems: List<LikelyProblem>) {
+    /** Ranks [problems], lists the first [MAX_PROBLEMS] with their ids, and returns them as listed. */
+    private fun addProblems(report: JsonObject, problems: List<LikelyProblem>): List<Pair<String, LikelyProblem>> {
         val ranked = problems.sortedWith(
             compareBy<LikelyProblem> { it.severity.rank }
                 .thenBy { typePriority(it.type) }
                 .thenByDescending { it.count },
         )
+        val listed = ranked.take(MAX_PROBLEMS).mapIndexed { index, problem -> "p${index + 1}" to problem }
         report.add(
             "likelyProblems",
-            JsonArray().apply { ranked.take(MAX_PROBLEMS).forEach { add(it.toJson()) } },
+            JsonArray().apply { listed.forEach { (id, problem) -> add(problem.toJson(id)) } },
         )
         if (ranked.size > MAX_PROBLEMS) report.addProperty("moreProblems", ranked.size - MAX_PROBLEMS)
+        return listed
+    }
+
+    /** Each section's [SectionReport.afterRanking]; one that fails adds nothing and costs nothing else. */
+    private fun afterRanking(
+        reports: Map<out DiagnosticSection<*>, SectionReport>,
+        listed: List<Pair<String, LikelyProblem>>,
+    ) {
+        val sections = reports.entries.associate { (section, report) -> section.id to report.data }
+        val ranked = RankedProblems(listed, sections)
+        reports.values.forEach { report -> report.afterRanking?.let { step -> runCatching { step(ranked) } } }
     }
 
     private fun references(sections: List<DiagnosticSection<*>>, probe: DiagnosticProbe): JsonObject {
@@ -116,7 +132,8 @@ class DiagnosticCollector(
         return report
     }
 
-    private fun LikelyProblem.toJson() = JsonObject().apply {
+    private fun LikelyProblem.toJson(id: String) = JsonObject().apply {
+        addProperty("id", id)
         addProperty("type", type)
         addProperty("severity", severity.id)
         addProperty("summary", summary)
@@ -145,9 +162,12 @@ class DiagnosticCollector(
             LogProblemExtractor.TYPE_ANR,
             "process",
             LogProblemExtractor.TYPE_FLUTTER_PLUGIN,
+            FlutterProblemTypes.FLUTTER_ERROR,
             LogProblemExtractor.TYPE_NETWORK,
             LogProblemExtractor.TYPE_EXCEPTION,
             "screen",
+            FlutterProblemTypes.JANK,
+            FlutterProblemTypes.FREQUENT_REBUILDS,
             "deviceCondition",
             "backgroundWork",
             "permission",

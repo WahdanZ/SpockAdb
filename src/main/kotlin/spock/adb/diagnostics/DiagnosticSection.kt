@@ -24,17 +24,40 @@ interface DiagnosticSection<in P : DiagnosticProbe> {
     val detail: DetailRef?
 
     /**
+     * Whether this section has anything to say about [probe] at all. One that has not — the
+     * `flutter` section for an app that is not a Flutter app — is left out of the report, rather
+     * than reported empty. Cheap: no device reads.
+     */
+    fun appliesTo(probe: P): Boolean = true
+
+    /**
      * Reads and summarises. May throw: the collector reports the failure in place of this
      * section and carries on with the rest.
      */
     fun collect(probe: P): SectionReport
 }
 
-/** What a section hands back: bounded data, and the problems it noticed. */
+/**
+ * What a section hands back: bounded data, and the problems it noticed.
+ *
+ * [afterRanking] runs once every section is in and the problems are ranked and given their ids,
+ * before the size cut: a section that relates its findings to another's — a Flutter error to the
+ * log lines around it — adds that to its own [data] there. A failure in it costs only the addition.
+ */
 data class SectionReport(
     val data: JsonObject,
     val problems: List<LikelyProblem> = emptyList(),
+    val afterRanking: ((RankedProblems) -> Unit)? = null,
 )
+
+/**
+ * The report's problems as listed, best first, each with the `id` the report gives it, and each
+ * section's data by section id. A problem ranked below the cut has no id.
+ */
+class RankedProblems(val listed: List<Pair<String, LikelyProblem>>, val sections: Map<String, JsonObject>) {
+    /** The id of exactly [problem] — the same object a section reported — or null when it was not listed. */
+    fun idOf(problem: LikelyProblem): String? = listed.firstOrNull { it.second === problem }?.first
+}
 
 /** The tool call that returns a section's raw data. */
 data class DetailRef(val tool: String, val arguments: JsonObject = JsonObject())
@@ -62,6 +85,11 @@ class AndroidProbe(
     val serialNumber: String,
     override val packageName: String?,
     val logWindowLines: Int = DEFAULT_LOG_WINDOW_LINES,
+    /**
+     * The app's Flutter session, as [FlutterSection] reports it; null for an app that is not a
+     * Flutter app, or when nobody looked — and then there is no `flutter` section.
+     */
+    val flutter: FlutterDiagnosticSource? = null,
 ) : DiagnosticProbe {
     /**
      * Process ids of [packageName], read once and shared: the app section reports them and the
