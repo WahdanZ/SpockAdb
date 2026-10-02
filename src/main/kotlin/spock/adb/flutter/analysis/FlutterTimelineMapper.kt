@@ -39,13 +39,14 @@ object FlutterTimelineMapper {
     /**
      * Where the events belong.
      *
-     * @param zone the device's time zone, for [TimelineEvent.deviceTime].
+     * @param zone the **device's** time zone, for [TimelineEvent.deviceTime]. Required: logcat stamps
+     *   are the device's local time, and the host's zone would print a row's stamp hours off.
      * @param frameStartOffsetMs device epoch ms minus engine-monotonic ms; null places frames by batch.
      * @param toHostMs device epoch ms to the timeline's host ms.
      */
     data class Placement(
+        val zone: ZoneId,
         val deviceSerial: String? = null,
-        val zone: ZoneId = ZoneId.systemDefault(),
         val frameStartOffsetMs: Long? = null,
         val toHostMs: (Long) -> Long = { it },
     )
@@ -61,7 +62,7 @@ object FlutterTimelineMapper {
         events: List<FlutterExtensionEvent>,
         fps: Double?,
         build: FlutterBuild?,
-        placement: Placement = Placement(),
+        placement: Placement,
     ): List<TimelineEvent> {
         val rows = events.mapNotNull { event ->
             when (event.kind) {
@@ -74,7 +75,7 @@ object FlutterTimelineMapper {
         return (rows + slowFrames(frames, FrameStats.budgetMs(fps), build, placement)).sortedBy { it.timeMs }
     }
 
-    fun error(error: FlutterErrorReader.FlutterError, placement: Placement = Placement()): TimelineEvent =
+    fun error(error: FlutterErrorReader.FlutterError, placement: Placement): TimelineEvent =
         TimelineEvent(
             timeMs = placement.toHostMs(error.timestampMs),
             category = TimelineCategory.FLUTTER_ERROR,
@@ -89,7 +90,7 @@ object FlutterTimelineMapper {
      * One route, by its name (else its description). Which route that is depends on the call the
      * app made — see the class comment. Route arguments are left out: they can carry user data.
      */
-    fun navigation(event: FlutterExtensionEvent, placement: Placement = Placement()): TimelineEvent? {
+    fun navigation(event: FlutterExtensionEvent, placement: Placement): TimelineEvent? {
         if (event.kind != FlutterExtensionEvent.NAVIGATION) return null
         val route = FlutterJson.obj(event.data, "route")
         val name = FlutterJson.string(FlutterJson.obj(route, "settings"), "name")
@@ -118,8 +119,10 @@ object FlutterTimelineMapper {
      * alternates with good frames is one row and not thirty a second. A row gives the count, the
      * frames in its span and the worst build and raster.
      *
-     * A WARNING in profile and release builds; INFO in debug or an unknown build, where every
-     * frame is slow and the times are not representative [FR4]. At most [MAX_FRAME_ROWS] rows; the
+     * In profile and release builds a WARNING when the burst is jank by [FrameStats.isJanky] — the
+     * rule the Diagnose report uses, so the two never disagree — and INFO for a hiccup; INFO in
+     * debug or an unknown build, where every frame is slow and the times are not representative
+     * [FR4]. At most [MAX_FRAME_ROWS] rows; the
      * bursts past it are one more row, so a window of constant jank cannot flood the timeline.
      *
      * @param frames in the order the app sent them; replayed ones should already be left out.
@@ -128,7 +131,7 @@ object FlutterTimelineMapper {
         frames: List<FrameStats.Frame>,
         budgetMs: Double,
         build: FlutterBuild?,
-        placement: Placement = Placement(),
+        placement: Placement,
     ): List<TimelineEvent> {
         val bursts = bursts(frames, budgetMs)
         val shown = if (bursts.size <= MAX_FRAME_ROWS) bursts else bursts.take(MAX_FRAME_ROWS - 1)
@@ -138,15 +141,24 @@ object FlutterTimelineMapper {
         return (shown + listOfNotNull(rest)).map { burstRow(it, budgetMs, build, placement) }
     }
 
-    /** Null for a request that did not fail. Placed at its start. */
-    fun httpFailure(request: HttpProfileReader.Request, placement: Placement = Placement()): TimelineEvent? {
+    /** A failed request's row, with the request's id to keep one row per request by. */
+    data class HttpFailure(val requestId: String, val row: TimelineEvent)
+
+    /**
+     * Null for a request that did not fail. Placed at its start.
+     *
+     * A 4xx/5xx is failed as soon as its status is in, so a request read on one `updatedSince`
+     * page in flight and on the next finished maps twice. Callers keep one row per [HttpFailure.requestId],
+     * the later replacing the earlier.
+     */
+    fun httpFailure(request: HttpProfileReader.Request, placement: Placement): HttpFailure? {
         if (!request.failed) return null
         val deviceMs = (request.startTimeUs ?: request.endTimeUs ?: return null) / MICROS_PER_MILLI
         val severity = when (HttpProfileReader.severity(request)) {
             Severity.WARNING -> TimelineSeverity.WARNING
             else -> TimelineSeverity.ERROR
         }
-        return TimelineEvent(
+        val row = TimelineEvent(
             timeMs = placement.toHostMs(deviceMs),
             category = TimelineCategory.HTTP,
             severity = severity,
@@ -159,6 +171,7 @@ object FlutterTimelineMapper {
             deviceSerial = placement.deviceSerial,
             deviceTime = logcatTime(deviceMs, placement.zone),
         )
+        return HttpFailure(request.id, row)
     }
 
     /** Slow frames, and how many frames ran from the first to the last of them. */
@@ -205,7 +218,11 @@ object FlutterTimelineMapper {
         return TimelineEvent(
             timeMs = placement.toHostMs(deviceMs),
             category = TimelineCategory.FLUTTER_FRAME,
-            severity = if (representative) TimelineSeverity.WARNING else TimelineSeverity.INFO,
+            severity = if (representative && FrameStats.isJanky(burst.frames, burst.slow)) {
+                TimelineSeverity.WARNING
+            } else {
+                TimelineSeverity.INFO
+            },
             title = if (count == 1) {
                 "Slow frame: build ${micros(first.buildUs)}, raster ${micros(first.rasterUs)} " +
                     "(budget ${FrameStats.ms(budgetMs)})"

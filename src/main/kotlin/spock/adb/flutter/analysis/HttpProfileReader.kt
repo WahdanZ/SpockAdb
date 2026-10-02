@@ -5,6 +5,7 @@ import spock.adb.diagnostics.DiagnosticShell
 import spock.adb.diagnostics.LikelyProblem
 import spock.adb.diagnostics.LikelyProblem.Severity
 import spock.adb.diagnostics.LogProblemExtractor
+import spock.adb.flutter.vmservice.Redaction
 import spock.adb.logcat.LogcatRedactor
 
 /**
@@ -18,7 +19,9 @@ import spock.adb.logcat.LogcatRedactor
  *
  * Times in the profile are epoch **microseconds** on the device's clock. The profile's own
  * `timestamp` is what to pass as `updatedSince` next time; a later page repeats a request that
- * changed (it finished), so pages are merged by [Request.id].
+ * changed (it finished), so pages are merged by [Request.id]. A 4xx/5xx is failed as soon as its
+ * status is in, so the same failed request can arrive on two pages, before and after its body is
+ * read: anything kept per failure (a timeline row) is keyed by [Request.id] too.
  *
  * Pure: no device, no IDE.
  */
@@ -27,10 +30,10 @@ object HttpProfileReader {
     data class Request(
         val id: String,
         val method: String,
-        /** Query and fragment stripped; host and path kept. */
+        /** VM Service tokens scrubbed, query and fragment stripped; host and path kept. */
         val url: String,
         val status: Int?,
-        /** Query strings stripped from any URL in it. */
+        /** VM Service tokens scrubbed, and query strings stripped from any URL in it. */
         val error: String?,
         val startTimeUs: Long?,
         /**
@@ -118,12 +121,13 @@ object HttpProfileReader {
         val uri = FlutterJson.string(json, "uri") ?: return null
         val requestData = FlutterJson.obj(json, "request")
         val response = FlutterJson.obj(json, "response")
+        // A request to the VM Service itself (an app or package that talks to it) carries the token.
         val error = (FlutterJson.string(requestData, "error") ?: FlutterJson.string(response, "error"))
-            ?.let(::stripUrlQueries)
+            ?.let { stripUrlQueries(Redaction.scrub(it)) }
         return Request(
             id = id,
             method = FlutterJson.string(json, "method") ?: FlutterJson.string(requestData, "method") ?: "?",
-            url = LogProblemExtractor.stripQuery(uri),
+            url = LogProblemExtractor.stripQuery(Redaction.scrub(uri)),
             status = FlutterJson.long(response, "statusCode")?.toInt(),
             error = error,
             startTimeUs = FlutterJson.long(json, "startTime"),

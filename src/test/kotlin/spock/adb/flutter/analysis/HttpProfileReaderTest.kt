@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.diagnostics.LikelyProblem.Severity
+import java.time.ZoneOffset
 
 /**
  * Against `ext.dart.io.getHttpProfile` from the sample app's Network screen: a 500, a request to
@@ -86,8 +87,30 @@ class HttpProfileReaderTest {
         assertFalse(inFlight.failed)
         val problem = HttpProfileReader.problems(listOf(notFound, inFlight)).single()
         assertEquals("GET /status/404 (httpbin.org) returned HTTP 404", problem.summary)
-        val row = FlutterTimelineMapper.httpFailure(notFound)!!
-        assertEquals("The response body had not been read to its end.", row.detail)
+        val failure = FlutterTimelineMapper.httpFailure(notFound, FlutterTimelineMapper.Placement(ZoneOffset.UTC))!!
+        assertEquals("The response body had not been read to its end.", failure.row.detail)
+        // Failed already in flight, so a later page that finishes it maps again: keyed by request id.
+        assertEquals("9", failure.requestId)
+    }
+
+    @Test
+    fun `a request to the VM Service itself keeps its token out of the problem and the row`() {
+        val token = "AbCdEf12_xYz"
+        val vmService = """{"id": "7", "method": "GET", "uri": "http://127.0.0.1:52511/$token=/getVM",
+            "startTime": 1000000, "endTime": 1500000,
+            "response": {"statusCode": 403, "endTime": 1600000}}"""
+        val refused = """{"id": "8", "method": "GET", "uri": "http://127.0.0.1:52511/$token=/ws",
+            "startTime": 1000000, "endTime": 1500000,
+            "request": {"error": "WebSocketException: http://127.0.0.1:52511/$token=/ws refused"}}"""
+
+        val requests = HttpProfileReader.read(profileOf(listOf(vmService, refused))).requests
+        val problems = HttpProfileReader.problems(requests)
+        val placement = FlutterTimelineMapper.Placement(ZoneOffset.UTC)
+        val rows = requests.mapNotNull { FlutterTimelineMapper.httpFailure(it, placement) }
+
+        assertEquals("GET /<redacted>/getVM (127.0.0.1:52511) returned HTTP 403", problems[0].summary)
+        (problems.map { it.summary } + rows.flatMap { listOf(it.row.title, it.row.detail) } + requests.map { it.url })
+            .forEach { assertFalse(it.contains(token), it) }
     }
 
     @Test

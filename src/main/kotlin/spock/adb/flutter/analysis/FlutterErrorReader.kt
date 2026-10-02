@@ -24,8 +24,8 @@ import java.time.ZoneId
  * happened before Spock connected rather than just now. Their absence proves nothing: frame
  * events evict old errors from DDS's replay buffer (spike S6).
  *
- * Text the app wrote is scrubbed of VM Service tokens and of URL query strings as it is read, so
- * nothing downstream — a problem, a timeline row — sees either.
+ * Text the app wrote is scrubbed of VM Service tokens and URL query strings, and redacted as
+ * logcat is, as it is read: a [FlutterError] or [Group] is safe to show or keep wherever it goes.
  *
  * Pure: no device, no IDE.
  */
@@ -120,9 +120,10 @@ object FlutterErrorReader {
     /**
      * Groups repeats and turns each group into an ERROR [LikelyProblem] of type [TYPE].
      *
-     * @param zone the device's time zone, for `lastSeen`.
+     * @param zone the **device's** time zone, for `lastSeen`: logcat stamps are the device's local
+     *   time, so the host's zone would put the problem hours away from its log lines.
      */
-    fun summarise(events: List<FlutterExtensionEvent>, zone: ZoneId = ZoneId.systemDefault()): Result {
+    fun summarise(events: List<FlutterExtensionEvent>, zone: ZoneId): Result {
         val errors = read(events)
         val groups = linkedMapOf<String, MutableList<FlutterError>>()
         errors.forEach { groups.getOrPut(groupKey(it)) { mutableListOf() }.add(it) }
@@ -180,7 +181,8 @@ object FlutterErrorReader {
     private fun groupKey(error: FlutterError): String =
         listOf(error.description, error.headline?.replace(DIGITS, "#"), error.widget).joinToString("|")
 
-    private fun clean(text: String): String = stripUrlQueries(Redaction.scrub(text))
+    /** VM Service tokens, then URL queries, then what logcat's redaction takes (secrets, e-mails). */
+    private fun clean(text: String): String = LogcatRedactor.redact(stripUrlQueries(Redaction.scrub(text))).text
 
     /** A multi-line summary (an assertion's message, a wrapped description) on one line. */
     private fun oneLine(text: String): String = clean(text).replace(WHITESPACE, " ").trim()

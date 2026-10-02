@@ -159,7 +159,8 @@ object FrameStats {
      * thresholds await device validation (plan H3).
      */
     fun isJanky(frameCount: Int, over: List<Frame>): Boolean {
-        val frozen = over.any { maxOf(it.buildUs, it.rasterUs) / MICROS_PER_MILLI >= FROZEN_FRAME_MS }
+        // On the frame's whole span, vsync to raster done, as Android vitals measures a frozen frame.
+        val frozen = over.any { it.elapsedUs / MICROS_PER_MILLI >= FROZEN_FRAME_MS }
         val frequent = over.size >= JANK_MIN_FRAMES && over.size >= frameCount * JANK_MIN_RATIO
         return frozen || frequent
     }
@@ -189,7 +190,7 @@ object FrameStats {
     /** One frame in twenty over budget: three dropped frames a second at 60 Hz, a visible stutter. */
     const val JANK_MIN_RATIO = 0.05
 
-    /** Android vitals' frozen frame: one this long is a visible freeze on its own. */
+    /** Android vitals' frozen frame: one whose span (`elapsed`) is this long is a visible freeze on its own. */
     const val FROZEN_FRAME_MS = 700.0
 
     private const val MIN_FPS = 1.0

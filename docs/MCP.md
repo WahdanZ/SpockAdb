@@ -787,8 +787,8 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
   connection is wired in a later release), so for now these categories are always empty. Once it
   does: framework errors (`Flutter.Error`: layout overflows, `build()` and gesture errors, with the
   rendered report in the detail); bursts of frames over the display's budget, one event per burst
-  with the count and the worst times (a warning in profile builds, info in debug where frame times
-  are not representative); the route `Navigator` reported; and failed `dart:io` HTTP requests (a
+  with the count and the worst times (in profile builds a warning when slow frames are frequent or
+  one froze, else info; info in debug, where frame times are not representative); the route `Navigator` reported; and failed `dart:io` HTTP requests (a
   4xx is a warning; a 5xx or no response an error). Query strings are cut from URLs and route
   names. A navigation event names one route and never says how it got there, because the app does
   not say: after a push or replace it is the route now showing, after a pop the route that was

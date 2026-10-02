@@ -112,8 +112,8 @@ class FlutterErrorReaderTest {
         )
 
         val error = FlutterErrorReader.read(event)
-        val problem = FlutterErrorReader.summarise(listOf(event)).problems.single()
-        val row = FlutterTimelineMapper.error(error)
+        val problem = FlutterErrorReader.summarise(listOf(event), ZoneOffset.UTC).problems.single()
+        val row = FlutterTimelineMapper.error(error, FlutterTimelineMapper.Placement(ZoneOffset.UTC))
 
         val texts = listOf(error.headline!!, error.renderedText, problem.summary, row.title, row.detail)
         texts.forEach { text ->
@@ -141,6 +141,27 @@ class FlutterErrorReaderTest {
     }
 
     @Test
+    fun `a token as a plain path segment in prose is scrubbed, with no query to cut it`() {
+        val token = "AbCdEf12_xYz"
+        val event = FlutterFixtures.event(
+            FlutterExtensionEvent.ERROR,
+            1,
+            """{"description": "Exception caught by services library", "properties": [{"type": "ErrorSummary",
+               "description": "Connecting to http://127.0.0.1:52511/$token=/ws failed"}],
+               "renderedErrorText": "Could not reach 127.0.0.1:52511/$token=/ the second time."}""",
+        )
+
+        val error = FlutterErrorReader.read(event)
+        val problem = FlutterErrorReader.summarise(listOf(event), ZoneOffset.UTC).problems.single()
+        val row = FlutterTimelineMapper.error(error, FlutterTimelineMapper.Placement(ZoneOffset.UTC))
+
+        listOf(error.headline!!, error.renderedText, problem.summary, row.title, row.detail).forEach { text ->
+            assertFalse(text.contains(token), text)
+            assertTrue(text.contains("<redacted>"), text)
+        }
+    }
+
+    @Test
     fun `the DevTools link in the first error's full text loses its query, token and all`() {
         val first = FlutterErrorReader.read(events.first())
 
@@ -152,7 +173,7 @@ class FlutterErrorReaderTest {
 
     @Test
     fun `nothing is nothing`() {
-        val result = FlutterErrorReader.summarise(emptyList())
+        val result = FlutterErrorReader.summarise(emptyList(), ZoneOffset.UTC)
 
         assertTrue(result.problems.isEmpty())
         assertNull(result.errorsSinceReload)
@@ -182,7 +203,7 @@ class FlutterErrorReaderTest {
         assertEquals(listOf("Flutter error", "Flutter error", "Flutter error"), errors.take(3).map { it.summary })
         assertEquals("Exception caught by widgets library: Boom", errors[3].summary)
         assertEquals(-1, errors[2].errorsSinceReload)
-        assertEquals(2, FlutterErrorReader.summarise(odd).problems.size)
+        assertEquals(2, FlutterErrorReader.summarise(odd, ZoneOffset.UTC).problems.size)
     }
 
     @Test
@@ -196,7 +217,7 @@ class FlutterErrorReaderTest {
             history = true,
         )
 
-        val summary = FlutterErrorReader.summarise(listOf(event)).problems.single().summary
+        val summary = FlutterErrorReader.summarise(listOf(event), ZoneOffset.UTC).problems.single().summary
 
         assertTrue(summary.length <= DiagnosticShell.MAX_VALUE_CHARS, "${summary.length}")
         assertTrue(summary.endsWith("… (before Spock connected)"), summary)

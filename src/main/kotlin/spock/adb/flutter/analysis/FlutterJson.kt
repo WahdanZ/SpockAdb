@@ -100,17 +100,41 @@ private val LOGCAT_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd 
  * Free text the app writes — an HTTP error, an error's headline, a route name — carries URLs with
  * whatever their queries hold: session ids, e-mail addresses, signed tokens. The host and path are
  * what a developer needs. Text with no URL in it is returned as it is, a lone `?` included.
+ *
+ * A query runs to whitespace or a quote: brackets (`ids[]=1`, `filter[tag]=x`) and parentheses
+ * are part of it. A `)` it ends with that it never opened is given back, so the route in
+ * `MaterialPageRoute<dynamic>(/item/42?ref=x)` keeps its closing parenthesis.
  */
 internal fun stripUrlQueries(text: String): String {
     if ('?' !in text && '#' !in text) return text
-    return URL_WITH_QUERY.replace(text) { it.groupValues[1] }
+    val out = StringBuilder(text.length)
+    var from = 0
+    for (match in URL_QUERY_START.findAll(text)) {
+        if (match.range.first < from) continue
+        out.append(text, from, match.range.first).append(match.groupValues[1])
+        var end = match.range.last + 1
+        while (end < text.length && !text[end].isWhitespace() && text[end] !in QUOTES) end++
+        val query = text.substring(match.range.last, end)
+        var unbalanced = query.count { it == ')' } - query.count { it == '(' }
+        while (unbalanced > 0 && text[end - 1] == ')') {
+            end--
+            unbalanced--
+        }
+        from = end
+    }
+    return out.append(text, from, text.length).toString()
 }
 
+private const val QUOTES = "'\"`"
+
 /**
- * A URL with a scheme, or a path starting with `/` that is not inside a longer word, followed by
- * its query or fragment. Both end at whitespace, quotes, brackets and parentheses, which wrap URLs
- * in prose and in `MaterialPageRoute<dynamic>(/item/42?ref=x)`. Angle brackets do not end them:
- * a token already redacted reads `<redacted>`, inside the URL it came from.
+ * Up to and including the `?` or `#` that starts a query or fragment, with something after it: a
+ * URL with a scheme; a host with a dot and no scheme (`api.example.com/me`); or a path starting
+ * with `/` that is not inside a longer word. The part kept ends at whitespace, quotes, brackets
+ * and parentheses, which wrap URLs in prose. Angle brackets do not end it: a token already
+ * redacted reads `<redacted>`, inside the URL it came from.
  */
-private val URL_WITH_QUERY =
-    Regex("""((?:\b[A-Za-z][A-Za-z0-9+.\-]*://|(?<![\w/.:\-])/)[^\s?#'"()\[\]]*)[?#][^\s'"()\[\]]*""")
+private val URL_QUERY_START = Regex(
+    """((?:\b[A-Za-z][A-Za-z0-9+.\-]*://|(?<![\w/.:\-@])(?:[A-Za-z0-9\-]+\.)+[A-Za-z]{2,}(?::\d{1,5})?(?=[/?#])""" +
+        """|(?<![\w/.:\-])/)[^\s?#'"`()\[\]]*)[?#](?=[^\s'"`])""",
+)

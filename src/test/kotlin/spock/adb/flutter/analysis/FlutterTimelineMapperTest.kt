@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.diagnostics.LikelyProblem.Severity
 import spock.adb.flutter.FlutterBuild
 import spock.adb.timeline.TimelineCategory
 import spock.adb.timeline.TimelineExport
@@ -52,6 +53,24 @@ class FlutterTimelineMapperTest {
 
         assertEquals(device.map { it.timeMs + 60_000 }, host.map { it.timeMs })
         assertEquals(device.map { it.deviceTime }, host.map { it.deviceTime })
+
+        val failed = HttpProfileReader.read(FlutterFixtures.json("httpProfile.json")).requests.first()
+        val deviceRow = FlutterTimelineMapper.httpFailure(failed, placement)!!.row
+        val hostRow = FlutterTimelineMapper.httpFailure(failed, shifted)!!.row
+        assertEquals(deviceRow.timeMs + 60_000, hostRow.timeMs)
+        assertEquals(deviceRow.deviceTime, hostRow.deviceTime)
+    }
+
+    @Test
+    fun `the device's zone, not the host's, prints the stamp`() {
+        val error = FlutterErrorReader.read(FlutterFixtures.events(FlutterExtensionEvent.ERROR).first())
+
+        val utc = FlutterTimelineMapper.error(error, placement)
+        val cairo = FlutterTimelineMapper.error(error, placement.copy(zone = java.time.ZoneOffset.ofHours(2)))
+
+        assertEquals("10-01 20:51:35.144", utc.deviceTime)
+        assertEquals("10-01 22:51:35.144", cairo.deviceTime)
+        assertEquals(utc.timeMs, cairo.timeMs)
     }
 
     @Test
@@ -82,9 +101,13 @@ class FlutterTimelineMapperTest {
         val rows = FlutterTimelineMapper.map(janky + later, 60.0, FlutterBuild.PROFILE, placement)
 
         assertEquals(2, rows.size)
-        assertTrue(rows.all { it.severity == TimelineSeverity.WARNING })
         assertEquals("40 of 118 frames over the 16.7 ms budget; worst build 30.0 ms, raster 2.0 ms", rows[0].title)
+        assertEquals(TimelineSeverity.WARNING, rows[0].severity)
+        // One slow frame is a hiccup, as FrameStats says too: a note, not a warning.
         assertEquals("Slow frame: build 25.0 ms, raster 2.0 ms (budget 16.7 ms)", rows[1].title)
+        assertEquals(TimelineSeverity.INFO, rows[1].severity)
+        val stats = FrameStats.analyse(listOf(later), 60.0, FlutterBuild.PROFILE)
+        assertEquals(Severity.INFO, stats.problems.single().severity)
     }
 
     @Test
@@ -139,7 +162,8 @@ class FlutterTimelineMapperTest {
         assertEquals("Navigator: no route showing", FlutterTimelineMapper.navigation(none, placement)!!.title)
         val unnamed = FlutterFixtures.event(FlutterExtensionEvent.NAVIGATION, 1, """{"route": {}}""")
         assertEquals("Navigator: a route with no name", FlutterTimelineMapper.navigation(unnamed, placement)!!.title)
-        assertNull(FlutterTimelineMapper.navigation(FlutterFixtures.events(FlutterExtensionEvent.FRAME).first()))
+        val frame = FlutterFixtures.events(FlutterExtensionEvent.FRAME).first()
+        assertNull(FlutterTimelineMapper.navigation(frame, placement))
     }
 
     @Test
@@ -188,7 +212,7 @@ class FlutterTimelineMapperTest {
     fun `only failed requests become HTTP rows, placed at their start`() {
         val requests = HttpProfileReader.read(FlutterFixtures.json("httpProfile.json")).requests
 
-        val rows = requests.mapNotNull { FlutterTimelineMapper.httpFailure(it, placement) }
+        val rows = requests.mapNotNull { FlutterTimelineMapper.httpFailure(it, placement)?.row }
 
         assertEquals(2, rows.size)
         assertTrue(rows.all { it.category == TimelineCategory.HTTP && it.severity == TimelineSeverity.ERROR })
