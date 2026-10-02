@@ -29,6 +29,9 @@ class WorkspaceTest {
         val app = mkdirs("repo", "sample", "flutter_app").toString()
         assertEquals(WorkspaceMatch.INSIDE_PROJECT, Workspace.match(repo, app))
         assertEquals(WorkspaceMatch.ENCLOSES_PROJECT, Workspace.match(app, repo))
+        assertEquals(2, Workspace.relate(app, repo)!!.distance)
+        assertEquals(2, Workspace.relate(repo, app)!!.distance)
+        assertEquals(0, Workspace.relate(app, app)!!.distance)
     }
 
     @Test

@@ -7,6 +7,7 @@ import java.nio.file.FileSystemNotFoundException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
+import kotlin.math.abs
 
 /** How a daemon's workspace root relates to the open project, best first. */
 enum class WorkspaceMatch {
@@ -20,6 +21,16 @@ enum class WorkspaceMatch {
     ENCLOSES_PROJECT,
 }
 
+/**
+ * A daemon's workspace [root] and the open [project], both [Workspace.canonical], related by
+ * [match]. [distance] is how many directories lie between them: 0 for the same one.
+ */
+class WorkspaceRelation(val match: WorkspaceMatch, val project: Path, val root: Path) {
+    val distance: Int get() = abs(project.nameCount - root.nameCount)
+
+    override fun toString(): String = "$match ($root)"
+}
+
 /** Path comparison that survives what differs between how the IDE and `dart` spell one directory. */
 object Workspace {
 
@@ -29,15 +40,19 @@ object Workspace {
      * `/private/tmp` — and a trailing slash ignored. Comparison is by path component, so
      * `/a/app` does not hold `/a/app2`. Blocking (file system); never throws.
      */
-    fun match(projectPath: String, workspaceRoot: String): WorkspaceMatch? {
+    fun match(projectPath: String, workspaceRoot: String): WorkspaceMatch? = relate(projectPath, workspaceRoot)?.match
+
+    /** [match], with the two directories it compared. */
+    fun relate(projectPath: String, workspaceRoot: String): WorkspaceRelation? {
         val project = canonical(projectPath) ?: return null
         val root = canonical(workspaceRoot) ?: return null
-        return when {
+        val match = when {
             project == root -> WorkspaceMatch.EXACT
             root.startsWith(project) -> WorkspaceMatch.INSIDE_PROJECT
             project.startsWith(root) -> WorkspaceMatch.ENCLOSES_PROJECT
-            else -> null
+            else -> return null
         }
+        return WorkspaceRelation(match, project, root)
     }
 
     /** An absolute path or a `file:` URI as a real path; null for anything else. */

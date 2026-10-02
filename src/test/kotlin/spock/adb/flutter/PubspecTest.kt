@@ -1,7 +1,9 @@
 package spock.adb.flutter
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
@@ -31,5 +33,18 @@ class PubspecTest {
         Files.writeString(temp.resolve(Pubspec.FILE_NAME), "name: spock_flutter_sample\nversion: 1.0.0\n")
         assertEquals("spock_flutter_sample", Pubspec.name(temp.toString()))
         assertNull(Pubspec.name(temp.resolve("missing").toString()))
+    }
+
+    @Test
+    fun `a pub workspace root names no app, a member does`() {
+        val root = "name: _\nenvironment:\n  sdk: ^3.6.0\nworkspace:\n  - packages/app\n"
+        assertTrue(Pubspec.declaresWorkspace(root))
+        assertFalse(Pubspec.declaresWorkspace("name: app\nresolution: workspace\n"))
+        assertFalse(Pubspec.declaresWorkspace("name: app\nflutter:\n  workspace: nested\n"))
+        Files.writeString(temp.resolve(Pubspec.FILE_NAME), root)
+        assertEquals("_", Pubspec.name(temp.toString()))
+        assertNull(Pubspec.appName(temp.toString()))
+        assertTrue(Pubspec.exists(temp))
+        assertFalse(Pubspec.exists(temp.resolve("missing")))
     }
 }

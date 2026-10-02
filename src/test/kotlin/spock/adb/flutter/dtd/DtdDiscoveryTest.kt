@@ -41,11 +41,15 @@ class DtdDiscoveryTest {
 
     private val emulatorApp = name("sdk gphone64 arm64", "dtd_spike")
 
+    private fun pubspec(dir: Path, text: String) {
+        Files.writeString(dir.resolve(Pubspec.FILE_NAME), text)
+    }
+
     private fun discovery(project: Path, model: String? = "sdk_gphone64_arm64", pkg: String? = "dtd_spike") =
         DtdDiscovery(
             projectPath = project.toString(),
             deviceModel = model,
-            packageName = pkg,
+            packageFor = { pkg },
             registry = DtdRegistry(listOf(registryDir)) { true },
             query = { uri ->
                 asked += uri.port
@@ -77,6 +81,7 @@ class DtdDiscoveryTest {
 
     @Test
     fun `an app in a subdirectory of the opened repository is found, and so is a daemon for a parent`() {
+        pubspec(app, "name: dtd_spike\n")
         daemon(5001, app, 6001 to emulatorApp)
         assertEquals(WorkspaceMatch.INSIDE_PROJECT, discovery(repo).candidates().single().workspaceMatch)
         val fromLib = discovery(app.resolve("lib")).candidates().single()
@@ -125,6 +130,7 @@ class DtdDiscoveryTest {
 
     @Test
     fun `ranked - exact workspace first, then the fewest unknowns, then the newest daemon`() {
+        pubspec(repo, "name: repo\n")
         daemon(5001, repo, 6001 to emulatorApp, epoch = 300L)
         daemon(5002, app, 6002 to "unnamed", epoch = 100L)
         daemon(5003, app, 6003 to emulatorApp, epoch = 200L)
@@ -134,6 +140,7 @@ class DtdDiscoveryTest {
 
     @Test
     fun `the same app listed by two daemons is offered once, from the better match`() {
+        pubspec(repo, "name: repo\n")
         daemon(5001, repo, 6001 to emulatorApp)
         daemon(5002, app, 6001 to emulatorApp)
         val found = discovery(app).candidates().single()
@@ -148,7 +155,7 @@ class DtdDiscoveryTest {
         val old = DtdDiscovery(
             projectPath = app.toString(),
             deviceModel = null,
-            packageName = null,
+            packageFor = { null },
             registry = DtdRegistry(listOf(registryDir)) { true },
             query = { uri ->
                 if (uri.port == 5001) throw DtdException("no ConnectedApp", VmServiceRpcException.METHOD_NOT_FOUND)
@@ -184,11 +191,113 @@ class DtdDiscoveryTest {
             val found = DtdDiscovery(
                 projectPath = app.toString(),
                 deviceModel = "sdk_gphone64_arm64",
-                packageName = "dtd_spike",
+                packageFor = { "dtd_spike" },
                 registry = DtdRegistry(listOf(registryDir)) { true },
             ).candidates().single()
             assertEquals("dtd_spike", found.service.packageName)
             assertEquals("ws://127.0.0.1:53296/${FakeDtd.VM_TOKEN}/ws", found.open().webSocketUri.toString())
         }
+    }
+
+    @Test
+    fun `device names as adb and flutter each spell them`() {
+        val forms = listOf(
+            "SM-S918B" to "SM S918B",
+            "moto g(60)" to "moto g 60",
+            "Pixel 7" to "Pixel 7 (wireless)",
+            "sdk_gphone64_arm64" to "sdk gphone64 arm64",
+            "SM_S918B" to "SM S918B",
+        )
+        forms.forEachIndexed { index, (model, listed) ->
+            val port = 5100 + index
+            daemon(port, app, port + 1000 to name(listed, "dtd_spike"))
+            val found = discovery(app, model = model).candidates().map { it.service.uri.port }
+            assertTrue(port + 1000 in found, "$model should match $listed: $found")
+            Files.delete(registryDir.resolve("${nextPid - 1}"))
+        }
+        assertEquals(DtdDiscovery.normalise("Galaxy S23, Ultra"), DtdDiscovery.normalise("Galaxy_S23___Ultra"))
+        assertEquals("pixel 7", DtdDiscovery.normalise("  Pixel 7 (Wireless) "))
+    }
+
+    @Test
+    fun `an app the daemon calls something other than Flutter is dropped, one with no kind is kept`() {
+        daemon(
+            5001,
+            app,
+            6001 to "Kind: Dart - Device: sdk gphone64 arm64 - Package: dtd_spike",
+            6002 to "Device: sdk gphone64 arm64 - Package: dtd_spike",
+            6003 to "Kind: flutter - Device: sdk gphone64 arm64 - Package: dtd_spike",
+        )
+        assertEquals(listOf(6002, 6003), ports(discovery(app).candidates()))
+    }
+
+    @Test
+    fun `an app inside the project is filtered by its own pubspec by default`() {
+        pubspec(repo, "name: repo\n")
+        pubspec(app, "name: dtd_spike\n")
+        daemon(5001, app, 6001 to emulatorApp, 6002 to name("sdk gphone64 arm64", "repo"))
+        val found = DtdDiscovery(
+            projectPath = repo.toString(),
+            deviceModel = null,
+            registry = DtdRegistry(listOf(registryDir)) { true },
+            query = { answers.getValue(it.port) },
+        ).candidates()
+        assertEquals(listOf(6001), ports(found))
+    }
+
+    @Test
+    fun `a pub workspace - its root's pubspec names no app, a member's own pubspec does`() {
+        pubspec(repo, "name: _\nenvironment:\n  sdk: ^3.6.0\nworkspace:\n  - sample/flutter_app\n")
+        pubspec(app, "name: dtd_spike\nresolution: workspace\n")
+        val other = name("sdk gphone64 arm64", "other_member")
+        fun found(project: Path, root: Path) = run {
+            registryDir.toFile().listFiles()!!.forEach { it.delete() }
+            daemon(5001, root, 6001 to emulatorApp, 6002 to other)
+            DtdDiscovery(
+                projectPath = project.toString(),
+                deviceModel = null,
+                registry = DtdRegistry(listOf(registryDir)) { true },
+                query = { answers.getValue(it.port) },
+            ).candidates().map { it.service.uri.port }
+        }
+        // The workspace opened, its daemon at the root: nothing tells the members apart.
+        assertEquals(listOf(6001, 6002), found(repo, repo))
+        // A member opened, the daemon at the workspace root: the member's own name.
+        assertEquals(listOf(6001), found(app, repo))
+        assertEquals(listOf(6001), found(app.resolve("lib").also(Files::createDirectories), repo))
+        // The workspace opened, the daemon at a member: that member's name.
+        assertEquals(listOf(6001), found(repo, app))
+    }
+
+    @Test
+    fun `an enclosing daemon counts only at a package root, and the nearest one ranks first`() {
+        val lib = Files.createDirectories(app.resolve("lib"))
+        daemon(5001, repo, 6001 to emulatorApp, epoch = 300L)
+        daemon(5002, app, 6002 to emulatorApp, epoch = 100L)
+        assertTrue(discovery(lib).candidates().isEmpty(), "neither root is a package yet")
+        pubspec(app, "name: dtd_spike\n")
+        assertEquals(listOf(6002), ports(discovery(lib).candidates()), "repo has no pubspec")
+        pubspec(repo, "name: repo\n")
+        assertEquals(listOf(6002, 6001), ports(discovery(lib).candidates()))
+    }
+
+    @Test
+    fun `a daemon for the home directory or the file system root is no clue`() {
+        pubspec(temp, "name: home\n")
+        daemon(5001, temp, 6001 to emulatorApp)
+        daemon(5002, temp.root, 6002 to emulatorApp)
+        val asHome = DtdDiscovery(
+            projectPath = app.toString(),
+            deviceModel = null,
+            packageFor = { null },
+            registry = DtdRegistry(listOf(registryDir)) { true },
+            query = { uri ->
+                asked += uri.port
+                answers.getValue(uri.port)
+            },
+            home = temp.toString(),
+        )
+        assertTrue(asHome.candidates().isEmpty())
+        assertTrue(asked.isEmpty(), "asked $asked")
     }
 }
