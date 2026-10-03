@@ -167,6 +167,7 @@ class RecompositionToolsTest {
     private fun rebuilds(
         tracking: FlutterRebuildRecorder.Tracking,
         seeded: Boolean = true,
+        sessionEnded: Boolean = false,
     ): FlutterRebuildRecorder.Result {
         val tracker = RebuildTracker()
         val location = """{"ids":[7],"lines":[40],"columns":[12],"names":["StormTile"]}"""
@@ -182,7 +183,7 @@ class RecompositionToolsTest {
                 ),
             )
         }
-        return FlutterRebuildRecorder.Result.Recorded(tracker.report(3_000), 3_000, tracking, seeded)
+        return FlutterRebuildRecorder.Result.Recorded(tracker.report(3_000), 3_000, tracking, seeded, sessionEnded)
     }
 
     @Test
@@ -208,7 +209,7 @@ class RecompositionToolsTest {
     }
 
     @Test
-    fun `a Flutter app with no session to record is an error that says why`() {
+    fun `a Flutter session that may not be written to is an error that says why`() {
         val result = flutterRun(FlutterRebuildRecorder.Result.Refused(FlutterRebuildRecorder.READ_ONLY))
 
         assertTrue(result.isError)
@@ -221,5 +222,84 @@ class RecompositionToolsTest {
         val result = flutterRun(null)
 
         assertTrue(result.text().contains("composition(s) across"), result.text())
+    }
+
+    @Test
+    fun `a restart, a session that ended, and a flag someone else wrote are each said in words`() {
+        val restarted = flutterRun(rebuilds(FlutterRebuildRecorder.Tracking.ISOLATE_GONE)).text()
+        assertTrue(restarted.contains("the app restarted during the recording"), restarted)
+        assertTrue(restarted.endsWith("counts stop at the restart."), restarted)
+        assertFalse(restarted.contains("new one"), restarted)
+
+        val ended = flutterRun(rebuilds(FlutterRebuildRecorder.Tracking.LEFT_ON, sessionEnded = true)).text()
+        assertTrue(ended.contains("The Flutter session ended during the recording, so it stopped early."), ended)
+        assertTrue(ended.contains("connection to the app was lost"), ended)
+
+        val others = flutterRun(rebuilds(FlutterRebuildRecorder.Tracking.CHANGED_BY_OTHERS)).text()
+        assertTrue(others.contains("Spock left it as that set it"), others)
+
+        val unconfirmed = flutterRun(rebuilds(FlutterRebuildRecorder.Tracking.UNCONFIRMED)).text()
+        assertTrue(unconfirmed.contains("cannot tell whether it changed the flag"), unconfirmed)
+    }
+
+    @Test
+    fun `with no packageName the app selected in Spock is recorded, not the project's`() {
+        val asked = mutableListOf<String>()
+        val tool = GetRecompositionCountsTool(selectedApp = { "spock.adb.spock_flutter_sample.second" }) { request ->
+            asked += request.packageName
+            rebuilds(FlutterRebuildRecorder.Tracking.SWITCHED_ON_AND_OFF)
+        }
+
+        val result = tool.execute(
+            JsonObject(),
+            FakeToolContext(
+                available = listOf(FakeToolContext.device("emulator-5554").copy(device = healthy())),
+                applicationId = "spock.adb.spock_flutter_sample",
+            ),
+        )
+
+        assertEquals(listOf("spock.adb.spock_flutter_sample.second"), asked)
+        assertTrue(result.text().startsWith("Recorded spock.adb.spock_flutter_sample.second"), result.text())
+    }
+
+    @Test
+    fun `a Compose host embedding Flutter with no Flutter session records Compose`() {
+        val noSession = FlutterRebuildRecorder.Result.NoSession(
+            "spock.adb.spock_flutter_sample ships the Flutter engine; recording its widget rebuilds needs a " +
+                "live debug session, and it runs without one.",
+        )
+
+        val result = flutterRun(noSession)
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().contains("composition(s) across"), result.text())
+        assertFalse(result.text().contains("Flutter engine"), result.text())
+    }
+
+    @Test
+    fun `a Flutter app with no session that Compose cannot record either says both`() {
+        val noSession = FlutterRebuildRecorder.Result.NoSession(
+            "spock.adb.spock_flutter_sample ships the Flutter engine; recording its widget rebuilds needs a " +
+                "live debug session, and it runs without one.",
+        )
+        val asked = mutableListOf<String>()
+        val tool = GetRecompositionCountsTool { request ->
+            asked += request.packageName
+            noSession
+        }
+
+        val result = tool.execute(
+            JsonObject().apply { addProperty("packageName", "spock.adb.spock_flutter_sample") },
+            FakeToolContext(
+                available = listOf(
+                    FakeToolContext.device("emulator-5554")
+                        .copy(device = healthy(broadcast = "Broadcast completed: result=0")),
+                ),
+            ),
+        )
+
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("androidx.compose.runtime:runtime-tracing"), result.text())
+        assertTrue(result.text().contains("needs a live debug session"), result.text())
     }
 }

@@ -200,6 +200,47 @@ class FlutterSession(
     }
 
     /**
+     * Something a caller switched on in the app for a while — a rebuild recording's tracking —
+     * and switches off itself, unless Spock closes the session first: then [close] runs it, as it
+     * switches HTTP logging off, through DDS only and before the socket closes. A lost connection
+     * runs none: there is nothing left to write through.
+     */
+    internal fun interface CloseRestore {
+        fun restore(connected: VmServiceClient)
+    }
+
+    /** The [CloseRestore]s [close] runs, each once. */
+    internal class CloseRestores {
+        private val restores = CopyOnWriteArrayList<CloseRestore>()
+
+        val isEmpty: Boolean get() = restores.isEmpty()
+
+        fun add(restore: CloseRestore) {
+            restores.addIfAbsent(restore)
+        }
+
+        fun remove(restore: CloseRestore) {
+            restores -= restore
+        }
+
+        /** Each once; one that fails costs the others nothing, nor the close. */
+        // A caller's restore is not the session's code: whatever it throws must not stop the close.
+        @Suppress("TooGenericExceptionCaught")
+        fun runAll(connected: VmServiceClient) {
+            val all = restores.toList().also { restores.clear() }
+            all.forEach { restore ->
+                try {
+                    restore.restore(connected)
+                } catch (e: Exception) {
+                    log.warn("A restore on close failed: ${Redaction.scrub(e.message.orEmpty())}")
+                }
+            }
+        }
+    }
+
+    internal val closeRestores = CloseRestores()
+
+    /**
      * Opens [candidate], asks what answers ([connectionKind]), reads the VM, subscribes to
      * [streams] and selects the UI isolate. Blocking. A [close] meanwhile ends it.
      *
@@ -332,9 +373,10 @@ class FlutterSession(
     }
 
     /**
-     * Switches HTTP timeline logging back off where Spock switched it on, closes the connection
-     * and releases what discovery set up (an `adb forward`). Blocking but brief: calls still
-     * waiting — a stuck re-selection, a connect — are failed first. Safe to repeat.
+     * Switches back off what Spock switched on — each [CloseRestore], then HTTP timeline logging —
+     * closes the connection and releases what discovery set up (an `adb forward`). Blocking but
+     * brief: calls still waiting — a stuck re-selection, a connect, a rebuild window's — are
+     * failed first. Safe to repeat.
      */
     override fun close() {
         val closed = synchronized(lock) {
@@ -423,8 +465,11 @@ class FlutterSession(
                 // Only through DDS: a direct connection writes nothing, and the isolates stay listed
                 // for a later DDS one. A connect closed before its probe answered asks now — only
                 // when there is something to switch off.
-                val kind = attempt.kind ?: if (owed) kindOnClose(connected) else null
-                if (kind == ConnectionKind.DDS) restored = httpLogging.restore(connected)
+                val kind = attempt.kind ?: if (owed || !closeRestores.isEmpty) kindOnClose(connected) else null
+                if (kind == ConnectionKind.DDS) {
+                    closeRestores.runAll(connected)
+                    restored = httpLogging.restore(connected)
+                }
             }
             httpRestored = restored.takeIf { owed }
         } finally {

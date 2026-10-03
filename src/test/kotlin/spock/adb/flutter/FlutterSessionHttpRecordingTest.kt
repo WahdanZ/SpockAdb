@@ -34,6 +34,35 @@ class FlutterSessionHttpRecordingTest : FlutterSessionFixture() {
     }
 
     @Test
+    fun `a restore for close runs through DDS before the socket closes, and one that throws costs nothing`() {
+        session.connect(pasted())
+        val ran = CopyOnWriteArrayList<Boolean>()
+        session.closeRestores.add { throw IllegalStateException("a caller's bug") }
+        session.closeRestores.add { connected -> ran += connected.isOpen }
+        val removed = FlutterSession.CloseRestore { ran += false }
+        session.closeRestores.add(removed)
+        session.closeRestores.remove(removed)
+
+        session.close()
+
+        assertEquals(listOf(true), ran)
+        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
+        assertEquals(true, session.httpRestored)
+    }
+
+    @Test
+    fun `a direct read-only connection runs no restore on close`() {
+        vm.dds = false
+        session.connect(pasted(), allowDirect = true)
+        val ran = AtomicInteger()
+        session.closeRestores.add { ran.incrementAndGet() }
+
+        session.close()
+
+        assertEquals(0, ran.get())
+    }
+
+    @Test
     fun `HTTP logging that was already on is left alone, on connect and on close`() {
         vm.httpLogging = true
 

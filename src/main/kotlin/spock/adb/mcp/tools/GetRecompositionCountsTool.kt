@@ -18,14 +18,22 @@ import java.util.Locale
  * for a Flutter app, how often each widget was built.
  *
  * A safe action rather than read-only: it turns composition tracing on in the app's process,
- * where it stays until the process ends. Tracing changes nothing the app does. For a Flutter app
- * it switches the inspector's rebuild tracking on for the window, only if it was off, and off
- * again afterwards ([FlutterRebuildRecorder]).
+ * where it stays until the process ends; Compose's tracing changes nothing the app does. For a
+ * Flutter app it switches the inspector's rebuild tracking on for the window, only if it was off,
+ * and off again afterwards ([FlutterRebuildRecorder]). That switch is not invisible: Flutter
+ * rebuilds the whole widget tree once (a reassemble, which keeps state), a frame the counts leave
+ * out.
  *
+ * The app is the one asked for, else the one selected in Spock, else the project's, as for
+ * Diagnose. Only an app with a live Flutter session records rebuilds: a Compose host that embeds a
+ * Flutter module ships the Flutter engine too, and without a session it records Compose.
+ *
+ * @param selectedApp the app selected in Spock; tests pass their own.
  * @param flutterRebuilds the rebuild window for a Flutter app, or null for any other app, which
  *   then records Compose. The project's Flutter session by default; tests pass their own.
  */
 class GetRecompositionCountsTool(
+    private val selectedApp: (ToolContext) -> String? = { it.selectedApp() },
     private val flutterRebuilds: (FlutterRebuildRequest) -> FlutterRebuildRecorder.Result? =
         { projectRebuilds(it) },
 ) : AdbTool {
@@ -53,10 +61,11 @@ class GetRecompositionCountsTool(
             "is a lead, not proof of a performance problem. For a Flutter app in a debug build run with " +
             "flutter run (a DDS session), it records Flutter widget rebuilds instead, in the same shape: " +
             "Spock switches the inspector's rebuild tracking on for the window only if it was off, and " +
-            "off again afterwards, and lists widgets built in every frame for a second or more."
+            "off again afterwards, and lists widgets built in every frame for a second or more. Switching " +
+            "it on makes Flutter rebuild the whole widget tree once, keeping state; that frame is not counted."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "App to record. Defaults to the open project's application ID.")
+        string("packageName", "App to record. Defaults to the app selected in Spock, else the open project's.")
         integer(
             "durationSeconds",
             "How long to record, 1 to 30 seconds. Defaults to 5. The call blocks for this long.",
@@ -72,20 +81,23 @@ class GetRecompositionCountsTool(
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
+        val packageName = context.resolveFollowedPackage(arguments, selectedApp(context))
         val seconds = arguments.optionalInt("durationSeconds", DEFAULT_SECONDS).coerceIn(1, MAX_SECONDS)
         val includeLibraries = arguments.optionalBoolean("includeLibraries", false)
         val limit = arguments.optionalInt("limit", DEFAULT_LIMIT).coerceIn(1, MAX_LIMIT)
         val cancelled = context.cancellationSignal()
 
         val request = FlutterRebuildRequest(context, device, packageName, seconds * MILLIS_PER_SECOND, cancelled, limit)
-        flutter(request, includeLibraries)?.let { return it }
+        val flutter = flutterRebuilds(request)
+        flutter(flutter, request, includeLibraries)?.let { return it }
+        // A Flutter app with no session is said to be one only if Compose cannot record it either.
+        val noSession = (flutter as? FlutterRebuildRecorder.Result.NoSession)?.reason
 
         val counts = try {
             RecompositionOperations(device.device, device.serialNumber, cancelled)
                 .record(packageName, seconds * MILLIS_PER_SECOND)
         } catch (e: RecompositionException) {
-            return ToolResult.error(e.message.orEmpty())
+            return ToolResult.error(e.message.orEmpty() + noSession?.let { "\n\n$it" }.orEmpty())
         } catch (e: UiCaptureException) {
             val advice = if (e.kind == UiCaptureException.Kind.DEVICE_UNAVAILABLE) {
                 " Call android_list_devices to see which devices are connected."
@@ -134,14 +146,17 @@ class GetRecompositionCountsTool(
         }
     }.trimEnd()
 
-    /** The answer for a Flutter app, or null for any other, which records Compose. */
-    private fun flutter(request: FlutterRebuildRequest, includeLibraries: Boolean): ToolResult? =
-        when (val flutter = flutterRebuilds(request)) {
-            null -> null
-            is FlutterRebuildRecorder.Result.Refused -> ToolResult.error(flutter.reason)
-            is FlutterRebuildRecorder.Result.Recorded ->
-                ToolResult.text(renderRebuilds(flutter, request.packageName, includeLibraries))
-        }
+    /** The answer for a Flutter app with a session, or null to record Compose. */
+    private fun flutter(
+        flutter: FlutterRebuildRecorder.Result?,
+        request: FlutterRebuildRequest,
+        includeLibraries: Boolean,
+    ): ToolResult? = when (flutter) {
+        null, is FlutterRebuildRecorder.Result.NoSession -> null
+        is FlutterRebuildRecorder.Result.Refused -> ToolResult.error(flutter.reason)
+        is FlutterRebuildRecorder.Result.Recorded ->
+            ToolResult.text(renderRebuilds(flutter, request.packageName, includeLibraries))
+    }
 
     /**
      * A Flutter rebuild window in the shape of [render]: a headline, then one line per widget
@@ -186,6 +201,7 @@ class GetRecompositionCountsTool(
             }
         }
         if (!recorded.seeded) append("\n").append(UNSEEDED)
+        if (recorded.sessionEnded) append("\n").append(SESSION_ENDED)
         append("\n").append(trackingWords(recorded.tracking))
     }.trimEnd()
 
@@ -195,15 +211,26 @@ class GetRecompositionCountsTool(
         FlutterRebuildRecorder.Tracking.ALREADY_ON ->
             "Rebuild tracking: it was on already (the IDE's rebuild counts or DevTools), so Spock left it on."
         FlutterRebuildRecorder.Tracking.LEFT_ON ->
-            "Rebuild tracking: Spock switched it on and could not switch it off again (the session ended or " +
-                "the app did not answer); it stays on until the app restarts."
+            "Rebuild tracking: Spock switched it on and could not switch it off again (the connection to the " +
+                "app was lost, the app was paused in the debugger, or it did not answer); it stays on until the " +
+                "app restarts or the IDE's rebuild counts switch it off."
         FlutterRebuildRecorder.Tracking.ISOLATE_GONE ->
             "Rebuild tracking: the app restarted during the recording, and the tracking Spock switched on " +
-                "went with the old isolate; counts are from the new one."
+                "went with the old isolate; counts stop at the restart."
+        FlutterRebuildRecorder.Tracking.CHANGED_BY_OTHERS ->
+            "Rebuild tracking: something else (the IDE's rebuild counts or DevTools) switched it during the " +
+                "recording, so Spock left it as that set it; counts may cover only part of the recording."
+        FlutterRebuildRecorder.Tracking.UNCONFIRMED ->
+            "Rebuild tracking: the app did not answer Spock's switch to turn it on, nor say afterwards whether " +
+                "it was on, so Spock cannot tell whether it changed the flag and left it as it is; it may stay " +
+                "on until the app restarts."
     }
 
     private companion object {
-        /** The project's Flutter session for a Flutter app; null, to record Compose, for any other or no project. */
+        /**
+         * The project's Flutter session for a Flutter app — [FlutterRebuildRecorder.Result.NoSession]
+         * when it has none — and null, to record Compose, for any other app or no project.
+         */
         fun projectRebuilds(request: FlutterRebuildRequest): FlutterRebuildRecorder.Result? {
             val project = request.context.project ?: return null
             val device = request.device
@@ -216,6 +243,7 @@ class GetRecompositionCountsTool(
 
         const val UNSEEDED = "Spock could not read the inspector's widget locations, so widgets the app " +
             "described before the recording appear by number."
+        const val SESSION_ENDED = "The Flutter session ended during the recording, so it stopped early."
 
         const val DEFAULT_SECONDS = 5
         const val MAX_SECONDS = 30
