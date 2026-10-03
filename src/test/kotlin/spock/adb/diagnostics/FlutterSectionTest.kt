@@ -273,6 +273,74 @@ class FlutterSectionTest {
         assertTrue(json["note"].asString.contains("not representative"))
     }
 
+    @Test
+    fun `structured errors off reads the first framework error and groups later logcat repeats`() {
+        val raw = """
+            10-02 14:00:00.100  4242  4242 E flutter : ══╡ EXCEPTION CAUGHT BY RENDERING LIBRARY ╞════════════════
+            10-02 14:00:00.101  4242  4242 E flutter : The following assertion was thrown during layout:
+            10-02 14:00:00.102  4242  4242 E flutter : A RenderFlex overflowed by 12 pixels on the right.
+            10-02 14:00:01.000  4242  4242 E flutter : Another exception was thrown: A RenderFlex overflowed by 12 pixels
+            10-02 14:00:01.100  4242  4242 E flutter : Another exception was thrown: A RenderFlex overflowed by 12 pixels
+        """.trimIndent()
+        val source = live(snapshot = snapshot(structuredErrors = false))
+        val report = DiagnosticCollector().collect(listOf(LogsSection, FlutterSection), probe(source, raw))
+        val errors = flutterOf(report).getAsJsonObject("errors")
+
+        assertEquals("logcat (structured errors off)", errors["source"].asString)
+        val groups = errors.getAsJsonArray("groups").map { it.asJsonObject }
+        assertTrue(groups.first()["full"].asString.contains("A RenderFlex overflowed by 12 pixels"), groups.toString())
+        assertEquals(2, groups.last()["count"].asInt)
+        assertTrue(
+            report.getAsJsonArray("likelyProblems").any {
+                it.asJsonObject["summary"].asString.contains("RenderFlex")
+            },
+            report.toString(),
+        )
+    }
+
+    @Test
+    fun `silence with structured errors on never claims there were no errors`() {
+        val flutter = flutterOf(report(live()))
+        val rendered = flutter.toString()
+
+        assertFalse(rendered.contains("no errors", ignoreCase = true), rendered)
+        assertTrue(rendered.contains("FlutterError.onError"), rendered)
+        assertTrue(rendered.contains("not proof", ignoreCase = true), rendered)
+    }
+
+    @Test
+    fun `a Flutter Error and nearby MissingPlugin are one cross-layer likely problem`() {
+        val raw =
+            "10-02 14:00:01.000  4242  4242 E flutter : " +
+                "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: " +
+                "MissingPluginException(No implementation found for method pay on channel sample/pay)"
+        val source = live(errors = listOf(error(AT)))
+        val report = DiagnosticCollector().collect(listOf(LogsSection, FlutterSection), probe(source, raw))
+        val likely = report.getAsJsonArray("likelyProblems").map { it.asJsonObject }
+
+        val cross = likely.single { it["type"].asString == "crossLayer" }
+        assertTrue(cross["summary"].asString.contains("A RenderFlex overflowed"), cross.toString())
+        assertTrue(cross["summary"].asString.contains("plugin", ignoreCase = true), cross.toString())
+        assertEquals(2, cross.getAsJsonArray("related").size())
+        assertFalse(likely.any { it["type"].asString == LogProblemExtractor.TYPE_FLUTTER_PLUGIN }, likely.toString())
+        assertFalse(likely.any { it["type"].asString == FlutterProblemTypes.FLUTTER_ERROR }, likely.toString())
+    }
+
+    @Test
+    fun `cross-layer problems outside the pairing window stay separate`() {
+        val raw =
+            "10-02 14:00:05.500  4242  4242 E flutter : " +
+                "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: " +
+                "MissingPluginException(No implementation found for method pay on channel sample/pay)"
+        val source = live(errors = listOf(error(AT)))
+        val report = DiagnosticCollector().collect(listOf(LogsSection, FlutterSection), probe(source, raw))
+        val types = report.getAsJsonArray("likelyProblems").map { it.asJsonObject["type"].asString }
+
+        assertFalse("crossLayer" in types, types.toString())
+        assertTrue(LogProblemExtractor.TYPE_FLUTTER_PLUGIN in types, types.toString())
+        assertTrue(FlutterProblemTypes.FLUTTER_ERROR in types, types.toString())
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private fun report(source: FlutterDiagnosticSource): JsonObject = collect(source)
@@ -281,7 +349,14 @@ class FlutterSectionTest {
         DiagnosticCollector().collect(listOf(logs(*logProblems), FlutterSection), probe(source))
 
     private fun probe(source: FlutterDiagnosticSource?, log: String = "") =
-        AndroidProbe(mockk<IDevice>(relaxed = true), SERIAL, APP, flutter = source, logTextOverride = log)
+        AndroidProbe(
+            mockk<IDevice>(relaxed = true),
+            SERIAL,
+            APP,
+            flutter = source,
+            logTextOverride = log,
+            pidsOverride = listOf("4242"),
+        )
 
     private fun source(outcome: FlutterAttachOutcome?, note: String? = null) =
         FlutterDiagnosticSource(APP, FlutterBuild.DEBUG, outcome, note, hostNowMs = AT)
