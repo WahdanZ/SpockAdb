@@ -19,6 +19,11 @@ import com.intellij.util.ui.JBUI
 import spock.adb.command.GetApplicationIDCommand
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.RecompositionOperations
+import spock.adb.diagnostics.FlutterWords
+import spock.adb.flutter.FlutterAttachOutcome
+import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterFollowerService
+import spock.adb.flutter.FlutterRebuildRecorder
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseEvent
@@ -112,17 +117,46 @@ internal class RecompositionPanel(
             val result = runCatching {
                 val packageName = typed ?: fromCapture ?: projectApplicationId()
                     ?: error("Type the package to record: none was captured and the project's could not be resolved.")
-                packageName to RecompositionOperations(target.device, target.serialNumber)
-                    .record(packageName, seconds * MILLIS_PER_SECOND)
+                val flutter = FlutterFollowerService.getInstance(project).diagnosticSource(target, packageName)
+                if (flutter == null) {
+                    Recording(
+                        packageName,
+                        RecompositionOperations(target.device, target.serialNumber)
+                            .record(packageName, seconds * MILLIS_PER_SECOND),
+                        flutter = false,
+                    )
+                } else {
+                    val connected = flutter.outcome as? FlutterAttachOutcome.Connected
+                        ?: error(FlutterWords.attach(flutter))
+                    val mode = flutter.live?.buildMode ?: flutter.build
+                    require(mode == FlutterBuild.DEBUG) {
+                        "Flutter rebuild recording is available only in a debug build."
+                    }
+                    val report = FlutterRebuildRecorder().record(
+                        connected.session,
+                        seconds * MILLIS_PER_SECOND,
+                        limit = FLUTTER_ROW_LIMIT,
+                    )
+                    val rows = report.top.map { widget ->
+                        val location = widget.location
+                        ComposableCount(
+                            name = "flutter.${location?.name ?: "Widget${widget.id}"}",
+                            file = location?.file?.substringAfterLast('/') ?: "unknown.dart",
+                            line = location?.line ?: 0,
+                            count = widget.rebuilds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                        )
+                    }
+                    Recording(packageName, RecompositionCounts(rows, seconds * MILLIS_PER_SECOND), flutter = true)
+                }
             }
             ApplicationManager.getApplication().invokeLater({
                 recording = false
                 record.isEnabled = true
                 result
-                    .onSuccess { (packageName, recorded) ->
-                        counts = recorded
+                    .onSuccess { result ->
+                        counts = result.counts
                         showCounts()
-                        say(summary(packageName, recorded, seconds))
+                        say(summary(result.packageName, result.counts, seconds, result.flutter))
                     }
                     .onFailure {
                         table.emptyText.text = NOT_RECORDED
@@ -145,10 +179,19 @@ internal class RecompositionPanel(
         }
     }
 
-    private fun summary(packageName: String, recorded: RecompositionCounts, seconds: Int): String = when {
+    private fun summary(
+        packageName: String,
+        recorded: RecompositionCounts,
+        seconds: Int,
+        flutter: Boolean,
+    ): String = when {
         recorded.composables.isEmpty() ->
-            "$packageName composed nothing in $seconds s. An idle screen should not; interact while recording " +
+            "$packageName recorded nothing in $seconds s. An idle screen should not; interact while recording " +
                 "to measure a change."
+        flutter ->
+            "$packageName: ${recorded.total} Flutter widget builds at ${recorded.composables.size} source " +
+                "locations in $seconds s. First builds count too. A high count is a lead, not proof of a problem. " +
+                "Double-click a row to open its source."
         else ->
             "$packageName: ${recorded.total} compositions of ${recorded.composables.size} composables in " +
                 "$seconds s. A count includes the first composition of anything that appeared. A high count is " +
@@ -178,6 +221,12 @@ internal class RecompositionPanel(
         }
     }
 
+    private data class Recording(
+        val packageName: String,
+        val counts: RecompositionCounts,
+        val flutter: Boolean,
+    )
+
     private class CountsModel : AbstractTableModel() {
         var rows: List<ComposableCount> = emptyList()
             set(value) {
@@ -206,12 +255,13 @@ internal class RecompositionPanel(
         const val COUNT_COLUMN_WIDTH = 60
         const val MILLIS_PER_SECOND = 1_000L
         val DURATIONS_SECONDS = listOf(5, 10, 30)
-        val COLUMNS = listOf("Count", "Composable", "Source")
+        val COLUMNS = listOf("Count", "Composable / widget", "Source")
         const val NOT_RECORDED = "Record to count how often each composable runs."
+        const val FLUTTER_ROW_LIMIT = 500
         const val EXPLANATION =
-            "Counts come from Compose's composition tracing. The app needs " +
-                "androidx.compose.runtime:runtime-tracing and androidx.tracing:tracing-perfetto-binary " +
-                "(debug builds are enough); Record says what is missing if it cannot trace."
+            "Flutter debug apps with a live DDS session use Flutter.RebuiltWidgets. Other apps use Compose's " +
+                "composition tracing and need androidx.compose.runtime:runtime-tracing plus " +
+                "androidx.tracing:tracing-perfetto-binary; Record says what is missing if it cannot trace."
     }
 }
 
