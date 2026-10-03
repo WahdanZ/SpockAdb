@@ -58,7 +58,10 @@ class DiagnosticCollector(
         preamble.entrySet().forEach { (key, value) -> report.add(key, value) }
         report.addProperty("packageName", probe.packageName)
         val all = reports.values.flatMap { it.problems }
-        val listed = addProblems(report, all, companionsOf(reports.values, all))
+        val replaced = IdentityHashMap<LikelyProblem, Boolean>()
+        all.flatMap { it.replaces }.forEach { replaced[it] = true }
+        val rankable = all.filterNot { replaced.containsKey(it) }
+        val listed = addProblems(report, rankable, companionsOf(reports.values, rankable))
         reports.forEach { (section, sectionReport) -> report.add(section.id, sectionReport.data) }
         if (errors.size() > 0) report.add("sectionErrors", errors)
         report.add("more", references(applicable, probe))
@@ -195,6 +198,23 @@ class DiagnosticCollector(
         if (count > 1) addProperty("count", count)
         lastSeen?.let { addProperty("lastSeen", it) }
         section?.let { addProperty("section", it) }
+        if (replaces.isNotEmpty()) {
+            add(
+                "related",
+                JsonArray().apply {
+                    replaces.forEach { child ->
+                        add(
+                            JsonObject().apply {
+                                addProperty("type", child.type)
+                                addProperty("summary", child.summary)
+                                child.section?.let { addProperty("section", it) }
+                                child.lastSeen?.let { addProperty("lastSeen", it) }
+                            },
+                        )
+                    }
+                },
+            )
+        }
     }
 
     companion object {
@@ -216,6 +236,7 @@ class DiagnosticCollector(
             LogProblemExtractor.TYPE_CRASH,
             LogProblemExtractor.TYPE_ANR,
             "process",
+            FlutterProblemTypes.CROSS_LAYER,
             LogProblemExtractor.TYPE_FLUTTER_PLUGIN,
             FlutterProblemTypes.FLUTTER_ERROR,
             LogProblemExtractor.TYPE_NETWORK,
