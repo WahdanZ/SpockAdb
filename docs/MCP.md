@@ -281,11 +281,11 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-69 tools, in three levels.
+70 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (29) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline`, `android_list_recipes` |
+| **Read-only** (30) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline`, `android_list_recipes`, `flutter_app_status` |
 | **Safe action** (32) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts`, `android_run_recipe` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
@@ -838,6 +838,47 @@ you need to see the screen as well as read about it.
 A screenshot the device refuses — a `FLAG_SECURE` window — is reported in the `screenshot` field
 and the rest of the diagnosis still comes back.
 
+
+### `flutter_app_status`
+
+Spock's connection to a Flutter app's Dart VM Service, for when Diagnose's `flutter` section says
+there is no session and you want to know why. It is the only Flutter tool. Everything else rides
+the existing tools: errors, frames, HTTP and the cross-layer problem come from
+`android_diagnose_current_screen`, and the rebuild window comes from
+`android_get_recomposition_counts`. Read-only. With no session yet, it attaches by itself as
+Diagnose does, within about 3 seconds, and calls nothing in the app.
+
+```json
+{
+  "applicationId": "spock.adb.spock_flutter_sample", "device": "emulator-5554",
+  "flutterApp": true, "apkBuild": "debug",
+  "attach": "Connected to spock.adb.spock_flutter_sample on emulator-5554 (pid 4312), logcat-pid.",
+  "connected": true,
+  "identity": { "pid": 4312, "verifiedBy": "logcat-pid",
+                "how": "Announced in logcat by the app's own pid on this device, its VM on that pid." },
+  "connectionKind": "dds", "buildMode": "debug",
+  "uiIsolate": { "id": "isolates/4273892695459887", "name": "main" },
+  "versions": { "flutter": "unknown: the app does not report it; `flutter --version` on the machine that ran it does",
+                "dart": "3.4.3 (stable)" },
+  "structuredErrors": "on",
+  "httpRecording": "on: Spock turned it on, and turns it off again when it disconnects",
+  "clock": { "state": "measured", "zone": "+02:00", "uncertaintyMs": 47 }
+}
+```
+
+- `attach` uses the same words as Diagnose's `flutter.attach`: connected, not running, a release
+  build, starting, no debugger session, ambiguous, not found, or failed. An app that is not a
+  Flutter app answers `flutterApp: false` and nothing is looked up.
+- `identity.verifiedBy` says how the session was found and checked. `dtd+pid+start` means a Dart
+  Tooling Daemon listed it, and its VM's pid and start time match the app's process on this
+  device. `dtd+pid` is the same with the pid alone. `logcat-pid` means the app's own pid
+  announced it in logcat.
+- `connectionKind` is `dds`, or a direct VM with no DDS, which Spock only watches (read-only).
+- `versions.flutter` is unknown: no framework extension reports it. `dart` comes from the VM.
+- `clock` is `measured`, `measuring` for a session just opened, or `unavailable` when the
+  device's `date` could not be read.
+- It never returns a VM Service, DDS or DevTools address, nor a token: any that a message carried
+  reads `<VM Service address>`.
 
 ### `android_get_debug_timeline`
 

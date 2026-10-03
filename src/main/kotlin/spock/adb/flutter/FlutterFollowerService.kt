@@ -16,6 +16,7 @@ import spock.adb.diagnostics.FlutterDiagnosticSource
 import spock.adb.diagnostics.FlutterSection
 import spock.adb.flutter.analysis.FlutterLogcatErrors
 import spock.adb.flutter.vmservice.VmServiceException
+import spock.adb.flutter.vmservice.string
 import spock.adb.pidsOf
 import spock.adb.timeline.DebugTimelineService
 import java.io.IOException
@@ -81,6 +82,28 @@ class FlutterFollowerService(private val project: Project) : Disposable {
             outcome = outcome,
             live = connected?.let { live(device, it) },
         )
+    }
+
+    /**
+     * What `flutter_app_status` reports for [applicationId], a [build] of a Flutter app on
+     * [device]: attaches when there is no session yet, within [ATTACH_BUDGET_MS], as Diagnose
+     * does. Never waits for the session's clock: a session just opened says it is measuring.
+     * Blocking: from a pooled thread.
+     */
+    fun status(device: ConnectedDevice, applicationId: String, build: FlutterBuild): FlutterAppStatus {
+        val outcome = follower.attachNow(device, applicationId, build, ATTACH_BUDGET_MS)
+        val live = (outcome as? FlutterAttachOutcome.Connected)?.let { connected ->
+            val session = connected.session
+            FlutterAppStatus.Live(
+                identity = connected.identity,
+                snapshot = session.snapshot,
+                buildMode = session.buildMode,
+                dartVersion = FlutterAppStatus.dartVersion(session.vm?.string("version")),
+                deviceTime = session.deviceTime.current,
+                clockDone = session.deviceTime.done,
+            )
+        }
+        return FlutterAppStatus(applicationId, device.serialNumber, build, outcome, live = live)
     }
 
     private fun live(device: ConnectedDevice, connected: FlutterAttachOutcome.Connected): FlutterDiagnosticSource.Live {
