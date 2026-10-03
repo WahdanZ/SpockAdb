@@ -54,6 +54,82 @@ object LogProblemExtractor {
         )
     }
 
+    /** One Flutter framework error printed by Flutter's console handler when structured errors are off. */
+    data class FlutterFrameworkError(
+        val summary: String,
+        /** The first occurrence's full console block; null for grouped "Another exception" repeats. */
+        val full: String?,
+        val count: Int,
+        val seenAt: List<String>,
+    ) {
+        val lastSeen: String? get() = seenAt.lastOrNull()
+    }
+
+    /**
+     * Flutter framework errors from logcat, for the case where
+     * `ext.flutter.inspector.structuredErrors` is off.
+     *
+     * Flutter prints the first error as a multi-line block and later repeats as
+     * `Another exception was thrown: …`. The first block is kept in full (bounded), while
+     * repeats are grouped by message. Only the app's attributed `flutter` lines participate.
+     */
+    fun flutterFrameworkErrors(
+        log: String,
+        packageName: String?,
+        pids: Collection<String>,
+    ): List<FlutterFrameworkError> {
+        val lines = attribute(log.lineSequence().mapNotNull(::parse).toList(), packageName, pids.toSet())
+            .filter { it.tag.equals(FLUTTER, ignoreCase = true) }
+        if (lines.isEmpty()) return emptyList()
+
+        val result = mutableListOf<FlutterFrameworkError>()
+        val firstStart = lines.indexOfFirst { frameworkBlockStart(it.message) }
+        if (firstStart >= 0) {
+            val firstLines = mutableListOf<Line>()
+            for (line in lines.drop(firstStart)) {
+                if (firstLines.isNotEmpty() && line.message.startsWith(ANOTHER_EXCEPTION)) break
+                firstLines += line
+                if (firstLines.size >= MAX_FRAMEWORK_BLOCK_LINES) break
+            }
+            if (firstLines.isNotEmpty()) {
+                val summary = firstLines.asSequence()
+                    .map { it.message.trim() }
+                    .firstOrNull { it.isNotBlank() && !DECORATIVE_ERROR_LINE.matches(it) }
+                    ?: "Flutter framework error"
+                val full = DiagnosticShell.clip(
+                    firstLines.joinToString("\n") { it.message },
+                    MAX_FRAMEWORK_BLOCK_CHARS,
+                )
+                result += FlutterFrameworkError(
+                    summary = clipLine(redact(summary)),
+                    full = redact(full),
+                    count = 1,
+                    seenAt = listOf(firstLines.first().time),
+                )
+            }
+        }
+
+        val repeats = linkedMapOf<String, MutableList<Line>>()
+        lines.filter { it.message.startsWith(ANOTHER_EXCEPTION) }.forEach { line ->
+            val message = line.message.substringAfter(ANOTHER_EXCEPTION).trim().ifBlank { "Flutter framework error" }
+            repeats.getOrPut(normalise(message)) { mutableListOf() } += line
+        }
+        repeats.values.forEach { group ->
+            val message = group.first().message.substringAfter(ANOTHER_EXCEPTION).trim()
+            result += FlutterFrameworkError(
+                summary = clipLine(redact(message.ifBlank { "Flutter framework error" })),
+                full = null,
+                count = group.size,
+                seenAt = group.map { it.time }.takeLast(MAX_OCCURRENCES),
+            )
+        }
+        return result
+    }
+
+    private fun frameworkBlockStart(message: String): Boolean =
+        message.contains("EXCEPTION CAUGHT BY") ||
+            message.startsWith("The following ") && message.contains(" was thrown")
+
     /** One parsed `threadtime` line. */
     data class Line(val time: String, val pid: String, val level: Char, val tag: String, val message: String)
 
@@ -464,6 +540,10 @@ object LogProblemExtractor {
     private const val ACTIVITY_MANAGER = "ActivityManager"
     private const val STRICT_MODE = "StrictMode"
     private const val FLUTTER = "flutter"
+    private const val ANOTHER_EXCEPTION = "Another exception was thrown:"
+    private const val MAX_FRAMEWORK_BLOCK_LINES = 40
+    private const val MAX_FRAMEWORK_BLOCK_CHARS = 4_000
+    private val DECORATIVE_ERROR_LINE = Regex("""^[═╡╞─\s]+.*[═╡╞─\s]*$""")
 
     /** What the engine prefixes, after `[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] `. */
     private const val FLUTTER_UNHANDLED_MARKER = "Unhandled Exception:"
