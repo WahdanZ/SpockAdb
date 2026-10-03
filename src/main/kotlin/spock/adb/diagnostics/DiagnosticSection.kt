@@ -141,6 +141,11 @@ data class LikelyProblem(
      * it with what happened around any of them. Not in the report: [lastSeen] is.
      */
     val seenAt: List<String> = listOfNotNull(lastSeen),
+    /**
+     * Per-layer problems this problem combines. They stay available to sections as evidence, but
+     * are left out of the top-level ranking so one incident is not reported as several faults.
+     */
+    val replaces: List<LikelyProblem> = emptyList(),
 ) {
     enum class Severity(val id: String, val rank: Int) {
         ERROR("error", 0),
