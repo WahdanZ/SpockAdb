@@ -117,7 +117,7 @@ class AndroidProbe(
 
     /** One bounded logcat snapshot shared by Logs and Flutter, so correlation describes one window. */
     val logText: String by lazy {
-        logTextOverride ?: DiagnosticShell.run(device, "logcat -d -v threadtime -t $logWindowLines *:W")
+        logTextOverride ?: DiagnosticShell.run(device, "logcat -d -v threadtime -t $logWindowLines flutter:I *:W")
     }
 
     /** The ordinary log problems parsed once from [logText]. */
