@@ -280,8 +280,8 @@ class FlutterSectionTest {
     private fun collect(source: FlutterDiagnosticSource, vararg logProblems: LikelyProblem): JsonObject =
         DiagnosticCollector().collect(listOf(logs(*logProblems), FlutterSection), probe(source))
 
-    private fun probe(source: FlutterDiagnosticSource?) =
-        AndroidProbe(mockk<IDevice>(relaxed = true), SERIAL, APP, flutter = source)
+    private fun probe(source: FlutterDiagnosticSource?, log: String = "") =
+        AndroidProbe(mockk<IDevice>(relaxed = true), SERIAL, APP, flutter = source, logTextOverride = log)
 
     private fun source(outcome: FlutterAttachOutcome?, note: String? = null) =
         FlutterDiagnosticSource(APP, FlutterBuild.DEBUG, outcome, note, hostNowMs = AT)
