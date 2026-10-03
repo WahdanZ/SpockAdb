@@ -9,6 +9,13 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# Generated and platform code is not ours to lint. Flutter 3.47 adds this when missing.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

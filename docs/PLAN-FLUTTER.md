@@ -161,6 +161,11 @@ From the joint review of #159, #161 and #162 and the device experiments of 2026-
     (*Network* → `net_404_undrained`) is reported as failed (review A7);
   - hot restart: `errorsSinceReload` resets, RebuiltWidgets location ids restart with the new isolate (review A6), HTTP logging is re-enabled;
   - Android back at the root destroys the engine: the session reports "isolate exited", not a hang.
+- [x] **The sample builds on Flutter 3.47.5** (follow-up from the H device gate). Unblocked: 3.47.5 stopped
+  in Kotlin compile ("Language version 1.4 is no longer supported") on the sample's Gradle 7.6.3. It now uses
+  Gradle 8.14.5, AGP 8.13.2 and Kotlin 2.3.21, which 3.22.2 and 3.47.5 both build (debug APK, plain and
+  `spockAppIdSuffix=.second`), analyze and test. Gradle 9 and AGP 9 are out of reach while 3.22 is supported.
+  See the sample's README.
 - **Gate (end to end, Android):** with an app selected in Spock and nothing pasted, discovery → session → Diagnose shows the
   Flutter error from the P0 Layout screen next to its logcat context, in each of: `flutter run` on 3.22 (logcat → 302 → DDS),
   `flutter run` on 3.47.5 (DTD), two flavors of the sample running together (the second copy: `flutter run
