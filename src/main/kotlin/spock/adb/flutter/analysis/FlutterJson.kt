@@ -54,6 +54,9 @@ const val FLUTTER_SECTION = "flutter"
  * failure seen from Dart and from logcat should rank, and read, the same.
  */
 object FlutterProblemTypes {
+    /** One incident observed in Flutter and the native Android layer in the same short window. */
+    const val CROSS_LAYER = "crossLayer"
+
     /** A `Flutter.Error`: an overflow, an exception in `build()`, a gesture handler that threw. */
     const val FLUTTER_ERROR = "flutterError"
 
