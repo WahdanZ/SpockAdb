@@ -88,7 +88,7 @@ object FlutterSection : DiagnosticSection<AndroidProbe> {
 
     override fun collect(probe: AndroidProbe): SectionReport {
         val source = probe.flutter ?: error("Not a Flutter app.")
-        return FlutterSectionReport(source).build()
+        return FlutterSectionReport(source, probe.logText, probe.logProblems.problems, probe.pids).build()
     }
 
     /** Log lines this close to a Flutter error, before the clock's uncertainty, are its context. */
@@ -104,7 +104,12 @@ object FlutterSection : DiagnosticSection<AndroidProbe> {
 }
 
 /** One report of [FlutterSection]: what it read, and its correlation step. */
-internal class FlutterSectionReport(private val source: FlutterDiagnosticSource) {
+internal class FlutterSectionReport(
+    private val source: FlutterDiagnosticSource,
+    private val logText: String,
+    private val logProblems: List<LikelyProblem>,
+    private val pids: List<String>,
+) {
 
     private val data = JsonObject()
     private val notes = JsonArray()
@@ -117,6 +122,9 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
 
     /** Error groups as listed, with the problem each became and its JSON, for [correlate]. */
     private val groups = mutableListOf<Triple<FlutterErrorReader.Group, LikelyProblem, JsonObject>>()
+
+    /** A VM-layer problem → the one cross-layer incident that replaces it in the top-level ranking. */
+    private val crossLayer = IdentityHashMap<LikelyProblem, LikelyProblem>()
 
     fun build(): SectionReport {
         data.addProperty("attach", Redaction.scrub(FlutterWords.attach(source)))
@@ -161,6 +169,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
     }
 
     private fun errors(live: FlutterDiagnosticSource.Live, events: List<FlutterExtensionEvent>): JsonObject {
+        if (live.snapshot.structuredErrorsEnabled == false) return logcatErrors()
         val result = FlutterErrorReader.summarise(events, zone)
         val listed = JsonArray()
         result.groups.zip(result.problems).take(FlutterSection.MAX_ERROR_GROUPS).forEach { (group, problem) ->
@@ -169,14 +178,104 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
             groups += Triple(group, problem, json)
         }
         problems += result.problems
+        result.groups.zip(result.problems).forEach { (group, problem) ->
+            crossLayerProblem(group, problem)?.let { incident ->
+                crossLayer[problem] = incident
+                problems += incident
+            }
+        }
         errorNotes(live.snapshot, result.liveCount + result.historyCount)
         return JsonObject().apply {
+            addProperty("source", "Flutter.Error (VM Service)")
             addProperty("sinceConnected", result.liveCount)
             addProperty("beforeSpockConnected", result.historyCount)
             result.errorsSinceReload?.let { addProperty("sinceReload", it) }
             add("groups", listed)
             if (result.groups.size > listed.size()) addProperty("moreGroups", result.groups.size - listed.size())
         }
+    }
+
+    private fun logcatErrors(): JsonObject {
+        val found = LogProblemExtractor.flutterFrameworkErrors(logText, source.applicationId, pids)
+        val listed = JsonArray()
+        found.take(FlutterSection.MAX_ERROR_GROUPS).forEach { error ->
+            val problem = LikelyProblem(
+                type = spock.adb.flutter.analysis.FlutterProblemTypes.FLUTTER_ERROR,
+                severity = LikelyProblem.Severity.ERROR,
+                summary = error.summary,
+                count = error.count,
+                lastSeen = error.lastSeen,
+                section = FlutterSection.id,
+                seenAt = error.seenAt,
+            )
+            problems += problem
+            listed.add(
+                JsonObject().apply {
+                    addProperty("summary", problem.summary)
+                    addProperty("count", error.count)
+                    error.full?.let { addProperty("full", it) }
+                    error.seenAt.firstOrNull()?.let { addProperty("firstSeen", it) }
+                    error.lastSeen?.let { addProperty("lastSeen", it) }
+                },
+            )
+        }
+        if (found.isEmpty()) {
+            notes.add(
+                "Structured errors are off, and Spock did not observe a framework error in the bounded logcat " +
+                    "window. $CUSTOM_HANDLER",
+            )
+        }
+        return JsonObject().apply {
+            addProperty("source", "logcat (structured errors off)")
+            addProperty("sinceConnected", 0)
+            addProperty("beforeSpockConnected", 0)
+            add("groups", listed)
+            if (found.size > listed.size()) addProperty("moreGroups", found.size - listed.size())
+        }
+    }
+
+    /**
+     * A Flutter.Error beside a native crash or platform-channel failure is one incident, not two
+     * top-level faults. The two original problems stay attached as related evidence.
+     */
+    private fun crossLayerProblem(
+        group: FlutterErrorReader.Group,
+        flutter: LikelyProblem,
+    ): LikelyProblem? {
+        val time = live?.deviceTime ?: return null
+        val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
+        val native = logProblems.asSequence()
+            .filter {
+                it.type == LogProblemExtractor.TYPE_CRASH ||
+                    it.type == LogProblemExtractor.TYPE_FLUTTER_PLUGIN
+            }
+            .mapNotNull { problem ->
+                val distance = problem.seenAt
+                    .mapNotNull { stamp -> time.logcatToEpoch(stamp, source.hostNowMs) }
+                    .minOfOrNull { epoch -> distance(group, epoch) }
+                    ?: return@mapNotNull null
+                problem.takeIf { distance <= window }?.let { it to distance }
+            }
+            .minByOrNull { it.second }
+            ?.first
+            ?: return null
+        return LikelyProblem(
+            type = spock.adb.flutter.analysis.FlutterProblemTypes.CROSS_LAYER,
+            severity = LikelyProblem.Severity.ERROR,
+            summary = DiagnosticShell.clip(
+                "Cross-layer Flutter/native failure: ${flutter.summary} — ${native.summary}",
+            ),
+            count = maxOf(flutter.count, native.count),
+            lastSeen = flutter.lastSeen ?: native.lastSeen,
+            section = FlutterSection.id,
+            replaces = listOf(flutter, native),
+        )
+    }
+
+    private fun distance(group: FlutterErrorReader.Group, epochMs: Long): Long = when {
+        epochMs < group.firstSeenMs -> group.firstSeenMs - epochMs
+        epochMs > group.lastSeenMs -> epochMs - group.lastSeenMs
+        else -> 0L
     }
 
     private fun groupJson(group: FlutterErrorReader.Group, problem: LikelyProblem) = JsonObject().apply {
@@ -194,9 +293,9 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
             structured == false -> notes.add(STRUCTURED_OFF)
             structured == null && live?.buildMode == FlutterBuild.PROFILE -> notes.add(PROFILE_ERRORS)
             seen == 0 -> notes.add(
-                "No Flutter.Error since Spock connected" +
+                "Spock did not observe a Flutter.Error since it connected" +
                     (snapshot.connectedAtHostMs?.let { " at ${hostStamp(it)}" }.orEmpty()) +
-                    ". That is not proof of none: $CUSTOM_HANDLER",
+                    ". That is not proof that no framework error occurred: $CUSTOM_HANDLER",
             )
         }
     }
@@ -283,7 +382,9 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
 
     /** Points each listed error group at its own entry and at the log problems paired with it. */
     private fun correlate(ranked: RankedProblems) {
-        groups.forEach { (_, problem, json) -> ranked.idOf(problem)?.let { json.addProperty("problem", it) } }
+        groups.forEach { (_, problem, json) ->
+            ranked.idOf(crossLayer[problem] ?: problem)?.let { json.addProperty("problem", it) }
+        }
         silentHandlerNote(ranked)
         if (live?.deviceTime == null) return
         groups.forEach { (_, problem, json) ->
@@ -342,7 +443,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
         const val CUSTOM_HANDLER = "an app that replaced FlutterError.onError (a crash reporter: Crashlytics, " +
             "Sentry) reports framework errors to neither the VM Service nor logcat."
         const val STRUCTURED_OFF =
-            "Structured errors are off: Flutter framework errors are printed to logcat instead — see `logs`."
+            "Structured errors are off: Flutter framework errors are read from this report's bounded logcat window."
         const val PROFILE_ERRORS =
             "A profile build has no inspector: Flutter framework errors are printed to logcat — see `logs`."
         const val HTTP_SCOPE = "dart:io traffic only (package:http, dio); cupertino_http, cronet_http and " +
