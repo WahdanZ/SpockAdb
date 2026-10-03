@@ -39,6 +39,26 @@
     *flutter* section; each `likelyProblems` entry now has an `id`, which the section's errors point
     at. VM Service addresses and their tokens, which let whoever holds them run code in the app, are
     kept out of every report, row and log line.
+- **Flutter: errors from logcat, one problem for two layers, a rebuild window, and a status tool.**
+  - **Diagnose** reads Flutter's framework errors from logcat when they are not sent to the
+    debugger: with structured errors off (`--dart-define=flutter.inspector.structuredErrors=false`,
+    a no-debug launch, an IDE toggle) and in profile builds. The first error is read in full and
+    the `Another exception was thrown: …` repeats are counted, and the section says which source it
+    read. Before, it only pointed at logcat. When neither the debugger nor logcat has any error,
+    it says that an app that replaced `FlutterError.onError` (Crashlytics, Sentry) hides errors from
+    both. It still never reads silence as "no errors".
+  - **Diagnose** lists a Dart error and the native crash, `MissingPluginException` or failed
+    channel handler a moment beside it as **one** problem, naming both layers. Before, they were
+    two unrelated entries, and an agent had to notice the timestamps to see one fault. Each layer's
+    own problem is kept inside it.
+  - **`android_get_recomposition_counts`** records Flutter widget rebuilds for a Flutter app run
+    with `flutter run` in a debug build, in the tool's usual shape. Spock switches the inspector's
+    rebuild tracking on for the window only if it was off, and off again afterwards only if it
+    switched it on, so the IDE's own rebuild counts are left as they were. Diagnose never records.
+  - **`flutter_app_status`**, a new read-only MCP tool, says whether Spock has a Flutter session on
+    the app and why not: how the attach went, how the session was found and verified, DDS or a
+    read-only direct connection, the build mode, the UI isolate, the Dart version, HTTP recording
+    and the device clock. It never returns a VM Service address or token.
 - **Flutter apps, first pass.** Spock now understands what a Flutter app puts on the device:
   - **App Storage** reads `FlutterSharedPreferences.xml` the way Dart does: doubles and lists
     show as a double and a new *string list* type instead of encoded strings, and edits are

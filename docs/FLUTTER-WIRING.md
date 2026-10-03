@@ -168,9 +168,12 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
 - **Follower memory.** Terminal outcomes are remembered for the automatic triggers only; Diagnose always asks, since
   `flutter attach` may have run since. Backoff 0.5/1/2/4 s then 4 s again, at most 8 retries, or the service's
   `retryAfterMs` when longer.
-- **Not built here:** a rebuild recording window, the logcat fallback for errors when structured errors are off (the
-  section points at `logs` instead), `flutter_app_status`, and the check that the session clock and `DeviceClock`
-  agree (the H gate does that by eye).
+- **Not built here:** the check that the session clock and `DeviceClock` agree (the H gate does that by eye). The
+  rebuild recording window, the logcat source for errors when structured errors are off, the cross-layer problem
+  and `flutter_app_status` came after H, in P5b (PLAN-FLUTTER.md, P5b; docs/MCP.md). The logcat source is read by
+  the section through `FlutterDiagnosticSource.Reads.flutterLog`, the last 1,500 lines filtered to `flutter:I`,
+  and only the session's own pid counts. The merge is a new pre-ranking step, `SectionReport.merges`, run before
+  `companions`.
 - **Device gate, 2026-10-02 (emulator-5554, 3.22.2), and what changed.** The first run never attached by itself:
   the follower's attempt on "Process started" found no pid — Android logs the start ~2 s before the process has its
   name, so `pidof` is empty — and stopped. Now a run triggered by a process start (or a lost session) retries "not
