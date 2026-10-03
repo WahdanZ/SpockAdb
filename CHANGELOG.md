@@ -16,9 +16,6 @@
   and restore `trackRebuildDirtyWidgets` only when Spock turned the shared flag on. Compose keeps
   its existing Perfetto path.
 
-
-### Added
-
 - **Flutter: Spock connects to your app by itself, and Diagnose and the Timeline read it.** Until now
   Flutter's own errors — a layout overflow, an exception in `build()` or a tap handler — never
   reached Spock in a debug build: Flutter sends them to the Dart VM Service, not logcat, so Diagnose
