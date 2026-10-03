@@ -14,6 +14,7 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.flutter.dtd.DtdAppIdentity
 import spock.adb.flutter.dtd.DtdCandidate
 import spock.adb.flutter.dtd.DtdDiscovery
+import spock.adb.flutter.vmservice.AdbForwards
 import spock.adb.flutter.vmservice.LogcatDiscovery
 import spock.adb.flutter.vmservice.NoDdsException
 import spock.adb.flutter.vmservice.PastedUriDiscovery
@@ -63,23 +64,32 @@ class FlutterSessionService(private val project: Project) : Disposable {
     internal var processTiming: (IDevice, Long) -> ProcessTiming? = ::readProcessTiming
     internal var dtdIdentity: DtdAppIdentity = DtdAppIdentity()
     internal var newSession: () -> FlutterSession = { FlutterSession() }
+    internal var measureDeviceTime: (IDevice) -> DeviceTime? = DeviceTimeSampler::measure
+
+    /** A logcat `threadtime` stamp on the host's clock, from one `date` on the device; null when unreadable. */
+    internal var stampToHost: (IDevice, String) -> Long? = { device, stamp ->
+        val time = DeviceTimeSampler.measure(device, samples = 1)
+        time?.logcatToEpoch(stamp)?.let(time::epochToHost)
+    }
+
+    /** Whether a forward to this device port that Spock did not make exists; null when adb cannot say. */
+    internal var foreignForward: (ConnectedDevice, Int) -> Boolean? = { device, port ->
+        AdbForwards.foreignTo(device.serialNumber, port)
+    }
+
+    /** Whether Android's freezer holds one of these pids ([ProcessFreezer]); null when it cannot say. */
+    internal var frozen: (ConnectedDevice, String, Set<Long>) -> Boolean? = { device, applicationId, pids ->
+        ProcessFreezer.check(device.device, applicationId, pids)
+    }
+
+    /** Where attach decisions are logged, at INFO. Never an address or a token. */
+    internal var info: (String) -> Unit = { log.info(it) }
     internal var background: (Runnable) -> Future<*> = { ApplicationManager.getApplication().executeOnPooledThread(it) }
     internal var onEdt: () -> Boolean = { ApplicationManager.getApplication()?.isDispatchThread == true }
     internal var clock: () -> Long = System::currentTimeMillis
     internal var closeWaitMs: Long = CLOSE_WAIT_MS
 
     private class Held(val session: FlutterSession, val identity: AppIdentity?)
-
-    /**
-     * One process's start, followed across [ensureSession] calls until its pids change. Read and
-     * written only under that app's attach lock, so the probe spacing is atomic.
-     */
-    private class Startup(val pids: Set<Long>, val startedAt: Long) {
-        var lastDirectProbeAt: Long? = null
-
-        /** Set once the process is known to run without DDS: no more direct probes for these pids. */
-        var noDds: AppIdentity? = null
-    }
 
     /** What the Dart Tooling Daemons say about the selected app. */
     private sealed interface DtdEvidence {
@@ -93,8 +103,11 @@ class FlutterSessionService(private val project: Project) : Disposable {
     /** Guards the fields below. Never held across a connect, a close or a listener. */
     private val lock = Any()
     private val listeners = CopyOnWriteArrayList<FlutterSessionServiceListener>()
-    private val startups = object : LinkedHashMap<String, Startup>() {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Startup>?) = size > MAX_STARTUPS
+
+    /** What Spock switched on and still owes switching off, across sessions. */
+    private val httpOwners = HttpOwners()
+    private val startups = object : LinkedHashMap<String, AppStartup>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AppStartup>?) = size > MAX_STARTUPS
     }
 
     /**
@@ -179,30 +192,47 @@ class FlutterSessionService(private val project: Project) : Disposable {
      * what the last attempt learned.
      *
      * Then DTD, confirmed by (pid, start) on [device] — several passing is
-     * [FlutterAttachOutcome.Ambiguous] — else logcat. The startup window, [STARTUP_GRACE_MS],
-     * runs from [processStartedAt] (host-clock ms) when the caller knows it, else from the
-     * process's age as the device reports it, else from the first call for these pids. Inside it
-     * a missing address, an unreachable VM and a VM without DDS are
+     * [FlutterAttachOutcome.Ambiguous] — else logcat. The startup window runs from the latest
+     * known start: the VM's announcement in logcat once seen, else the process start, from
+     * [processStartedAt] (host-clock ms) when the caller knows it, else from the process's age
+     * as the device reports it, else from the first call for these pids ([AppStartup]). Inside
+     * it a missing address, an unreachable VM and a VM without DDS are
      * [FlutterAttachOutcome.NotReady]: `flutter run` may still be attaching, and a client on the
-     * direct VM then keeps its DDS out (spike S10) — so the direct VM is not connected to before
-     * [DIRECT_PROBE_MIN_AGE_MS], nor twice within [DIRECT_PROBE_INTERVAL_MS]. Past the window a
-     * VM without DDS is [FlutterAttachOutcome.NoDdsSession], never kept, and not probed again for
-     * these pids — the DTD is still asked each time, so a later `flutter attach` is found.
+     * direct VM then keeps its DDS out (spike S10) — so the direct VM is not connected to in the
+     * first seconds after it appears, nor twice within [DIRECT_PROBE_INTERVAL_MS], nor while a
+     * Flutter tool's forward to it says a tool is attaching. Past the window a VM without DDS
+     * and with no tool forwarding it is [FlutterAttachOutcome.NoDdsSession], never kept, and not
+     * probed again for these pids until a tool forwards it — the DTD is still asked each time,
+     * so a later `flutter attach` is found either way.
      *
      * Never sleeps or loops: the caller retries [FlutterAttachOutcome.NotReady] with its own
      * backoff. [build] is the app's build when the caller knows it — a release build has no VM
-     * Service. Blocking.
+     * Service. [recordHttp] as in [FlutterSession.connect]: the Settings switch, for a new
+     * session; a session reused keeps what it was opened with. Blocking.
+     *
+     * A session connected here has its [FlutterSession.deviceTime] measured on [device] once, on
+     * a pooled thread, so the caller is not kept waiting for it.
      */
     fun ensureSession(
         device: ConnectedDevice,
         applicationId: String,
-        processStartedAt: Long? = null,
-        build: FlutterBuild? = null,
+        processStartedAt: Long?,
+        build: FlutterBuild?,
+        recordHttp: Boolean,
     ): FlutterAttachOutcome {
         checkOffEdt()
         require(applicationId.isNotBlank()) { "No app is selected." }
         val attachLock = attachLocks.computeIfAbsent(startupKey(device.serialNumber, applicationId)) { ReentrantLock() }
-        return attachLock.withLock { ensureLocked(device, applicationId, processStartedAt, build) }
+        val outcome = attachLock.withLock {
+            ensureLocked(device, Attempt(applicationId, processStartedAt, build, recordHttp))
+        }
+        info("Flutter attach for $applicationId on ${device.serialNumber}: ${outcome.logLine()}")
+        // Once per session, off the caller's thread; a sampler that throws still sets the slot,
+        // so nobody waits on it.
+        (outcome as? FlutterAttachOutcome.Connected)?.session?.deviceTime?.takeIf { it.claim() }?.let { slot ->
+            background(Runnable { slot.set(runCatching { measureDeviceTime(device.device) }.getOrNull()) })
+        }
+        return outcome
     }
 
     /**
@@ -249,7 +279,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
         opening?.close()
         old?.session?.close()
         old?.takeIf { lostReported !== it.session }?.let {
-            notify(FlutterSessionChange.Disconnected(it.session, it.identity, "Disconnected by Spock."))
+            notify(FlutterSessionChange.Disconnected(it.session, it.identity, DISCONNECTED_BY_SPOCK))
         }
     }
 
@@ -288,18 +318,23 @@ class FlutterSessionService(private val project: Project) : Disposable {
         }
     }
 
+    /** What one [ensureSession] call asks for. */
+    private class Attempt(
+        val applicationId: String,
+        val processStartedAt: Long?,
+        val build: FlutterBuild?,
+        val recordHttp: Boolean,
+    )
+
     /** [ensureSession] under the app's attach lock. */
-    private fun ensureLocked(
-        device: ConnectedDevice,
-        applicationId: String,
-        processStartedAt: Long?,
-        build: FlutterBuild?,
-    ): FlutterAttachOutcome {
+    private fun ensureLocked(device: ConnectedDevice, attempt: Attempt): FlutterAttachOutcome {
         val serial = device.serialNumber
+        val applicationId = attempt.applicationId
         val notes = mutableListOf<String>()
-        val pids = if (build == FlutterBuild.RELEASE) null else pidsOrNull(device, applicationId, notes)
+        val release = attempt.build == FlutterBuild.RELEASE
+        val pids = if (release) null else pidsOrNull(device, applicationId, notes)
         return when {
-            build == FlutterBuild.RELEASE -> FlutterAttachOutcome.ReleaseBuild(serial, applicationId)
+            release -> FlutterAttachOutcome.ReleaseBuild(serial, applicationId)
             pids == null -> FlutterAttachOutcome.Failed(notes.joinToString(" "))
             pids.isEmpty() -> {
                 synchronized(lock) { startups.remove(startupKey(serial, applicationId)) }
@@ -307,8 +342,8 @@ class FlutterSessionService(private val project: Project) : Disposable {
             }
             else -> reusable(serial, applicationId, pids) ?: run {
                 val timings = pids.associateWith { processTiming(device.device, it) }
-                val startup = startupOf(serial, applicationId, pids, processStartedAt, timings)
-                attachFromEvidence(device, applicationId, startup, timings, notes)
+                val startup = startupOf(serial, applicationId, pids, attempt.processStartedAt, timings)
+                attachFromEvidence(device, attempt, startup, timings, notes)
             }
         }
     }
@@ -316,60 +351,65 @@ class FlutterSessionService(private val project: Project) : Disposable {
     /** DTD first — it only touches DDS — then, unless the process is known to have no DDS, logcat. */
     private fun attachFromEvidence(
         device: ConnectedDevice,
-        applicationId: String,
-        startup: Startup,
+        attempt: Attempt,
+        startup: AppStartup,
         timings: Map<Long, ProcessTiming?>,
         notes: MutableList<String>,
     ): FlutterAttachOutcome {
-        val inWindow = clock() - startup.startedAt < STARTUP_GRACE_MS
-        return when (val dtd = dtdEvidence(device, applicationId, timings, notes)) {
-            is DtdEvidence.Found -> attach(dtd.found, startup, inWindow)
+        // A frozen process answers nothing: no VM contact, and no point asking again soon.
+        if (frozen(device, attempt.applicationId, startup.pids) == true) {
+            return FlutterAttachOutcome.NotReady(
+                "Android froze ${attempt.applicationId} in the background (cached-app freezer): bring it to the " +
+                    "foreground, and Spock connects.",
+                FROZEN_RETRY_MS,
+                frozen = true,
+            )
+        }
+        val inWindow = startup.inWindow(clock())
+        return when (val dtd = dtdEvidence(device, attempt.applicationId, timings, notes)) {
+            is DtdEvidence.Found -> attach(dtd.found, startup, inWindow, attempt.recordHttp)
             is DtdEvidence.Ambiguous -> FlutterAttachOutcome.Ambiguous(dtd.candidates, notes.joinToString(" "))
-            DtdEvidence.None -> startup.noDds?.let { FlutterAttachOutcome.NoDdsSession(it, NO_DDS_MESSAGE) }
-                ?: attachDirect(device, applicationId, startup, inWindow, notes)
+            // A "no DDS" verdict stands, with no VM contact, until a Flutter tool forwards the VM.
+            DtdEvidence.None -> {
+                val verdict = startup.noDds
+                    ?.takeUnless { startup.toolAppeared(clock()) { port -> foreignForward(device, port) } }
+                verdict?.let { FlutterAttachOutcome.NoDdsSession(it, NO_DDS_MESSAGE) }
+                    ?: attachDirect(device, attempt, startup, notes)
+            }
         }
     }
 
     /** The logcat address — the VM's own — connected to only when the probe rules allow. */
+    /**
+     * The logcat address — the VM's own — connected to only when [AppStartup.directProbeWait]
+     * allows: the window runs from the VM's announcement, and a Flutter tool's forward to the VM
+     * keeps Spock off it while that tool may be starting DDS.
+     */
     private fun attachDirect(
         device: ConnectedDevice,
-        applicationId: String,
-        startup: Startup,
-        inWindow: Boolean,
+        attempt: Attempt,
+        startup: AppStartup,
         notes: MutableList<String>,
     ): FlutterAttachOutcome {
-        val logcat = logcatFound(device, applicationId, startup.pids, notes).firstOrNull()
+        val logcat = logcatFound(device, attempt.applicationId, startup.pids, notes).firstOrNull()
         val now = clock()
-        val wait = directProbeWait(startup, now, inWindow)
-        return when {
-            logcat == null -> if (inWindow) {
+        if (logcat == null) {
+            return if (startup.inWindow(now)) {
                 FlutterAttachOutcome.NotReady(notes.joinToString(" "), RETRY_MS)
             } else {
                 FlutterAttachOutcome.NotFound(notes.joinToString(" "))
             }
-            wait != null -> wait
-            else -> {
-                startup.lastDirectProbeAt = now
-                attach(logcat, startup, inWindow)
-            }
         }
-    }
-
-    /** Why the direct VM must not be connected to yet, or null when it may be. */
-    private fun directProbeWait(startup: Startup, now: Long, inWindow: Boolean): FlutterAttachOutcome.NotReady? {
-        val age = now - startup.startedAt
-        if (inWindow && age < DIRECT_PROBE_MIN_AGE_MS) {
-            return FlutterAttachOutcome.NotReady(
-                "The app started $age ms ago: waiting for `flutter run` to attach before asking its VM directly.",
-                DIRECT_PROBE_MIN_AGE_MS - age,
-            )
-        }
-        val since = now - (startup.lastDirectProbeAt ?: return null)
-        if (since >= DIRECT_PROBE_INTERVAL_MS) return null
-        return FlutterAttachOutcome.NotReady(
-            "Waiting before asking the app's VM again: `flutter run` may still be attaching.",
-            DIRECT_PROBE_INTERVAL_MS - since,
-        )
+        startup.observe(
+            logcat.candidate,
+            now,
+            announcedAt = { stamp -> stampToHost(device.device, stamp) },
+            foreignForward = { port -> foreignForward(device, port) },
+        )?.let { info("Flutter attach for ${attempt.applicationId} on ${device.serialNumber}: $it") }
+        val wait = startup.directProbeWait(now)
+        if (wait != null) return wait
+        startup.lastDirectProbeAt = now
+        return attach(logcat, startup, startup.inWindow(now), attempt.recordHttp)
     }
 
     /** [discover] with no app selected: nothing can be confirmed by pid, so nothing is guessed. */
@@ -476,10 +516,21 @@ class FlutterSessionService(private val project: Project) : Disposable {
      * for a logcat address, keeps it only if its VM runs as one of the app's pids; maps what it
      * is not to an outcome.
      */
-    private fun attach(found: IdentifiedCandidate, startup: Startup, inWindow: Boolean): FlutterAttachOutcome {
+    private fun attach(
+        found: IdentifiedCandidate,
+        startup: AppStartup,
+        inWindow: Boolean,
+        recordHttp: Boolean,
+    ): FlutterAttachOutcome {
         val pidsAllowed = startup.pids.takeIf { found.identity.verifiedBy == IdentityCheck.LOGCAT_PID }
         val kept = try {
-            open(found.candidate, found.identity, allowDirect = false, recordHttp = true, pidsAllowed = pidsAllowed)
+            open(
+                found.candidate,
+                found.identity,
+                allowDirect = false,
+                recordHttp = recordHttp,
+                pidsAllowed = pidsAllowed,
+            )
         } catch (e: NoDdsException) {
             // Before VmServiceException, which it is: a VM with no DDS is an answer, not a failure.
             return if (inWindow) {
@@ -523,6 +574,13 @@ class FlutterSessionService(private val project: Project) : Disposable {
         pidsAllowed: Set<Long>? = null,
     ): Held? {
         val session = newSession()
+        session.httpOwners = httpOwners
+        session.httpOwnerSerial = identity?.serial
+        // Before it connects, so what a listener adds to it hears what DDS replays on connect.
+        listeners.forEach { listener ->
+            runCatching { listener.sessionCreated(session) }
+                .onFailure { log.warn("A Flutter session listener failed on a new session", it) }
+        }
         val (previous, opening) = synchronized(lock) {
             check(!disposed) { "The project is closed." }
             (held to connecting).also {
@@ -554,7 +612,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
                 synchronized(lock) { if (connecting === session) connecting = null }
                 session.close()
                 previousLive?.let {
-                    notify(FlutterSessionChange.Disconnected(it.session, it.identity, "Closed for a new connection."))
+                    notify(FlutterSessionChange.Disconnected(it.session, it.identity, CLOSED_FOR_NEW_CONNECTION))
                 }
             }
         }
@@ -624,11 +682,13 @@ class FlutterSessionService(private val project: Project) : Disposable {
         pids: Set<Long>,
         startedAt: Long?,
         timings: Map<Long, ProcessTiming?>,
-    ): Startup = synchronized(lock) {
+    ): AppStartup = synchronized(lock) {
         val key = startupKey(serial, applicationId)
         startups[key]?.takeIf { it.pids == pids } ?: run {
+            // A new process: what Spock owed the old one's isolates went with it.
+            httpOwners.retainPids(serial, pids)
             val oldestAge = timings.values.mapNotNull { it?.ageMs }.maxOrNull()
-            Startup(pids, startedAt ?: oldestAge?.let { clock() - it } ?: clock()).also { startups[key] = it }
+            AppStartup(pids, startedAt ?: oldestAge?.let { clock() - it } ?: clock()).also { startups[key] = it }
         }
     }
 
@@ -649,21 +709,26 @@ class FlutterSessionService(private val project: Project) : Disposable {
     companion object {
         private val log = Logger.getInstance(FlutterSessionService::class.java)
 
-        /** How long after a process starts a missing or DDS-less VM may still be `flutter run` attaching. */
-        const val STARTUP_GRACE_MS = 10_000L
+        /** See [AppStartup.STARTUP_GRACE_MS]. */
+        const val STARTUP_GRACE_MS = AppStartup.STARTUP_GRACE_MS
 
-        /**
-         * Inside the startup window, how long after the process starts its VM is first connected
-         * to directly: `flutter run` starts DDS within the first seconds, and a direct client then
-         * would keep it out (S10). DTD and logcat evidence come first.
-         */
-        const val DIRECT_PROBE_MIN_AGE_MS = 3_000L
+        /** See [AppStartup.DIRECT_PROBE_MIN_AGE_MS]. */
+        const val DIRECT_PROBE_MIN_AGE_MS = AppStartup.DIRECT_PROBE_MIN_AGE_MS
 
-        /** The least time between two direct connections to one app's VM, inside the window or not. */
-        const val DIRECT_PROBE_INTERVAL_MS = DtdAppIdentity.DIRECT_PROBE_INTERVAL_MS
+        /** See [AppStartup.DIRECT_PROBE_INTERVAL_MS]. */
+        const val DIRECT_PROBE_INTERVAL_MS = AppStartup.DIRECT_PROBE_INTERVAL_MS
 
         /** The retry suggested with [FlutterAttachOutcome.NotReady]; callers back off from it. */
         const val RETRY_MS = 1_000L
+
+        /** The retry suggested for a frozen process: it waits for the developer, not for a moment. */
+        const val FROZEN_RETRY_MS = 30_000L
+
+        /** [FlutterSessionChange.Disconnected.reason] when [disconnect] closed the session. */
+        const val DISCONNECTED_BY_SPOCK = "Disconnected by Spock."
+
+        /** [FlutterSessionChange.Disconnected.reason] when a new connection closed the old one. */
+        const val CLOSED_FOR_NEW_CONNECTION = "Closed for a new connection."
 
         /** How long [dispose] waits for the close that restores the app's HTTP logging. */
         const val CLOSE_WAIT_MS = 1_000L

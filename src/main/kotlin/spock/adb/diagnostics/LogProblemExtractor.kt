@@ -38,7 +38,15 @@ object LogProblemExtractor {
 
         return Result(
             problems = walk.found.values.map {
-                LikelyProblem(it.type, it.severity, it.summary, it.count, it.lastSeen, SECTION)
+                LikelyProblem(
+                    it.type,
+                    it.severity,
+                    it.summary,
+                    it.count,
+                    it.lastSeen,
+                    SECTION,
+                    seenAt = it.seen.takeLast(MAX_OCCURRENCES),
+                )
             },
             errorLines = relevant.count { it.level in ERROR_LEVELS },
             warningLines = relevant.count { it.level == 'W' },
@@ -438,6 +446,9 @@ object LogProblemExtractor {
     }
 
     const val SECTION = "logs"
+
+    /** Occurrence times kept per problem, the latest: enough to pair a burst with what caused it. */
+    private const val MAX_OCCURRENCES = 50
 
     const val TYPE_CRASH = "crash"
     const val TYPE_ANR = "anr"

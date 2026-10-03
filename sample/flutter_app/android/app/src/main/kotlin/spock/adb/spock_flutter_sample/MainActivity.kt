@@ -2,6 +2,7 @@ package spock.adb.spock_flutter_sample
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -15,6 +16,12 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "spock.sample/native").setMethodCallHandler { call, result ->
             when (call.method) {
                 "platformError" -> result.error("SAMPLE_ERROR", "Sample PlatformException from Android", null)
+                // lib/fixtures/layout.dart: a logcat warning in the same moment as a Flutter.Error,
+                // for Diagnose to pair the two.
+                "logWarning" -> {
+                    Log.w("SpockSample", "Layout fixture: the overflow was just shown")
+                    result.success(null)
+                }
                 // MethodChannel catches only a RuntimeException thrown synchronously here: it logs
                 // "Failed to handle method call" and replies PlatformException(error, …); the app
                 // keeps running.

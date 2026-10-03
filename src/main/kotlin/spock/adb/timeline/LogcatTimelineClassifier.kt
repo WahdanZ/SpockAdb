@@ -29,6 +29,8 @@ class LogcatTimelineClassifier(
     private val packageName: String,
     initialPids: Set<Int>,
     private val deviceSerial: String? = null,
+    /** The app's process [pid] started, at host ms — once per pid, as the "Process started" event. */
+    private val onProcessStarted: (pid: Int, hostMs: Long) -> Unit = { _, _ -> },
 ) {
 
     var processes: AppProcesses = AppProcesses(AppProcesses.State.UNKNOWN, packageName = packageName)
@@ -70,6 +72,7 @@ class LogcatTimelineClassifier(
         val started = AppProcessTracker.startedPid(entry, packageName)?.takeIf { !processes.contains(it) }
         if (started != null) {
             processes = processes.plus(started)
+            onProcessStarted(started, hostMs)
             return event(entry, hostMs, APP_INFO, "Process started (pid $started)")
         }
         val died = (AppProcessTracker.diedPid(entry, packageName) ?: killedPid(entry))

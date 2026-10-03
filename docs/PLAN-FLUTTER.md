@@ -54,7 +54,7 @@ or SDK, not only in unit tests. The Android flow comes first:
 | P4b DTD discovery | ✅ #161, reviewed (2 major) | ✅ DTD found and connected on Flutter 3.47.5 | **H2** (app identity by pid), review D1–D11, S22 (IDE-run app), S23 (Linux/Windows) |
 | P5a analyzers | ✅ #162, reviewed (3 major), A1–A15 fixed | ⚠️ unit-tested on recorded **debug** payloads only | **H3** device validation |
 | H Android hardening | ⬜ | ⬜ | all — see below |
-| P5b wiring | ⬜ | ⬜ | after H |
+| P5b wiring | 🟡 core on `feature/flutter-h-wiring` ([FLUTTER-WIRING.md](FLUTTER-WIRING.md)): follower, event log, `flutter` section with correlation, Timeline recorder, Settings switch | ⬜ | the H gate on a device; rebuild recording window; `flutter_app_status`; logcat fallback for errors when structured errors are off |
 | P6 iOS | ⬜ deferred until H and P5b | ⬜ | |
 | P7 docs | ⬜ | ⬜ | |
 

@@ -177,4 +177,16 @@ class LogcatTimelineClassifierTest {
         assertEquals("flutter: Unhandled Exception: MissingPluginException(x)", events.single().title)
         assertTrue(events.single().detail.contains("<asynchronous suspension>"))
     }
+
+    @Test
+    fun `a process start is reported once, with its time`() {
+        val started = mutableListOf<Pair<Int, Long>>()
+        val classifier = LogcatTimelineClassifier(app, emptySet(), "emulator-5554") { pid, at -> started += pid to at }
+        val start = entry("ActivityManager", "Start proc 5000:$app/u0a188 for activity", pid = systemPid)
+
+        classifier.accept(start, 1_000)
+        classifier.accept(start, 2_000)
+
+        assertEquals(listOf(5000 to 1_000L), started)
+    }
 }

@@ -688,9 +688,9 @@ that returns its detail, so the agent fetches it only when the summary points th
   "device": { "serial": "emulator-5554", "description": "Pixel 7 (Android 14, API 34)" },
   "packageName": "com.example.app",
   "likelyProblems": [
-    { "type": "network", "severity": "error", "summary": "POST /payment (api.example.com) returned HTTP 500",
+    { "id": "p1", "type": "network", "severity": "error", "summary": "POST /payment (api.example.com) returned HTTP 500",
       "count": 3, "lastSeen": "09-25 10:41:07.112", "section": "logs" },
-    { "type": "accessibility", "severity": "warning",
+    { "id": "p2", "type": "accessibility", "severity": "warning",
       "summary": "Interactive element has no text, content description or test tag", "count": 2, "section": "ui" }
   ],
   "screen": { "activity": "CheckoutActivity", "component": "com.example.app/com.example.app.CheckoutActivity",
@@ -715,10 +715,10 @@ that returns its detail, so the agent fetches it only when the summary points th
 |---|---|---|
 | `schemaVersion` | yes | `2`. Bumped when a field changes meaning or goes away; adding one does not. |
 | `device` | yes | The device the report describes. |
-| `packageName` | yes | The app it is about, or `null` when none is known. |
-| `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then crashes, ANRs, a stopped process, network, exceptions; then how often. Each has `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
+| `packageName` | yes | The app it is about, or `null` when none is known. Unless the call names one, the app selected in Spock's tool window, else the open project's. |
+| `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. The log problems paired with a Flutter error (see `flutter`) follow it directly. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
 | `moreProblems` | no | How many problems were ranked below the cut. |
-| `screen`, `app`, `logs`, `ui`, `backgroundWork`, `deviceConditions`, `permissions` | per `include` | One short summary per section. `screen` also carries the app's `activityStack` (top first) and `fragments` when the app is in front. |
+| `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`, `deviceConditions`, `permissions` | per `include` | One short summary per section. `screen` also carries the app's `activityStack` (top first) and `fragments` when the app is in front. `flutter` is there only for a Flutter app (below). |
 | `sectionErrors` | no | `{section: reason}` for each section that failed. A failure never fails the call. |
 | `omittedForSize` | no | Sections dropped whole, least important first, to stay under 12,000 characters. |
 | `more` | yes | `{section: {tool, arguments}}`: the call that returns each section's raw data. |
@@ -734,7 +734,61 @@ not running, another app in the foreground, accessibility faults, failing or blo
 a rationed standby bucket, device conditions Spock changed and has not reset, and — as
 information, not a fault — runtime permissions the user denied.
 
-**Choosing sections.** `include` takes `screen`, `app`, `logs`, `ui`, `backgroundWork`,
+**The `flutter` section.** For a Flutter app — by its APK, not a guess — Spock attaches to the
+app's Dart VM Service by itself, through `flutter run`'s debugger service (DDS), and confirms the
+VM is the selected app's process on the selected device; nothing is pasted. The report waits at
+most about 3 seconds for that. An app that is not a Flutter app has no `flutter` key at all.
+While a Flutter tool is attaching, Spock does not connect to the app's VM itself — a client there
+before DDS would keep `flutter run` from starting it — so on a Flutter SDK with no Dart Tooling
+Daemon (3.22) the session comes about 10–15 seconds after the VM starts, and `attach` says a
+Flutter tool is attaching meanwhile.
+
+```json
+"flutter": {
+  "attach": "Connected to com.example.app on emulator-5554 (pid 4312), dtd+pid+start.",
+  "connected": true,
+  "build": "debug",
+  "identity": { "serial": "emulator-5554", "applicationId": "com.example.app", "pid": 4312,
+                "verifiedBy": "dtd+pid+start", "connectionKind": "dds", "structuredErrors": "on",
+                "httpRecording": "on: Spock turned it on, and turns it off again when it disconnects" },
+  "clock": { "zone": "+02:00", "uncertaintyMs": 47 },
+  "errors": { "sinceConnected": 1, "beforeSpockConnected": 0, "sinceReload": 1,
+              "groups": [ { "summary": "Exception caught by rendering library: A RenderFlex overflowed by 219 pixels on the right. — Row at lib/fixtures/layout.dart:30:17",
+                            "count": 1, "firstSeen": "10-02 14:03:07.412", "lastSeen": "10-02 14:03:07.412",
+                            "problem": "p1", "nearbyLogs": ["p3"] } ] },
+  "frames": { "frames": 212, "budgetMs": 16.7, "overBudget": 40, "buildMs": { "p50": 9.1, "p90": 21.4, "worst": 48.0 },
+              "rasterMs": { "p50": 4.2, "p90": 7.9, "worst": 15.3 }, "note": "Not a profile build: frame times are not representative." },
+  "http": { "recording": "on: …", "requests": 4, "failed": 1, "failures": ["GET /status/500 (httpbin.org) returned HTTP 500"],
+            "note": "dart:io traffic only (package:http, dio); cupertino_http, cronet_http and native SDKs are not visible." },
+  "navigation": ["Navigator: /items", "Navigator: /item/42"],
+  "notes": []
+}
+```
+
+- `attach` always says how the attach went, in words — connected, not running, a release build (no
+  VM Service), still starting, running without a debugger session (start it with `flutter run` or
+  `flutter attach`), several apps that cannot be told apart, nothing found, or a failure. It is
+  never read as "no errors".
+- `errors` counts what the app reported since Spock connected; what DDS replayed from before is
+  counted apart, and its problems say "(before Spock connected)". With structured errors off, or in
+  a profile build, framework errors go to logcat instead and `notes` points at `logs`. No error is
+  not proof of none: an app that replaced `FlutterError.onError` (a crash reporter) reports to
+  neither, and `notes` says so — more firmly when the UI section shows an error on screen.
+- `nearbyLogs` pairs each Flutter error with the log problems (by `id` in `likelyProblems`) any of
+  whose lines fell within 2 seconds of it, widened by `clock.uncertaintyMs` — at most 5, the
+  closest first. Both are compared on the device's own clock: logcat prints the device's local
+  time, so its stamps are moved by the device's zone first. A paired log problem is listed right
+  after its error in `likelyProblems`, however low it would rank alone, so start-up noise cannot
+  push it off the list; one that ranks higher already (a crash) keeps its place.
+  `moreNearbyLogs` counts pairs that did not make the list, which happens only when the error
+  itself did not.
+- `frames` is a verdict only in a profile build; `http` reads the VM's HTTP profile, while recording
+  is on. Spock switches it on for a session it opened over DDS in a debug or profile build — unless
+  **Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** is off — and back off
+  when it disconnects; recording someone else switched on is left alone.
+- Diagnose never starts rebuild recording: that writes to the app.
+
+**Choosing sections.** `include` takes `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`,
 `deviceConditions` and `permissions`; all are on by default. `screenshot` is opt-in, attached as an image, because
 it is by far the most expensive part. `maxLogcatLines` sets how much log is scanned (1,500 by
 default, capped at 2,000).
@@ -760,7 +814,7 @@ you need to see the screen as well as read about it.
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `packageName` | the open project's app | The app the screen belongs to; `""` for the whole device. |
+| `packageName` | the app selected in Spock, else the open project's | The app the screen belongs to; `""` for the whole device. |
 | `screenshot` | `true` | Attach the screen as an image. Pass `false` for text only. |
 | `deviceSerial` | the selected device | Which device to diagnose. |
 
@@ -783,12 +837,14 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
 - `log` — warnings and errors the app's own process logged, one event per log call with any stack
   trace in the detail;
 - `flutter_error`, `flutter_frame`, `navigation`, `http` — from a Flutter app's Dart VM Service,
-  recorded **only while a Flutter session is live**. This build does not open one yet (the
-  connection is wired in a later release), so for now these categories are always empty. Once it
-  does: framework errors (`Flutter.Error`: layout overflows, `build()` and gesture errors, with the
-  rendered report in the detail); bursts of frames over the display's budget, one event per burst
-  with the count and the worst times (in profile builds a warning when slow frames are frequent or
-  one froze, else info; info in debug, where frame times are not representative); the route `Navigator` reported; and failed `dart:io` HTTP requests (a
+  recorded **only while a Flutter session is live**: Spock opens one by itself for the selected
+  Flutter app (debug or profile, run with `flutter run`), when it is selected, when its process
+  starts and when Diagnose asks. The session's start and end (with why — including the Flutter
+  engine destroyed by Back at the root activity) are `app_lifecycle` events, and Spock turning HTTP
+  recording on and back off are `http` events. Then: framework errors (`Flutter.Error`: layout overflows, `build()` and gesture errors, with the
+  rendered report in the detail); in profile builds, bursts of frames over the display's budget, one
+  event per burst with the count and the worst times (a warning when slow frames are frequent or
+  one froze, else info — debug builds record no frame events, as every frame is slow there); the route `Navigator` reported; and failed `dart:io` HTTP requests (a
   4xx is a warning; a 5xx or no response an error). Query strings are cut from URLs and route
   names. A navigation event names one route and never says how it got there, because the app does
   not say: after a push or replace it is the route now showing, after a pop the route that was
@@ -802,8 +858,9 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
 Device events (`activity`, `app_lifecycle`, `log`) are recorded only while the Spock ADB tool window
 has a device and app selected and **Record device events** is on. The first line of the result
 says what was being recorded, so an empty answer is not mistaken for a quiet app. Flutter events
-carry the time the app stamped them, moved onto the host's clock like log lines; a slow frame is
-placed by its own start time, since the engine reports frame timings in batches.
+are recorded under the same switch. They carry the time the app stamped them, moved onto the host's
+clock with the device clock Spock measures once per session (`date` on the device, the fastest of
+several round trips); a slow frame is placed when its batch of timings arrived, and says so.
 
 | Argument | Default | Meaning |
 |---|---|---|

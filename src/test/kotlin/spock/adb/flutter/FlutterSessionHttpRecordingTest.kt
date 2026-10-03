@@ -239,4 +239,64 @@ class FlutterSessionHttpRecordingTest : FlutterSessionFixture() {
         eventually(message = "no Flutter isolate") { session.selection is IsolateSelection.NoFlutterIsolate }
         assertNull(session.snapshot.httpRecording)
     }
+
+    @Test
+    fun `logging Spock switched on before its connection ended is adopted and switched off by the next session`() {
+        val owners = HttpOwners()
+        session.httpOwners = owners
+        session.httpOwnerSerial = SERIAL
+        session.connect(pasted())
+        assertEquals(HttpRecording.EnabledBySpock, session.snapshot.httpRecording)
+        // DDS ends with `flutter run`: no restore is possible.
+        vm.server.drop()
+        eventually { session.state is SessionState.Disconnected }
+        assertTrue(vm.httpLogging)
+
+        val next = FlutterSession(clock = { connectedAt }).apply {
+            httpOwners = owners
+            httpOwnerSerial = SERIAL
+        }
+        next.connect(pasted())
+        assertEquals(HttpRecording.AdoptedBySpock, next.snapshot.httpRecording)
+        next.close()
+
+        assertEquals(listOf("true", "false"), writes(HTTP_LOGGING, UI_ISOLATE))
+        assertFalse(vm.httpLogging)
+        assertEquals(true, next.httpRestored)
+    }
+
+    @Test
+    fun `logging on in another process is not Spock's to switch off`() {
+        val owners = HttpOwners()
+        owners.record(HttpOwners.key(SERIAL, OTHER_PID, UI_ISOLATE))
+        vm.httpLogging = true
+        session.httpOwners = owners
+        session.httpOwnerSerial = SERIAL
+
+        session.connect(pasted())
+        assertEquals(HttpRecording.AlreadyOn, session.snapshot.httpRecording)
+        session.close()
+
+        assertEquals(emptyList<String>(), writes(HTTP_LOGGING))
+        assertTrue(vm.httpLogging)
+    }
+
+    @Test
+    fun `a new process drops what Spock owed the old one`() {
+        val owners = HttpOwners()
+        owners.record(HttpOwners.key(SERIAL, OTHER_PID, UI_ISOLATE))
+        owners.record(HttpOwners.key("emulator-5556", OTHER_PID, UI_ISOLATE))
+
+        owners.retainPids(SERIAL, setOf(OTHER_PID.toLong() + 1))
+
+        assertFalse(owners.owns(HttpOwners.key(SERIAL, OTHER_PID, UI_ISOLATE)))
+        assertTrue(owners.owns(HttpOwners.key("emulator-5556", OTHER_PID, UI_ISOLATE)), "another device's is kept")
+    }
+
+    private companion object {
+        const val SERIAL = "emulator-5554"
+
+        /** Not the recorded `getVM`'s pid. */
+        const val OTHER_PID = 777
+    }
 }

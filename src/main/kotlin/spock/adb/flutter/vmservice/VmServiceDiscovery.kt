@@ -54,6 +54,14 @@ abstract class VmServiceCandidate(
 }
 
 /**
+ * An address the engine announced in logcat: the VM's own port on the device, and the
+ * announcement line's `threadtime` stamp (the device's local time), from which the startup window
+ * is anchored and a Flutter tool's forward to the same port is recognised.
+ */
+abstract class AnnouncedCandidate(val devicePort: Int, val announcedStamp: String) :
+    VmServiceCandidate(VmServiceSource.LOGCAT, ddsLikely = false)
+
+/**
  * [original]'s VM handed Spock to DDS at [target] (a [VmServiceRedirectException]). Releasing it
  * releases [original] — its `adb forward`.
  */

@@ -29,7 +29,7 @@ adb shell run-as spock.adb.spock_flutter_sample am broadcast --user 0 -a com.goo
 |---|---|---|
 | UI tree, `android_find_ui_element`, `android_tap_element` | *Login* | Resource-ids `login_email`, `login_password`, `login_submit`, `result`. *Remember me* and *Help* have no identifier on purpose |
 | Open Deep Link | *List → detail routes* | `spockflutter://open/item/42?ref=spock` opens *Item 42* with `ref=spock`; on a cold start Back goes to *Items*, then the hub. `spockflutter://open/nowhere` opens *No such route* |
-| Flutter errors in Diagnose / Timeline | *Layout overflow* | *Show overflow* draws the yellow-black stripe. In a debug build the error goes **only** to the VM Service (`Flutter.Error`), not logcat |
+| Flutter errors in Diagnose / Timeline | *Layout overflow* | *Show overflow* draws the yellow-black stripe. In a debug build the error goes **only** to the VM Service (`Flutter.Error`), not logcat. *Overflow with a native warning* (`layout_overflow_logged`) does the same and logs one `W/SpockSample` line at the same moment, so Diagnose has a log problem to pair the error with |
 | Log problem detection | *Errors and plugin failures* | One failure per button. In logcat (tag `flutter`): unhandled async error, `MissingPluginException`, `PlatformException(SAMPLE_ERROR)`. *Exception in a channel handler* (Android only): Flutter catches it, logs `Failed to handle method call` (tag `MethodChannel#spock.sample/native`) and the Dart side gets `PlatformException(error, …)`; the app survives. *Checked exception in a channel handler* (`error_channel_checked`, Android only): the `IOException` gets past `MethodChannel`; `DartMessenger` logs `Uncaught exception in binary message listener` and replies empty, so the Dart side gets a `MissingPluginException` although the handler exists; the app survives. *TODO() in a channel handler* (`error_channel_todo`, Android only): `NotImplementedError` is a `java.lang.Error`, which nothing catches, so the app crashes. On iOS both answer not-implemented (`MissingPluginException`). *Native crash* kills the app on both platforms (Android: uncaught exception on the main thread; iOS: `fatalError`). VM Service only (`Flutter.Error`, while structured errors are on): tap-handler error and the red screen from `build()`. *Custom FlutterError.onError* (`error_custom_on_error`) stands in for a crash reporter: while it is on, framework errors (this screen and *Layout overflow*) post no `Flutter.Error` and reach logcat only as one `SPOCK_SAMPLE custom FlutterError.onError: …` line; switch it off to get Flutter's handler back |
 | Network, HTTP proxy, Wi-Fi toggle | *Network* | 200, 500, 404 and an unknown host through `dart:io` `HttpClient`, each logged as one line. *GET 404, body never read* (`net_404_undrained`) reads the status and never the body, so the VM Service's HTTP profile never marks it finished: Spock must still report it as a failed request. The status codes come from httpbin.org, which is sometimes slow or down (502/503, or the 15 s timeout): repeat before blaming Spock |
 | Native screens above Flutter, grant / revoke | *Native permission dialogs* | Camera, location and notifications open the system dialog; status refreshes on resume |
@@ -37,6 +37,54 @@ adb shell run-as spock.adb.spock_flutter_sample am broadcast --user 0 -a com.goo
 | App Storage, Clear Cache vs Clear Data | *Storage* | `shared_prefs/FlutterSharedPreferences.xml` with `flutter.`-prefixed keys of every type, `app_flutter/settings.hive`, `databases/notes.db`, a cache file, and a support file Clear Cache must keep |
 | Flutter logcat preset, redaction | *Logs* | `print`, `debugPrint`, `developer.log` (VM Service only), a 200-line burst, a line with a token |
 | Jank and frequent rebuilds (VM Service, later phases) | *Frames and rebuilds*, *List → detail routes* | Slow frames (`frames_slow`) busy-wait 40 ms each. Rebuilds, after a second of every-frame builds: the rebuild storm (`frames_rebuild_storm`) is reported with no hint. *Looping rotation* (`frames_rotation`, a `RotationTransition`, no busy-wait) and the slow frames' spinner (an `AnimatedBuilder`) rebuild every frame by design: reported as INFO with "expected if this widget animates continuously", never as a warning. Not reported at all: *Indeterminate progress* (`frames_progress`), which animates inside Flutter's own widgets, and scrolling the 500-item list of *List → detail routes*, which builds each item as it scrolls in, for well over a second |
+
+## End to end: selected app → session → Diagnose and Timeline (the H gate)
+
+Nothing is pasted at any step. Before each run: in Spock's tool window select the emulator and
+`spock.adb.spock_flutter_sample`, keep **Record device events** on in the Timeline tab, and keep
+**Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** on.
+
+1. **Automatic attach, verified DDS session.** `flutter run` (debug). The Timeline shows
+   `Flutter session: spock.adb.spock_flutter_sample on emulator-5554 — DDS, pid N (verified by
+   dtd+pid+start)` and `Spock turned on HTTP recording for spock.adb.spock_flutter_sample (restored
+   when Spock disconnects)`: within seconds on Flutter 3.47.5, where the Dart Tooling Daemon names
+   the app; on 3.22 (`logcat-pid`) about 10–15 s after the VM announces itself (`The Dart VM service
+   is listening on …` in logcat), because for 10 s after `flutter run` forwards the VM Spock does not
+   connect to the VM itself (it could keep DDS out). `flutter run` itself must keep working: hot reload with `r`. idea.log shows every
+   decision as `Flutter follower: …` and `Flutter attach for …` lines.
+2. **Flutter error beside its logcat context.** *Layout overflow* → *Overflow with a native warning*,
+   then **Diagnose**. Expect the `flutterError` problem "Exception caught by rendering library: A
+   RenderFlex overflowed by … — Row at lib/fixtures/layout.dart:…" and under it *In logcat around it:*
+   the `SpockSample` warning; in the raw report, `flutter.errors.groups[0].nearbyLogs` names that log
+   problem's id. The Timeline shows the Flutter row and the log row within a second of each other
+   (`deviceTime` on both reads the device's local time). *Show overflow* alone: the error, with no
+   log beside it.
+3. **HTTP failure.** *Network* → *GET 500*, then *GET 404, body never read*; wait ~5 s. The Timeline
+   shows an `HTTP` row for each, and Diagnose's `flutter.http.failures` lists both — the 404 although
+   its body is never read.
+4. **Back at the root.** Press Back on the hub until the app leaves the screen. Within ~2 s the
+   Timeline shows `…'s UI isolate exited — the Flutter engine was destroyed (on Android, Back at the
+   root activity does this)`. Open the app again: a new session row, or the old one picking up the
+   new isolate.
+5. **A session's end.** With both copies running (item 8), select the other one: `Flutter session
+   ended: … — Spock connected again, to a newer session` and `Spock switched HTTP recording back off
+   for …`, then the new session's row. Quit `flutter run` with `q`: the end row says the connection
+   was lost, as a warning.
+6. **The Settings switch.** Turn *Record Flutter HTTP traffic automatically* off, restart the app: no
+   "turned on" row, and Diagnose's `flutter.identity.httpRecording` says the setting is off.
+7. **No debugger session.** Start the app from the launcher (not `flutter run`). After about 10 s,
+   Diagnose's `flutter.attach` says the app is running without a debugger session; Spock never stays
+   on its VM, so a `flutter attach` afterwards works. On 3.47.5 the next Diagnose finds it through
+   the Dart Tooling Daemon and connects; on 3.22 the "no DDS" verdict holds for that process until
+   the app restarts.
+8. **Frozen in the background.** Leave the app in the background until Android freezes it
+   (`adb shell dumpsys activity processes spock.adb.spock_flutter_sample` shows `isFrozen=true`;
+   minutes to hours), select it: Diagnose's `flutter.attach` says Android froze it, and idea.log shows
+   `Flutter follower: … is frozen in the background`. Bring it to the foreground: the session row follows
+   within seconds, with nothing pressed in Spock.
+9. **Two copies, two emulators.** The second copy below, both running: select each in turn — the
+   session row names the selected one's pid. Two emulators of one image: the session follows the
+   selected emulator's serial.
 
 ## A second copy (two application IDs)
 

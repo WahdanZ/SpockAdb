@@ -4,6 +4,41 @@
 
 ### Added
 
+- **Flutter: Spock connects to your app by itself, and Diagnose and the Timeline read it.** Until now
+  Flutter's own errors — a layout overflow, an exception in `build()` or a tap handler — never
+  reached Spock in a debug build: Flutter sends them to the Dart VM Service, not logcat, so Diagnose
+  could only say they were somewhere else. Now, for the Flutter app selected in Spock and run with
+  `flutter run`, Spock finds its debugger session, checks it is that app's process on that device,
+  and connects — when you select the app, when its process starts, and when you press Diagnose.
+  Nothing to copy or paste.
+  - **Diagnose** has a *flutter* section: the app's framework errors since Spock connected (those
+    from before are counted apart and said to be), each with the logcat problems from the same
+    two seconds beside it, so the overflow and the warning it caused are read together; frame
+    times (a verdict only in a profile build); failed `dart:io` requests; the last routes. The log
+    problems beside an error are listed right after it, so a warning the app logged a second before
+    is not pushed out of the report by the platform's start-up noise. When it
+    cannot connect it says why in words — the app is still starting, it runs without a debugger
+    session, it is a release build — and it never reads silence as "no errors".
+  - **Timeline** records the session: errors, routes, bursts of slow frames in profile builds,
+    failed requests, and the session starting and ending — including the Flutter engine going away
+    when Back leaves the root screen. Device and log times are lined up with the device's measured
+    clock and time zone, which logcat and the Dart VM do not share.
+  - Spock never connects to the app's VM while `flutter run` or `flutter attach` may be starting
+    its debugger session — a client there first would make it fail. On Flutter 3.22, which has no
+    Dart Tooling Daemon to name the session, Spock therefore connects about 10–15 seconds after the
+    app's Dart VM starts; Diagnose says a Flutter tool is attaching meanwhile. An app started without a debugger session
+    is checked again now and then, so a later `flutter attach` is found. An app Android has frozen
+    in the background is reported as such, not as a failure, and Spock connects as soon as it comes
+    back to the foreground.
+  - To see failed requests, Spock switches on Dart's HTTP recording for the session — only through
+    `flutter run`'s debugger service, only in debug and profile builds — and switches it back off
+    when it disconnects, leaving it alone if something else turned it on. If the connection ends
+    before it can (`flutter run` stopped), the next session on the same app process takes that over. **Settings → Tools → Spock
+    ADB → Record Flutter HTTP traffic automatically** turns that off.
+  - **`android_get_debug_context`** and **`android_diagnose_current_screen`** return the same
+    *flutter* section; each `likelyProblems` entry now has an `id`, which the section's errors point
+    at. VM Service addresses and their tokens, which let whoever holds them run code in the app, are
+    kept out of every report, row and log line.
 - **Flutter apps, first pass.** Spock now understands what a Flutter app puts on the device:
   - **App Storage** reads `FlutterSharedPreferences.xml` the way Dart does: doubles and lists
     show as a double and a new *string list* type instead of encoded strings, and edits are
@@ -21,9 +56,8 @@
     in between — and the report says it is inferred.
   - **`android_get_debug_timeline`** takes four new categories, `flutter_error`, `flutter_frame`,
     `navigation` and `http`, so an agent can ask for a Flutter app's errors, bursts of slow
-    frames, routes and failed requests on their own. They stay empty until Spock records a live
-    Flutter session, which comes in a later release; clients that read the tool's schema see the
-    new values now. `flutter` on its own is refused rather than guessed at, since it could mean
+    frames, routes and failed requests on their own, recorded while Spock holds the app's Flutter
+    session (above). `flutter` on its own is refused rather than guessed at, since it could mean
     either Flutter category.
   - **Logcat** has a *Flutter* view.
   - **App Storage** shows a Hive box (`*.hive`) as a key/type/value table and a SQLite database

@@ -18,6 +18,10 @@ import UserNotifications
           switch call.method {
           case "platformError":
             result(FlutterError(code: "SAMPLE_ERROR", message: "Sample PlatformException from iOS", details: nil))
+          case "logWarning":
+            // lib/fixtures/layout.dart: a native log line in the same moment as a Flutter.Error.
+            NSLog("SpockSample: Layout fixture: the overflow was just shown")
+            result(nil)
           case "crash":
             fatalError("Sample native crash from the Flutter fixture app")
           case "throwInHandler", "throwChecked", "throwTodo":
