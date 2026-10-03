@@ -45,9 +45,12 @@
     a no-debug launch, an IDE toggle) and in profile builds. In a debug build the first error is
     read in full; a profile build prints only its message and stack, and that is read too. The
     `Another exception was thrown: …` repeats join the error they repeat, so one fault is one
-    entry, and errors printed before Spock connected say so. The section says where the errors it
-    lists came from — the debugger, logcat, or both. Before, it only pointed at logcat. When
-    neither the debugger nor logcat has any error, it says that an app that replaced
+    entry, and errors printed before Spock connected say so. A profile build prints those repeats
+    without their message, so they could be any error: they are one entry of their own that says
+    so, rather than added to whichever error came before, and the report says the message shows
+    only in a debug build or through an app's own `FlutterError.onError`. The section says where
+    the errors it lists came from — the debugger, logcat, or both. Before, it only pointed at
+    logcat. When neither the debugger nor logcat has any error, it says that an app that replaced
     `FlutterError.onError` (Crashlytics, Sentry) hides errors from both. It still never reads
     silence as "no errors".
   - **Diagnose** lists a Dart error and the native crash, `MissingPluginException` or failed

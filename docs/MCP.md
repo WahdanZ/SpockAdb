@@ -816,7 +816,11 @@ Flutter tool is attaching meanwhile.
   its message and stack are. Later ones are `Another exception was thrown: …`, which join the
   first when they read the same. Spock reads them there, from the app's own pid in the last
   `maxLogcatLines` lines (1,500 by default), and lists them the same way, each group with
-  `source: "logcat"` and `inLogcat` counting them; one printed before Spock connected says so.
+  `source: "logcat"` and `inLogcat` counting them; one printed before Spock connected says so. A
+  profile build prints the repeats without their message (`Instance of 'ErrorSummary'`, whatever
+  the error was), so those are one group of their own, "Another framework error; a profile build
+  prints repeats without their message", never joined to an error they may not repeat, and
+  `notes` says where the message can be seen.
   With structured errors on and no `Flutter.Error`, logcat is read as well, so the section knows
   both places were silent. `errors.source` names where the listed errors came from: the VM
   Service (also when structured errors went off after its events arrived and logcat has none

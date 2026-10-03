@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.flutter.FlutterBuild
 import java.time.Instant
 
 /** Where the `flutter` section read the errors it lists, and the logcat window it read them from. */
@@ -69,6 +70,38 @@ class FlutterSectionErrorSourceTest : FlutterSectionFixture() {
         assertEquals(0, errors["inLogcat"].asInt)
         assertEquals(2, errors["sinceConnected"].asInt)
         assertEquals("vmService", errors.getAsJsonArray("groups").single().asJsonObject["source"].asString)
+    }
+
+    @Test
+    fun `a profile build's message-less repeat is listed apart from the error before it, with a note`() {
+        val profile = listOf(
+            "10-02 14:03:07.412  4242  4242 I flutter : Bad state: Sample error thrown in a tap handler",
+            "10-02 14:03:07.413  4242  4242 I flutter : #0      _ErrorsScreenState.build.<anonymous closure> " +
+                "(package:spock_flutter_sample/fixtures/errors.dart:68)",
+            "10-02 14:03:09.208  4242  4242 I flutter : Another exception was thrown: Instance of 'ErrorSummary'",
+        ).joinToString("\n")
+        val flutter = flutterOf(
+            report(
+                live(
+                    snapshot = snapshot(structuredErrors = null),
+                    buildMode = FlutterBuild.PROFILE,
+                    flutterLog = { profile },
+                ),
+            ),
+        )
+
+        val groups = flutter.getAsJsonObject("errors").getAsJsonArray("groups").map { it.asJsonObject }
+        assertEquals(listOf(1, 1), groups.map { it["count"].asInt })
+        assertTrue(groups[1]["summary"].asString.startsWith("Another framework error"), "$groups")
+        val notes = notesOf(flutter)
+        assertTrue(notes.any { "only in a debug build" in it && "FlutterError.onError" in it }, "$notes")
+    }
+
+    @Test
+    fun `no message-less note when every repeat says what it was`() {
+        val flutter = flutterOf(report(live(snapshot = snapshot(structuredErrors = false), flutterLog = { LOGCAT })))
+
+        assertFalse(notesOf(flutter).any { "without their message" in it }, "${notesOf(flutter)}")
     }
 
     @Test

@@ -17,6 +17,11 @@ import java.time.ZoneOffset
 class FlutterLogcatErrorsTest {
 
     private val log = requireNotNull(javaClass.getResource("/flutter/logcat-structured-errors-off.txt")).readText()
+
+    /** 3.22 `flutter run --profile`, the tap error twice: its stack, then the repeat with no message. */
+    private val profileRepeat =
+        requireNotNull(javaClass.getResource("/flutter/logcat-profile-repeat-3.22.txt")).readText()
+
     private val utc = DeviceTime(epochOffsetMs = 0, uncertaintyMs = 0, zone = ZoneOffset.UTC)
     private val now = Instant.parse("2026-10-02T14:05:00Z").toEpochMilli()
 
@@ -134,7 +139,61 @@ class FlutterLogcatErrorsTest {
         assertEquals(listOf(FlutterErrorReader.Source.LOGCAT), overflow.sources.toList())
     }
 
+    @Test
+    fun `a profile build's message-less repeat is a group of its own that says so, not the error before it`() {
+        // The second tap's repeat prints the summary node's bare type, which could be any error.
+        val errors = read(profileRepeat, pids = setOf(PROFILE_PID))
+
+        val result = FlutterErrorReader.summariseErrors(errors, ZoneOffset.UTC)
+
+        assertEquals(2, result.groups.size)
+        val (first, repeat) = result.groups
+        assertEquals(
+            "Exception caught by Flutter: Bad state: Sample error thrown in a tap handler",
+            first.first.summary,
+        )
+        assertEquals(1, first.count)
+        assertEquals(
+            "Another framework error; a profile build prints repeats without their message",
+            repeat.first.summary,
+        )
+        assertEquals(1, repeat.count)
+        assertTrue(FlutterLogcatErrors.isMessageless(repeat.first))
+        assertFalse(FlutterLogcatErrors.isMessageless(first.first))
+        assertEquals(setOf(FlutterErrorReader.Source.LOGCAT), repeat.sources)
+        assertFalse("Instance of" in result.problems[1].summary, result.problems[1].summary)
+    }
+
+    @Test
+    fun `message-less repeats of any node type count up in one group`() {
+        val more = listOf(
+            "10-02 14:03:10.000 29837 29837 I flutter : Another exception was thrown: Instance of 'ErrorSummary'",
+            "10-02 14:03:11.000 29837 29837 I flutter : Another exception was thrown: Instance of 'DiagnosticsNode'",
+        ).joinToString("\n")
+
+        val result = FlutterErrorReader.summariseErrors(
+            read("$profileRepeat\n$more", pids = setOf(PROFILE_PID)),
+            ZoneOffset.UTC,
+        )
+
+        assertEquals(2, result.groups.size)
+        assertEquals(3, result.groups.single { FlutterLogcatErrors.isMessageless(it.first) }.count)
+        assertEquals("10-02 14:03:11.000", result.problems[1].lastSeen)
+    }
+
+    @Test
+    fun `an app's own exception without a toString is a repeat that names it, not a message-less one`() {
+        val line = "10-02 14:03:08.001  4242  4242 I flutter : " +
+            "Another exception was thrown: Instance of 'CartException'"
+
+        val error = read(line).single()
+
+        assertFalse(FlutterLogcatErrors.isMessageless(error))
+        assertEquals("Another exception was thrown: Instance of 'CartException'", error.summary)
+    }
+
     private companion object {
         const val APP_PID = "4242"
+        const val PROFILE_PID = "29837"
     }
 }

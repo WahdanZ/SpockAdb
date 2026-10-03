@@ -203,6 +203,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
         }
         problems += result.problems
         errorNotes(live.snapshot, from, fromEvents.size, fromLogcat)
+        if (result.groups.any { FlutterLogcatErrors.isMessageless(it.first) }) notes.add(MESSAGELESS)
         return JsonObject().apply {
             addProperty("source", sourceWords(from, fromEvents.size, fromLogcat))
             addProperty("sinceConnected", fromEvents.count { !it.history })
@@ -541,6 +542,9 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
             "native SDKs are not visible."
         const val BOTH_SOURCES = "Both: Flutter.Error events from the VM Service while structured errors were on, " +
             "and what Flutter printed to logcat while they were off; each group's `source` says which"
+        const val MESSAGELESS = "A profile build printed later framework errors without their message, so " +
+            "they are one group whatever each was. Their messages show only in a debug build, or with an " +
+            "app's own FlutterError.onError that logs them."
         const val EVENTS_THEN_LOGCAT = "Flutter.Error events from the VM Service: these arrived while structured " +
             "errors were on; they are off now (or the build has no inspector), so later ones are read from logcat"
         const val LOGCAT_FALLBACK = "Logcat: structured errors are on, yet no Flutter.Error arrived since Spock " +

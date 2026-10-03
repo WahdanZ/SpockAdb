@@ -43,6 +43,11 @@ import spock.adb.flutter.analysis.FlutterErrorReader.FlutterError
  * Any print followed by a stack reads the same, so that shape is taken only before the pid's first
  * `Another exception was thrown` or full report, while Flutter has reported nothing yet.
  *
+ * Nor does a profile build have a summary's text for a repeat: every later error, whatever it was,
+ * prints `Another exception was thrown: Instance of 'ErrorSummary'`. Such a line could be any
+ * error, so it joins none: those repeats are one group of their own that says the message is
+ * missing ([isMessageless]).
+ *
  * Lines are parsed as [LogProblemExtractor] parses them, and text is cleaned as
  * [FlutterErrorReader] cleans it: no VM Service token, URL query or secret survives. Pure.
  */
@@ -188,20 +193,29 @@ object FlutterLogcatErrors {
         }
     }
 
-    /** `Another exception was thrown: Bad state: …`: the headline alone, as Flutter printed it. */
-    private fun another(epochMs: Long, message: String) = FlutterError(
-        timestampMs = epochMs,
-        description = ANOTHER_DESCRIPTION,
-        headline = FlutterErrorReader.oneLine(message.removePrefix(FlutterErrorReader.ANOTHER))
-            .takeIf { it.isNotBlank() },
-        thrown = null,
-        widget = null,
-        errorsSinceReload = -1,
-        renderedText = FlutterErrorReader.clean(message),
-        history = false,
-        source = FlutterErrorReader.Source.LOGCAT,
-        repeat = true,
-    )
+    /**
+     * `Another exception was thrown: Bad state: …`: the headline alone, as Flutter printed it; none
+     * when a profile build printed a diagnostics node's bare type in its place.
+     */
+    private fun another(epochMs: Long, message: String): FlutterError {
+        val said = FlutterErrorReader.oneLine(message.removePrefix(FlutterErrorReader.ANOTHER))
+        val messageless = MESSAGELESS.matches(said)
+        return FlutterError(
+            timestampMs = epochMs,
+            description = if (messageless) MESSAGELESS_DESCRIPTION else ANOTHER_DESCRIPTION,
+            headline = said.takeIf { it.isNotBlank() && !messageless },
+            thrown = null,
+            widget = null,
+            errorsSinceReload = -1,
+            renderedText = FlutterErrorReader.clean(message),
+            history = false,
+            source = FlutterErrorReader.Source.LOGCAT,
+            repeat = true,
+        )
+    }
+
+    /** A repeat a profile build printed without its message: it says nothing of which error it was. */
+    fun isMessageless(error: FlutterError): Boolean = error.description == MESSAGELESS_DESCRIPTION
 
     /** The `logcat` filter that keeps only what Flutter prints: `flutter` at info and above. */
     const val FILTER = "flutter:I *:S"
@@ -210,6 +224,18 @@ object FlutterLogcatErrors {
 
     /** How a one-line repeat reads in a summary: "Another exception was thrown: Bad state: …". */
     private const val ANOTHER_DESCRIPTION = "Another exception was thrown"
+
+    /** A profile build's repeat, which prints the summary node's type rather than its text. */
+    private const val MESSAGELESS_DESCRIPTION =
+        "Another framework error; a profile build prints repeats without their message"
+
+    /**
+     * `Instance of 'ErrorSummary'`: a diagnostics node whose text a profile build leaves out. Only
+     * Flutter's own node types: an app's exception class with no `toString` reads the same way in
+     * any build, and names what was thrown.
+     */
+    private val MESSAGELESS =
+        Regex("""^Instance of '(?:Error(?:Summary|Description|Hint|Spacer)|\w*Diagnostic\w*(?:<[^']*>)?)'$""")
 
     /** A profile build's error: Flutter caught it, and printed only what it says and its stack. */
     private const val PROFILE_DESCRIPTION = "Exception caught by Flutter"
