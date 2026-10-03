@@ -469,8 +469,8 @@ object LogProblemExtractor {
     private const val FLUTTER_UNHANDLED_MARKER = "Unhandled Exception:"
     private val FLUTTER_UNHANDLED = Regex("""^\[ERROR:flutter/[^\]]*] Unhandled Exception:""")
 
-    private const val DART_MESSENGER = "DartMessenger"
-    private const val LISTENER_FAILURE = "Uncaught exception in binary message listener"
+    internal const val DART_MESSENGER = "DartMessenger"
+    internal const val LISTENER_FAILURE = "Uncaught exception in binary message listener"
 
     /**
      * How long after DartMessenger's failure a `MissingPluginException` still belongs to it. The
@@ -540,4 +540,18 @@ object LogProblemExtractor {
         "NoRouteToHostException",
         "SocketException",
     )
+}
+
+/**
+ * Whether [problem], one of [LogProblemExtractor]'s, is a failure on the native side of a Flutter
+ * app: a crash, a missing plugin or a channel handler that failed
+ * ([LogProblemExtractor.TYPE_FLUTTER_PLUGIN]), or DartMessenger's "Uncaught exception in binary
+ * message listener" that no `MissingPluginException` followed.
+ */
+internal fun nativeLayer(problem: LikelyProblem): Boolean = with(LogProblemExtractor) {
+    when {
+        problem.section != SECTION -> false
+        problem.type == TYPE_CRASH || problem.type == TYPE_FLUTTER_PLUGIN -> true
+        else -> problem.summary.startsWith("$DART_MESSENGER: $LISTENER_FAILURE")
+    }
 }

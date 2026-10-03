@@ -63,6 +63,49 @@ class DiagnosticCollectorTest {
     }
 
     @Test
+    fun `a merged problem is listed in place of its parts, and a merge missing a part is dropped`() {
+        val dart = LikelyProblem("flutterError", Severity.ERROR, "dart")
+        val native = LikelyProblem("crash", Severity.ERROR, "native")
+        val elsewhere = LikelyProblem("crash", Severity.ERROR, "not in this report")
+        val merging = object : DiagnosticSection<AndroidProbe> {
+            override val id = "merging"
+            override val detail: DetailRef? = null
+            override fun collect(probe: AndroidProbe) = SectionReport(
+                JsonObject(),
+                listOf(dart),
+                merges = {
+                    listOf(
+                        LikelyProblem("both", Severity.ERROR, "dart and native", parts = listOf(dart, native)),
+                        LikelyProblem("stale", Severity.ERROR, "never listed", parts = listOf(dart, elsewhere)),
+                    )
+                },
+            )
+        }
+
+        val report = DiagnosticCollector().collect(listOf(section("logs", problems = listOf(native)), merging), probe)
+
+        val listed = report["likelyProblems"].asJsonArray.map { it.asJsonObject }
+        assertEquals(listOf("dart and native"), listed.map { it["summary"].asString })
+        val parts = listed.single()["parts"].asJsonArray.map { it.asJsonObject["summary"].asString }
+        assertEquals(listOf("dart", "native"), parts)
+    }
+
+    @Test
+    fun `a failing merge step merges nothing and costs nothing else`() {
+        val problem = LikelyProblem("log", Severity.ERROR, "kept")
+        val failing = object : DiagnosticSection<AndroidProbe> {
+            override val id = "failing"
+            override val detail: DetailRef? = null
+            override fun collect(probe: AndroidProbe) =
+                SectionReport(JsonObject(), listOf(problem), merges = { error("bug") })
+        }
+
+        val report = DiagnosticCollector().collect(listOf(failing), probe)
+
+        assertEquals(listOf("kept"), report["likelyProblems"].asJsonArray.map { it.asJsonObject["summary"].asString })
+    }
+
+    @Test
     fun `the problem list is capped and says how many it left out`() {
         val many = (1..25).map { LikelyProblem("log", Severity.ERROR, "error $it") }
 

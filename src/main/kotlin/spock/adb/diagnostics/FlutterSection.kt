@@ -12,6 +12,7 @@ import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.analysis.FlutterErrorReader
 import spock.adb.flutter.analysis.FlutterExtensionEvent
 import spock.adb.flutter.analysis.FlutterLogcatErrors
+import spock.adb.flutter.analysis.FlutterProblemTypes
 import spock.adb.flutter.analysis.FlutterTimelineMapper
 import spock.adb.flutter.analysis.FrameStats
 import spock.adb.flutter.analysis.HttpProfileReader
@@ -124,8 +125,11 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
     private val live = source.live
     private val zone = live?.deviceTime?.zone ?: ZoneOffset.UTC
 
-    /** Each error group's problem → the log problems around it, closest first; from [pair]. */
+    /** Each listed problem of an error group → the log problems around it, closest first; from [pair]. */
     private val paired = IdentityHashMap<LikelyProblem, List<LikelyProblem>>()
+
+    /** An error group's own problem → the one naming it and a native failure beside it; from [merge]. */
+    private val crossLayer = IdentityHashMap<LikelyProblem, LikelyProblem>()
 
     /** Error groups as listed, with the problem each became and its JSON, for [correlate]. */
     private val groups = mutableListOf<Triple<FlutterErrorReader.Group, LikelyProblem, JsonObject>>()
@@ -137,7 +141,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
         if (live != null) readLive(live)
         source.note?.let { notes.add(Redaction.scrub(it)) }
         if (notes.size() > 0) data.add("notes", notes)
-        return SectionReport(data, problems, afterRanking = ::correlate, companions = ::pair)
+        return SectionReport(data, problems, afterRanking = ::correlate, companions = ::pair, merges = ::merge)
     }
 
     private fun readLive(live: FlutterDiagnosticSource.Live) {
@@ -331,37 +335,92 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
      * per error, the closest first; the collector lists them right after the error.
      */
     private fun pair(all: List<LikelyProblem>): Map<LikelyProblem, List<LikelyProblem>> {
-        val time = live?.deviceTime ?: return emptyMap()
-        val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
-        val logs = all.filter { it.section == LogsSection.id }.mapNotNull { problem ->
-            val times = problem.seenAt.mapNotNull { time.logcatToEpoch(it, source.hostNowMs) }
-            times.takeIf { it.isNotEmpty() }?.let { problem to it }
-        }
+        val logs = timedLogs(all) ?: return emptyMap()
         groups.forEach { (group, problem, _) ->
-            val distance = { epochMs: Long ->
-                when {
-                    epochMs < group.firstSeenMs -> group.firstSeenMs - epochMs
-                    epochMs > group.lastSeenMs -> epochMs - group.lastSeenMs
-                    else -> 0L
-                }
-            }
             val near = logs
-                .mapNotNull { (log, epochs) -> epochs.minOf(distance).takeIf { it <= window }?.let { log to it } }
+                .mapNotNull { (log, epochs) -> distance(group, epochs)?.let { log to it } }
                 .sortedBy { it.second }
                 .take(FlutterSection.MAX_NEARBY_LOGS)
                 .map { it.first }
-            if (near.isNotEmpty()) paired[problem] = near
+            if (near.isNotEmpty()) paired[anchor(problem)] = near
         }
         return paired
     }
 
+    /**
+     * Before [pair]: a listed error group and a native failure — a crash, a missing plugin, a channel
+     * handler that failed ([nativeLayer]) — within the pairing window are one
+     * fault seen from both sides, so they become one problem naming both layers, with each layer's
+     * own problem as its parts. The closest pairs first; each problem joins at most one.
+     */
+    private fun merge(all: List<LikelyProblem>): List<LikelyProblem> {
+        val natives = timedLogs(all)?.filter { (log, _) -> nativeLayer(log) } ?: return emptyList()
+        val candidates = groups.flatMap { (group, problem, _) ->
+            natives.mapNotNull { (native, epochs) -> distance(group, epochs)?.let { Triple(problem, native, it) } }
+        }.sortedBy { it.third }
+        val taken = IdentityHashMap<LikelyProblem, Unit>()
+        candidates.forEach { (dart, native, gapMs) ->
+            if (dart in crossLayer || native in taken) return@forEach
+            taken[native] = Unit
+            crossLayer[dart] = crossLayerProblem(dart, native, gapMs)
+        }
+        return crossLayer.values.toList()
+    }
+
+    private fun crossLayerProblem(dart: LikelyProblem, native: LikelyProblem, gapMs: Long): LikelyProblem {
+        val gap = String.format(Locale.ROOT, "%.1f s", gapMs / MILLIS_PER_SECOND)
+        val half = (DiagnosticShell.MAX_VALUE_CHARS - CROSS_LAYER_WORDS) / 2
+        return LikelyProblem(
+            type = FlutterProblemTypes.CROSS_LAYER,
+            severity = LikelyProblem.Severity.ERROR,
+            summary = "In Dart and on Android, $gap apart — Dart: ${DiagnosticShell.clip(dart.summary, half)}; " +
+                "Android: ${DiagnosticShell.clip(native.summary, half)}",
+            count = dart.count,
+            lastSeen = dart.lastSeen,
+            section = FlutterSection.id,
+            seenAt = dart.seenAt + native.seenAt,
+            parts = listOf(dart, native),
+        )
+    }
+
+    /** The log problems in [all] with the device epoch of each of their lines; null without a clock. */
+    private fun timedLogs(all: List<LikelyProblem>): List<Pair<LikelyProblem, List<Long>>>? {
+        val time = live?.deviceTime ?: return null
+        return all.filter { it.section == LogsSection.id }.mapNotNull { problem ->
+            val times = problem.seenAt.mapNotNull { time.logcatToEpoch(it, source.hostNowMs) }
+            times.takeIf { it.isNotEmpty() }?.let { problem to it }
+        }
+    }
+
+    /**
+     * How far the closest of [epochs] is from [group]'s span, when within the pairing window
+     * widened by the clock's uncertainty; null when farther, or without a clock.
+     */
+    private fun distance(group: FlutterErrorReader.Group, epochs: List<Long>): Long? {
+        val time = live?.deviceTime ?: return null
+        val closest = epochs.minOf { epochMs ->
+            when {
+                epochMs < group.firstSeenMs -> group.firstSeenMs - epochMs
+                epochMs > group.lastSeenMs -> epochMs - group.lastSeenMs
+                else -> 0L
+            }
+        }
+        return closest.takeIf { it <= FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs }
+    }
+
+    /** The problem listed for an error group: its own, or the cross-layer one it became part of. */
+    private fun anchor(problem: LikelyProblem): LikelyProblem = crossLayer[problem] ?: problem
+
     /** Points each listed error group at its own entry and at the log problems paired with it. */
     private fun correlate(ranked: RankedProblems) {
-        groups.forEach { (_, problem, json) -> ranked.idOf(problem)?.let { json.addProperty("problem", it) } }
+        groups.forEach { (_, problem, json) ->
+            ranked.idOf(anchor(problem))?.let { json.addProperty("problem", it) }
+            crossLayer[problem]?.let { json.addProperty("crossLayer", it.parts.last().summary) }
+        }
         silentHandlerNote(ranked)
         if (live?.deviceTime == null) return
         groups.forEach { (_, problem, json) ->
-            val near = paired[problem].orEmpty()
+            val near = paired[anchor(problem)].orEmpty()
             val ids = near.mapNotNull(ranked::idOf)
             json.add("nearbyLogs", JsonArray().apply { ids.forEach(::add) })
             // Only when the error itself is below the cut: its companions follow it there.
@@ -405,6 +464,10 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
 
     private companion object {
         const val MAX_NOTE_CHARS = 400
+        const val MILLIS_PER_SECOND = 1_000.0
+
+        /** The words of a cross-layer summary around its two halves, so the whole fits the summary's bound. */
+        const val CROSS_LAYER_WORDS = 56
 
         /** dart:io is recording: there is a profile to read. */
         val RECORDING = setOf(HttpRecording.EnabledBySpock, HttpRecording.AdoptedBySpock, HttpRecording.AlreadyOn)
