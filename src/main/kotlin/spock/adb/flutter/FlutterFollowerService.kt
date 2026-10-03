@@ -11,7 +11,10 @@ import com.intellij.openapi.util.Disposer
 import spock.adb.AppSettingService
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
+import spock.adb.diagnostics.DiagnosticShell
 import spock.adb.diagnostics.FlutterDiagnosticSource
+import spock.adb.diagnostics.FlutterSection
+import spock.adb.flutter.analysis.FlutterLogcatErrors
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.pidsOf
 import spock.adb.timeline.DebugTimelineService
@@ -76,11 +79,11 @@ class FlutterFollowerService(private val project: Project) : Disposable {
             applicationId = app,
             build = build,
             outcome = outcome,
-            live = connected?.let { live(it) },
+            live = connected?.let { live(device, it) },
         )
     }
 
-    private fun live(connected: FlutterAttachOutcome.Connected): FlutterDiagnosticSource.Live {
+    private fun live(device: ConnectedDevice, connected: FlutterAttachOutcome.Connected): FlutterDiagnosticSource.Live {
         val session = connected.session
         return FlutterDiagnosticSource.Live(
             identity = connected.identity,
@@ -94,6 +97,8 @@ class FlutterFollowerService(private val project: Project) : Disposable {
                 override fun refreshRate(): Double? = readRefreshRate(session)
 
                 override fun httpProfile(): JsonObject = SessionReads.httpProfile(session, null, READ_BUDGET_MS)
+
+                override fun flutterLog(): String? = adbOrNull { DiagnosticShell.run(device.device, FLUTTER_LOG) }
             },
         )
     }
@@ -112,9 +117,18 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
         private const val ADB_SECONDS = 5L
 
+        /** What Flutter printed, for framework errors while structured errors are off. */
+        private const val FLUTTER_LOG =
+            "logcat -d -v threadtime -t ${FlutterSection.LOGCAT_WINDOW_LINES} ${FlutterLogcatErrors.FILTER}"
+
         /** `pidof` as the follower needs it; null when adb fails. */
-        private fun pidsOrNull(device: ConnectedDevice, applicationId: String): Set<Long>? = try {
+        private fun pidsOrNull(device: ConnectedDevice, applicationId: String): Set<Long>? = adbOrNull {
             device.device.pidsOf(applicationId, ADB_SECONDS).mapNotNull(String::toLongOrNull).toSet()
+        }
+
+        /** [read], or null when adb fails. */
+        private fun <T> adbOrNull(read: () -> T): T? = try {
+            read()
         } catch (_: IOException) {
             null
         } catch (_: AdbCommandRejectedException) {

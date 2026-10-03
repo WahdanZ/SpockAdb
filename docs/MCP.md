@@ -752,9 +752,10 @@ Flutter tool is attaching meanwhile.
                 "verifiedBy": "dtd+pid+start", "connectionKind": "dds", "structuredErrors": "on",
                 "httpRecording": "on: Spock turned it on, and turns it off again when it disconnects" },
   "clock": { "zone": "+02:00", "uncertaintyMs": 47 },
-  "errors": { "sinceConnected": 1, "beforeSpockConnected": 0, "sinceReload": 1,
+  "errors": { "source": "Flutter.Error events from the VM Service: structured errors are on",
+              "sinceConnected": 1, "beforeSpockConnected": 0, "sinceReload": 1,
               "groups": [ { "summary": "Exception caught by rendering library: A RenderFlex overflowed by 219 pixels on the right. — Row at lib/fixtures/layout.dart:30:17",
-                            "count": 1, "firstSeen": "10-02 14:03:07.412", "lastSeen": "10-02 14:03:07.412",
+                            "count": 1, "source": "vmService", "firstSeen": "10-02 14:03:07.412", "lastSeen": "10-02 14:03:07.412",
                             "problem": "p1", "nearbyLogs": ["p3"] } ] },
   "frames": { "frames": 212, "budgetMs": 16.7, "overBudget": 40, "buildMs": { "p50": 9.1, "p90": 21.4, "worst": 48.0 },
               "rasterMs": { "p50": 4.2, "p90": 7.9, "worst": 15.3 }, "note": "Not a profile build: frame times are not representative." },
@@ -770,10 +771,17 @@ Flutter tool is attaching meanwhile.
   `flutter attach`), several apps that cannot be told apart, nothing found, or a failure. It is
   never read as "no errors".
 - `errors` counts what the app reported since Spock connected; what DDS replayed from before is
-  counted apart, and its problems say "(before Spock connected)". With structured errors off, or in
-  a profile build, framework errors go to logcat instead and `notes` points at `logs`. No error is
-  not proof of none: an app that replaced `FlutterError.onError` (a crash reporter) reports to
-  neither, and `notes` says so — more firmly when the UI section shows an error on screen.
+  counted apart, and its problems say "(before Spock connected)". `errors.source` says where they
+  were read. With structured errors on, from `Flutter.Error` events. With them off (a
+  `--dart-define=flutter.inspector.structuredErrors=false` run, a no-debug launch, an IDE toggle),
+  or in a profile build, which has no inspector, Flutter prints framework errors to logcat instead:
+  the first since the last hot reload in full, later ones as `Another exception was thrown: …`.
+  Spock reads them there, from the app's own pid in the last 1,500 lines, and lists them the same
+  way, each group with `source: "logcat"` and `inLogcat` counting them. With structured errors on
+  and no `Flutter.Error`, logcat is read as well, so the section knows both places were silent.
+  Silence is not proof that nothing went wrong, and `notes` never says "no errors": an app that
+  replaced `FlutterError.onError` (a crash reporter: Crashlytics, Sentry) reports to neither place,
+  and `notes` says so. It says so more firmly when the UI section shows an error on screen.
 - `nearbyLogs` pairs each Flutter error with the log problems (by `id` in `likelyProblems`) any of
   whose lines fell within 2 seconds of it, widened by `clock.uncertaintyMs` — at most 5, the
   closest first. Both are compared on the device's own clock: logcat prints the device's local

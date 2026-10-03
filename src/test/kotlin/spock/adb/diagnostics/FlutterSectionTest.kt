@@ -92,17 +92,111 @@ class FlutterSectionTest {
     }
 
     @Test
-    fun `structured errors off points at logs`() {
-        val notes = notesOf(flutterOf(report(live(snapshot = snapshot(structuredErrors = false)))))
+    fun `structured errors off reads framework errors from logcat, the first in full, and says so`() {
+        val report = report(live(snapshot = snapshot(structuredErrors = false), flutterLog = { LOGCAT }))
 
-        assertTrue(notes.any { "`logs`" in it }, "$notes")
+        val errors = flutterOf(report).getAsJsonObject("errors")
+        assertTrue(errors["source"].asString.startsWith("Structured errors are off"), "$errors")
+        assertEquals(4, errors["inLogcat"].asInt)
+        assertEquals(0, errors["sinceConnected"].asInt)
+        val groups = errors.getAsJsonArray("groups").map { it.asJsonObject }
+        assertEquals(listOf("logcat"), groups.map { it["source"].asString }.distinct())
+        assertTrue(
+            groups.first()["summary"].asString
+                .startsWith("Exception caught by rendering library: A RenderFlex overflowed by 219 pixels"),
+            "$groups",
+        )
+        assertEquals("10-02 14:03:07.412", groups.first()["firstSeen"].asString)
+        assertEquals(2, groups.single { "tap handler" in it["summary"].asString }["count"].asInt)
+        val top = report.getAsJsonArray("likelyProblems").first().asJsonObject
+        assertEquals(FlutterProblemTypes.FLUTTER_ERROR, top["type"].asString)
+        assertFalse(report.toString().contains("AbCdEfGh123"), "no token from the DevTools link")
     }
 
     @Test
-    fun `no error since connecting is not proof of none`() {
-        val notes = notesOf(flutterOf(report(live())))
+    fun `a profile build reads logcat too, as it has no inspector`() {
+        val profile = live(
+            snapshot = snapshot(structuredErrors = null),
+            buildMode = FlutterBuild.PROFILE,
+            flutterLog = { LOGCAT },
+        )
+        val report = report(profile)
 
-        assertTrue(notes.any { "not proof of none" in it && "FlutterError.onError" in it }, "$notes")
+        val errors = flutterOf(report).getAsJsonObject("errors")
+        assertTrue(errors["source"].asString.startsWith("A profile build has no inspector"), "$errors")
+        assertEquals(4, errors["inLogcat"].asInt)
+    }
+
+    @Test
+    fun `structured errors off with nothing in logcat is not proof of none`() {
+        val flutter = flutterOf(report(live(snapshot = snapshot(structuredErrors = false), flutterLog = { "" })))
+
+        val notes = notesOf(flutter)
+        assertTrue(notes.any { "hold none from the app" in it && "FlutterError.onError" in it }, "$notes")
+        assertFalse(flutter.toString().contains("no errors", ignoreCase = true), "$flutter")
+    }
+
+    @Test
+    fun `a debug build with structured errors on and nothing in either place never says no errors`() {
+        var logcatRead = false
+        val flutter = flutterOf(
+            report(
+                live(
+                    flutterLog = {
+                        logcatRead = true
+                        ""
+                    },
+                ),
+            ),
+        )
+
+        assertTrue(logcatRead, "silence on the VM Service is checked against logcat")
+        val notes = notesOf(flutter)
+        assertTrue(
+            notes.any {
+                "No Flutter.Error since Spock connected" in it && "no framework error in the last" in it &&
+                    "not proof of none" in it && "FlutterError.onError" in it && "Crashlytics" in it
+            },
+            "$notes",
+        )
+        assertFalse(flutter.toString().contains("no errors", ignoreCase = true), "$flutter")
+    }
+
+    @Test
+    fun `an unreadable logcat is said, and still not proof of none`() {
+        val notes = notesOf(flutterOf(report(live(flutterLog = { null }))))
+
+        assertTrue(notes.any { "logcat could not be read" in it && "not proof of none" in it }, "$notes")
+    }
+
+    @Test
+    fun `with structured errors on and a Flutter Error, logcat is not read`() {
+        var logcatRead = false
+        val flutter = flutterOf(
+            report(
+                live(
+                    errors = listOf(error(AT)),
+                    flutterLog = {
+                        logcatRead = true
+                        LOGCAT
+                    },
+                ),
+            ),
+        )
+
+        assertFalse(logcatRead)
+        val errors = flutter.getAsJsonObject("errors")
+        assertTrue(errors["source"].asString.startsWith("Flutter.Error events"), "$errors")
+        assertFalse(errors.has("inLogcat"))
+    }
+
+    @Test
+    fun `structured errors on, no Flutter Error, but framework errors in logcat are listed`() {
+        val flutter = flutterOf(report(live(flutterLog = { LOGCAT })))
+
+        val errors = flutter.getAsJsonObject("errors")
+        assertEquals(4, errors["inLogcat"].asInt)
+        assertTrue(notesOf(flutter).any { "but logcat holds framework errors" in it }, "${notesOf(flutter)}")
     }
 
     @Test
@@ -292,17 +386,20 @@ class FlutterSectionTest {
         snapshot: FlutterSessionSnapshot = snapshot(),
         deviceTime: DeviceTime? = clock,
         httpProfile: () -> JsonObject? = { JsonObject() },
+        buildMode: FlutterBuild = FlutterBuild.DEBUG,
+        flutterLog: () -> String? = { "" },
     ): FlutterDiagnosticSource {
         val reads = object : FlutterDiagnosticSource.Reads {
             override fun refreshRate(): Double? = 60.0
             override fun httpProfile(): JsonObject? = httpProfile()
+            override fun flutterLog(): String? = flutterLog()
         }
         val contents = FlutterEventLog.Contents(errors, frames, emptyList(), emptyMap())
         return FlutterDiagnosticSource(
             APP,
-            FlutterBuild.DEBUG,
+            buildMode,
             FlutterAttachOutcome.Connected(FlutterSession(), identity, reused = true),
-            live = FlutterDiagnosticSource.Live(identity, snapshot, FlutterBuild.DEBUG, contents, deviceTime, reads),
+            live = FlutterDiagnosticSource.Live(identity, snapshot, buildMode, contents, deviceTime, reads),
             hostNowMs = AT,
         )
     }
@@ -391,6 +488,11 @@ class FlutterSectionTest {
 
         /** 14:00:00 in Berlin: the error's device epoch ms. */
         val AT: Long = Instant.parse("2026-10-02T12:00:00Z").toEpochMilli()
+
+        /** What pid 4242 printed with structured errors off: one report in full, three repeats. */
+        val LOGCAT: String =
+            requireNotNull(FlutterSectionTest::class.java.getResource("/flutter/logcat-structured-errors-off.txt"))
+                .readText()
     }
 
     @Test
