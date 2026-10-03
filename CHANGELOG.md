@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **The device and app popup tells two emulators apart and keeps underscores.** Devices that would
+  read the same — two emulators booted from one system image — now show their serial
+  (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
+  `spock.adb.spock_flutter_sample` no longer lose an underscore to a menu mnemonic.
+
 ## [4.0.7] - 2026-09-29
 
 ### Added
