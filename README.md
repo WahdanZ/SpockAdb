@@ -15,7 +15,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 69 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 70 strongly typed tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -251,7 +251,7 @@ Select an element to copy a selector for it — MCP arguments, a Compose test fi
 
 **Jump to Source** opens the code that drew the selected element, found in the open project by its test tag, resource id, text, or View class.
 
-**Recompositions** records a Compose app for a few seconds and lists how many times each composable composed or recomposed, with its source line, from Compose's own composition tracing. The app needs `androidx.compose.runtime:runtime-tracing` and `androidx.tracing:tracing-perfetto-binary` in its debug build.
+**Recompositions** records a UI for a few seconds. On Flutter debug apps with a live DDS session it counts `Flutter.RebuiltWidgets` by source location and restores Flutter's shared rebuild-tracking flag only when Spock enabled it; on Compose it counts compositions from Perfetto as before. Compose apps need `androidx.compose.runtime:runtime-tracing` and `androidx.tracing:tracing-perfetto-binary` in their debug build.
 
 Spock ADB can also detect common accessibility problems such as:
 
