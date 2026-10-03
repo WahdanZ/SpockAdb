@@ -186,9 +186,9 @@ discard the saved instance state that process death keeps. Use them for cold sta
 4. After a fix is deployed: re-run `android_accessibility_audit` and compare the counts. A
    finding that moved to another element is not fixed.
 
-### 8. Compose recomposition — "this screen recomposes too much / feels janky"
+### 8. UI rebuilds — "this screen rebuilds/recomposes too much / feels janky"
 
-1. Put the screen in the state to measure, then `android_get_recomposition_counts` with
+1. For Flutter, call `flutter_app_status` first if runtime attachment is in doubt. Put the screen in the state to measure, then `android_get_recomposition_counts` with
    `durationSeconds` long enough to cover the interaction; drive the interaction (taps, scrolls)
    while it records. Record an idle screen to find recompositions that should not happen at all.
 2. If it says the app lacks composition tracing, tell the developer the two debug dependencies it
