@@ -18,13 +18,18 @@ import spock.adb.flutter.vmservice.Redaction
  * tools (Diagnose, the Timeline, the rebuild window in `android_get_recomposition_counts`).
  *
  * Read-only, like Diagnose: it attaches as Diagnose does when there is no session yet, and reads
- * the session's state; it calls nothing in the app. Never prints a VM Service address or token:
- * the session hands none out, and the whole answer is scrubbed once more before it leaves.
+ * the session's state. An attach is not quite nothing to the app: a new session over DDS switches
+ * on Dart's HTTP recording, as Diagnose's does, unless the setting is off. The app is the one asked
+ * for, else the one selected in Spock, else the project's, as for Diagnose. Never prints a VM
+ * Service address or token: the session hands none out, and the whole answer is scrubbed once
+ * more before it leaves.
  *
+ * @param selectedApp the app selected in Spock; tests pass their own.
  * @param statusOf what the status is, for [execute]; the project's [FlutterFollowerService] by
  *   default. Tests pass their own.
  */
 class FlutterAppStatusTool(
+    private val selectedApp: (ToolContext) -> String? = { it.selectedApp() },
     private val statusOf: (ToolContext, ConnectedDevice, String) -> FlutterAppStatus =
         { context, device, packageName -> projectStatus(context, device, packageName) },
 ) : AdbTool {
@@ -37,19 +42,23 @@ class FlutterAppStatusTool(
             "connection kind (DDS, or a read-only direct VM), the build mode, the UI isolate, the Dart " +
             "version (the Flutter version when the app reports it, else unknown), whether Spock records " +
             "HTTP, and the device clock Spock pairs Flutter events with log lines by. Attaches by itself " +
-            "within about 3 seconds when there is no session yet, as android_diagnose_current_screen does. " +
-            "Call it when Diagnose's flutter section says the session is missing, to see why. It never " +
-            "returns a VM Service address or token. Widgets, hot reload and Flutter's own errors belong " +
-            "to the Dart MCP server; run it next to Spock."
+            "within about 3 seconds when there is no session yet, as android_diagnose_current_screen does " +
+            "(a new session switches on Dart's HTTP recording, as Diagnose's does). Call it when Diagnose's " +
+            "flutter section says the session is missing, to see why. It never returns a VM Service address " +
+            "or token. Flutter's errors, frames and HTTP failures are in android_diagnose_current_screen; " +
+            "the widget tree, hot reload and evaluating Dart belong to the Dart MCP server, run next to Spock."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "The Flutter app's application ID. Defaults to the open project's.")
+        string(
+            "packageName",
+            "The Flutter app's application ID. Defaults to the app selected in Spock, else the open project's.",
+        )
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
+        val packageName = context.resolveFollowedPackage(arguments, selectedApp(context))
         return ToolResult.text(render(statusOf(context, device, packageName)))
     }
 

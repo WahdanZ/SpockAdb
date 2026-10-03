@@ -150,6 +150,29 @@ class FlutterAppStatusToolTest {
         }
     }
 
+    /** Which app the tool asked about, with [arguments], [selected] in Spock and the project's [projectApp]. */
+    private fun askedFor(arguments: JsonObject, selected: String?, projectApp: String?): String {
+        val asked = mutableListOf<String>()
+        val tool = FlutterAppStatusTool(selectedApp = { selected }) { _, _, packageName ->
+            asked += packageName
+            status(outcome = null)
+        }
+        tool.execute(arguments, FakeToolContext(applicationId = projectApp))
+        return asked.single()
+    }
+
+    @Test
+    fun `with no packageName the app selected in Spock is described, not the project's other flavor`() {
+        assertEquals("$APP.dev", askedFor(JsonObject(), selected = "$APP.dev", projectApp = APP))
+    }
+
+    @Test
+    fun `with nothing selected the project's app is described, and an argument wins over both`() {
+        assertEquals(APP, askedFor(JsonObject(), selected = null, projectApp = APP))
+        val asked = JsonObject().apply { addProperty("packageName", "$APP.second") }
+        assertEquals("$APP.second", askedFor(asked, selected = "$APP.dev", projectApp = APP))
+    }
+
     private fun live(
         identity: AppIdentity = this.identity,
         snapshot: FlutterSessionSnapshot = snapshot(),
