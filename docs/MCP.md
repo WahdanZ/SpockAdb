@@ -435,8 +435,10 @@ one. `android_tap_element` walks up to the nearest clickable ancestor automatica
 
 `android_get_recomposition_counts` records a running app for 1–30 seconds (5 by default) and
 lists how many times each composable composed or recomposed, with its source file and line,
-most frequent first. The UI Inspector's **Recompositions** tab is the same recording for a
-person: pick a duration, press **Record**, use the app, and double-click a row to open its line.
+most frequent first. With no `packageName` it records the app selected in Spock, else the open
+project's. The UI Inspector's **Recompositions** tab is the same recording for a person, for a
+Flutter app too: pick a duration, press **Record**, use the app, and double-click a row to open
+its line.
 
 The counts are Compose's own. With composition tracing in the app, every composable that runs
 while tracing is on leaves a trace slice named after it, and the tool counts those slices:
@@ -477,14 +479,28 @@ was built instead, in the same shape: a headline, one line per widget location (
 or more, with the same hints as Diagnose's `frequentRebuilds`, and what became of the tracking
 flag. It needs a debug build, the only one with the inspector, and a session through DDS, so the
 app must run under `flutter run` or `flutter attach`. Spock attaches by itself within about 3
-seconds; without such a session the call fails and says why. A direct, read-only connection is
-refused, since recording writes to the app.
+seconds. A direct, read-only connection, or a build without the inspector, is refused, since
+recording writes to the app. With no Flutter session at all the call records Compose instead: a
+Compose host that embeds a Flutter module ships the Flutter engine too. If Compose cannot record
+it either, the error says why for both.
 
 - Spock reads `ext.flutter.inspector.trackRebuildDirtyWidgets` first. It switches it on for the
   window only when it is off, and back off afterwards only when Spock switched it on. The flag is
   shared with the IDE's rebuild counts, so tracking that was already on stays on, and the result
-  says which. If the session ends during the window, the result says the flag may have been left
-  on. If the app hot-restarts, the flag went with the old isolate.
+  says which.
+- Switching tracking on makes Flutter rebuild the whole widget tree once (a reassemble, which
+  keeps state). That frame is not counted: counts start at the app's own announcement of the
+  switch, which comes after it. An idle screen reads 0 frames.
+- The app announces every write of the flag. If anything else writes it during the window — the
+  IDE's *Show widget rebuild information*, DevTools — or between Spock's read and its write, Spock
+  leaves it as that set it, and says counts may cover only part of the window. If Spock's
+  switch-on gets no answer and a read afterwards cannot tell whether it landed, Spock does not
+  switch it off, and says so.
+- If Spock closes the session during the window (another app selected, another app's attach,
+  the project closing), the close switches the flag off through DDS first, and the recording
+  stops early and says the session ended. If the connection is lost, the result says the flag was
+  left on. If the app hot-restarts, the flag went with the old isolate and counts stop at the
+  restart.
 - Widget locations are read from `ext.flutter.inspector.widgetLocationIdMap`. The app sends each
   location once per isolate, so without this a window opened after the IDE's counts would see
   bare ids. A location still unknown is listed by number (`#42`).
@@ -795,11 +811,16 @@ Flutter tool is attaching meanwhile.
   counted apart, and its problems say "(before Spock connected)". `errors.source` says where they
   were read. With structured errors on, from `Flutter.Error` events. With them off (a
   `--dart-define=flutter.inspector.structuredErrors=false` run, a no-debug launch, an IDE toggle),
-  or in a profile build, which has no inspector, Flutter prints framework errors to logcat instead:
-  the first since the last hot reload in full, later ones as `Another exception was thrown: …`.
-  Spock reads them there, from the app's own pid in the last 1,500 lines, and lists them the same
-  way, each group with `source: "logcat"` and `inLogcat` counting them. With structured errors on
-  and no `Flutter.Error`, logcat is read as well, so the section knows both places were silent.
+  or in a profile build, which has no inspector, Flutter prints framework errors to logcat instead.
+  In a debug build the first since the last hot reload is printed in full; in a profile build only
+  its message and stack are. Later ones are `Another exception was thrown: …`, which join the
+  first when they read the same. Spock reads them there, from the app's own pid in the last
+  `maxLogcatLines` lines (1,500 by default), and lists them the same way, each group with
+  `source: "logcat"` and `inLogcat` counting them; one printed before Spock connected says so.
+  With structured errors on and no `Flutter.Error`, logcat is read as well, so the section knows
+  both places were silent. `errors.source` names where the listed errors came from: the VM
+  Service, logcat in its place, logcat as the fallback when no `Flutter.Error` arrived, or both
+  (structured errors were switched meanwhile; a group from both says `vmService and logcat`).
   Silence is not proof that nothing went wrong, and `notes` never says "no errors": an app that
   replaced `FlutterError.onError` (a crash reporter: Crashlytics, Sentry) reports to neither place,
   and `notes` says so. It says so more firmly when the UI section shows an error on screen.
@@ -815,11 +836,13 @@ Flutter tool is attaching meanwhile.
   `MissingPluginException`, a platform channel handler that failed, or DartMessenger's "Uncaught
   exception in binary message listener") are listed as **one** problem, not two. Its type is
   `flutterCrossLayer` and it ranks first among equal severities. Its summary names both layers:
-  "In Dart and on Android, 0.3 s apart — Dart: …; Android: …". `parts` holds each layer's own
-  problem as its section reported it, without an `id`, since neither is listed on its own. The
-  error's group points at it with `problem` and names the native half in `crossLayer`. Each error
-  and each native failure joins at most one such problem, the closest pairs first. Without a
-  measured clock nothing is merged, as nothing is paired.
+  "In Dart and on Android, 0.3 s apart — Dart: …; Android: …". The distance is between single
+  occurrences, not to the error group's whole span, and `count` is how often the two were seen
+  together. `parts` holds each layer's own problem as its section reported it, with its own count
+  and without an `id`, since neither is listed on its own. The error's group points at it with
+  `problem` and names the native half in `crossLayer`. Each error and each native failure joins at
+  most one such problem, the closest pairs first. Without a measured clock nothing is merged, as
+  nothing is paired.
 - `frames` is a verdict only in a profile build; `http` reads the VM's HTTP profile, while recording
   is on. Spock switches it on for a session it opened over DDS in a debug or profile build — unless
   **Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** is off — and back off
@@ -867,8 +890,10 @@ Spock's connection to a Flutter app's Dart VM Service, for when Diagnose's `flut
 there is no session and you want to know why. It is the only Flutter tool. Everything else rides
 the existing tools: errors, frames, HTTP and the cross-layer problem come from
 `android_diagnose_current_screen`, and the rebuild window comes from
-`android_get_recomposition_counts`. Read-only. With no session yet, it attaches by itself as
-Diagnose does, within about 3 seconds, and calls nothing in the app.
+`android_get_recomposition_counts`. Read-only. With no `packageName` it reports on the app
+selected in Spock, else the open project's, as Diagnose does. With no session yet, it attaches by
+itself as Diagnose does, within about 3 seconds; like Diagnose's, a new session over DDS switches
+on Dart's HTTP recording unless that setting is off.
 
 ```json
 {

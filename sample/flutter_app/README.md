@@ -105,12 +105,15 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
 
 Same setup as above: the emulator and the app selected in Spock, nothing pasted.
 
-1. **`flutter_app_status`.** With `flutter run` attached, call it from an agent. Expect
-   `connected: true`, `verifiedBy` `logcat-pid` (3.22) or `dtd+pid+start` (3.47.5),
-   `connectionKind: dds`, `buildMode: debug`, `uiIsolate.name: main`, the Dart version, and the
-   clock `measured`. Stop `flutter run` and start the app from the launcher: after about 10 s,
-   `attach` says the app runs without a debugger session. No answer may contain a `ws://` or
-   `http://127.0.0.1` address.
+1. **`flutter_app_status`.** With `flutter run` attached, call it from an agent with no
+   arguments. Expect `applicationId` to be the app selected in Spock, `connected: true`,
+   `verifiedBy` `logcat-pid` (3.22) or `dtd+pid+start` (3.47.5), `connectionKind: dds`,
+   `buildMode: debug`, `uiIsolate.name: main`, the Dart version, and the clock `measured`. Stop
+   `flutter run` and start the app from the launcher: after about 10 s, `attach` says the app runs
+   without a debugger session. No answer may contain a `ws://` or `http://127.0.0.1` address.
+   With the second copy (below) installed and selected in Spock, a call with no `packageName`
+   describes `spock.adb.spock_flutter_sample.second`, not the project's ID, and the first copy's
+   session is not closed by it.
 2. **Errors with structured errors off.** The inspector's switch cannot be flipped from Dart, so
    run the sample with it off:
 
@@ -121,28 +124,59 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
    *Layout overflow* → *Show overflow*, then *Errors and plugin failures* → *Throw in a tap
    handler* twice, then **Diagnose**. `flutter.errors.source` starts "Structured errors are off".
    The overflow is listed in full (`source: "logcat"`, with its `Row at lib/fixtures/layout.dart`),
-   and the tap error as `Another exception was thrown: Bad state: …` with a count of 2.
-   `flutter.identity.structuredErrors` is `off`. DevTools' *Structured errors* toggle in a normal
-   `flutter run` does the same.
-3. **Silence is never "no errors".** In a normal `flutter run`, turn *Custom FlutterError.onError*
+   and the tap error as `Another exception was thrown: Bad state: …` with a count of 2. *Hide
+   overflow*, then *Show overflow* again: it stays **one** group, its count going up, not a
+   second "Another exception was thrown" group. `flutter.identity.structuredErrors` is `off`.
+   DevTools' *Structured errors* toggle in a normal `flutter run` does the same; an overflow from
+   before the toggle and one after it make `errors.source` start "Both", and that group's
+   `source` reads `vmService and logcat`.
+3. **A profile build's errors.** `flutter run --profile`, then *Throw in a tap handler* twice and
+   **Diagnose**. `flutter.errors.source` starts "A profile build has no inspector". The tap error
+   is **one** group, "Exception caught by Flutter: Bad state: Sample error thrown in a tap
+   handler", with a count of 2: the first is Flutter's message-and-stack print, the second its
+   "Another exception was thrown" repeat. (Overflow errors are debug-only and do not appear.)
+4. **Silence is never "no errors".** In a normal `flutter run`, turn *Custom FlutterError.onError*
    on, *Show overflow*, then Diagnose. `notes` says no `Flutter.Error` arrived and no framework error
    is in logcat, and names a replaced `FlutterError.onError` (Crashlytics, Sentry). It also quotes
    the overflow banner from the screen.
-4. **Rebuild window.** *Frames and rebuilds* → start the rebuild storm (`frames_rebuild_storm`), and
-   call `android_get_recomposition_counts` with `packageName: spock.adb.spock_flutter_sample`,
-   `durationSeconds: 5`. Expect `(Flutter widget rebuilds)` in the headline, the storm's widget at
-   the top with its `lib/fixtures/frames.dart` line, and "Spock switched it on for the recording and
-   off again". Then turn on the IDE's rebuild counts (Flutter Inspector → *Show widget rebuild
-   information*) and record again: "it was on already …, so Spock left it on", and the IDE's counts
-   keep running afterwards. In a `--profile` run the call is refused (debug only).
-5. **One problem for two layers** (`error_cross_layer`, Android). *Errors and plugin failures* →
+5. **Rebuild window.** With nothing moving on screen, call `android_get_recomposition_counts`
+   with `durationSeconds: 5`: the headline says `(Flutter widget rebuilds): 0 frame(s)` — the
+   whole-tree rebuild the switch forces is not counted. Then *Frames and rebuilds* → start the
+   rebuild storm (`frames_rebuild_storm`) and record again: the storm's widget is at the top with
+   its `lib/fixtures/frames.dart` line, and "Spock switched it on for the recording and off
+   again".
+   - Turn on the IDE's rebuild counts (Flutter Inspector → *Show widget rebuild information*) and
+     record: "it was on already …, so Spock left it on", and the IDE's counts keep running.
+   - Turn the IDE's counts off, start a 30 s recording, and turn them on while it runs: "something
+     else (the IDE's rebuild counts or DevTools) switched it during the recording, so Spock left it
+     as that set it", and the IDE's counts keep running afterwards.
+   - Start a 30 s recording and select another app in Spock while it runs: the result ends early
+     with "The Flutter session ended during the recording, so it stopped early." and "Spock
+     switched it on for the recording and off again"; the IDE's *Show widget rebuild information*
+     is still off.
+   - Start a 30 s recording and press `R` (hot restart) in `flutter run`: it ends early with "the
+     app restarted during the recording … counts stop at the restart".
+   - In the IDE, the UI Inspector's **Recompositions** tab, **Record** with the storm running: rows
+     are widget locations with their counts; double-click the storm's row to open
+     `lib/fixtures/frames.dart` at its line. The note ends with what became of the tracking flag.
+   - In a `--profile` run the call is refused (debug only). With `flutter run` stopped and the
+     app started from the launcher, the call records Compose instead and fails with the
+     runtime-tracing advice followed by "… ships the Flutter engine; recording its widget rebuilds
+     needs a live debug session, and …".
+6. **One problem for two layers** (`error_cross_layer`, Android). *Errors and plugin failures* →
    *Dart error from a failing channel call*, then Diagnose. The handler's checked exception is
    logged by DartMessenger, and the app reports the `MissingPluginException` Dart gets back to
    Flutter. Expect **one** `flutterCrossLayer` problem: "In Dart and on Android, 0.0 s apart —
    Dart: Exception caught by spock sample: MissingPluginException(…); Android: DartMessenger:
    Uncaught exception in binary message listener …". Its `parts` hold both, and neither is listed
-   on its own. *Checked exception in a channel handler* alone gives the native problem only, with
-   no Dart error to pair.
+   on its own. Press it again a minute later and Diagnose: still one problem, now with `count: 2`.
+   *Checked exception in a channel handler* alone gives the native problem only, with no Dart error
+   to pair.
+7. **No merge across a long-lived error.** Restart the app. *Show overflow* (a Dart error, debug
+   build), wait two minutes, press *Checked exception in a channel handler* (Android only), wait
+   two more minutes, *Hide overflow* and *Show overflow* again, then Diagnose. The overflow is one
+   group seen at the start and the end; the Android failure in the middle stays a problem of its
+   own, with **no** `flutterCrossLayer` problem and no `crossLayer` on the group.
 
 ## A second copy (two application IDs)
 
