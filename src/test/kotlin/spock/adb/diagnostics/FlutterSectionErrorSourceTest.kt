@@ -50,6 +50,28 @@ class FlutterSectionErrorSourceTest : FlutterSectionFixture() {
     }
 
     @Test
+    fun `errors source says the VM Service when its events are listed though structured errors are off now`() {
+        // Two overflows arrived as events, then structured errors went off; logcat holds nothing yet.
+        val errors = flutterOf(
+            report(
+                live(
+                    errors = listOf(error(AT), error(AT + 1_000)),
+                    snapshot = snapshot(structuredErrors = false),
+                    flutterLog = { "" },
+                ),
+            ),
+        ).getAsJsonObject("errors")
+
+        val source = errors["source"].asString
+        assertTrue(source.startsWith("Flutter.Error events from the VM Service"), "$errors")
+        assertTrue(source.contains("off now") && source.endsWith("where none are yet"), "$errors")
+        assertFalse(source.contains("this section reads them there"), "$errors")
+        assertEquals(0, errors["inLogcat"].asInt)
+        assertEquals(2, errors["sinceConnected"].asInt)
+        assertEquals("vmService", errors.getAsJsonArray("groups").single().asJsonObject["source"].asString)
+    }
+
+    @Test
     fun `with structured errors not known yet the source does not claim they are on`() {
         val errors = flutterOf(report(live(snapshot = snapshot(structuredErrors = null)))).getAsJsonObject("errors")
 

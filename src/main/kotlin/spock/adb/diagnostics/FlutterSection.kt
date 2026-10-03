@@ -235,11 +235,14 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
 
     /**
      * Where the listed errors came from, as read: the VM Service, logcat — in place of it, or as
-     * the fallback when no `Flutter.Error` arrived — or both.
+     * the fallback when no `Flutter.Error` arrived — or both. Events listed while logcat is the
+     * source now came before structured errors went off: the listed ones are the VM Service's.
      */
     private fun sourceWords(from: ErrorSource, fromEvents: Int, fromLogcat: List<FlutterErrorReader.FlutterError>?) =
         when {
             fromEvents > 0 && !fromLogcat.isNullOrEmpty() -> BOTH_SOURCES
+            fromEvents > 0 && from.logcat ->
+                EVENTS_THEN_LOGCAT + if (fromLogcat == null) ", which could not be read" else ", where none are yet"
             from.logcat -> from.words
             !fromLogcat.isNullOrEmpty() -> LOGCAT_FALLBACK
             else -> from.words
@@ -538,6 +541,8 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
             "native SDKs are not visible."
         const val BOTH_SOURCES = "Both: Flutter.Error events from the VM Service while structured errors were on, " +
             "and what Flutter printed to logcat while they were off; each group's `source` says which"
+        const val EVENTS_THEN_LOGCAT = "Flutter.Error events from the VM Service: these arrived while structured " +
+            "errors were on; they are off now (or the build has no inspector), so later ones are read from logcat"
         const val LOGCAT_FALLBACK = "Logcat: structured errors are on, yet no Flutter.Error arrived since Spock " +
             "connected, and Flutter printed these to logcat — while structured errors were off, or by the app's " +
             "own error handler"

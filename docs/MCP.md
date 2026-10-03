@@ -819,8 +819,10 @@ Flutter tool is attaching meanwhile.
   `source: "logcat"` and `inLogcat` counting them; one printed before Spock connected says so.
   With structured errors on and no `Flutter.Error`, logcat is read as well, so the section knows
   both places were silent. `errors.source` names where the listed errors came from: the VM
-  Service, logcat in its place, logcat as the fallback when no `Flutter.Error` arrived, or both
-  (structured errors were switched meanwhile; a group from both says `vmService and logcat`).
+  Service (also when structured errors went off after its events arrived and logcat has none
+  yet), logcat in its place, logcat as the fallback when no `Flutter.Error` arrived, or both (some
+  arrived as events and others were printed to logcat; a group from both says
+  `vmService and logcat`).
   Silence is not proof that nothing went wrong, and `notes` never says "no errors": an app that
   replaced `FlutterError.onError` (a crash reporter: Crashlytics, Sentry) reports to neither place,
   and `notes` says so. It says so more firmly when the UI section shows an error on screen.
