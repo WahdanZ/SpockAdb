@@ -3,6 +3,11 @@ package spock.adb.mcp.tools
 import com.google.gson.JsonObject
 import spock.adb.device.ops.RecompositionException
 import spock.adb.device.ops.RecompositionOperations
+import spock.adb.flutter.FlutterAttachOutcome
+import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterFollowerService
+import spock.adb.flutter.FlutterRebuildRecorder
+import spock.adb.flutter.analysis.RebuildTracker
 import spock.adb.uitree.RecompositionCounts
 import spock.adb.uitree.UiCaptureException
 
@@ -15,8 +20,9 @@ import spock.adb.uitree.UiCaptureException
 class GetRecompositionCountsTool : AdbTool {
     override val name = "android_get_recomposition_counts"
     override val description =
-        "Record a running Jetpack Compose app for a few seconds and report how many times each " +
-            "composable composed or recomposed, with its source file and line, most frequent first. " +
+        "Record a running UI for a few seconds and report repeated work, most frequent first. " +
+            "For a Flutter debug app with a live DDS session it records Flutter widget rebuilds; " +
+            "otherwise it records Jetpack Compose compositions/recompositions with Perfetto. " +
             "Use it to find composables that recompose more than the screen's changes explain. " +
             "Reproduce the interaction while it records, or record an idle screen to find recompositions " +
             "that should not happen at all. The app must include androidx.compose.runtime:runtime-tracing " +
@@ -33,8 +39,8 @@ class GetRecompositionCountsTool : AdbTool {
         )
         boolean(
             "includeLibraries",
-            "Also list composables from androidx and Kotlin libraries, such as Text and Box. Defaults " +
-                "to false: the app's own composables are what it can change.",
+            "Compose only: also list composables from androidx and Kotlin libraries, such as Text and Box. " +
+                "Ignored for Flutter rebuild recording.",
         )
         integer("limit", "At most this many composables. Defaults to 30.")
         deviceSerial()
@@ -46,6 +52,30 @@ class GetRecompositionCountsTool : AdbTool {
         val seconds = arguments.optionalInt("durationSeconds", DEFAULT_SECONDS).coerceIn(1, MAX_SECONDS)
         val includeLibraries = arguments.optionalBoolean("includeLibraries", false)
         val limit = arguments.optionalInt("limit", DEFAULT_LIMIT).coerceIn(1, MAX_LIMIT)
+
+        val flutter = context.project?.let { project ->
+            FlutterFollowerService.getInstance(project).diagnosticSource(device, packageName)
+        }
+        if (flutter != null) {
+            val connected = flutter.outcome as? FlutterAttachOutcome.Connected
+                ?: return ToolResult.error(spock.adb.diagnostics.FlutterWords.attach(flutter))
+            val mode = flutter.live?.buildMode ?: flutter.build
+            if (mode != FlutterBuild.DEBUG) {
+                return ToolResult.error("Flutter rebuild recording is available only in a debug build.")
+            }
+            val report = try {
+                FlutterRebuildRecorder().record(
+                    connected.session,
+                    seconds * MILLIS_PER_SECOND,
+                    limit,
+                )
+            } catch (e: IllegalStateException) {
+                return ToolResult.error(e.message.orEmpty())
+            } catch (e: IllegalArgumentException) {
+                return ToolResult.error(e.message.orEmpty())
+            }
+            return ToolResult.text(renderFlutter(report, packageName, seconds))
+        }
 
         val counts = try {
             RecompositionOperations(device.device, device.serialNumber, context.cancellationSignal())
@@ -62,6 +92,22 @@ class GetRecompositionCountsTool : AdbTool {
         }
         return ToolResult.text(render(counts, packageName, seconds, includeLibraries, limit))
     }
+
+    internal fun renderFlutter(report: RebuildTracker.Report, packageName: String, seconds: Int): String =
+        buildString {
+            append("Recorded ").append(packageName).append(" for ").append(seconds).append("s: ")
+            append(report.top.sumOf { it.rebuilds }).append(" rebuild(s) across ")
+            append(report.top.size).append(" widget location(s) in ").append(report.frames).append(" rendered frame(s).\n")
+            if (report.top.isEmpty()) {
+                append("No Flutter widgets rebuilt while recording. Interact with the app while it records to measure a change.")
+                return@buildString
+            }
+            append("Count is builds at a source location; first builds count too.\n\n")
+            report.top.forEach { widget ->
+                append(widget.rebuilds.toString().padStart(COUNT_WIDTH)).append("  ")
+                    .append(widget.label).append('\n')
+            }
+        }.trimEnd()
 
     internal fun render(
         counts: RecompositionCounts,
