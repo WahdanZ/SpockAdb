@@ -281,11 +281,11 @@ dependencies, and identical behaviour in Android Studio and IntelliJ IDEA.
 
 Every tool declares a level, as a property of the tool rather than a flag a client can set.
 
-69 tools, in three levels.
+70 tools, in three levels.
 
 | Level | Behaviour | Tools |
 |---|---|---|
-| **Read-only** (29) | Runs automatically. Cannot change device or app state. | `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline`, `android_list_recipes` |
+| **Read-only** (30) | Runs automatically. Cannot change device or app state. | `flutter_app_status`, `android_list_devices`, `android_get_device_info`, `android_list_packages`, `android_get_package_info`, `android_get_current_activity`, `android_get_activity_stack`, `android_get_current_fragments`, `android_get_logcat`, `android_get_processes`, `android_get_battery_info`, `android_get_network_info`, `android_get_debug_context`, `android_take_screenshot`, `android_get_ui_tree`, `android_find_ui_element`, `android_accessibility_audit`, `android_assert_visible`, `android_assert_enabled`, `android_assert_text`, `android_wait_for_element`, `android_diagnose_current_screen`, `android_get_http_proxy`, `android_list_app_storage`, `android_read_app_storage`, `android_get_scheduled_jobs`, `android_get_pending_alarms`, `android_get_device_conditions`, `android_get_debug_timeline`, `android_list_recipes` |
 | **Safe action** (32) | Runs automatically. Changes state only in ways you routinely do by hand and can undo by repeating a normal action. | `android_select_device`, `android_select_project`, `android_launch_app`, `android_stop_app`, `android_restart_app`, `android_simulate_process_death`, `android_clear_app_cache`, `android_grant_permission`, `android_tap_element`, `android_long_press_element`, `android_scroll_to_element`, `android_input_text_into_element`, `android_open_deep_link`, `android_send_push_message`, `android_input_text`, `android_tap`, `android_swipe`, `android_press_key`, `android_push_file`, `android_pull_file`, `android_start_screen_recording`, `android_stop_screen_recording`, `android_clear_http_proxy`, `android_run_job_now`, `android_set_standby_bucket`, `android_unplug_battery`, `android_set_battery_level`, `android_set_charger`, `android_reset_battery`, `android_reset_device_conditions`, `android_get_recomposition_counts`, `android_run_recipe` |
 | **Destructive** (8) | **Always** asks you first, per call. Never auto-approved. | `android_clear_app_data`, `android_uninstall_app`, `android_revoke_permission`, `android_set_http_proxy`, `android_set_app_preference`, `android_delete_app_preference`, `android_run_adb_command`, `android_force_doze` |
 
@@ -431,15 +431,30 @@ one. `android_tap_element` walks up to the nearest clickable ancestor automatica
 - **Recomposition counts come from composition tracing, per composable, not per node.** See
   [Recomposition counts](#recomposition-counts).
 
+
+### Flutter app status
+
+`flutter_app_status` is the one Flutter-specific MCP status tool. It is read-only and uses the same
+bounded automatic attach path as Diagnose. It reports the attach outcome, whether a session is
+connected, device/app/pid verification, DDS vs direct connection kind, build mode, UI isolate,
+Dart and Flutter versions when the runtime exposes them, HTTP-recording ownership, and the measured
+device-clock state. Unknown data is reported as `unknown`; VM Service addresses and tokens are
+never returned.
+
 ### Recomposition counts
 
-`android_get_recomposition_counts` records a running app for 1–30 seconds (5 by default) and
-lists how many times each composable composed or recomposed, with its source file and line,
-most frequent first. The UI Inspector's **Recompositions** tab is the same recording for a
-person: pick a duration, press **Record**, use the app, and double-click a row to open its line.
+`android_get_recomposition_counts` records a running UI for 1–30 seconds (5 by default). For a
+Flutter **debug** app with a live DDS session it reports widget builds by source location from
+`Flutter.RebuiltWidgets`; otherwise it keeps the Compose path and lists compositions/recompositions
+by source file and line. The UI Inspector's **Recompositions** tab uses the same choice.
 
-The counts are Compose's own. With composition tracing in the app, every composable that runs
-while tracing is on leaves a trace slice named after it, and the tool counts those slices:
+For Flutter, Spock reads `widgetLocationIdMap`, turns `trackRebuildDirtyWidgets` on only when it was
+off, listens for the requested window, and turns it back off only when Spock owned the change.
+That flag is shared with the IDE's rebuild counter, so an already-enabled flag is never disabled.
+A direct/no-DDS session is read-only and refuses the recording. Diagnose never starts it.
+
+For Compose, the counts are Compose's own. With composition tracing in the app, every composable
+that runs while tracing is on leaves a trace slice named after it, and the tool counts those slices:
 
 1. It asks the app to turn tracing on, through the `androidx.tracing.perfetto` receiver the
    tracing library adds. Tracing stays on until the app's process ends and changes nothing the
