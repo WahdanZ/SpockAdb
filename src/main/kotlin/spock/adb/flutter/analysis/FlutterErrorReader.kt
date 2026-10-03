@@ -51,6 +51,11 @@ object FlutterErrorReader {
         val history: Boolean,
         /** Where it was read: a `Flutter.Error` event, or the text Flutter printed to logcat. */
         val source: Source = Source.VM_SERVICE,
+        /**
+         * A one-line `Another exception was thrown: …` from logcat, which carries the headline only:
+         * it joins an earlier full report that reads the same rather than standing apart.
+         */
+        val repeat: Boolean = false,
     ) {
         /** One line, before clipping: `Exception caught by gesture: Bad state: … — Row at lib/x.dart:3:5`. */
         val summary: String
@@ -79,6 +84,13 @@ object FlutterErrorReader {
         val count: Int,
         /** How many of [count] happened before Spock connected. */
         val historyCount: Int,
+        /**
+         * When each error of the group happened, device epoch ms, oldest first: the latest
+         * [MAX_OCCURRENCES], to line one occurrence up with what happened beside it.
+         */
+        val occurrencesMs: List<Long> = listOf(first.timestampMs, last.timestampMs).distinct(),
+        /** Where its errors were read; both when structured errors were switched meanwhile. */
+        val sources: Set<Source> = setOf(first.source),
     ) {
         /** Epoch ms on the device's clock, to line the group up with log lines of the same time. */
         val firstSeenMs: Long get() = first.timestampMs
@@ -139,9 +151,23 @@ object FlutterErrorReader {
     /** [summarise] for errors already read — from events, from logcat, or both — oldest first. */
     fun summariseErrors(errors: List<FlutterError>, zone: ZoneId): Result {
         val groups = linkedMapOf<String, MutableList<FlutterError>>()
-        errors.forEach { groups.getOrPut(groupKey(it)) { mutableListOf() }.add(it) }
+        // A repeat's headline → the latest earlier full report that reads the same, by its key.
+        val fullReports = HashMap<String, String>()
+        errors.forEach { error ->
+            val headline = error.headline?.let(::sameHeadline)
+            val key = headline?.takeIf { error.repeat }?.let(fullReports::get) ?: groupKey(error)
+            groups.getOrPut(key) { mutableListOf() }.add(error)
+            if (!error.repeat && headline != null) fullReports[headline] = key
+        }
         val grouped = groups.values.map { list ->
-            Group(first = list.first(), last = list.last(), count = list.size, historyCount = list.count { it.history })
+            Group(
+                first = list.first(),
+                last = list.last(),
+                count = list.size,
+                historyCount = list.count { it.history },
+                occurrencesMs = list.map { it.timestampMs }.takeLast(MAX_OCCURRENCES),
+                sources = list.mapTo(linkedSetOf()) { it.source },
+            )
         }
         return Result(
             groups = grouped,
@@ -169,6 +195,7 @@ object FlutterErrorReader {
             count = group.count,
             lastSeen = logcatTime(group.last.timestampMs, zone),
             section = FLUTTER_SECTION,
+            seenAt = group.occurrencesMs.map { logcatTime(it, zone) },
         )
     }
 
@@ -192,7 +219,10 @@ object FlutterErrorReader {
      * overflow in two rows of a layout is two problems to fix.
      */
     private fun groupKey(error: FlutterError): String =
-        listOf(error.description, error.headline?.replace(DIGITS, "#"), error.widget).joinToString("|")
+        listOf(error.description, error.headline?.let(::sameHeadline), error.widget).joinToString("|")
+
+    /** A headline as repeats of one error share it: digits differ between them. */
+    private fun sameHeadline(headline: String): String = headline.replace(DIGITS, "#")
 
     /** VM Service tokens, then URL queries, then what logcat's redaction takes (secrets, e-mails). */
     internal fun clean(text: String): String = LogcatRedactor.redact(stripUrlQueries(Redaction.scrub(text))).text
@@ -202,6 +232,9 @@ object FlutterErrorReader {
 
     /** The problem type a [LikelyProblem] from a `Flutter.Error` carries. */
     const val TYPE = FlutterProblemTypes.FLUTTER_ERROR
+
+    /** Occurrence times kept per group: enough to pair any of them, bounded like everything else. */
+    const val MAX_OCCURRENCES = 100
 
     private const val ERROR_SUMMARY = "ErrorSummary"
     internal const val ANOTHER = "Another exception was thrown:"

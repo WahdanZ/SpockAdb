@@ -97,6 +97,43 @@ class FlutterLogcatErrorsTest {
         assertEquals("_ThrowsInBuild at lib/fixtures/errors.dart:105:33", error.widget)
     }
 
+    @Test
+    fun `a profile build's first error, its text then its stack, is read before the repeats`() {
+        val profile = requireNotNull(javaClass.getResource("/flutter/logcat-profile-errors.txt")).readText()
+
+        val errors = read(profile)
+
+        val first = errors.first()
+        assertEquals("Exception caught by Flutter: Bad state: Sample error thrown in a tap handler", first.summary)
+        assertFalse(first.repeat)
+        assertEquals(Instant.parse("2026-10-02T14:03:07.412Z").toEpochMilli(), first.timestampMs)
+        assertTrue(first.renderedText.contains("#0      _ErrorsScreenState._throwInTapHandler"), first.renderedText)
+        assertTrue(first.renderedText.contains("(elided 3 frames from dart:async)"), first.renderedText)
+        assertFalse(first.renderedText.contains("Settings saved"), first.renderedText)
+        // A stack printed after Flutter reported an error is the app's own, not a framework error.
+        assertEquals(4, errors.size)
+        assertTrue(errors.none { "of its own" in it.summary })
+
+        val result = FlutterErrorReader.summariseErrors(errors, ZoneOffset.UTC)
+        assertEquals(2, result.groups.size)
+        val tap = result.groups.first()
+        assertEquals(3, tap.count)
+        assertEquals(first, tap.first)
+    }
+
+    @Test
+    fun `a repeat joins the full report that reads the same, digits aside, so one fault is one group`() {
+        val repeat = "10-02 14:03:08.001  4242  4242 I flutter : Another exception was thrown: " +
+            "A RenderFlex overflowed by 220 pixels on the right."
+
+        val result = FlutterErrorReader.summariseErrors(read("$log\n$repeat"), ZoneOffset.UTC)
+
+        val overflow = result.groups.single { "RenderFlex" in it.first.summary }
+        assertEquals(2, overflow.count)
+        assertEquals("Row at lib/fixtures/layout.dart:30:17", overflow.first.widget)
+        assertEquals(listOf(FlutterErrorReader.Source.LOGCAT), overflow.sources.toList())
+    }
+
     private companion object {
         const val APP_PID = "4242"
     }
