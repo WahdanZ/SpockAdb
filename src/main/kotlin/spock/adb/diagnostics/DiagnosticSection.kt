@@ -96,6 +96,8 @@ class AndroidProbe(
      * Flutter app, or when nobody looked — and then there is no `flutter` section.
      */
     val flutter: FlutterDiagnosticSource? = null,
+    /** Test/fixture seam for a captured log window; production reads logcat when null. */
+    private val logTextOverride: String? = null,
 ) : DiagnosticProbe {
     /**
      * Process ids of [packageName], read once and shared: the app section reports them and the
@@ -111,7 +113,7 @@ class AndroidProbe(
 
     /** One bounded logcat snapshot shared by Logs and Flutter, so correlation describes one window. */
     val logText: String by lazy {
-        DiagnosticShell.run(device, "logcat -d -v threadtime -t $logWindowLines *:W")
+        logTextOverride ?: DiagnosticShell.run(device, "logcat -d -v threadtime -t $logWindowLines *:W")
     }
 
     /** The ordinary log problems parsed once from [logText]. */
