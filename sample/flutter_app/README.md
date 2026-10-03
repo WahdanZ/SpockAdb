@@ -10,8 +10,23 @@ flutter run                 # debug: everything
 flutter run --profile       # profile: frame times mean something (Android device/emulator)
 ```
 
-The Android build uses Gradle 7.6.3 and AGP 7.3.0. If it fails with an unsupported Java version
-(JDK 21 or newer), point Flutter at a JDK 17: `flutter config --jdk-dir <path to JDK 17>`.
+Supported Flutter versions: **3.22.2** and **3.47.5**; the sample builds, analyzes and tests on both.
+The Android build uses the newest versions both accept: Gradle 8.14.5, AGP 8.13.2 and Kotlin 2.3.21.
+3.47.5 needs at least Gradle 8.14, AGP 8.11.1 and Kotlin 2.2.20. Gradle 9 cannot compile 3.22's
+Flutter Gradle plugin, and AGP 9 needs Gradle 9. So 3.47.5 warns that support for this Gradle and
+AGP "will soon be dropped": expected, ignore it. 3.22.2 says "One or more plugins require a higher
+Android NDK version"; a debug build uses no NDK, ignore that too.
+
+AGP 8 needs JDK 17 or newer (the sample is built with 17). If Gradle fails with an unsupported Java
+version, point Flutter at a JDK 17: `flutter config --jdk-dir <path to JDK 17>`.
+
+Switching Flutter versions in one checkout:
+
+- Run `flutter clean` first. `build/` keeps the other version's compiled shaders, and `flutter test`
+  then fails in `InkSparkle` with a `RangeError`.
+- 3.47.5 rewrites `pubspec.lock`: its SDK pins newer `meta`, `collection`, `test_api` and others, and
+  Dart 3.11, which 3.22.2 cannot resolve. The committed lock is 3.22.2's, so don't commit that
+  change; `git checkout pubspec.lock` after.
 
 Android package: `spock.adb.spock_flutter_sample`. iOS bundle id: `spock.adb.spockFlutterSample`
 (iOS bundle ids allow no underscores). Every control has `Semantics(identifier:)`,
