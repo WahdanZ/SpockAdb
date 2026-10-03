@@ -471,6 +471,27 @@ What a count is, and is not:
 - Verified on an API 34 emulator. Older Android versions are untested; where `perfetto` or
   its tracing service is unavailable, the result quotes what `perfetto` said.
 
+**Flutter apps: widget rebuilds.** For a Flutter app, the same call records how often each widget
+was built instead, in the same shape: a headline, one line per widget location (count, widget,
+`lib/…:line:column`), most built first. Then come the widgets built in every frame for a second
+or more, with the same hints as Diagnose's `frequentRebuilds`, and what became of the tracking
+flag. It needs a debug build, the only one with the inspector, and a session through DDS, so the
+app must run under `flutter run` or `flutter attach`. Spock attaches by itself within about 3
+seconds; without such a session the call fails and says why. A direct, read-only connection is
+refused, since recording writes to the app.
+
+- Spock reads `ext.flutter.inspector.trackRebuildDirtyWidgets` first. It switches it on for the
+  window only when it is off, and back off afterwards only when Spock switched it on. The flag is
+  shared with the IDE's rebuild counts, so tracking that was already on stays on, and the result
+  says which. If the session ends during the window, the result says the flag may have been left
+  on. If the app hot-restarts, the flag went with the old isolate.
+- Widget locations are read from `ext.flutter.inspector.widgetLocationIdMap`. The app sends each
+  location once per isolate, so without this a window opened after the IDE's counts would see
+  bare ids. A location still unknown is listed by number (`#42`).
+- Only the app's own widgets are tracked, so `includeLibraries` changes nothing for Flutter.
+- One window per app at a time; a second call while one runs is refused.
+- Diagnose never records rebuilds: only this explicit call does.
+
 ### Accessibility audit
 
 `android_accessibility_audit` reports unlabelled interactive elements, touch targets below
@@ -803,7 +824,8 @@ Flutter tool is attaching meanwhile.
   is on. Spock switches it on for a session it opened over DDS in a debug or profile build — unless
   **Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** is off — and back off
   when it disconnects; recording someone else switched on is left alone.
-- Diagnose never starts rebuild recording: that writes to the app.
+- Diagnose never starts rebuild recording: that writes to the app. Ask for it explicitly with
+  `android_get_recomposition_counts` (see [Recomposition counts](#recomposition-counts)).
 
 **Choosing sections.** `include` takes `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`,
 `deviceConditions` and `permissions`; all are on by default. `screenshot` is opt-in, attached as an image, because

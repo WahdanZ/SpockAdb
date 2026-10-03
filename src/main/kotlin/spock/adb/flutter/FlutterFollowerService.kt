@@ -14,6 +14,7 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.diagnostics.DiagnosticShell
 import spock.adb.diagnostics.FlutterDiagnosticSource
 import spock.adb.diagnostics.FlutterSection
+import spock.adb.diagnostics.FlutterWords
 import spock.adb.flutter.analysis.FlutterLogcatErrors
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.flutter.vmservice.string
@@ -104,6 +105,29 @@ class FlutterFollowerService(private val project: Project) : Disposable {
             )
         }
         return FlutterAppStatus(applicationId, device.serialNumber, build, outcome, live = live)
+    }
+
+    /**
+     * A rebuild recording window on [applicationId]'s session, for an explicit request
+     * (`android_get_recomposition_counts`) — never for Diagnose: it writes to the app. Attaches
+     * within [ATTACH_BUDGET_MS] when there is no session yet; without one, says why. [record] runs
+     * the window on the session's recorder. Blocking for the window: from a pooled thread.
+     */
+    fun recordRebuilds(
+        device: ConnectedDevice,
+        applicationId: String,
+        build: FlutterBuild,
+        record: (FlutterRebuildRecorder) -> FlutterRebuildRecorder.Result,
+    ): FlutterRebuildRecorder.Result {
+        val outcome = follower.attachNow(device, applicationId, build, ATTACH_BUDGET_MS)
+        val connected = outcome as? FlutterAttachOutcome.Connected
+            ?: return FlutterRebuildRecorder.Result.Refused(
+                "$applicationId is a Flutter app; recording its rebuilds needs a live debug session, and " +
+                    FlutterWords.attach(FlutterDiagnosticSource(applicationId, build, outcome)).replaceFirstChar {
+                        it.lowercase()
+                    },
+            )
+        return record(FlutterRebuildRecorder(connected.session))
     }
 
     private fun live(device: ConnectedDevice, connected: FlutterAttachOutcome.Connected): FlutterDiagnosticSource.Live {

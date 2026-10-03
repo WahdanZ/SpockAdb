@@ -3,6 +3,7 @@ package spock.adb.mcp
 import com.android.ddmlib.IDevice
 import com.android.ddmlib.IShellOutputReceiver
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -12,7 +13,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.device.ops.RecompositionOperations
 import spock.adb.device.ops.TracingHandshake
+import spock.adb.flutter.FlutterRebuildRecorder
+import spock.adb.flutter.analysis.FlutterExtensionEvent
+import spock.adb.flutter.analysis.RebuildTracker
 import spock.adb.mcp.tools.GetRecompositionCountsTool
+import spock.adb.mcp.tools.ToolResult
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
@@ -145,5 +150,76 @@ class RecompositionToolsTest {
     @Test
     fun `the perfetto config is one line, so echo carries it whole`() {
         assertFalse(RecompositionOperations.config(5_000).contains('\n'))
+    }
+
+    private fun flutterRun(result: FlutterRebuildRecorder.Result?, arguments: JsonObject = JsonObject()): ToolResult {
+        val asked = mutableListOf<GetRecompositionCountsTool.FlutterRebuildRequest>()
+        val tool = GetRecompositionCountsTool { request ->
+            asked += request
+            result
+        }
+        return tool.execute(
+            arguments.apply { addProperty("packageName", "spock.adb.spock_flutter_sample") },
+            FakeToolContext(available = listOf(FakeToolContext.device("emulator-5554").copy(device = healthy()))),
+        ).also { assertEquals(listOf("spock.adb.spock_flutter_sample"), asked.map { it.packageName }) }
+    }
+
+    private fun rebuilds(
+        tracking: FlutterRebuildRecorder.Tracking,
+        seeded: Boolean = true,
+    ): FlutterRebuildRecorder.Result {
+        val tracker = RebuildTracker()
+        val location = """{"ids":[7],"lines":[40],"columns":[12],"names":["StormTile"]}"""
+        val map = """{"file:///app/lib/fixtures/frames.dart":$location}"""
+        tracker.seedLocations(JsonParser.parseString(map).asJsonObject)
+        (1..3).forEach { frame ->
+            tracker.accept(
+                FlutterExtensionEvent(
+                    FlutterExtensionEvent.REBUILT_WIDGETS,
+                    frame.toLong(),
+                    null,
+                    JsonParser.parseString("""{"startTime":${frame * 16_000},"events":[7,4,9,1]}""").asJsonObject,
+                ),
+            )
+        }
+        return FlutterRebuildRecorder.Result.Recorded(tracker.report(3_000), 3_000, tracking, seeded)
+    }
+
+    @Test
+    fun `a Flutter app records widget rebuilds in the tool's own shape, and Compose is not touched`() {
+        val result = flutterRun(rebuilds(FlutterRebuildRecorder.Tracking.SWITCHED_ON_AND_OFF))
+
+        assertFalse(result.isError)
+        val text = result.text()
+        val headline = "Recorded spock.adb.spock_flutter_sample for 3.0s (Flutter widget rebuilds): 3 frame(s)"
+        assertTrue(text.startsWith(headline), text)
+        assertTrue(text.contains("    12  StormTile  (lib/fixtures/frames.dart:40:12)"), text)
+        assertTrue(text.contains("     3  Widget  (#9)"), text)
+        assertTrue(text.endsWith("Rebuild tracking: Spock switched it on for the recording and off again."), text)
+        assertTrue(commands.none { it.startsWith("am broadcast") || it.startsWith("echo") }, "$commands")
+    }
+
+    @Test
+    fun `a flag that was already on is said to be left on, and a missing seed is said too`() {
+        val text = flutterRun(rebuilds(FlutterRebuildRecorder.Tracking.ALREADY_ON, seeded = false)).text()
+
+        assertTrue(text.contains("it was on already (the IDE's rebuild counts or DevTools), so Spock left it on"), text)
+        assertTrue(text.contains("appear by number"), text)
+    }
+
+    @Test
+    fun `a Flutter app with no session to record is an error that says why`() {
+        val result = flutterRun(FlutterRebuildRecorder.Result.Refused(FlutterRebuildRecorder.READ_ONLY))
+
+        assertTrue(result.isError)
+        assertTrue(result.text().contains("flutter run"), result.text())
+        assertTrue(commands.isEmpty(), "$commands")
+    }
+
+    @Test
+    fun `any other app records Compose as before`() {
+        val result = flutterRun(null)
+
+        assertTrue(result.text().contains("composition(s) across"), result.text())
     }
 }
