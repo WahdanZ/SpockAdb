@@ -109,6 +109,16 @@ class AndroidProbe(
             .filter { it.isNotBlank() }
     }
 
+    /** One bounded logcat snapshot shared by Logs and Flutter, so correlation describes one window. */
+    val logText: String by lazy {
+        DiagnosticShell.run(device, "logcat -d -v threadtime -t $logWindowLines *:W")
+    }
+
+    /** The ordinary log problems parsed once from [logText]. */
+    val logProblems: LogProblemExtractor.Result by lazy {
+        LogProblemExtractor.extract(logText, packageName, pids)
+    }
+
     companion object {
         const val DEFAULT_LOG_WINDOW_LINES = 1_500
     }
