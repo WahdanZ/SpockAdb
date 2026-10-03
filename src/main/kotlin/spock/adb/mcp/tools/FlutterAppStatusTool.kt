@@ -50,7 +50,7 @@ class FlutterAppStatusTool(
         return ToolResult.text(render(source))
     }
 
-    internal fun render(source: FlutterDiagnosticSource): String = Redaction.scrub(
+    internal fun render(source: FlutterDiagnosticSource): String = safe(
         buildString {
             val live = source.live
             val connected = source.outcome as? FlutterAttachOutcome.Connected
@@ -71,6 +71,10 @@ class FlutterAppStatusTool(
             append("clock: ").append(clock(live))
         },
     )
+
+    /** Status never needs a VM endpoint at all: remove it after token redaction, not only the auth code. */
+    private fun safe(text: String): String =
+        VM_ENDPOINT.replace(Redaction.scrub(text), "<vm-service>")
 
     private fun isolate(id: String?, name: String?): String = when {
         id == null -> "unknown"
@@ -94,5 +98,11 @@ class FlutterAppStatusTool(
             append(", uncertainty ±").append(time.uncertaintyMs).append(" ms")
             time.note?.let { append(" (").append(it).append(')') }
         }
+    }
+
+    private companion object {
+        private val VM_ENDPOINT = Regex(
+            """(?i)(?:https?://|wss?://)?(?:127\.0\.0\.1|0\.0\.0\.0|localhost|\[::])(?::\d{1,5})?(?:/[^\s]*)?""",
+        )
     }
 }
