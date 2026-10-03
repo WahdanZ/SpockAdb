@@ -5,11 +5,11 @@ import spock.adb.CancellationSignal
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.RecompositionException
 import spock.adb.device.ops.RecompositionOperations
-import spock.adb.flutter.FlutterBuildCache
 import spock.adb.flutter.FlutterFollowerService
 import spock.adb.flutter.FlutterRebuildRecorder
 import spock.adb.flutter.analysis.shortSourcePath
 import spock.adb.uitree.RecompositionCounts
+import spock.adb.uitree.RecompositionRecording
 import spock.adb.uitree.UiCaptureException
 import java.util.Locale
 
@@ -88,16 +88,17 @@ class GetRecompositionCountsTool(
         val cancelled = context.cancellationSignal()
 
         val request = FlutterRebuildRequest(context, device, packageName, seconds * MILLIS_PER_SECOND, cancelled, limit)
-        val flutter = flutterRebuilds(request)
-        flutter(flutter, request, includeLibraries)?.let { return it }
-        // A Flutter app with no session is said to be one only if Compose cannot record it either.
-        val noSession = (flutter as? FlutterRebuildRecorder.Result.NoSession)?.reason
-
-        val counts = try {
-            RecompositionOperations(device.device, device.serialNumber, cancelled)
-                .record(packageName, seconds * MILLIS_PER_SECOND)
+        val recording = RecompositionRecording(
+            flutter = { flutterRebuilds(request) },
+            compose = {
+                RecompositionOperations(device.device, device.serialNumber, cancelled)
+                    .record(packageName, seconds * MILLIS_PER_SECOND)
+            },
+        )
+        val outcome = try {
+            recording.record()
         } catch (e: RecompositionException) {
-            return ToolResult.error(e.message.orEmpty() + noSession?.let { "\n\n$it" }.orEmpty())
+            return ToolResult.error(e.message.orEmpty())
         } catch (e: UiCaptureException) {
             val advice = if (e.kind == UiCaptureException.Kind.DEVICE_UNAVAILABLE) {
                 " Call android_list_devices to see which devices are connected."
@@ -106,7 +107,13 @@ class GetRecompositionCountsTool(
             }
             return ToolResult.error(e.message.orEmpty() + advice)
         }
-        return ToolResult.text(render(counts, packageName, seconds, includeLibraries, limit))
+        return when (outcome) {
+            is RecompositionRecording.Outcome.Composables ->
+                ToolResult.text(render(outcome.counts, packageName, seconds, includeLibraries, limit))
+            is RecompositionRecording.Outcome.Widgets ->
+                ToolResult.text(renderRebuilds(outcome.recorded, packageName, includeLibraries))
+            is RecompositionRecording.Outcome.Refused -> ToolResult.error(outcome.reason)
+        }
     }
 
     internal fun render(
@@ -145,18 +152,6 @@ class GetRecompositionCountsTool(
             append("[").append(shown.size - limit).append(" more below the limit of ").append(limit).append(".]")
         }
     }.trimEnd()
-
-    /** The answer for a Flutter app with a session, or null to record Compose. */
-    private fun flutter(
-        flutter: FlutterRebuildRecorder.Result?,
-        request: FlutterRebuildRequest,
-        includeLibraries: Boolean,
-    ): ToolResult? = when (flutter) {
-        null, is FlutterRebuildRecorder.Result.NoSession -> null
-        is FlutterRebuildRecorder.Result.Refused -> ToolResult.error(flutter.reason)
-        is FlutterRebuildRecorder.Result.Recorded ->
-            ToolResult.text(renderRebuilds(flutter, request.packageName, includeLibraries))
-    }
 
     /**
      * A Flutter rebuild window in the shape of [render]: a headline, then one line per widget
@@ -200,31 +195,10 @@ class GetRecompositionCountsTool(
                 report.problems.forEach { append("- ").append(it.summary).append('\n') }
             }
         }
-        if (!recorded.seeded) append("\n").append(UNSEEDED)
-        if (recorded.sessionEnded) append("\n").append(SESSION_ENDED)
-        append("\n").append(trackingWords(recorded.tracking))
+        if (!recorded.seeded) append("\n").append(RecompositionRecording.UNSEEDED)
+        if (recorded.sessionEnded) append("\n").append(RecompositionRecording.SESSION_ENDED)
+        append("\n").append(RecompositionRecording.trackingWords(recorded.tracking))
     }.trimEnd()
-
-    private fun trackingWords(tracking: FlutterRebuildRecorder.Tracking): String = when (tracking) {
-        FlutterRebuildRecorder.Tracking.SWITCHED_ON_AND_OFF ->
-            "Rebuild tracking: Spock switched it on for the recording and off again."
-        FlutterRebuildRecorder.Tracking.ALREADY_ON ->
-            "Rebuild tracking: it was on already (the IDE's rebuild counts or DevTools), so Spock left it on."
-        FlutterRebuildRecorder.Tracking.LEFT_ON ->
-            "Rebuild tracking: Spock switched it on and could not switch it off again (the connection to the " +
-                "app was lost, the app was paused in the debugger, or it did not answer); it stays on until the " +
-                "app restarts or the IDE's rebuild counts switch it off."
-        FlutterRebuildRecorder.Tracking.ISOLATE_GONE ->
-            "Rebuild tracking: the app restarted during the recording, and the tracking Spock switched on " +
-                "went with the old isolate; counts stop at the restart."
-        FlutterRebuildRecorder.Tracking.CHANGED_BY_OTHERS ->
-            "Rebuild tracking: something else (the IDE's rebuild counts or DevTools) switched it during the " +
-                "recording, so Spock left it as that set it; counts may cover only part of the recording."
-        FlutterRebuildRecorder.Tracking.UNCONFIRMED ->
-            "Rebuild tracking: the app did not answer Spock's switch to turn it on, nor say afterwards whether " +
-                "it was on, so Spock cannot tell whether it changed the flag and left it as it is; it may stay " +
-                "on until the app restarts."
-    }
 
     private companion object {
         /**
@@ -233,17 +207,14 @@ class GetRecompositionCountsTool(
          */
         fun projectRebuilds(request: FlutterRebuildRequest): FlutterRebuildRecorder.Result? {
             val project = request.context.project ?: return null
-            val device = request.device
-            val build = FlutterBuildCache.shared.detectOn(device.device, device.serialNumber, request.packageName)
-                ?: return null
-            return FlutterFollowerService.getInstance(project).recordRebuilds(device, request.packageName, build) {
-                it.record(request.windowMs, request.cancelled, request.limit)
-            }
+            return FlutterFollowerService.getInstance(project).recordRebuildsIfFlutter(
+                request.device,
+                request.packageName,
+                request.windowMs,
+                request.cancelled,
+                request.limit,
+            )
         }
-
-        const val UNSEEDED = "Spock could not read the inspector's widget locations, so widgets the app " +
-            "described before the recording appear by number."
-        const val SESSION_ENDED = "The Flutter session ended during the recording, so it stopped early."
 
         const val DEFAULT_SECONDS = 5
         const val MAX_SECONDS = 30

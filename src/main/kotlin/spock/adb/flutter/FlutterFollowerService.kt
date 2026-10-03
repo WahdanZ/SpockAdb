@@ -9,6 +9,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import spock.adb.AppSettingService
+import spock.adb.CancellationSignal
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.diagnostics.DiagnosticShell
@@ -133,6 +134,22 @@ class FlutterFollowerService(private val project: Project) : Disposable {
                 ),
             )
         return record(FlutterRebuildRecorder(connected.session))
+    }
+
+    /**
+     * [recordRebuilds] for [applicationId] when its APK ships the Flutter engine, recording for
+     * [windowMs] or until [cancelled]; null for any other app, which the caller records as Compose.
+     * Blocking for the window: from a pooled thread.
+     */
+    fun recordRebuildsIfFlutter(
+        device: ConnectedDevice,
+        applicationId: String,
+        windowMs: Long,
+        cancelled: CancellationSignal,
+        limit: Int,
+    ): FlutterRebuildRecorder.Result? {
+        val build = FlutterBuildCache.shared.detectOn(device.device, device.serialNumber, applicationId) ?: return null
+        return recordRebuilds(device, applicationId, build) { it.record(windowMs, cancelled, limit) }
     }
 
     private fun live(device: ConnectedDevice, connected: FlutterAttachOutcome.Connected): FlutterDiagnosticSource.Live {
