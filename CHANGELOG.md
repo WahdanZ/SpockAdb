@@ -4,6 +4,21 @@
 
 ### Added
 
+- **Flutter P5b completes runtime diagnosis without adding parallel tools.** The new read-only
+  `flutter_app_status` reports automatic-attach state, verified process identity, connection/build
+  kind, UI isolate, runtime versions when available, HTTP-recording state and clock quality without
+  exposing a VM Service address or token. Diagnose now falls back to Flutter's logcat framework
+  errors when structured errors are off, and a nearby Flutter error plus native crash or platform-
+  channel failure is one cross-layer likely problem with both layers kept as evidence.
+- **Recomposition recording now understands Flutter too.** The existing
+  `android_get_recomposition_counts` tool and UI Inspector action use `Flutter.RebuiltWidgets`
+  for Flutter debug apps with a live DDS session, seed source locations from `widgetLocationIdMap`,
+  and restore `trackRebuildDirtyWidgets` only when Spock turned the shared flag on. Compose keeps
+  its existing Perfetto path.
+
+
+### Added
+
 - **Flutter: Spock connects to your app by itself, and Diagnose and the Timeline read it.** Until now
   Flutter's own errors — a layout overflow, an exception in `build()` or a tap handler — never
   reached Spock in a debug build: Flutter sends them to the Dart VM Service, not logcat, so Diagnose
