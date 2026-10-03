@@ -1,40 +1,26 @@
 package spock.adb.diagnostics
 
-import com.android.ddmlib.IDevice
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
-import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.diagnostics.LikelyProblem.Severity
-import spock.adb.flutter.AppIdentity
-import spock.adb.flutter.DeviceTime
 import spock.adb.flutter.FlutterAttachOutcome
 import spock.adb.flutter.FlutterBuild
-import spock.adb.flutter.FlutterEventLog
 import spock.adb.flutter.FlutterSession
 import spock.adb.flutter.FlutterSessionService
-import spock.adb.flutter.FlutterSessionSnapshot
 import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.IdentifiedCandidate
 import spock.adb.flutter.IdentityCheck
-import spock.adb.flutter.SessionState
 import spock.adb.flutter.analysis.FlutterExtensionEvent
 import spock.adb.flutter.analysis.FlutterFixtures
 import spock.adb.flutter.analysis.FlutterProblemTypes
-import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceClosedException
-import java.time.Instant
-import java.time.ZoneOffset
 
-class FlutterSectionTest {
-
-    private val identity = AppIdentity(SERIAL, APP, 4242, IdentityCheck.DTD_PID_START)
-    private val berlin = ZoneOffset.ofHours(2)
-    private val clock = DeviceTime(epochOffsetMs = 0, uncertaintyMs = 50, zone = berlin)
+class FlutterSectionTest : FlutterSectionFixture() {
 
     @Test
     fun `every attach outcome is said in words, never as no errors`() {
@@ -367,134 +353,6 @@ class FlutterSectionTest {
         assertTrue(json["note"].asString.contains("not representative"))
     }
 
-    // ---------------------------------------------------------------- helpers
-
-    private fun report(source: FlutterDiagnosticSource): JsonObject = collect(source)
-
-    private fun collect(source: FlutterDiagnosticSource, vararg logProblems: LikelyProblem): JsonObject =
-        DiagnosticCollector().collect(listOf(logs(*logProblems), FlutterSection), probe(source))
-
-    private fun probe(source: FlutterDiagnosticSource?) =
-        AndroidProbe(mockk<IDevice>(relaxed = true), SERIAL, APP, flutter = source)
-
-    private fun source(outcome: FlutterAttachOutcome?, note: String? = null) =
-        FlutterDiagnosticSource(APP, FlutterBuild.DEBUG, outcome, note, hostNowMs = AT)
-
-    private fun live(
-        errors: List<FlutterExtensionEvent> = emptyList(),
-        frames: List<FlutterExtensionEvent> = emptyList(),
-        snapshot: FlutterSessionSnapshot = snapshot(),
-        deviceTime: DeviceTime? = clock,
-        httpProfile: () -> JsonObject? = { JsonObject() },
-        buildMode: FlutterBuild = FlutterBuild.DEBUG,
-        flutterLog: () -> String? = { "" },
-    ): FlutterDiagnosticSource {
-        val reads = object : FlutterDiagnosticSource.Reads {
-            override fun refreshRate(): Double? = 60.0
-            override fun httpProfile(): JsonObject? = httpProfile()
-            override fun flutterLog(): String? = flutterLog()
-        }
-        val contents = FlutterEventLog.Contents(errors, frames, emptyList(), emptyMap())
-        return FlutterDiagnosticSource(
-            APP,
-            buildMode,
-            FlutterAttachOutcome.Connected(FlutterSession(), identity, reused = true),
-            live = FlutterDiagnosticSource.Live(identity, snapshot, buildMode, contents, deviceTime, reads),
-            hostNowMs = AT,
-        )
-    }
-
-    private fun snapshot(
-        structuredErrors: Boolean? = true,
-        recording: HttpRecording? = HttpRecording.EnabledBySpock,
-    ) = FlutterSessionSnapshot(
-        state = SessionState.Connected("isolates/1"),
-        structuredErrorsEnabled = structuredErrors,
-        connectionKind = ConnectionKind.DDS,
-        connectedAtHostMs = AT - 60_000,
-        vmPid = 4242,
-        httpRecording = recording,
-    )
-
-    private fun error(
-        timestampMs: Long,
-        headline: String = "A RenderFlex overflowed by 219 pixels on the right.",
-        history: Boolean = false,
-        widget: String? = null,
-    ): FlutterExtensionEvent {
-        val properties = JsonArray().apply {
-            add(
-                JsonObject().apply {
-                    addProperty("type", "ErrorSummary")
-                    addProperty("description", headline)
-                },
-            )
-            widget?.let { location ->
-                add(
-                    JsonObject().apply {
-                        addProperty("name", "The relevant error-causing widget was")
-                        add(
-                            "children",
-                            JsonArray().apply {
-                                add(JsonObject().apply { addProperty("description", "Row Row:file:///app/$location") })
-                            },
-                        )
-                    },
-                )
-            }
-        }
-        val data = JsonObject().apply {
-            addProperty("description", "Exception caught by rendering library")
-            add("properties", properties)
-        }
-        return FlutterExtensionEvent(FlutterExtensionEvent.ERROR, timestampMs, "isolates/1", data, history)
-    }
-
-    private fun logProblem(summary: String, stamp: String) = LikelyProblem(
-        LogProblemExtractor.TYPE_EXCEPTION,
-        Severity.WARNING,
-        summary,
-        lastSeen = stamp,
-        section = LogsSection.id,
-    )
-
-    private fun logs(vararg problems: LikelyProblem) = section(LogsSection.id, problems = problems.toList())
-
-    private fun section(
-        sectionId: String,
-        problems: List<LikelyProblem> = emptyList(),
-        data: () -> JsonObject = { JsonObject() },
-    ) = object : DiagnosticSection<AndroidProbe> {
-        override val id = sectionId
-        override val detail: DetailRef? = null
-        override fun collect(probe: AndroidProbe) = SectionReport(data(), problems)
-    }
-
-    private fun flutterOf(report: JsonObject): JsonObject = report.getAsJsonObject(FlutterSection.id)
-
-    private fun notesOf(flutter: JsonObject): List<String> =
-        flutter.getAsJsonArray("notes")?.map { it.asString }.orEmpty()
-
-    private fun groupOf(report: JsonObject): JsonObject =
-        flutterOf(report).getAsJsonObject("errors").getAsJsonArray("groups").single().asJsonObject
-
-    private fun idOf(report: JsonObject, summaryStart: String): String =
-        report.getAsJsonArray("likelyProblems").map { it.asJsonObject }
-            .single { it["summary"].asString.contains(summaryStart) }["id"].asString
-
-    private companion object {
-        const val SERIAL = "emulator-5554"
-        const val APP = "spock.adb.spock_flutter_sample"
-
-        /** 14:00:00 in Berlin: the error's device epoch ms. */
-        val AT: Long = Instant.parse("2026-10-02T12:00:00Z").toEpochMilli()
-
-        /** What pid 4242 printed with structured errors off: one report in full, three repeats. */
-        val LOGCAT: String =
-            requireNotNull(FlutterSectionTest::class.java.getResource("/flutter/logcat-structured-errors-off.txt"))
-                .readText()
-    }
-
     @Test
     fun `a log problem pairs on any of its lines, not only its last`() {
         val repeated = logProblem("exception: repeated", "10-02 14:00:30.000")
@@ -562,114 +420,4 @@ class FlutterSectionTest {
         assertEquals(anr.summary, problemById(report, "p1")["summary"].asString)
         assertEquals(listOf("p1"), groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString })
     }
-
-    @Test
-    fun `a Dart error and a native crash a second apart are one problem naming both layers`() {
-        val crash = crashAt("14:00:01.000")
-        val report = collect(live(errors = listOf(error(AT))), crash)
-
-        val listed = report.getAsJsonArray("likelyProblems").map { it.asJsonObject }
-        val combined = listed.single { it["type"].asString == FlutterProblemTypes.CROSS_LAYER }
-        val summary = combined["summary"].asString
-        assertTrue(summary.startsWith("In Dart and on Android, 1.0 s apart"), summary)
-        assertTrue("Dart: Exception caught by rendering library: A RenderFlex overflowed" in summary, summary)
-        assertTrue("Android: App crashed: java.lang.IllegalStateException: boom" in summary, summary)
-        assertTrue(summary.length <= DiagnosticShell.MAX_VALUE_CHARS, "${summary.length}")
-        assertEquals("error", combined["severity"].asString)
-        assertEquals(FlutterSection.id, combined["section"].asString)
-        // One problem, not two: neither layer is listed on its own.
-        assertEquals(1, listed.size, "$listed")
-        val parts = combined.getAsJsonArray("parts").map { it.asJsonObject }
-        assertEquals(
-            listOf(FlutterProblemTypes.FLUTTER_ERROR, LogProblemExtractor.TYPE_CRASH),
-            parts.map { it["type"].asString },
-        )
-        assertEquals(listOf(FlutterSection.id, LogsSection.id), parts.map { it["section"].asString })
-        assertTrue(parts.none { it.has("id") }, "parts are not listed apart")
-        val group = groupOf(report)
-        assertEquals(combined["id"].asString, group["problem"].asString)
-        assertEquals(crash.summary, group["crossLayer"].asString)
-    }
-
-    @Test
-    fun `a native crash five seconds away stays a problem of its own`() {
-        val crash = crashAt("14:00:05.000")
-        val report = collect(live(errors = listOf(error(AT))), crash)
-
-        val types = report.getAsJsonArray("likelyProblems").map { it.asJsonObject["type"].asString }
-        assertEquals(listOf(LogProblemExtractor.TYPE_CRASH, FlutterProblemTypes.FLUTTER_ERROR), types)
-        assertFalse(groupOf(report).has("crossLayer"))
-    }
-
-    @Test
-    fun `a MissingPluginException or DartMessenger channel failure beside a Dart error is one problem`() {
-        val missing = nativeProblem(
-            LogProblemExtractor.TYPE_FLUTTER_PLUGIN,
-            "Platform channel handler for throwChecked on spock.sample/native threw java.io.IOException: " +
-                "Sample checked exception (inferred from DartMessenger's log)",
-            "13:59:59.700",
-        )
-        val messenger = nativeProblem(
-            LogProblemExtractor.TYPE_EXCEPTION,
-            "DartMessenger: Uncaught exception in binary message listener — java.io.IOException: other",
-            "14:00:00.200",
-        )
-
-        fun crossLayerOf(native: LikelyProblem) = collect(live(errors = listOf(error(AT))), native)
-            .getAsJsonArray("likelyProblems").map { it.asJsonObject }
-            .single { it["type"].asString == FlutterProblemTypes.CROSS_LAYER }
-
-        assertTrue(crossLayerOf(missing)["summary"].asString.contains("0.3 s apart"))
-        assertTrue(crossLayerOf(messenger)["summary"].asString.contains("Android: DartMessenger: Uncaught exception"))
-    }
-
-    @Test
-    fun `a plain log warning beside a Dart error is context, not a cross-layer problem`() {
-        val near = logProblem("exception: near", "10-02 14:00:01.000")
-        val report = collect(live(errors = listOf(error(AT))), near)
-
-        val types = report.getAsJsonArray("likelyProblems").map { it.asJsonObject["type"].asString }
-        assertFalse(FlutterProblemTypes.CROSS_LAYER in types, "$types")
-    }
-
-    @Test
-    fun `the closest native failure joins the error, and the other stays nearby context`() {
-        val closer = nativeProblem(LogProblemExtractor.TYPE_CRASH, "App crashed: closer", "14:00:00.300")
-        val farther =
-            nativeProblem(LogProblemExtractor.TYPE_FLUTTER_PLUGIN, "Flutter plugin not registered: x", "14:00:01.500")
-        val report = collect(live(errors = listOf(error(AT))), farther, closer)
-
-        val listed = report.getAsJsonArray("likelyProblems").map { it.asJsonObject }
-        val combined = listed.single { it["type"].asString == FlutterProblemTypes.CROSS_LAYER }
-        assertTrue(combined["summary"].asString.contains("Android: App crashed: closer"), "$combined")
-        val group = groupOf(report)
-        val nearby = group.getAsJsonArray("nearbyLogs").map { it.asString }
-        assertEquals(listOf(idOf(report, "Flutter plugin not registered: x")), nearby)
-    }
-
-    @Test
-    fun `without a measured clock nothing is merged`() {
-        val crash = nativeProblem(LogProblemExtractor.TYPE_CRASH, "App crashed: boom", "14:00:01.000")
-        val report = DiagnosticCollector().collect(
-            listOf(logs(crash), FlutterSection),
-            probe(live(errors = listOf(error(AT)), deviceTime = null)),
-        )
-
-        val types = report.getAsJsonArray("likelyProblems").map { it.asJsonObject["type"].asString }
-        assertFalse(FlutterProblemTypes.CROSS_LAYER in types, "$types")
-    }
-
-    private fun crashAt(time: String) =
-        nativeProblem(LogProblemExtractor.TYPE_CRASH, "App crashed: java.lang.IllegalStateException: boom", time)
-
-    private fun nativeProblem(type: String, summary: String, time: String) = LikelyProblem(
-        type,
-        Severity.ERROR,
-        summary,
-        lastSeen = "10-02 $time",
-        section = LogsSection.id,
-    )
-
-    private fun problemById(report: JsonObject, id: String): JsonObject =
-        report.getAsJsonArray("likelyProblems").map { it.asJsonObject }.single { it["id"].asString == id }
 }

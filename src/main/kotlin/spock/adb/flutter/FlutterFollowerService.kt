@@ -13,7 +13,6 @@ import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.diagnostics.DiagnosticShell
 import spock.adb.diagnostics.FlutterDiagnosticSource
-import spock.adb.diagnostics.FlutterSection
 import spock.adb.diagnostics.FlutterWords
 import spock.adb.flutter.analysis.FlutterLogcatErrors
 import spock.adb.flutter.vmservice.Redaction
@@ -151,7 +150,8 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
                 override fun httpProfile(): JsonObject = SessionReads.httpProfile(session, null, READ_BUDGET_MS)
 
-                override fun flutterLog(): String? = adbOrNull { DiagnosticShell.run(device.device, FLUTTER_LOG) }
+                override fun flutterLog(lines: Int): String? =
+                    adbOrNull { DiagnosticShell.run(device.device, flutterLogCommand(lines)) }
             },
         )
     }
@@ -170,9 +170,8 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
         private const val ADB_SECONDS = 5L
 
-        /** What Flutter printed, for framework errors while structured errors are off. */
-        private const val FLUTTER_LOG =
-            "logcat -d -v threadtime -t ${FlutterSection.LOGCAT_WINDOW_LINES} ${FlutterLogcatErrors.FILTER}"
+        /** What Flutter printed in the last [lines] of logcat, for framework errors while structured errors are off. */
+        private fun flutterLogCommand(lines: Int) = "logcat -d -v threadtime -t $lines ${FlutterLogcatErrors.FILTER}"
 
         /** `pidof` as the follower needs it; null when adb fails. */
         private fun pidsOrNull(device: ConnectedDevice, applicationId: String): Set<Long>? = adbOrNull {
