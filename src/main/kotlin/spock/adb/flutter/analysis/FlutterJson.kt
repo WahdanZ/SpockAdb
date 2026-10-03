@@ -68,6 +68,12 @@ object FlutterProblemTypes {
 
     /** A missing plugin, or a platform channel handler that threw (read from logcat). */
     const val FLUTTER_PLUGIN = LogProblemExtractor.TYPE_FLUTTER_PLUGIN
+
+    /**
+     * A Flutter error and a native crash or channel failure within the pairing window: one fault
+     * seen in both layers, listed as one problem whose parts are each layer's own.
+     */
+    const val CROSS_LAYER = "flutterCrossLayer"
 }
 
 /**

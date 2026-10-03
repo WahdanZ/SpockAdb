@@ -86,6 +86,8 @@ class ToolSafetyTest {
                 "android_get_device_conditions",
                 "android_get_debug_timeline",
                 "android_list_recipes",
+                // Attaches as Diagnose does (which may switch on HTTP recording), and reads the session's state.
+                "flutter_app_status",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )

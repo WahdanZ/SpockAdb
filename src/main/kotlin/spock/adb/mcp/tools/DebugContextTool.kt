@@ -1,7 +1,6 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
-import spock.adb.context.SpockSelection
 import spock.adb.diagnostics.AndroidProbe
 import spock.adb.diagnostics.DiagnosticCollector
 import spock.adb.diagnostics.DiagnosticSection
@@ -153,9 +152,7 @@ class DebugContextTool : AdbTool {
      */
     private fun summaryPackage(arguments: JsonObject, context: ToolContext): String? {
         if (arguments.has("packageName")) return with(LogcatReader) { arguments.logcatPackage(context) }
-        // Not created here: a selection nobody has made has nothing to say.
-        val selected = context.project?.getServiceIfCreated(SpockSelection::class.java)?.snapshot?.app
-        return selected?.takeIf { it.isNotBlank() } ?: context.projectApplicationId()
+        return context.selectedApp() ?: context.projectApplicationId()
     }
 
     /**

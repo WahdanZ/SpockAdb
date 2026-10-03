@@ -40,7 +40,12 @@ interface DiagnosticSection<in P : DiagnosticProbe> {
 /**
  * What a section hands back: bounded data, and the problems it noticed.
  *
- * [companions] runs before ranking, with every problem of every section: for each of this
+ * [merges] runs first, with every problem of every section: problems this section knows to be one
+ * fault seen in several places — a Dart error and the native crash beside it — each returned as one
+ * problem whose [LikelyProblem.parts] are the problems it replaces. The ranking lists it in their
+ * place; a merge whose parts are not all there any more (another section merged one) is dropped.
+ *
+ * [companions] runs before ranking, after [merges], with every problem of every section: for each of this
  * section's problems, the others' that belong with it — the log lines around a Flutter error. The
  * ranking lists each right after its problem, so it makes the list whenever its problem does,
  * however low it would rank alone; one that already ranks higher stays where it is.
@@ -54,6 +59,7 @@ data class SectionReport(
     val problems: List<LikelyProblem> = emptyList(),
     val afterRanking: ((RankedProblems) -> Unit)? = null,
     val companions: ((List<LikelyProblem>) -> Map<LikelyProblem, List<LikelyProblem>>)? = null,
+    val merges: ((List<LikelyProblem>) -> List<LikelyProblem>)? = null,
 )
 
 /**
@@ -131,6 +137,11 @@ data class LikelyProblem(
      * it with what happened around any of them. Not in the report: [lastSeen] is.
      */
     val seenAt: List<String> = listOfNotNull(lastSeen),
+    /**
+     * The problems, from other sections, that this one stands for — a Dart error and the native
+     * failure beside it, listed as one ([SectionReport.merges]). Empty for a problem of its own.
+     */
+    val parts: List<LikelyProblem> = emptyList(),
 ) {
     enum class Severity(val id: String, val rank: Int) {
         ERROR("error", 0),

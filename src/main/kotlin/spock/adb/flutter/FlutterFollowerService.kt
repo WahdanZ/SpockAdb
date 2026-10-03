@@ -9,10 +9,16 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import spock.adb.AppSettingService
+import spock.adb.CancellationSignal
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
+import spock.adb.diagnostics.DiagnosticShell
 import spock.adb.diagnostics.FlutterDiagnosticSource
+import spock.adb.diagnostics.FlutterWords
+import spock.adb.flutter.analysis.FlutterLogcatErrors
+import spock.adb.flutter.vmservice.Redaction
 import spock.adb.flutter.vmservice.VmServiceException
+import spock.adb.flutter.vmservice.string
 import spock.adb.pidsOf
 import spock.adb.timeline.DebugTimelineService
 import java.io.IOException
@@ -76,11 +82,77 @@ class FlutterFollowerService(private val project: Project) : Disposable {
             applicationId = app,
             build = build,
             outcome = outcome,
-            live = connected?.let { live(it) },
+            live = connected?.let { live(device, it) },
         )
     }
 
-    private fun live(connected: FlutterAttachOutcome.Connected): FlutterDiagnosticSource.Live {
+    /**
+     * What `flutter_app_status` reports for [applicationId], a [build] of a Flutter app on
+     * [device]: attaches when there is no session yet, within [ATTACH_BUDGET_MS], as Diagnose
+     * does. Never waits for the session's clock: a session just opened says it is measuring.
+     * Blocking: from a pooled thread.
+     */
+    fun status(device: ConnectedDevice, applicationId: String, build: FlutterBuild): FlutterAppStatus {
+        val outcome = follower.attachNow(device, applicationId, build, ATTACH_BUDGET_MS)
+        val live = (outcome as? FlutterAttachOutcome.Connected)?.let { connected ->
+            val session = connected.session
+            FlutterAppStatus.Live(
+                identity = connected.identity,
+                snapshot = session.snapshot,
+                buildMode = session.buildMode,
+                dartVersion = FlutterAppStatus.dartVersion(session.vm?.string("version")),
+                deviceTime = session.deviceTime.current,
+                clockDone = session.deviceTime.done,
+            )
+        }
+        return FlutterAppStatus(applicationId, device.serialNumber, build, outcome, live = live)
+    }
+
+    /**
+     * A rebuild recording window on [applicationId]'s session, for an explicit request
+     * (`android_get_recomposition_counts`, the Inspector's Recompositions tab) — never for
+     * Diagnose: it writes to the app. Attaches within [ATTACH_BUDGET_MS] when there is no session
+     * yet; without one, [FlutterRebuildRecorder.Result.NoSession] says why, and the caller may
+     * record Compose instead (an add-to-app host). [record] runs the window on the session's
+     * recorder. Blocking for the window: from a pooled thread.
+     */
+    fun recordRebuilds(
+        device: ConnectedDevice,
+        applicationId: String,
+        build: FlutterBuild,
+        record: (FlutterRebuildRecorder) -> FlutterRebuildRecorder.Result,
+    ): FlutterRebuildRecorder.Result {
+        val outcome = follower.attachNow(device, applicationId, build, ATTACH_BUDGET_MS)
+        val connected = outcome as? FlutterAttachOutcome.Connected
+            ?: return FlutterRebuildRecorder.Result.NoSession(
+                Redaction.scrub(
+                    "$applicationId ships the Flutter engine; recording its widget rebuilds needs a live debug " +
+                        "session, and " +
+                        FlutterWords.attach(FlutterDiagnosticSource(applicationId, build, outcome)).replaceFirstChar {
+                            it.lowercase()
+                        },
+                ),
+            )
+        return record(FlutterRebuildRecorder(connected.session))
+    }
+
+    /**
+     * [recordRebuilds] for [applicationId] when its APK ships the Flutter engine, recording for
+     * [windowMs] or until [cancelled]; null for any other app, which the caller records as Compose.
+     * Blocking for the window: from a pooled thread.
+     */
+    fun recordRebuildsIfFlutter(
+        device: ConnectedDevice,
+        applicationId: String,
+        windowMs: Long,
+        cancelled: CancellationSignal,
+        limit: Int,
+    ): FlutterRebuildRecorder.Result? {
+        val build = FlutterBuildCache.shared.detectOn(device.device, device.serialNumber, applicationId) ?: return null
+        return recordRebuilds(device, applicationId, build) { it.record(windowMs, cancelled, limit) }
+    }
+
+    private fun live(device: ConnectedDevice, connected: FlutterAttachOutcome.Connected): FlutterDiagnosticSource.Live {
         val session = connected.session
         return FlutterDiagnosticSource.Live(
             identity = connected.identity,
@@ -94,6 +166,9 @@ class FlutterFollowerService(private val project: Project) : Disposable {
                 override fun refreshRate(): Double? = readRefreshRate(session)
 
                 override fun httpProfile(): JsonObject = SessionReads.httpProfile(session, null, READ_BUDGET_MS)
+
+                override fun flutterLog(lines: Int): String? =
+                    adbOrNull { DiagnosticShell.run(device.device, flutterLogCommand(lines)) }
             },
         )
     }
@@ -112,9 +187,17 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
         private const val ADB_SECONDS = 5L
 
+        /** What Flutter printed in the last [lines] of logcat, for framework errors while structured errors are off. */
+        private fun flutterLogCommand(lines: Int) = "logcat -d -v threadtime -t $lines ${FlutterLogcatErrors.FILTER}"
+
         /** `pidof` as the follower needs it; null when adb fails. */
-        private fun pidsOrNull(device: ConnectedDevice, applicationId: String): Set<Long>? = try {
+        private fun pidsOrNull(device: ConnectedDevice, applicationId: String): Set<Long>? = adbOrNull {
             device.device.pidsOf(applicationId, ADB_SECONDS).mapNotNull(String::toLongOrNull).toSet()
+        }
+
+        /** [read], or null when adb fails. */
+        private fun <T> adbOrNull(read: () -> T): T? = try {
+            read()
         } catch (_: IOException) {
             null
         } catch (_: AdbCommandRejectedException) {

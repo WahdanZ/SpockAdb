@@ -57,7 +57,7 @@ class DiagnosticCollector(
         report.addProperty("schemaVersion", SCHEMA_VERSION)
         preamble.entrySet().forEach { (key, value) -> report.add(key, value) }
         report.addProperty("packageName", probe.packageName)
-        val all = reports.values.flatMap { it.problems }
+        val all = merged(reports.values, reports.values.flatMap { it.problems })
         val listed = addProblems(report, all, companionsOf(reports.values, all))
         reports.forEach { (section, sectionReport) -> report.add(section.id, sectionReport.data) }
         if (errors.size() > 0) report.add("sectionErrors", errors)
@@ -91,6 +91,28 @@ class DiagnosticCollector(
         )
         if (ranked.size > MAX_PROBLEMS) report.addProperty("moreProblems", ranked.size - MAX_PROBLEMS)
         return listed
+    }
+
+    /**
+     * [problems], with each section's [SectionReport.merges] in place of their parts — only when
+     * every part is still there, by identity. A step that fails merges nothing.
+     */
+    private fun merged(reports: Collection<SectionReport>, problems: List<LikelyProblem>): List<LikelyProblem> {
+        var all = problems
+        reports.forEach { report ->
+            val step = report.merges ?: return@forEach
+            runCatching { step(all) }
+                .onSuccess { merges ->
+                    merges.forEach { merge ->
+                        val parts = merge.parts
+                        if (parts.isNotEmpty() && parts.all { part -> all.any { it === part } }) {
+                            all = all.filterNot { problem -> parts.any { it === problem } } + merge
+                        }
+                    }
+                }
+                .onFailure { log.warn("A section's merging of problems failed", it) }
+        }
+        return all
     }
 
     /** Every section's [SectionReport.companions], by problem identity; one that fails adds none. */
@@ -187,14 +209,16 @@ class DiagnosticCollector(
         return report
     }
 
-    private fun LikelyProblem.toJson(id: String) = JsonObject().apply {
-        addProperty("id", id)
+    private fun LikelyProblem.toJson(id: String?): JsonObject = JsonObject().apply {
+        id?.let { addProperty("id", it) }
         addProperty("type", type)
         addProperty("severity", severity.id)
         addProperty("summary", summary)
         if (count > 1) addProperty("count", count)
         lastSeen?.let { addProperty("lastSeen", it) }
         section?.let { addProperty("section", it) }
+        // Each layer's own problem, as its section reported it: not listed apart, so it has no id.
+        if (parts.isNotEmpty()) add("parts", JsonArray().apply { parts.forEach { add(it.toJson(null)) } })
     }
 
     companion object {
@@ -213,6 +237,8 @@ class DiagnosticCollector(
 
         /** Among equal severities, what explains the most goes first. */
         private val TYPE_PRIORITY = listOf(
+            // A fault seen in Dart and on the native side at once: it names the crash and its cause.
+            FlutterProblemTypes.CROSS_LAYER,
             LogProblemExtractor.TYPE_CRASH,
             LogProblemExtractor.TYPE_ANR,
             "process",

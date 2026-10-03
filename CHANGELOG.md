@@ -39,6 +39,40 @@
     *flutter* section; each `likelyProblems` entry now has an `id`, which the section's errors point
     at. VM Service addresses and their tokens, which let whoever holds them run code in the app, are
     kept out of every report, row and log line.
+- **Flutter: errors from logcat, one problem for two layers, a rebuild window, and a status tool.**
+  - **Diagnose** reads Flutter's framework errors from logcat when they are not sent to the
+    debugger: with structured errors off (`--dart-define=flutter.inspector.structuredErrors=false`,
+    a no-debug launch, an IDE toggle) and in profile builds. In a debug build the first error is
+    read in full; a profile build prints only its message and stack, and that is read too. The
+    `Another exception was thrown: …` repeats join the error they repeat, so one fault is one
+    entry, and errors printed before Spock connected say so. A profile build prints those repeats
+    without their message, so they could be any error: they are one entry of their own that says
+    so, rather than added to whichever error came before, and the report says the message shows
+    only in a debug build or through an app's own `FlutterError.onError`. The section says where
+    the errors it lists came from — the debugger, logcat, or both. Before, it only pointed at
+    logcat. When neither the debugger nor logcat has any error, it says that an app that replaced
+    `FlutterError.onError` (Crashlytics, Sentry) hides errors from both. It still never reads
+    silence as "no errors".
+  - **Diagnose** lists a Dart error and the native crash, `MissingPluginException` or failed
+    channel handler a moment beside it as **one** problem, naming both layers. Before, they were
+    two unrelated entries, and an agent had to notice the timestamps to see one fault. Each layer's
+    own problem is kept inside it. The moment is measured between single occurrences, so an error
+    that repeats over ten minutes is not tied to a crash somewhere in between.
+  - **`android_get_recomposition_counts`** and the UI Inspector's **Recompositions** tab record
+    Flutter widget rebuilds for a Flutter app run with `flutter run` in a debug build, in their
+    usual shape. Spock switches the inspector's rebuild tracking on for the window only if it was
+    off, and off again afterwards only if it switched it on and nothing else (the IDE's rebuild
+    counts, DevTools) wrote it meanwhile, so the IDE's own counts are left as they were. Switching
+    it on rebuilds the whole widget tree once; that frame is not counted, so an idle screen reads
+    0 frames. If Spock closes the session mid-recording, it switches tracking off as it
+    disconnects. A Compose app that embeds a Flutter module, with no Flutter session, is recorded
+    as Compose. Diagnose never records.
+  - **`flutter_app_status`**, a new read-only MCP tool, says whether Spock has a Flutter session on
+    the app and why not: how the attach went, how the session was found and verified, DDS or a
+    read-only direct connection, the build mode, the UI isolate, the Dart version, HTTP recording
+    and the device clock. Like Diagnose, it is about the app selected in Spock unless told
+    otherwise, and an attach it makes switches on HTTP recording as Diagnose's does. It never
+    returns a VM Service address or token.
 - **Flutter apps, first pass.** Spock now understands what a Flutter app puts on the device:
   - **App Storage** reads `FlutterSharedPreferences.xml` the way Dart does: doubles and lists
     show as a double and a new *string list* type instead of encoded strings, and edits are

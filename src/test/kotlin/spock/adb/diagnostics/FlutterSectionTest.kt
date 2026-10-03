@@ -1,40 +1,26 @@
 package spock.adb.diagnostics
 
-import com.android.ddmlib.IDevice
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
-import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.diagnostics.LikelyProblem.Severity
-import spock.adb.flutter.AppIdentity
-import spock.adb.flutter.DeviceTime
 import spock.adb.flutter.FlutterAttachOutcome
 import spock.adb.flutter.FlutterBuild
-import spock.adb.flutter.FlutterEventLog
 import spock.adb.flutter.FlutterSession
 import spock.adb.flutter.FlutterSessionService
-import spock.adb.flutter.FlutterSessionSnapshot
 import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.IdentifiedCandidate
 import spock.adb.flutter.IdentityCheck
-import spock.adb.flutter.SessionState
 import spock.adb.flutter.analysis.FlutterExtensionEvent
 import spock.adb.flutter.analysis.FlutterFixtures
 import spock.adb.flutter.analysis.FlutterProblemTypes
-import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.PastedUriDiscovery
 import spock.adb.flutter.vmservice.VmServiceClosedException
-import java.time.Instant
-import java.time.ZoneOffset
 
-class FlutterSectionTest {
-
-    private val identity = AppIdentity(SERIAL, APP, 4242, IdentityCheck.DTD_PID_START)
-    private val berlin = ZoneOffset.ofHours(2)
-    private val clock = DeviceTime(epochOffsetMs = 0, uncertaintyMs = 50, zone = berlin)
+class FlutterSectionTest : FlutterSectionFixture() {
 
     @Test
     fun `every attach outcome is said in words, never as no errors`() {
@@ -92,17 +78,111 @@ class FlutterSectionTest {
     }
 
     @Test
-    fun `structured errors off points at logs`() {
-        val notes = notesOf(flutterOf(report(live(snapshot = snapshot(structuredErrors = false)))))
+    fun `structured errors off reads framework errors from logcat, the first in full, and says so`() {
+        val report = report(live(snapshot = snapshot(structuredErrors = false), flutterLog = { LOGCAT }))
 
-        assertTrue(notes.any { "`logs`" in it }, "$notes")
+        val errors = flutterOf(report).getAsJsonObject("errors")
+        assertTrue(errors["source"].asString.startsWith("Structured errors are off"), "$errors")
+        assertEquals(4, errors["inLogcat"].asInt)
+        assertEquals(0, errors["sinceConnected"].asInt)
+        val groups = errors.getAsJsonArray("groups").map { it.asJsonObject }
+        assertEquals(listOf("logcat"), groups.map { it["source"].asString }.distinct())
+        assertTrue(
+            groups.first()["summary"].asString
+                .startsWith("Exception caught by rendering library: A RenderFlex overflowed by 219 pixels"),
+            "$groups",
+        )
+        assertEquals("10-02 14:03:07.412", groups.first()["firstSeen"].asString)
+        assertEquals(2, groups.single { "tap handler" in it["summary"].asString }["count"].asInt)
+        val top = report.getAsJsonArray("likelyProblems").first().asJsonObject
+        assertEquals(FlutterProblemTypes.FLUTTER_ERROR, top["type"].asString)
+        assertFalse(report.toString().contains("AbCdEfGh123"), "no token from the DevTools link")
     }
 
     @Test
-    fun `no error since connecting is not proof of none`() {
-        val notes = notesOf(flutterOf(report(live())))
+    fun `a profile build reads logcat too, as it has no inspector`() {
+        val profile = live(
+            snapshot = snapshot(structuredErrors = null),
+            buildMode = FlutterBuild.PROFILE,
+            flutterLog = { LOGCAT },
+        )
+        val report = report(profile)
 
-        assertTrue(notes.any { "not proof of none" in it && "FlutterError.onError" in it }, "$notes")
+        val errors = flutterOf(report).getAsJsonObject("errors")
+        assertTrue(errors["source"].asString.startsWith("A profile build has no inspector"), "$errors")
+        assertEquals(4, errors["inLogcat"].asInt)
+    }
+
+    @Test
+    fun `structured errors off with nothing in logcat is not proof of none`() {
+        val flutter = flutterOf(report(live(snapshot = snapshot(structuredErrors = false), flutterLog = { "" })))
+
+        val notes = notesOf(flutter)
+        assertTrue(notes.any { "hold none from the app" in it && "FlutterError.onError" in it }, "$notes")
+        assertFalse(flutter.toString().contains("no errors", ignoreCase = true), "$flutter")
+    }
+
+    @Test
+    fun `a debug build with structured errors on and nothing in either place never says no errors`() {
+        var logcatRead = false
+        val flutter = flutterOf(
+            report(
+                live(
+                    flutterLog = {
+                        logcatRead = true
+                        ""
+                    },
+                ),
+            ),
+        )
+
+        assertTrue(logcatRead, "silence on the VM Service is checked against logcat")
+        val notes = notesOf(flutter)
+        assertTrue(
+            notes.any {
+                "No Flutter.Error since Spock connected" in it && "no framework error in the last" in it &&
+                    "not proof of none" in it && "FlutterError.onError" in it && "Crashlytics" in it
+            },
+            "$notes",
+        )
+        assertFalse(flutter.toString().contains("no errors", ignoreCase = true), "$flutter")
+    }
+
+    @Test
+    fun `an unreadable logcat is said, and still not proof of none`() {
+        val notes = notesOf(flutterOf(report(live(flutterLog = { null }))))
+
+        assertTrue(notes.any { "logcat could not be read" in it && "not proof of none" in it }, "$notes")
+    }
+
+    @Test
+    fun `with structured errors on and a Flutter Error, logcat is not read`() {
+        var logcatRead = false
+        val flutter = flutterOf(
+            report(
+                live(
+                    errors = listOf(error(AT)),
+                    flutterLog = {
+                        logcatRead = true
+                        LOGCAT
+                    },
+                ),
+            ),
+        )
+
+        assertFalse(logcatRead)
+        val errors = flutter.getAsJsonObject("errors")
+        assertTrue(errors["source"].asString.startsWith("Flutter.Error events"), "$errors")
+        assertFalse(errors.has("inLogcat"))
+    }
+
+    @Test
+    fun `structured errors on, no Flutter Error, but framework errors in logcat are listed`() {
+        val flutter = flutterOf(report(live(flutterLog = { LOGCAT })))
+
+        val errors = flutter.getAsJsonObject("errors")
+        assertEquals(4, errors["inLogcat"].asInt)
+        assertTrue(notesOf(flutter).any { "but logcat holds framework errors" in it }, "${notesOf(flutter)}")
     }
 
     @Test
@@ -273,126 +353,6 @@ class FlutterSectionTest {
         assertTrue(json["note"].asString.contains("not representative"))
     }
 
-    // ---------------------------------------------------------------- helpers
-
-    private fun report(source: FlutterDiagnosticSource): JsonObject = collect(source)
-
-    private fun collect(source: FlutterDiagnosticSource, vararg logProblems: LikelyProblem): JsonObject =
-        DiagnosticCollector().collect(listOf(logs(*logProblems), FlutterSection), probe(source))
-
-    private fun probe(source: FlutterDiagnosticSource?) =
-        AndroidProbe(mockk<IDevice>(relaxed = true), SERIAL, APP, flutter = source)
-
-    private fun source(outcome: FlutterAttachOutcome?, note: String? = null) =
-        FlutterDiagnosticSource(APP, FlutterBuild.DEBUG, outcome, note, hostNowMs = AT)
-
-    private fun live(
-        errors: List<FlutterExtensionEvent> = emptyList(),
-        frames: List<FlutterExtensionEvent> = emptyList(),
-        snapshot: FlutterSessionSnapshot = snapshot(),
-        deviceTime: DeviceTime? = clock,
-        httpProfile: () -> JsonObject? = { JsonObject() },
-    ): FlutterDiagnosticSource {
-        val reads = object : FlutterDiagnosticSource.Reads {
-            override fun refreshRate(): Double? = 60.0
-            override fun httpProfile(): JsonObject? = httpProfile()
-        }
-        val contents = FlutterEventLog.Contents(errors, frames, emptyList(), emptyMap())
-        return FlutterDiagnosticSource(
-            APP,
-            FlutterBuild.DEBUG,
-            FlutterAttachOutcome.Connected(FlutterSession(), identity, reused = true),
-            live = FlutterDiagnosticSource.Live(identity, snapshot, FlutterBuild.DEBUG, contents, deviceTime, reads),
-            hostNowMs = AT,
-        )
-    }
-
-    private fun snapshot(
-        structuredErrors: Boolean? = true,
-        recording: HttpRecording? = HttpRecording.EnabledBySpock,
-    ) = FlutterSessionSnapshot(
-        state = SessionState.Connected("isolates/1"),
-        structuredErrorsEnabled = structuredErrors,
-        connectionKind = ConnectionKind.DDS,
-        connectedAtHostMs = AT - 60_000,
-        vmPid = 4242,
-        httpRecording = recording,
-    )
-
-    private fun error(
-        timestampMs: Long,
-        headline: String = "A RenderFlex overflowed by 219 pixels on the right.",
-        history: Boolean = false,
-        widget: String? = null,
-    ): FlutterExtensionEvent {
-        val properties = JsonArray().apply {
-            add(
-                JsonObject().apply {
-                    addProperty("type", "ErrorSummary")
-                    addProperty("description", headline)
-                },
-            )
-            widget?.let { location ->
-                add(
-                    JsonObject().apply {
-                        addProperty("name", "The relevant error-causing widget was")
-                        add(
-                            "children",
-                            JsonArray().apply {
-                                add(JsonObject().apply { addProperty("description", "Row Row:file:///app/$location") })
-                            },
-                        )
-                    },
-                )
-            }
-        }
-        val data = JsonObject().apply {
-            addProperty("description", "Exception caught by rendering library")
-            add("properties", properties)
-        }
-        return FlutterExtensionEvent(FlutterExtensionEvent.ERROR, timestampMs, "isolates/1", data, history)
-    }
-
-    private fun logProblem(summary: String, stamp: String) = LikelyProblem(
-        LogProblemExtractor.TYPE_EXCEPTION,
-        Severity.WARNING,
-        summary,
-        lastSeen = stamp,
-        section = LogsSection.id,
-    )
-
-    private fun logs(vararg problems: LikelyProblem) = section(LogsSection.id, problems = problems.toList())
-
-    private fun section(
-        sectionId: String,
-        problems: List<LikelyProblem> = emptyList(),
-        data: () -> JsonObject = { JsonObject() },
-    ) = object : DiagnosticSection<AndroidProbe> {
-        override val id = sectionId
-        override val detail: DetailRef? = null
-        override fun collect(probe: AndroidProbe) = SectionReport(data(), problems)
-    }
-
-    private fun flutterOf(report: JsonObject): JsonObject = report.getAsJsonObject(FlutterSection.id)
-
-    private fun notesOf(flutter: JsonObject): List<String> =
-        flutter.getAsJsonArray("notes")?.map { it.asString }.orEmpty()
-
-    private fun groupOf(report: JsonObject): JsonObject =
-        flutterOf(report).getAsJsonObject("errors").getAsJsonArray("groups").single().asJsonObject
-
-    private fun idOf(report: JsonObject, summaryStart: String): String =
-        report.getAsJsonArray("likelyProblems").map { it.asJsonObject }
-            .single { it["summary"].asString.contains(summaryStart) }["id"].asString
-
-    private companion object {
-        const val SERIAL = "emulator-5554"
-        const val APP = "spock.adb.spock_flutter_sample"
-
-        /** 14:00:00 in Berlin: the error's device epoch ms. */
-        val AT: Long = Instant.parse("2026-10-02T12:00:00Z").toEpochMilli()
-    }
-
     @Test
     fun `a log problem pairs on any of its lines, not only its last`() {
         val repeated = logProblem("exception: repeated", "10-02 14:00:30.000")
@@ -447,19 +407,17 @@ class FlutterSectionTest {
 
     @Test
     fun `a paired problem that already ranks higher is not moved down`() {
-        val crash = LikelyProblem(
-            LogProblemExtractor.TYPE_CRASH,
+        // An ANR: it outranks a Flutter error, and is not a native failure that would merge with it.
+        val anr = LikelyProblem(
+            LogProblemExtractor.TYPE_ANR,
             Severity.ERROR,
-            "FATAL EXCEPTION: main",
+            "App not responding: spock.adb.spock_flutter_sample",
             lastSeen = "10-02 14:00:01.000",
             section = LogsSection.id,
         )
-        val report = collect(live(errors = listOf(error(AT))), crash)
+        val report = collect(live(errors = listOf(error(AT))), anr)
 
-        assertEquals("FATAL EXCEPTION: main", problemById(report, "p1")["summary"].asString)
+        assertEquals(anr.summary, problemById(report, "p1")["summary"].asString)
         assertEquals(listOf("p1"), groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString })
     }
-
-    private fun problemById(report: JsonObject, id: String): JsonObject =
-        report.getAsJsonArray("likelyProblems").map { it.asJsonObject }.single { it["id"].asString == id }
 }

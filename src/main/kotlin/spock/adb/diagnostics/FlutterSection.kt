@@ -11,6 +11,8 @@ import spock.adb.flutter.FlutterSessionSnapshot
 import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.analysis.FlutterErrorReader
 import spock.adb.flutter.analysis.FlutterExtensionEvent
+import spock.adb.flutter.analysis.FlutterLogcatErrors
+import spock.adb.flutter.analysis.FlutterProblemTypes
 import spock.adb.flutter.analysis.FlutterTimelineMapper
 import spock.adb.flutter.analysis.FrameStats
 import spock.adb.flutter.analysis.HttpProfileReader
@@ -21,6 +23,7 @@ import spock.adb.flutter.vmservice.VmServiceException
 import java.time.ZoneOffset
 import java.util.IdentityHashMap
 import java.util.Locale
+import kotlin.math.abs
 
 /**
  * What Diagnose knows of a Flutter app, gathered by whoever builds the probe (the Diagnose tab,
@@ -60,6 +63,14 @@ class FlutterDiagnosticSource(
 
         /** `ext.dart.io.getHttpProfile`, scrubbed. May throw [VmServiceException]. */
         fun httpProfile(): JsonObject?
+
+        /**
+         * The last [lines] lines of logcat, `threadtime`, filtered to [FlutterLogcatErrors.FILTER]:
+         * where Flutter prints framework errors while structured errors are off. Null when adb
+         * would not say. The `logs` section's own read is of warnings and up, which leaves these
+         * info lines out, so this is a read of its own over the same window.
+         */
+        fun flutterLog(lines: Int): String? = null
     }
 }
 
@@ -68,8 +79,9 @@ class FlutterDiagnosticSource(
  *
  * Never says "no errors" from silence. Every attach outcome is reported in words; a live
  * session's errors are counted since Spock connected, the ones DDS replayed apart ("before Spock
- * connected"); and where errors are invisible — structured errors off, a profile build, an app that
- * replaced `FlutterError.onError` — the section says where to look instead.
+ * connected"); with structured errors off, or in a profile build, they are read from what Flutter
+ * printed to logcat instead, and the section says which; and where errors are invisible — an app
+ * that replaced `FlutterError.onError` — the section says so.
  *
  * Each error group carries `nearbyLogs`: the ids, in `likelyProblems`, of the log problems any of
  * whose lines fell within [NEARBY_WINDOW_MS] of the group — listed right after the error, however
@@ -88,7 +100,7 @@ object FlutterSection : DiagnosticSection<AndroidProbe> {
 
     override fun collect(probe: AndroidProbe): SectionReport {
         val source = probe.flutter ?: error("Not a Flutter app.")
-        return FlutterSectionReport(source).build()
+        return FlutterSectionReport(source, probe.logWindowLines).build()
     }
 
     /** Log lines this close to a Flutter error, before the clock's uncertainty, are its context. */
@@ -103,8 +115,11 @@ object FlutterSection : DiagnosticSection<AndroidProbe> {
     const val MAX_NEARBY_LOGS = 5
 }
 
-/** One report of [FlutterSection]: what it read, and its correlation step. */
-internal class FlutterSectionReport(private val source: FlutterDiagnosticSource) {
+/**
+ * One report of [FlutterSection]: what it read, and its correlation step. [logWindowLines] is how
+ * much of logcat is read for framework errors: the window the `logs` section reads.
+ */
+internal class FlutterSectionReport(private val source: FlutterDiagnosticSource, private val logWindowLines: Int) {
 
     private val data = JsonObject()
     private val notes = JsonArray()
@@ -112,8 +127,14 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
     private val live = source.live
     private val zone = live?.deviceTime?.zone ?: ZoneOffset.UTC
 
-    /** Each error group's problem → the log problems around it, closest first; from [pair]. */
+    /** Each listed problem of an error group → the log problems around it, closest first; from [pair]. */
     private val paired = IdentityHashMap<LikelyProblem, List<LikelyProblem>>()
+
+    /**
+     * An error group's own problem → the one naming it and a native failure beside it; from
+     * [merge], and only those the collector kept ([pair] drops the others).
+     */
+    private val crossLayer = IdentityHashMap<LikelyProblem, LikelyProblem>()
 
     /** Error groups as listed, with the problem each became and its JSON, for [correlate]. */
     private val groups = mutableListOf<Triple<FlutterErrorReader.Group, LikelyProblem, JsonObject>>()
@@ -125,7 +146,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
         if (live != null) readLive(live)
         source.note?.let { notes.add(Redaction.scrub(it)) }
         if (notes.size() > 0) data.add("notes", notes)
-        return SectionReport(data, problems, afterRanking = ::correlate, companions = ::pair)
+        return SectionReport(data, problems, afterRanking = ::correlate, companions = ::pair, merges = ::merge)
     }
 
     private fun readLive(live: FlutterDiagnosticSource.Live) {
@@ -160,8 +181,20 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
         time.note?.let { addProperty("note", it) }
     }
 
+    /**
+     * Framework errors from where the app sends them (design §3, plan P5b): `Flutter.Error` events
+     * while structured errors are on; logcat while they are off or the build has no inspector. With
+     * them on and no event, logcat is read too, so silence is silence in both places.
+     */
     private fun errors(live: FlutterDiagnosticSource.Live, events: List<FlutterExtensionEvent>): JsonObject {
-        val result = FlutterErrorReader.summarise(events, zone)
+        val fromEvents = FlutterErrorReader.read(events)
+        val from = ErrorSource.of(live)
+        val silent = live.snapshot.structuredErrorsEnabled == true && fromEvents.isEmpty()
+        val fromLogcat = if (from.logcat || silent) readLogcat(live) else null
+        val result = FlutterErrorReader.summariseErrors(
+            (fromEvents + fromLogcat.orEmpty()).sortedBy { it.timestampMs },
+            zone,
+        )
         val listed = JsonArray()
         result.groups.zip(result.problems).take(FlutterSection.MAX_ERROR_GROUPS).forEach { (group, problem) ->
             val json = groupJson(group, problem)
@@ -169,35 +202,120 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
             groups += Triple(group, problem, json)
         }
         problems += result.problems
-        errorNotes(live.snapshot, result.liveCount + result.historyCount)
+        errorNotes(live.snapshot, from, fromEvents.size, fromLogcat)
+        if (result.groups.any { FlutterLogcatErrors.isMessageless(it.first) }) notes.add(MESSAGELESS)
         return JsonObject().apply {
-            addProperty("sinceConnected", result.liveCount)
-            addProperty("beforeSpockConnected", result.historyCount)
-            result.errorsSinceReload?.let { addProperty("sinceReload", it) }
+            addProperty("source", sourceWords(from, fromEvents.size, fromLogcat))
+            addProperty("sinceConnected", fromEvents.count { !it.history })
+            addProperty("beforeSpockConnected", fromEvents.count { it.history })
+            fromLogcat?.let { addProperty("inLogcat", it.size) }
+            fromEvents.lastOrNull()?.errorsSinceReload?.takeIf { it >= 0 }?.let { addProperty("sinceReload", it + 1) }
             add("groups", listed)
             if (result.groups.size > listed.size()) addProperty("moreGroups", result.groups.size - listed.size())
         }
     }
 
+    /**
+     * What the app's own pid printed to logcat as framework errors; null when logcat or the pid
+     * cannot be had. With a measured clock, one printed before Spock connected is history, as one
+     * DDS replays is: logcat holds the app's past too.
+     */
+    private fun readLogcat(live: FlutterDiagnosticSource.Live): List<FlutterErrorReader.FlutterError>? {
+        val pid = live.identity.pid ?: live.snapshot.vmPid?.toLong() ?: return null
+        val log = live.reads.flutterLog(logWindowLines) ?: return null
+        // Without a measured clock the stamps are read as UTC, the zone the section then prints in.
+        val time = live.deviceTime ?: DeviceTime(epochOffsetMs = 0, uncertaintyMs = 0, zone = ZoneOffset.UTC)
+        val connectedMs = live.deviceTime?.let { measured ->
+            live.snapshot.connectedAtHostMs?.let { it + measured.epochOffsetMs - measured.uncertaintyMs }
+        }
+        return FlutterLogcatErrors.read(log, setOf(pid.toString())) { time.logcatToEpoch(it, source.hostNowMs) }
+            .map { error ->
+                if (connectedMs != null && error.timestampMs < connectedMs) error.copy(history = true) else error
+            }
+    }
+
+    /**
+     * Where the listed errors came from, as read: the VM Service, logcat — in place of it, or as
+     * the fallback when no `Flutter.Error` arrived — or both. Events listed while logcat is the
+     * source now came before structured errors went off: the listed ones are the VM Service's.
+     */
+    private fun sourceWords(from: ErrorSource, fromEvents: Int, fromLogcat: List<FlutterErrorReader.FlutterError>?) =
+        when {
+            fromEvents > 0 && !fromLogcat.isNullOrEmpty() -> BOTH_SOURCES
+            fromEvents > 0 && from.logcat ->
+                EVENTS_THEN_LOGCAT + if (fromLogcat == null) ", which could not be read" else ", where none are yet"
+            from.logcat -> from.words
+            !fromLogcat.isNullOrEmpty() -> LOGCAT_FALLBACK
+            else -> from.words
+        }
+
     private fun groupJson(group: FlutterErrorReader.Group, problem: LikelyProblem) = JsonObject().apply {
         addProperty("summary", problem.summary)
         addProperty("count", group.count)
+        addProperty("source", group.sources.joinToString(" and ") { it.id })
         if (group.historyCount > 0) addProperty("beforeSpockConnected", group.historyCount)
         addProperty("firstSeen", deviceStamp(group.firstSeenMs))
         addProperty("lastSeen", deviceStamp(group.lastSeenMs))
     }
 
-    /** Where errors are when they are not here. */
-    private fun errorNotes(snapshot: FlutterSessionSnapshot, seen: Int) {
-        val structured = snapshot.structuredErrorsEnabled
-        when {
-            structured == false -> notes.add(STRUCTURED_OFF)
-            structured == null && live?.buildMode == FlutterBuild.PROFILE -> notes.add(PROFILE_ERRORS)
-            seen == 0 -> notes.add(
-                "No Flutter.Error since Spock connected" +
-                    (snapshot.connectedAtHostMs?.let { " at ${hostStamp(it)}" }.orEmpty()) +
-                    ". That is not proof of none: $CUSTOM_HANDLER",
-            )
+    /**
+     * Where errors are when they are not here. Never "no errors": silence in every place looked
+     * names the handler that would cause it.
+     */
+    private fun errorNotes(
+        snapshot: FlutterSessionSnapshot,
+        from: ErrorSource,
+        fromEvents: Int,
+        fromLogcat: List<FlutterErrorReader.FlutterError>?,
+    ) {
+        val since = "since Spock connected" + snapshot.connectedAtHostMs?.let { " at ${hostStamp(it)}" }.orEmpty()
+        val inLogcat = "the last $logWindowLines lines of logcat"
+        val note = when {
+            from != ErrorSource.EVENTS -> when {
+                fromLogcat == null -> "${from.words}; logcat could not be read, so none are listed."
+                fromLogcat.isEmpty() -> "${from.words}, and $inLogcat hold none from the app. $NOT_PROOF"
+                else -> "${from.words}: they are listed with source `logcat`."
+            }
+            fromEvents > 0 -> null
+            snapshot.structuredErrorsEnabled != true -> "No Flutter.Error $since. $NOT_PROOF"
+            fromLogcat == null -> "No Flutter.Error $since, and logcat could not be read. $NOT_PROOF"
+            fromLogcat.isEmpty() -> "No Flutter.Error $since, and no framework error in $inLogcat either. $NOT_PROOF"
+            else ->
+                "No Flutter.Error $since, but logcat holds framework errors, listed with source `logcat`: " +
+                    "printed while structured errors were off, or by the app's own error handler."
+        }
+        note?.let(notes::add)
+    }
+
+    /**
+     * Where this report reads framework errors from, by the structured-errors state the session
+     * tracks; [logcat] when logcat is read in place of the VM Service.
+     */
+    private enum class ErrorSource(val words: String, val logcat: Boolean = false) {
+        EVENTS("Flutter.Error events from the VM Service: structured errors are on"),
+        EVENTS_UNKNOWN(
+            "Flutter.Error events from the VM Service: whether structured errors are on is not known yet, " +
+                "so errors Flutter prints to logcat instead may be missing",
+        ),
+        LOGCAT_OFF(
+            "Structured errors are off: Flutter prints framework errors to logcat (the first in full, later " +
+                "ones as \"Another exception was thrown: …\"), and this section reads them there",
+            logcat = true,
+        ),
+        LOGCAT_PROFILE(
+            "A profile build has no inspector: Flutter prints framework errors to logcat (the first as its " +
+                "message and stack, later ones as \"Another exception was thrown: …\"), and this section " +
+                "reads them there",
+            logcat = true,
+        ),
+        ;
+
+        companion object {
+            fun of(live: FlutterDiagnosticSource.Live): ErrorSource = when (live.snapshot.structuredErrorsEnabled) {
+                true -> EVENTS
+                false -> LOGCAT_OFF
+                null -> if (live.buildMode == FlutterBuild.PROFILE) LOGCAT_PROFILE else EVENTS_UNKNOWN
+            }
         }
     }
 
@@ -257,37 +375,111 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
      * per error, the closest first; the collector lists them right after the error.
      */
     private fun pair(all: List<LikelyProblem>): Map<LikelyProblem, List<LikelyProblem>> {
-        val time = live?.deviceTime ?: return emptyMap()
-        val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
-        val logs = all.filter { it.section == LogsSection.id }.mapNotNull { problem ->
-            val times = problem.seenAt.mapNotNull { time.logcatToEpoch(it, source.hostNowMs) }
-            times.takeIf { it.isNotEmpty() }?.let { problem to it }
-        }
+        // After the merges: one the collector dropped (a part merged elsewhere) names no problem.
+        crossLayer.values.removeIf { merged -> all.none { it === merged } }
+        val logs = timedLogs(all) ?: return emptyMap()
         groups.forEach { (group, problem, _) ->
-            val distance = { epochMs: Long ->
-                when {
-                    epochMs < group.firstSeenMs -> group.firstSeenMs - epochMs
-                    epochMs > group.lastSeenMs -> epochMs - group.lastSeenMs
-                    else -> 0L
-                }
-            }
             val near = logs
-                .mapNotNull { (log, epochs) -> epochs.minOf(distance).takeIf { it <= window }?.let { log to it } }
+                .mapNotNull { (log, epochs) -> distance(group, epochs)?.let { log to it } }
                 .sortedBy { it.second }
                 .take(FlutterSection.MAX_NEARBY_LOGS)
                 .map { it.first }
-            if (near.isNotEmpty()) paired[problem] = near
+            if (near.isNotEmpty()) paired[anchor(problem)] = near
         }
         return paired
     }
 
+    /**
+     * Before [pair]: a listed error group and a native failure — a crash, a missing plugin, a channel
+     * handler that failed ([nativeLayer]) — within the pairing window are one
+     * fault seen from both sides, so they become one problem naming both layers, with each layer's
+     * own problem as its parts. Measured between single occurrences, not to the group's span: an
+     * error seen at the start and the end of ten minutes is not "beside" a crash in the middle. The
+     * closest pairs first; each problem joins at most one.
+     */
+    private fun merge(all: List<LikelyProblem>): List<LikelyProblem> {
+        val natives = timedLogs(all)?.filter { (log, _) -> nativeLayer(log) } ?: return emptyList()
+        val candidates = groups.flatMap { (group, problem, _) ->
+            natives.mapNotNull { (native, epochs) -> together(group, epochs)?.let { Triple(problem, native, it) } }
+        }.sortedBy { it.third.gapMs }
+        val taken = IdentityHashMap<LikelyProblem, Unit>()
+        candidates.forEach { (dart, native, seen) ->
+            if (dart in crossLayer || native in taken) return@forEach
+            taken[native] = Unit
+            crossLayer[dart] = crossLayerProblem(dart, native, seen)
+        }
+        return crossLayer.values.toList()
+    }
+
+    /** How a Dart error group and a native failure were seen together: the closest pair, and how often. */
+    private class Together(val gapMs: Long, val count: Int)
+
+    /**
+     * The occurrences of [group] that a native failure at one of [epochs] fell beside, within the
+     * pairing window widened by the clock's uncertainty; null when none did, or without a clock.
+     */
+    private fun together(group: FlutterErrorReader.Group, epochs: List<Long>): Together? {
+        val time = live?.deviceTime ?: return null
+        val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
+        val gaps = group.occurrencesMs.map { at -> epochs.minOf { abs(it - at) } }.filter { it <= window }
+        return gaps.minOrNull()?.let { Together(it, gaps.size) }
+    }
+
+    private fun crossLayerProblem(dart: LikelyProblem, native: LikelyProblem, seen: Together): LikelyProblem {
+        val gap = String.format(Locale.ROOT, "%.1f s", seen.gapMs / MILLIS_PER_SECOND)
+        val half = (DiagnosticShell.MAX_VALUE_CHARS - CROSS_LAYER_WORDS) / 2
+        return LikelyProblem(
+            type = FlutterProblemTypes.CROSS_LAYER,
+            severity = LikelyProblem.Severity.ERROR,
+            summary = "In Dart and on Android, $gap apart — Dart: ${DiagnosticShell.clip(dart.summary, half)}; " +
+                "Android: ${DiagnosticShell.clip(native.summary, half)}",
+            // How often the Dart error was seen with the native failure beside it; each part keeps its own count.
+            count = seen.count,
+            lastSeen = dart.lastSeen,
+            section = FlutterSection.id,
+            seenAt = dart.seenAt + native.seenAt,
+            parts = listOf(dart, native),
+        )
+    }
+
+    /** The log problems in [all] with the device epoch of each of their lines; null without a clock. */
+    private fun timedLogs(all: List<LikelyProblem>): List<Pair<LikelyProblem, List<Long>>>? {
+        val time = live?.deviceTime ?: return null
+        return all.filter { it.section == LogsSection.id }.mapNotNull { problem ->
+            val times = problem.seenAt.mapNotNull { time.logcatToEpoch(it, source.hostNowMs) }
+            times.takeIf { it.isNotEmpty() }?.let { problem to it }
+        }
+    }
+
+    /**
+     * How far the closest of [epochs] is from [group]'s span, when within the pairing window
+     * widened by the clock's uncertainty; null when farther, or without a clock.
+     */
+    private fun distance(group: FlutterErrorReader.Group, epochs: List<Long>): Long? {
+        val time = live?.deviceTime ?: return null
+        val closest = epochs.minOf { epochMs ->
+            when {
+                epochMs < group.firstSeenMs -> group.firstSeenMs - epochMs
+                epochMs > group.lastSeenMs -> epochMs - group.lastSeenMs
+                else -> 0L
+            }
+        }
+        return closest.takeIf { it <= FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs }
+    }
+
+    /** The problem listed for an error group: its own, or the cross-layer one it became part of. */
+    private fun anchor(problem: LikelyProblem): LikelyProblem = crossLayer[problem] ?: problem
+
     /** Points each listed error group at its own entry and at the log problems paired with it. */
     private fun correlate(ranked: RankedProblems) {
-        groups.forEach { (_, problem, json) -> ranked.idOf(problem)?.let { json.addProperty("problem", it) } }
+        groups.forEach { (_, problem, json) ->
+            ranked.idOf(anchor(problem))?.let { json.addProperty("problem", it) }
+            crossLayer[problem]?.let { json.addProperty("crossLayer", it.parts.last().summary) }
+        }
         silentHandlerNote(ranked)
         if (live?.deviceTime == null) return
         groups.forEach { (_, problem, json) ->
-            val near = paired[problem].orEmpty()
+            val near = paired[anchor(problem)].orEmpty()
             val ids = near.mapNotNull(ranked::idOf)
             json.add("nearbyLogs", JsonArray().apply { ids.forEach(::add) })
             // Only when the error itself is below the cut: its companions follow it there.
@@ -331,6 +523,10 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
 
     private companion object {
         const val MAX_NOTE_CHARS = 400
+        const val MILLIS_PER_SECOND = 1_000.0
+
+        /** The words of a cross-layer summary around its two halves, so the whole fits the summary's bound. */
+        const val CROSS_LAYER_WORDS = 56
 
         /** dart:io is recording: there is a profile to read. */
         val RECORDING = setOf(HttpRecording.EnabledBySpock, HttpRecording.AdoptedBySpock, HttpRecording.AlreadyOn)
@@ -341,12 +537,19 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource)
         const val NOT_REPRESENTATIVE = "Not a profile build: frame times are not representative."
         const val CUSTOM_HANDLER = "an app that replaced FlutterError.onError (a crash reporter: Crashlytics, " +
             "Sentry) reports framework errors to neither the VM Service nor logcat."
-        const val STRUCTURED_OFF =
-            "Structured errors are off: Flutter framework errors are printed to logcat instead — see `logs`."
-        const val PROFILE_ERRORS =
-            "A profile build has no inspector: Flutter framework errors are printed to logcat — see `logs`."
+        const val NOT_PROOF = "That is not proof of none: $CUSTOM_HANDLER"
         const val HTTP_SCOPE = "dart:io traffic only (package:http, dio); cupertino_http, cronet_http and " +
             "native SDKs are not visible."
+        const val BOTH_SOURCES = "Both: Flutter.Error events from the VM Service while structured errors were on, " +
+            "and what Flutter printed to logcat while they were off; each group's `source` says which"
+        const val MESSAGELESS = "A profile build printed later framework errors without their message, so " +
+            "they are one group whatever each was. Their messages show only in a debug build, or with an " +
+            "app's own FlutterError.onError that logs them."
+        const val EVENTS_THEN_LOGCAT = "Flutter.Error events from the VM Service: these arrived while structured " +
+            "errors were on; they are off now (or the build has no inspector), so later ones are read from logcat"
+        const val LOGCAT_FALLBACK = "Logcat: structured errors are on, yet no Flutter.Error arrived since Spock " +
+            "connected, and Flutter printed these to logcat — while structured errors were off, or by the app's " +
+            "own error handler"
 
         /** What an error on screen reads like: the overflow banner's text, the red screen's. */
         val ERROR_ON_SCREEN = Regex("""overflowed by|RenderFlex|Exception caught by|was thrown building""")
