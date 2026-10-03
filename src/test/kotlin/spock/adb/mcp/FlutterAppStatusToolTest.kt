@@ -15,6 +15,10 @@ import spock.adb.flutter.FlutterSession
 import spock.adb.flutter.FlutterSessionSnapshot
 import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.IdentityCheck
+import spock.adb.flutter.IdentifiedCandidate
+import spock.adb.flutter.vmservice.VmServiceCandidate
+import spock.adb.flutter.vmservice.VmServiceSource
+import spock.adb.flutter.vmservice.VmServiceUri
 import spock.adb.flutter.SessionState
 import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.mcp.tools.FlutterAppStatusTool
@@ -32,6 +36,7 @@ class FlutterAppStatusToolTest {
             FlutterAttachOutcome.ReleaseBuild(SERIAL, APP) to "release build",
             FlutterAttachOutcome.NotReady("waiting for DDS", 1_000) to "not ready",
             FlutterAttachOutcome.NoDdsSession(identity, "running without a debugger session") to "without a debugger",
+            FlutterAttachOutcome.Ambiguous(listOf(candidate()), "two candidates") to "does not guess",
             FlutterAttachOutcome.NotFound("nothing named the VM") to "No Flutter session found",
             FlutterAttachOutcome.Failed("adb failed") to "Could not connect",
         )
@@ -104,6 +109,14 @@ class FlutterAppStatusToolTest {
         assertFalse(text.contains(secret), text)
         assertFalse(text.contains("127.0.0.1:12345"), text)
     }
+
+    private fun candidate() = IdentifiedCandidate(
+        object : VmServiceCandidate(VmServiceSource.DTD, ddsLikely = true) {
+            override val description: String = "candidate"
+            override fun open(): VmServiceUri = error("not opened by the status renderer")
+        },
+        identity,
+    )
 
     private companion object {
         const val SERIAL = "emulator-5554"
