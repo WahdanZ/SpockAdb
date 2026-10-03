@@ -28,10 +28,6 @@ class FlutterRebuildRecorder(
         require(TRACK_REBUILDS in isolate.extensionRpcs) {
             "This Flutter isolate does not expose rebuild tracking."
         }
-        require(LOCATION_MAP in isolate.extensionRpcs) {
-            "This Flutter isolate does not expose widget source locations."
-        }
-
         val tracker = RebuildTracker()
         val listener = object : FlutterSessionListener {
             override fun onEvent(event: FlutterEvent) {
@@ -42,8 +38,11 @@ class FlutterRebuildRecorder(
 
         var owned = false
         try {
-            val locations = session.callUiExtension(LOCATION_MAP)
-            tracker.seedLocations(locationMap(locations), isolate.id)
+            // Some Flutter versions serve this inspector read without listing it in extensionRPCs.
+            // Try the read through DDS; an unsupported SDK fails this explicit recording, not Diagnose.
+            runCatching { session.callUiExtension(LOCATION_MAP) }
+                .getOrNull()
+                ?.let { tracker.seedLocations(locationMap(it), isolate.id) }
 
             val before = ExtensionResults.bool(session.callUiExtension(TRACK_REBUILDS))
                 ?: error("Flutter did not report whether rebuild tracking is enabled.")
