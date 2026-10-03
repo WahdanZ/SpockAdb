@@ -38,6 +38,17 @@ adb shell run-as spock.adb.spock_flutter_sample am broadcast --user 0 -a com.goo
 | Flutter logcat preset, redaction | *Logs* | `print`, `debugPrint`, `developer.log` (VM Service only), a 200-line burst, a line with a token |
 | Jank and frequent rebuilds (VM Service, later phases) | *Frames and rebuilds*, *List → detail routes* | Slow frames (`frames_slow`) busy-wait 40 ms each. Rebuilds, after a second of every-frame builds: the rebuild storm (`frames_rebuild_storm`) is reported with no hint. *Looping rotation* (`frames_rotation`, a `RotationTransition`, no busy-wait) and the slow frames' spinner (an `AnimatedBuilder`) rebuild every frame by design: reported as INFO with "expected if this widget animates continuously", never as a warning. Not reported at all: *Indeterminate progress* (`frames_progress`), which animates inside Flutter's own widgets, and scrolling the 500-item list of *List → detail routes*, which builds each item as it scrolls in, for well over a second |
 
+## Structured-errors-off fixture
+
+The existing **Layout overflow** and **Errors and plugin failures** screens are also the P5b fixture
+for logcat fallback. There is no Dart API for changing
+`ext.flutter.inspector.structuredErrors`; turn structured errors off from the Flutter
+inspector/DevTools while the debug app is connected, trigger **Show overflow**, then run Diagnose.
+The `flutter.errors.source` field should say `logcat (structured errors off)`, keep the first
+framework error block in full, and group later `Another exception was thrown: …` lines. Turn the
+setting back on afterwards. The existing **Custom FlutterError.onError** switch covers the separate
+case where an app/Crashlytics/Sentry handler hides framework errors from both channels.
+
 ## End to end: selected app → session → Diagnose and Timeline (the H gate)
 
 Nothing is pasted at any step. Before each run: in Spock's tool window select the emulator and
