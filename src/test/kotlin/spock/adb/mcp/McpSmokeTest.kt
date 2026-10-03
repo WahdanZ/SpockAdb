@@ -263,6 +263,8 @@ class McpSmokeTest {
             "android_get_debug_timeline" to """{"sinceSeconds":600,"limit":20}""",
             // The built-in Debug Recipes; describes them, runs none.
             "android_list_recipes" to "{}",
+            // A non-Flutter package is still a successful status answer, not an infrastructure failure.
+            "flutter_app_status" to """{"applicationId":"com.android.settings"}""",
         )
 
         /** Search for something. Reporting "no match" is a pass; anything else is not. */
