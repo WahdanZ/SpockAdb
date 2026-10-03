@@ -214,8 +214,7 @@ object LogsSection : DiagnosticSection<AndroidProbe> {
     override val detail = DetailRef("android_get_logcat", JsonObject().apply { addProperty("minLevel", "W") })
 
     override fun collect(probe: AndroidProbe): SectionReport {
-        val log = DiagnosticShell.run(probe.device, "logcat -d -v threadtime -t ${probe.logWindowLines} *:W")
-        val result = LogProblemExtractor.extract(log, probe.packageName, probe.pids)
+        val result = probe.logProblems
         val data = JsonObject().apply {
             addProperty("windowLines", probe.logWindowLines)
             addProperty("appLines", result.appLines)
