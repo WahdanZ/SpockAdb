@@ -98,17 +98,21 @@ class AndroidProbe(
     val flutter: FlutterDiagnosticSource? = null,
     /** Test/fixture seam for a captured log window; production reads logcat when null. */
     private val logTextOverride: String? = null,
+    /** Test/fixture seam for the app pids captured with [logTextOverride]. */
+    private val pidsOverride: List<String>? = null,
 ) : DiagnosticProbe {
     /**
      * Process ids of [packageName], read once and shared: the app section reports them and the
      * log section filters by them, and two reads a moment apart could disagree.
      */
     val pids: List<String> by lazy {
-        val name = packageName ?: return@lazy emptyList()
-        DiagnosticShell.run(device, "pidof ${spock.adb.ShellQuote.quote(name)}")
-            .trim()
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
+        pidsOverride ?: run {
+            val name = packageName ?: return@lazy emptyList()
+            DiagnosticShell.run(device, "pidof ${spock.adb.ShellQuote.quote(name)}")
+                .trim()
+                .split(Regex("\\s+"))
+                .filter { it.isNotBlank() }
+        }
     }
 
     /** One bounded logcat snapshot shared by Logs and Flutter, so correlation describes one window. */
