@@ -30,7 +30,7 @@ adb shell run-as spock.adb.spock_flutter_sample am broadcast --user 0 -a com.goo
 | UI tree, `android_find_ui_element`, `android_tap_element` | *Login* | Resource-ids `login_email`, `login_password`, `login_submit`, `result`. *Remember me* and *Help* have no identifier on purpose |
 | Open Deep Link | *List → detail routes* | `spockflutter://open/item/42?ref=spock` opens *Item 42* with `ref=spock`; on a cold start Back goes to *Items*, then the hub. `spockflutter://open/nowhere` opens *No such route* |
 | Flutter errors in Diagnose / Timeline | *Layout overflow* | *Show overflow* draws the yellow-black stripe. In a debug build the error goes **only** to the VM Service (`Flutter.Error`), not logcat. *Overflow with a native warning* (`layout_overflow_logged`) does the same and logs one `W/SpockSample` line at the same moment, so Diagnose has a log problem to pair the error with |
-| Log problem detection | *Errors and plugin failures* | One failure per button. In logcat (tag `flutter`): unhandled async error, `MissingPluginException`, `PlatformException(SAMPLE_ERROR)`. *Exception in a channel handler* (Android only): Flutter catches it, logs `Failed to handle method call` (tag `MethodChannel#spock.sample/native`) and the Dart side gets `PlatformException(error, …)`; the app survives. *Checked exception in a channel handler* (`error_channel_checked`, Android only): the `IOException` gets past `MethodChannel`; `DartMessenger` logs `Uncaught exception in binary message listener` and replies empty, so the Dart side gets a `MissingPluginException` although the handler exists; the app survives. *TODO() in a channel handler* (`error_channel_todo`, Android only): `NotImplementedError` is a `java.lang.Error`, which nothing catches, so the app crashes. On iOS both answer not-implemented (`MissingPluginException`). *Native crash* kills the app on both platforms (Android: uncaught exception on the main thread; iOS: `fatalError`). VM Service only (`Flutter.Error`, while structured errors are on): tap-handler error and the red screen from `build()`. *Custom FlutterError.onError* (`error_custom_on_error`) stands in for a crash reporter: while it is on, framework errors (this screen and *Layout overflow*) post no `Flutter.Error` and reach logcat only as one `SPOCK_SAMPLE custom FlutterError.onError: …` line; switch it off to get Flutter's handler back |
+| Log problem detection | *Errors and plugin failures* | One failure per button. In logcat (tag `flutter`): unhandled async error, `MissingPluginException`, `PlatformException(SAMPLE_ERROR)`. *Exception in a channel handler* (Android only): Flutter catches it, logs `Failed to handle method call` (tag `MethodChannel#spock.sample/native`) and the Dart side gets `PlatformException(error, …)`; the app survives. *Checked exception in a channel handler* (`error_channel_checked`, Android only): the `IOException` gets past `MethodChannel`; `DartMessenger` logs `Uncaught exception in binary message listener` and replies empty, so the Dart side gets a `MissingPluginException` although the handler exists; the app survives. *Dart error from a failing channel call* (`error_cross_layer`, Android only): the checked exception above, and the app reports the `MissingPluginException` it gets back with `FlutterError.reportError`, so a `Flutter.Error` lands beside the native line (one cross-layer problem in Diagnose). *TODO() in a channel handler* (`error_channel_todo`, Android only): `NotImplementedError` is a `java.lang.Error`, which nothing catches, so the app crashes. On iOS both answer not-implemented (`MissingPluginException`). *Native crash* kills the app on both platforms (Android: uncaught exception on the main thread; iOS: `fatalError`). VM Service only (`Flutter.Error`, while structured errors are on): tap-handler error and the red screen from `build()`. *Custom FlutterError.onError* (`error_custom_on_error`) stands in for a crash reporter: while it is on, framework errors (this screen and *Layout overflow*) post no `Flutter.Error` and reach logcat only as one `SPOCK_SAMPLE custom FlutterError.onError: …` line; switch it off to get Flutter's handler back |
 | Network, HTTP proxy, Wi-Fi toggle | *Network* | 200, 500, 404 and an unknown host through `dart:io` `HttpClient`, each logged as one line. *GET 404, body never read* (`net_404_undrained`) reads the status and never the body, so the VM Service's HTTP profile never marks it finished: Spock must still report it as a failed request. The status codes come from httpbin.org, which is sometimes slow or down (502/503, or the 15 s timeout): repeat before blaming Spock |
 | Native screens above Flutter, grant / revoke | *Native permission dialogs* | Camera, location and notifications open the system dialog; status refreshes on resume |
 | Push messages | *Push messages* | Android: `PushReceiver` stands in for Firebase, stores the message as `flutter.last_push`. iOS (after notifications are allowed): a banner even in the foreground, and the `AppDelegate` notification delegate stores a summary (title, body, userInfo) as `flutter.last_push`; a push received in the background is not stored |
@@ -85,6 +85,49 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
 9. **Two copies, two emulators.** The second copy below, both running: select each in turn — the
    session row names the selected one's pid. Two emulators of one image: the session follows the
    selected emulator's serial.
+
+## P5b checks: status, errors from logcat, rebuild window, one problem for two layers
+
+Same setup as above: the emulator and the app selected in Spock, nothing pasted.
+
+1. **`flutter_app_status`.** With `flutter run` attached, call it from an agent. Expect
+   `connected: true`, `verifiedBy` `logcat-pid` (3.22) or `dtd+pid+start` (3.47.5),
+   `connectionKind: dds`, `buildMode: debug`, `uiIsolate.name: main`, the Dart version, and the
+   clock `measured`. Stop `flutter run` and start the app from the launcher: after about 10 s,
+   `attach` says the app runs without a debugger session. No answer may contain a `ws://` or
+   `http://127.0.0.1` address.
+2. **Errors with structured errors off.** The inspector's switch cannot be flipped from Dart, so
+   run the sample with it off:
+
+   ```bash
+   flutter run --dart-define=flutter.inspector.structuredErrors=false
+   ```
+
+   *Layout overflow* → *Show overflow*, then *Errors and plugin failures* → *Throw in a tap
+   handler* twice, then **Diagnose**. `flutter.errors.source` starts "Structured errors are off".
+   The overflow is listed in full (`source: "logcat"`, with its `Row at lib/fixtures/layout.dart`),
+   and the tap error as `Another exception was thrown: Bad state: …` with a count of 2.
+   `flutter.identity.structuredErrors` is `off`. DevTools' *Structured errors* toggle in a normal
+   `flutter run` does the same.
+3. **Silence is never "no errors".** In a normal `flutter run`, turn *Custom FlutterError.onError*
+   on, *Show overflow*, then Diagnose. `notes` says no `Flutter.Error` arrived and no framework error
+   is in logcat, and names a replaced `FlutterError.onError` (Crashlytics, Sentry). It also quotes
+   the overflow banner from the screen.
+4. **Rebuild window.** *Frames and rebuilds* → start the rebuild storm (`frames_rebuild_storm`), and
+   call `android_get_recomposition_counts` with `packageName: spock.adb.spock_flutter_sample`,
+   `durationSeconds: 5`. Expect `(Flutter widget rebuilds)` in the headline, the storm's widget at
+   the top with its `lib/fixtures/frames.dart` line, and "Spock switched it on for the recording and
+   off again". Then turn on the IDE's rebuild counts (Flutter Inspector → *Show widget rebuild
+   information*) and record again: "it was on already …, so Spock left it on", and the IDE's counts
+   keep running afterwards. In a `--profile` run the call is refused (debug only).
+5. **One problem for two layers** (`error_cross_layer`, Android). *Errors and plugin failures* →
+   *Dart error from a failing channel call*, then Diagnose. The handler's checked exception is
+   logged by DartMessenger, and the app reports the `MissingPluginException` Dart gets back to
+   Flutter. Expect **one** `flutterCrossLayer` problem: "In Dart and on Android, 0.0 s apart —
+   Dart: Exception caught by spock sample: MissingPluginException(…); Android: DartMessenger:
+   Uncaught exception in binary message listener …". Its `parts` hold both, and neither is listed
+   on its own. *Checked exception in a channel handler* alone gives the native problem only, with
+   no Dart error to pair.
 
 ## A second copy (two application IDs)
 

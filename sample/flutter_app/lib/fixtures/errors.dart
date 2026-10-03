@@ -92,6 +92,11 @@ class _ErrorsScreenState extends State<ErrorsScreen> {
           label: 'Checked exception in a channel handler',
           onPressed: () => nativeChannel.invokeMethod<void>('throwChecked'),
         ),
+        const IdButton(
+          id: 'error_cross_layer',
+          label: 'Dart error from a failing channel call',
+          onPressed: _reportChannelFailure,
+        ),
         IdButton(
           id: 'error_channel_todo',
           label: 'TODO() in a channel handler',
@@ -109,6 +114,25 @@ class _ErrorsScreenState extends State<ErrorsScreen> {
           onPressed: () => nativeChannel.invokeMethod<void>('crash'),
         ),
       ],
+    );
+  }
+}
+
+/// One fault seen from both layers: the native handler throws a checked exception, which
+/// DartMessenger logs, and the app reports the `MissingPluginException` Dart gets back to Flutter's
+/// error handler, as an app that surfaces channel failures would. A `Flutter.Error` (or, with
+/// structured errors off, the console text in logcat) lands milliseconds after the native line.
+Future<void> _reportChannelFailure() async {
+  try {
+    await nativeChannel.invokeMethod<void>('throwChecked');
+  } catch (error, stack) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'spock sample',
+        context: ErrorDescription('while calling the native channel'),
+      ),
     );
   }
 }
