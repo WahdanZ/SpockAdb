@@ -13,6 +13,7 @@ import spock.adb.flutter.vmservice.FakeVmService.Companion.fixture
 import spock.adb.flutter.vmservice.FakeVmService.Companion.notification
 import spock.adb.flutter.vmservice.FakeVmService.Companion.response
 import java.net.ServerSocket
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
@@ -107,14 +108,23 @@ class VmServiceClientTest {
 
     @Test
     fun `a named call can wait longer than the default`() {
-        vm.on("slowButFine") { FakeVmService.Reply.None }
-        val replier = Thread {
-            Thread.sleep(300)
-            vm.reply(vm.requestsFor("slowButFine").single().get("id").asString, result("done"))
+        val defaultMs = 100L
+        val quick = VmServiceClient.connect(VmServiceUri.parse(vm.uri), timeoutMs = defaultMs)
+        try {
+            vm.on("unanswered") { FakeVmService.Reply.None }
+            vm.on("slowButFine") { FakeVmService.Reply.None }
+            assertThrows<VmServiceTimeoutException> { quick.call("unanswered") }
+
+            val answer = CompletableFuture.supplyAsync { quick.call("slowButFine", timeoutMs = 10_000) }
+            val id = vm.awaitRequests("slowButFine").single().get("id").asString
+            // The call was waiting before its request arrived, so by now it is past the default.
+            Thread.sleep(defaultMs * 3)
+            vm.reply(id, result("done"))
+
+            assertEquals("done", answer.get(10, TimeUnit.SECONDS).get("value").asString)
+        } finally {
+            quick.close()
         }
-        replier.start()
-        val answer = client.call("slowButFine", timeoutMs = 3_000)
-        assertEquals("done", answer.get("value").asString)
     }
 
     @Test
