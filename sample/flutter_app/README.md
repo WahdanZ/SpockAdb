@@ -87,7 +87,7 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
    was lost, as a warning.
 6. **The Settings switch.** Turn *Record Flutter HTTP traffic automatically* off, restart the app: no
    "turned on" row, and Diagnose's `flutter.identity.httpRecording` says the setting is off.
-7. **No debugger session.** Start the app from the launcher (not `flutter run`). After about 10 s,
+7. **No debugger session.** Start the app from the launcher (not `flutter run`). After about 30 s,
    Diagnose's `flutter.attach` says the app is running without a debugger session; Spock never stays
    on its VM, so a `flutter attach` afterwards works. On 3.47.5 the next Diagnose finds it through
    the Dart Tooling Daemon and connects; on 3.22 the "no DDS" verdict holds for that process until
@@ -109,11 +109,12 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
    arguments. Expect `applicationId` to be the app selected in Spock, `connected: true`,
    `verifiedBy` `logcat-pid` (3.22) or `dtd+pid+start` (3.47.5), `connectionKind: dds`,
    `buildMode: debug`, `uiIsolate.name: main`, the Dart version, and the clock `measured`. Stop
-   `flutter run` and start the app from the launcher: after about 10 s, `attach` says the app runs
-   without a debugger session. No answer may contain a `ws://` or `http://127.0.0.1` address.
-   With the second copy (below) installed and selected in Spock, a call with no `packageName`
-   describes `spock.adb.spock_flutter_sample.second`, not the project's ID, and the first copy's
-   session is not closed by it.
+   `flutter run` and start the app from the launcher: after about 30 s, `attach` says the app runs
+   without a debugger session (at 15 s it still says the app is starting: the startup window is
+   15 s from the later of the process start and the VM's log line). No answer may contain a
+   `ws://` or `http://127.0.0.1` address. With the second copy (below) installed and selected in
+   Spock, a call with no `packageName` describes `spock.adb.spock_flutter_sample.second`, not the
+   project's ID, and the first copy's session is not closed by it.
 2. **Errors with structured errors off.** The inspector's switch cannot be flipped from Dart, so
    run the sample with it off:
 
@@ -127,18 +128,26 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
    and the tap error as `Another exception was thrown: Bad state: …` with a count of 2. *Hide
    overflow*, then *Show overflow* again: it stays **one** group, its count going up, not a
    second "Another exception was thrown" group. `flutter.identity.structuredErrors` is `off`.
-   DevTools' *Structured errors* toggle in a normal `flutter run` does the same; an overflow from
-   before the toggle and one after it make `errors.source` start "Both", and that group's
-   `source` reads `vmService and logcat`.
+   On 3.22, DevTools' *Structured errors* toggle (`ext.flutter.inspector.structuredErrors`) in a
+   normal `flutter run` does **not** move errors at runtime: events keep coming with it off, and
+   logcat keeps getting them with it on. Switch it off after an overflow arrived as an event, then
+   Diagnose: `errors.source` starts "Flutter.Error events from the VM Service: these arrived while
+   structured errors were on; they are off now …" and ends "where none are yet", and the group's
+   `source` is `vmService`. `errors.source` starts "Both" only when some errors arrived as events
+   and others were printed to logcat; a group read in both places has `source` `vmService and
+   logcat`.
 3. **A profile build's errors.** `flutter run --profile`, then *Throw in a tap handler* twice and
-   **Diagnose**. `flutter.errors.source` starts "A profile build has no inspector". The tap error
-   is **one** group, "Exception caught by Flutter: Bad state: Sample error thrown in a tap
-   handler", with a count of 2: the first is Flutter's message-and-stack print, the second its
-   "Another exception was thrown" repeat. (Overflow errors are debug-only and do not appear.)
+   **Diagnose**. `flutter.errors.source` starts "A profile build has no inspector". Two groups,
+   each with a count of 1: "Exception caught by Flutter: Bad state: Sample error thrown in a tap
+   handler", Flutter's message-and-stack print of the first tap; and "Another framework error; a
+   profile build prints repeats without their message", the second tap's repeat, which a profile
+   build prints as `Another exception was thrown: Instance of 'ErrorSummary'` whatever the error
+   was, so it is not added to the first. `notes` says the message shows only in a debug build or
+   through the app's own `FlutterError.onError`. A third tap raises the second group's count.
+   (Overflow errors are debug-only and do not appear.)
 4. **Silence is never "no errors".** In a normal `flutter run`, turn *Custom FlutterError.onError*
    on, *Show overflow*, then Diagnose. `notes` says no `Flutter.Error` arrived and no framework error
-   is in logcat, and names a replaced `FlutterError.onError` (Crashlytics, Sentry). It also quotes
-   the overflow banner from the screen.
+   is in logcat, and names a replaced `FlutterError.onError` (Crashlytics, Sentry).
 5. **Rebuild window.** With nothing moving on screen, call `android_get_recomposition_counts`
    with `durationSeconds: 5`: the headline says `(Flutter widget rebuilds): 0 frame(s)` — the
    whole-tree rebuild the switch forces is not counted. Then *Frames and rebuilds* → start the
@@ -166,10 +175,10 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
 6. **One problem for two layers** (`error_cross_layer`, Android). *Errors and plugin failures* →
    *Dart error from a failing channel call*, then Diagnose. The handler's checked exception is
    logged by DartMessenger, and the app reports the `MissingPluginException` Dart gets back to
-   Flutter. Expect **one** `flutterCrossLayer` problem: "In Dart and on Android, 0.0 s apart —
+   Flutter. Expect **one** `flutterCrossLayer` problem: "In Dart and on Android, 0.2 s apart —
    Dart: Exception caught by spock sample: MissingPluginException(…); Android: DartMessenger:
-   Uncaught exception in binary message listener …". Its `parts` hold both, and neither is listed
-   on its own. Press it again a minute later and Diagnose: still one problem, now with `count: 2`.
+   Uncaught exception in binary message listener …", the two about 0.2 s apart (a later press can
+   read 0.0 s). Its `parts` hold both, and neither is listed on its own. Press it again a minute later and Diagnose: still one problem, now with `count: 2`.
    *Checked exception in a channel handler* alone gives the native problem only, with no Dart error
    to pair.
 7. **No merge across a long-lived error.** Restart the app. *Show overflow* (a Dart error, debug
