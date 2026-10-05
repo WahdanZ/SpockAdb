@@ -117,7 +117,7 @@ class SpockAdbShell(
 
     fun start(controller: AdbController) {
         this.controller = controller
-        home.attach(controller)
+        home.attach(controller, parentDisposable)
         home.onDiagnose = { SpockScreenToolWindow.diagnose(project) }
         home.onCopyScreenForAi = { SpockScreenToolWindow.diagnose(project, thenCopy = true) }
         home.onBackgroundWork = { tabs.select(BACKGROUND_WORK_TAB) }

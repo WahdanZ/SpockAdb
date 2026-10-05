@@ -210,3 +210,41 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   `RecompositionRecording`. The cross-layer merge measures between occurrences (`Group.occurrencesMs`, the latest
   100); logcat repeats join their full report; a profile build's first error is read from its
   `debugPrintStack` form.
+
+## 9. Home: current Flutter route and back stack (2026-10-03)
+
+`FlutterRouteSource` reads only the already connected, verified session for Home's selected app/device.
+It never attaches. `SessionObjects` sends bounded `getIsolate`, `getObject`, and (on click only)
+`getInstances` through `FlutterSession.callVm`, retaining its read-only guard and token redaction.
+No evaluate, invoke, runtime dependency, coroutine or MCP tool is added.
+
+`NavigatorReader` owns all Flutter private field names: `WidgetsBinding._instance` →
+`_buildOwner._globalKeyRegistry` → StatefulElement `_state` → mounted NavigatorState `_history`
+→ `_value` → route `_settings.name`. A plain history list is also supported. VM class superclass
+reads recognise NavigatorState subclasses; the heap query includes subclasses of NavigatorState.
+Missing fields, expired objects, partial collections and exceeded bounds give unavailable.
+Home opens at most 200 keyed StatefulElements within a shared 3 s call budget; the click check
+has 5 s and returns at most 20 heap instances (including unmounted instances in that limit).
+
+One keyed navigator gives KEYED: Home's tooltip describes the root navigator and the unchecked
+possibility of an unkeyed nested navigator. Several keyed navigators give unavailable: v1 does
+not prove nesting or choose a visible navigator. On clicking **Flutter back stack**, a heap count
+of exactly one mounted navigator gives EXACT; additional mounted navigators give unavailable,
+remembered for that session/isolate until a successful check. The same checked snapshot updates
+Home and the popup. A new isolate starts clean. The popup reports call duration and says the
+heap check briefly paused the app (S25 measured 120–364 ms; RPC duration is not exact pause time).
+
+Normal Home refresh and debounced (300 ms) live Flutter.Navigation/session state notifications
+trigger reads. Events never supply route data. Latest-request and session/isolate checks discard
+late UI results after selection or hot restart. Transitional reads retry at most three times.
+
+Flutter 3.22.2's [_RouteEntry.isPresent](https://github.com/flutter/flutter/blob/3.22.2/packages/flutter/lib/src/widgets/navigator.dart)
+uses the range add through remove, including pop and complete; popping is outside that range.
+This implementation conservatively requires **idle for every entry**, otherwise unavailable
+“navigation in progress”, without dropping entries. The same source defines Page as a
+RouteSettings subclass and stores it in Route._settings: Page.name needs no separate parser.
+The [VM Service protocol](https://github.com/dart-lang/sdk/blob/main/runtime/vm/service/service.md)
+defines getObject/getInstances as inspection reads, with includeSubclasses on the latter.
+
+Hand-built S25-shaped fixtures cover 3.22.2 and 3.47.5 parsing; they are not new device captures.
+The Navigation sample's expanded cases remain **device-unverified** on both SDKs; see its README.
