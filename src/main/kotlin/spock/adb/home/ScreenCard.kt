@@ -13,6 +13,7 @@ import spock.adb.flutter.navigation.FlutterNavigationState
 import java.awt.FlowLayout
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
+import java.awt.event.HierarchyEvent
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JPanel
@@ -75,6 +76,9 @@ internal class ScreenCard : JPanel() {
     private val flutterSoon = Timer(SETTLE_MS) { refreshFlutter() }.apply { isRepeats = false }
     private var settleRetries = 0
 
+    /** A read skipped while Home was out of sight — another tab, a collapsed section, the window closed. */
+    private var flutterMissed = false
+
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         border = JBUI.Borders.empty(GAP, 0)
@@ -97,6 +101,10 @@ internal class ScreenCard : JPanel() {
         add(flow(diagnoseButton, copyForAiButton))
         show(null)
         showFlutter(null)
+        addHierarchyListener { event ->
+            val showingChanged = (event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L
+            if (showingChanged && isShowing && flutterMissed) refreshFlutter()
+        }
     }
 
     fun attach(controller: AdbController, device: () -> ConnectedDevice?) {
@@ -133,7 +141,9 @@ internal class ScreenCard : JPanel() {
         val request = flutterReads.begin()
         val source = flutter
         val session = source?.liveSession(device(), app())
-        if (source == null || session == null || !isVisible) return showFlutter(null)
+        // Not read while out of sight: each Flutter.Navigation would cost a read nobody sees.
+        flutterMissed = session != null && !isShowing
+        if (source == null || session == null || !isShowing) return showFlutter(null)
         if (!flutterLive) flutterRouteValue.text = READING
         val isolate = session.snapshot.uiIsolateId
         source.read(session, check = false) { state ->
