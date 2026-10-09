@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 // S25 probe: the live Navigator stack through VM Service object reads only (getVM, getIsolate,
 // getObject, getInstances). No evaluate, no invoke. `dart run tool/navigator_probe.dart <flutter run log>`
 // reads the VM Service address from a `flutter run` log and never prints it.

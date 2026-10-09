@@ -123,6 +123,7 @@ class _PagesNavigationSampleState extends State<PagesNavigationSample> {
               ),
           ],
           // Supported by both fixture SDKs; onDidRemovePage is newer than 3.22.
+          // ignore: deprecated_member_use
           onPopPage: (route, result) {
             if (!route.didPop(result)) return false;
             setState(() => detail = false);
