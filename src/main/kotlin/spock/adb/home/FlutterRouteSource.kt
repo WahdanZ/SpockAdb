@@ -34,7 +34,9 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
     private val sessions = FlutterSessionService.getInstance(project)
     private val nested = NestedNavigatorMemory()
 
-    @Volatile
+    /** Guards [watched] and [disposed] together: a session can connect while Home is being disposed. */
+    private val lock = Any()
+
     private var watched: FlutterSession? = null
 
     @Volatile
@@ -50,8 +52,11 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
 
     init {
         Disposer.register(parent) {
-            disposed = true
-            watched?.removeListener(listener)
+            synchronized(lock) {
+                disposed = true
+                watched?.removeListener(listener)
+                watched = null
+            }
         }
         sessions.addListener(parent) { change ->
             watch(
@@ -87,8 +92,14 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
     fun read(session: FlutterSession, check: Boolean, answer: (FlutterNavigationState) -> Unit) {
         val application = ApplicationManager.getApplication()
         application.executeOnPooledThread {
-            val state = readNow(session, check)
-            application.invokeLater({ answer(state) }) { disposed }
+            // Whatever the read throws, the answer still lands: Home is never left on "…", nor the
+            // back stack link disabled. The error itself goes on to the IDE log.
+            var state = FlutterNavigationState.unavailable(READ_FAILED)
+            try {
+                state = readNow(session, check)
+            } finally {
+                application.invokeLater({ answer(state) }) { disposed }
+            }
         }
     }
 
@@ -106,11 +117,13 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
     }
 
     private fun watch(session: FlutterSession?) {
-        val previous = watched
-        if (previous === session) return
-        previous?.removeListener(listener)
-        watched = session
-        if (!disposed) session?.addListener(listener)
+        synchronized(lock) {
+            val previous = watched
+            if (disposed || previous === session) return
+            previous?.removeListener(listener)
+            watched = session
+            session?.addListener(listener)
+        }
     }
 
     private fun changed() {
@@ -119,6 +132,8 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
     }
 
     companion object {
+        const val READ_FAILED = "Spock failed while reading the navigator; the error is in the IDE log."
+
         /** Home's read, on every refresh: plain object reads, about twenty for a short stack. */
         const val HOME_BUDGET_MS = 3_000L
 
