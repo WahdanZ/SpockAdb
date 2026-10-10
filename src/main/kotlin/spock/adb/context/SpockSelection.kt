@@ -85,6 +85,12 @@ class SpockSelection(private val project: Project) : Disposable {
      */
     private var studioSerial: String? = null
 
+    /**
+     * The selected app is only the one remembered from the project's last session: nobody chose
+     * it here, and Gradle named none. The project's app replaces it once sync names one.
+     */
+    private var restoredFromMemory = false
+
     init {
         // The observer is called on the EDT with the current list, and again on every change.
         SpockAdbService.getInstance(project).controller.observeDevices { devices -> onDevices(devices) }
@@ -95,7 +101,9 @@ class SpockSelection(private val project: Project) : Disposable {
         // The project's app appears when Gradle sync ends; until then nothing could be selected.
         ProjectSync.whenSynced(project, this) {
             ApplicationManager.getApplication().invokeLater({
-                if (!disposed && snapshot.app == null) loadApps(snapshot.device, keepApp = false)
+                if (!disposed && SelectionRules.reloadWhenSynced(snapshot.app, restoredFromMemory)) {
+                    loadApps(snapshot.device, keepApp = false)
+                }
             }) { project.isDisposed }
         }
     }
@@ -143,6 +151,7 @@ class SpockSelection(private val project: Project) : Disposable {
      */
     fun selectApp(packageName: String) {
         val app = packageName.trim().takeIf { it.isNotEmpty() } ?: return
+        restoredFromMemory = false
         if (app == snapshot.app) return
         setApp(app, emptySet())
     }
@@ -252,6 +261,13 @@ class SpockSelection(private val project: Project) : Disposable {
                     projectApp = projectApp,
                     keep = keepApp,
                     remembered = rememberedApp()?.takeIf { it in apps },
+                    provisional = restoredFromMemory,
+                )
+                restoredFromMemory = SelectionRules.restoredFromMemory(
+                    next = app,
+                    current = current,
+                    projectApp = projectApp,
+                    wasRestored = restoredFromMemory,
                 )
                 val changes = SelectionRules.afterAppsRead(current = current, next = app, sameDevice = keepApp)
                 if (app != null && Change.APP in changes) setApp(app, setOf(Change.APPS)) else notify(changes)
@@ -315,10 +331,38 @@ internal object SelectionRules {
      * The app to select after a device's apps are read: the one already chosen when it is kept,
      * else the project's, else whatever was chosen before, so a project with no app module does
      * not lose the package the developer typed — and, in a project just reopened with none of
-     * those, the app [remembered] from its last session, when the device has it installed.
+     * those, the app [remembered] from its last session, when the device has it installed. A
+     * [provisional] current app, one only remembered, is not kept over the project's.
      */
-    fun nextApp(current: String?, projectApp: String?, keep: Boolean, remembered: String? = null): String? =
-        if (keep && current != null) current else projectApp ?: current ?: remembered
+    fun nextApp(
+        current: String?,
+        projectApp: String?,
+        keep: Boolean,
+        remembered: String? = null,
+        provisional: Boolean = false,
+    ): String? {
+        val kept = current.takeIf { keep && !(provisional && projectApp != null) }
+        return kept ?: projectApp ?: current ?: remembered
+    }
+
+    /**
+     * Whether [next], chosen by [nextApp], is still only the app remembered from the last session:
+     * restored just now in place of nothing, or a restored [current] kept while Gradle names none.
+     * The project's app, or one chosen here, is not.
+     */
+    fun restoredFromMemory(next: String?, current: String?, projectApp: String?, wasRestored: Boolean): Boolean =
+        when {
+            next == null || next == projectApp -> false
+            next == current -> wasRestored
+            else -> current == null
+        }
+
+    /**
+     * Whether a Gradle sync that just ended reads the apps again for the project's app: with no
+     * app selected, or one only [restoredFromMemory] — a device that arrives before sync ends gets
+     * the remembered app, and it must not keep the project's out.
+     */
+    fun reloadWhenSynced(app: String?, restoredFromMemory: Boolean): Boolean = app == null || restoredFromMemory
 
     /**
      * What to announce once a device's apps are read and [next] is chosen. The app only when it

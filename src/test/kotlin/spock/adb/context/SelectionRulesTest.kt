@@ -3,7 +3,9 @@ package spock.adb.context
 import com.android.ddmlib.IDevice
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.DeviceInfo
@@ -81,6 +83,42 @@ class SelectionRulesTest {
         assertEquals(
             "com.typed",
             SelectionRules.nextApp(current = "com.typed", projectApp = null, keep = false, remembered = "com.last"),
+        )
+    }
+
+    @Test
+    fun `an app restored from memory is provisional until something else chooses`() {
+        // Reopened, the device arriving before sync ends: the remembered app, provisionally.
+        val restored = SelectionRules.nextApp(current = null, projectApp = null, keep = false, remembered = "com.last")
+        assertTrue(SelectionRules.restoredFromMemory(restored, current = null, projectApp = null, wasRestored = false))
+        // A refresh while Gradle still names none keeps it, still provisional.
+        assertTrue(SelectionRules.restoredFromMemory("com.last", "com.last", projectApp = null, wasRestored = true))
+        // The project's app, or one chosen before, is not.
+        assertFalse(SelectionRules.restoredFromMemory("com.project", "com.last", "com.project", wasRestored = true))
+        assertFalse(SelectionRules.restoredFromMemory("com.typed", "com.typed", projectApp = null, wasRestored = false))
+        assertFalse(SelectionRules.restoredFromMemory(null, current = null, projectApp = null, wasRestored = true))
+    }
+
+    @Test
+    fun `sync ending reads the apps again for a restored app, as for none`() {
+        assertTrue(SelectionRules.reloadWhenSynced(app = null, restoredFromMemory = false))
+        assertTrue(SelectionRules.reloadWhenSynced(app = "com.last", restoredFromMemory = true))
+        assertFalse(SelectionRules.reloadWhenSynced(app = "com.typed", restoredFromMemory = false))
+    }
+
+    @Test
+    fun `the project's app replaces a restored one, even on a refresh of the same device`() {
+        val app = SelectionRules.nextApp(
+            current = "com.last",
+            projectApp = "com.project",
+            keep = true,
+            remembered = "com.last",
+            provisional = true,
+        )
+        assertEquals("com.project", app)
+        assertEquals(
+            "com.last",
+            SelectionRules.nextApp(current = "com.last", projectApp = null, keep = true, provisional = true),
         )
     }
 
