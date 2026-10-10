@@ -23,6 +23,14 @@ class PubspecTest {
     }
 
     @Test
+    fun `only a top-level flutter section makes a Flutter pubspec`() {
+        assertTrue(Pubspec.declaresFlutter("name: app\n\nflutter:\n  uses-material-design: true\n"))
+        assertFalse(Pubspec.declaresFlutter("name: app\ndependencies:\n  flutter:\n    sdk: flutter\n"))
+        assertFalse(Pubspec.declaresFlutter("name: tooling\n"))
+        assertFalse(Pubspec.isFlutter(temp.resolve("missing")))
+    }
+
+    @Test
     fun `a nested name is not the package's`() {
         assertNull(Pubspec.parseName("dependencies:\n  name: other\n"))
         assertNull(Pubspec.parseName("description: no name here\n"))

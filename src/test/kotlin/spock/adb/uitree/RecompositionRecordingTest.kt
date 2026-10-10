@@ -112,9 +112,11 @@ class RecompositionRecordingTest {
         assertEquals("frames.dart", tile.fileName)
         assertEquals("/lib/fixtures/", tile.directory)
         assertEquals(40, tile.line)
+        assertTrue(tile.reportedFile.endsWith("/lib/fixtures/frames.dart"), tile.reportedFile)
         val unnamed = rows.single { it.name == "Widget" }
         assertEquals("#9", unnamed.location)
         assertTrue(unnamed.fileName.isEmpty())
+        assertTrue(unnamed.reportedFile.isEmpty())
     }
 
     @Test
@@ -124,6 +126,7 @@ class RecompositionRecordingTest {
         assertEquals("Greeting", row.name)
         assertEquals("Ui.kt:12", row.location)
         assertEquals("/com/example/ui/", row.directory)
+        assertTrue(row.reportedFile.isEmpty(), "a composable is looked up by name only")
         val files = listOf("/p/lib/other/frames.dart", "/p/lib/fixtures/frames.dart")
         assertEquals(files[1], pickSourceIn(files, "/lib/fixtures/") { it })
         assertFalse(pickSourceIn(files, "") { it } == files[1])

@@ -106,6 +106,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
 
     /** What Spock switched on and still owes switching off, across sessions. */
     private val httpOwners = HttpOwners()
+    private val rebuildOwners = RebuildFlagOwners()
     private val startups = object : LinkedHashMap<String, AppStartup>() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AppStartup>?) = size > MAX_STARTUPS
     }
@@ -575,7 +576,8 @@ class FlutterSessionService(private val project: Project) : Disposable {
     ): Held? {
         val session = newSession()
         session.httpOwners = httpOwners
-        session.httpOwnerSerial = identity?.serial
+        session.rebuildOwners = rebuildOwners
+        session.ownerSerial = identity?.serial
         // Before it connects, so what a listener adds to it hears what DDS replays on connect.
         listeners.forEach { listener ->
             runCatching { listener.sessionCreated(session) }
@@ -687,6 +689,7 @@ class FlutterSessionService(private val project: Project) : Disposable {
         startups[key]?.takeIf { it.pids == pids } ?: run {
             // A new process: what Spock owed the old one's isolates went with it.
             httpOwners.retainPids(serial, pids)
+            rebuildOwners.retainPids(serial, pids)
             val oldestAge = timings.values.mapNotNull { it?.ageMs }.maxOrNull()
             AppStartup(pids, startedAt ?: oldestAge?.let { clock() - it } ?: clock()).also { startups[key] = it }
         }

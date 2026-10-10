@@ -499,13 +499,19 @@ it either, the error says why for both.
 - If Spock closes the session during the window (another app selected, another app's attach,
   the project closing), the close switches the flag off through DDS first, and the recording
   stops early and says the session ended. If the connection is lost, the result says the flag was
-  left on. If the app hot-restarts, the flag went with the old isolate and counts stop at the
-  restart.
+  left on, and Spock remembers it for that process. The next session on the same isolate over DDS
+  switches it off only if the flag is still on and that DDS replays Spock's own switch-on with no
+  write of the flag after it — that is, the DDS outlived Spock's connection. After `flutter run`
+  died, `flutter attach` starts a new DDS that holds no such history, so the flag is left on:
+  Spock cannot see what else wrote it meanwhile. `flutter_app_status` and the Timeline say which. If the app hot-restarts, the flag went with the old isolate and counts
+  stop at the restart.
 - Widget locations are read from `ext.flutter.inspector.widgetLocationIdMap`. The app sends each
   location once per isolate, so without this a window opened after the IDE's counts would see
   bare ids. A location still unknown is listed by number (`#42`).
 - Only the app's own widgets are tracked, so `includeLibraries` changes nothing for Flutter.
-- One window per app at a time; a second call while one runs is refused.
+- One window per app at a time; a second call while one runs is refused. A call made while a new
+  session is still settling the flag an earlier, lost window left on waits for it (a few seconds at
+  most), and is refused if it has not settled by then.
 - Diagnose never records rebuilds: only this explicit call does.
 
 ### Accessibility audit
@@ -831,8 +837,10 @@ Flutter tool is attaching meanwhile.
   replaced `FlutterError.onError` (a crash reporter: Crashlytics, Sentry) reports to neither place,
   and `notes` says so. It says so more firmly when the UI section shows an error on screen.
 - `nearbyLogs` pairs each Flutter error with the log problems (by `id` in `likelyProblems`) any of
-  whose lines fell within 2 seconds of it, widened by `clock.uncertaintyMs` — at most 5, the
-  closest first. Both are compared on the device's own clock: logcat prints the device's local
+  whose lines fell within 2 seconds of one of its occurrences (its first and latest 100), widened by
+  `clock.uncertaintyMs` — at most 5, the closest first. An error seen at the start and the end of
+  ten minutes is not paired with a warning in the middle. Both are compared on the device's own
+  clock: logcat prints the device's local
   time, so its stamps are moved by the device's zone first. A paired log problem is listed right
   after its error in `likelyProblems`, however low it would rank alone, so start-up noise cannot
   push it off the list; one that ranks higher already (a crash) keeps its place.
@@ -930,6 +938,11 @@ on Dart's HTTP recording unless that setting is off.
 - `versions.flutter` is unknown: no framework extension reports it. `dart` comes from the VM.
 - `clock` is `measured`, `measuring` for a session just opened, or `unavailable` when the
   device's `date` could not be read.
+- `rebuildTracking` appears only when an earlier session's rebuild recording left
+  `trackRebuildDirtyWidgets` on, its connection lost: this session switched it off (its DDS showed
+  Spock's switch-on and nothing after), left it on because this DDS has no record of Spock's
+  switch-on (a new `flutter run` or `flutter attach`), or left it on because something else wrote
+  it since.
 - It never returns a VM Service, DDS or DevTools address, nor a token: any that a message carried
   reads `<VM Service address>`.
 

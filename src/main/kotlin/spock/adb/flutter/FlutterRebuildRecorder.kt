@@ -33,7 +33,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * restart takes the flag with the old isolate), and only when nobody else wrote it meanwhile: the
  * app announces every write with `Flutter.ServiceExtensionStateChanged`, so one beyond Spock's own
  * is the IDE's or DevTools', and theirs to undo. Should Spock close the session first, the close
- * switches it off ([FlutterSession.CloseRestore]).
+ * switches it off ([FlutterSession.CloseRestore]); should the connection be lost, the next session
+ * on the process switches it off, when it can prove the flag is still Spock's ([LeftOnRebuildFlag]).
  *
  * Switching tracking on makes Flutter rebuild the whole tree once (a reassemble), and announce
  * the switch after that frame; rebuilds count from that announcement, so the forced frame is not
@@ -48,6 +49,8 @@ class FlutterRebuildRecorder(
     private val session: FlutterSession,
     private val sleep: (Long) -> Unit = Thread::sleep,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** How long a window waits for an earlier window's flag to be settled ([LeftOnRebuildFlag]). */
+    private val settleWaitMs: Long = LeftOnRebuildFlag.SETTLE_WAIT_MS,
 ) {
 
     sealed interface Result {
@@ -83,7 +86,8 @@ class FlutterRebuildRecorder(
 
         /**
          * Spock switched it on and could not switch it off: the connection was lost, the isolate
-         * was paused in the debugger, or the app did not answer.
+         * was paused in the debugger, or the app did not answer. A lost connection's is switched
+         * off by the next session on the process ([LeftOnRebuildFlag]).
          */
         LEFT_ON,
 
@@ -134,6 +138,14 @@ class FlutterRebuildRecorder(
         /** Writes of the flag the app announced since the listener was added: Spock's, and anyone's. */
         private val writes = AtomicInteger()
 
+        /** The device time of the newest of [writes]: Spock's switch-on's, which a later session looks for. */
+        @Volatile
+        private var lastAnnouncedAt: Long? = null
+
+        /** Where the window runs, read while connected: what a lost connection leaves owed is keyed by it. */
+        private val serial = session.ownerSerial
+        private val pid = session.snapshot.vmPid
+
         /** Set at the app's announcement that tracking is on: the frame it forced came before. */
         private val counting = AtomicBoolean()
         private val switchedOn = CountDownLatch(1)
@@ -158,6 +170,9 @@ class FlutterRebuildRecorder(
         private var closeOutcome: Tracking? = null
 
         fun record(windowMs: Long, cancelled: CancellationSignal, limit: Int): Result {
+            // Right after a connect, the flag may be one an earlier window left on: settled first, and
+            // before listening, so the switch-off is not counted as someone else's write.
+            if (!session.leftOnRebuilds.awaitSettled(settleWaitMs, cancelled)) return Result.Refused(SETTLING)
             // Listening before the flag is read, so a write by anyone from then on is seen.
             session.addListener(this)
             var switched = false
@@ -210,6 +225,7 @@ class FlutterRebuildRecorder(
                 FlutterExtensionEvent.REBUILT_WIDGETS -> if (counting.get()) tracker.accept(read)
                 STATE_CHANGED -> if (read.data.string("extension") == TRACK_REBUILDS) {
                     writes.incrementAndGet()
+                    lastAnnouncedAt = maxOf(lastAnnouncedAt ?: read.timestampMs, read.timestampMs)
                     if (ExtensionResults.bool(read.data, "value") == true) {
                         counting.set(true)
                         switchedOn.countDown()
@@ -219,7 +235,21 @@ class FlutterRebuildRecorder(
         }
 
         override fun onStateChanged(state: SessionState) {
-            if (state is SessionState.Disconnected) sessionEnded = true
+            if (state !is SessionState.Disconnected) return
+            sessionEnded = true
+            if (state.reason != FlutterSession.CLOSED_BY_SPOCK) leaveOwed()
+        }
+
+        /**
+         * The connection was lost: no switch-off can go through it, and none runs on close. A
+         * switch-on known to be Spock's, whose announcement was the only write seen, is left for
+         * the next session on the process to switch off.
+         */
+        private fun leaveOwed() {
+            if (!confirmed || writes.get() != 1 || restoreClaimed.get()) return
+            val owners = session.rebuildOwners ?: return
+            val announced = lastAnnouncedAt ?: return
+            owners.record(RebuildFlagOwners.Owed(serial ?: return, pid ?: return, isolateId, announced))
         }
 
         /** Spock's close, before the socket closes: switches off what the window switched on, unless it did. */
@@ -406,6 +436,7 @@ class FlutterRebuildRecorder(
             "not a debug build, or has not registered its inspector yet."
         const val NO_ISOLATE = "The app has no Flutter UI isolate selected yet; try again in a moment."
         const val ALREADY_RECORDING = "A rebuild recording is already running on this app; wait for it to end."
+        const val SETTLING = LeftOnRebuildFlag.SETTLING
         private const val UNREADABLE_FLAG =
             "The app did not say whether rebuild tracking is on, so Spock changed nothing."
         private const val UNANSWERED_STILL_OFF =

@@ -4,9 +4,12 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
@@ -21,9 +24,12 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.RecompositionOperations
 import spock.adb.flutter.FlutterFollowerService
 import spock.adb.flutter.FlutterRebuildRecorder
+import spock.adb.flutter.FlutterSources
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseEvent
+import java.nio.file.InvalidPathException
+import java.nio.file.Path
 import java.util.Locale
 import javax.swing.JButton
 import javax.swing.JPanel
@@ -220,24 +226,52 @@ internal class RecompositionPanel(
         note.text = message
     }
 
-    /** Finds [row]'s file off the EDT, in the index, and opens it at the line Compose or Flutter recorded. */
+    /**
+     * Finds [row]'s file off the EDT and opens it at the line Compose or Flutter recorded: the file a
+     * Flutter widget was reported in, under the app's pubspec root — also when only its `android/`
+     * folder is the project, and while indexing, as it needs no index ([FlutterSources]) — else by
+     * name in the index.
+     */
     private fun openSource(row: CountRow) {
         if (row.fileName.isEmpty()) return say("Flutter did not say where widget ${row.location} is.")
-        if (DumbService.isDumb(project)) return say("Indexing; try again when it finishes.")
+        if (row.reportedFile.isEmpty() && DumbService.isDumb(project)) return say(INDEXING)
         ApplicationManager.getApplication().executeOnPooledThread {
-            val file = ReadAction.compute<VirtualFile?, RuntimeException> {
-                if (project.isDisposed) return@compute null
-                val candidates = FilenameIndex.getVirtualFilesByName(row.fileName, GlobalSearchScope.allScope(project))
-                pickSourceIn(candidates.toList(), row.directory) { it.path }
-            }
+            val flutter = flutterSource(row)
+            val indexing = flutter == null && DumbService.isDumb(project)
+            val file = flutter ?: if (indexing) null else indexed(row)
             ApplicationManager.getApplication().invokeLater({
-                if (file == null) {
-                    say("${row.fileName} is not in the project or its attached sources.")
-                } else {
-                    OpenFileDescriptor(project, file, (row.line - 1).coerceAtLeast(0), 0).navigate(true)
+                when {
+                    file != null -> OpenFileDescriptor(project, file, (row.line - 1).coerceAtLeast(0), 0).navigate(true)
+                    indexing -> say(INDEXING)
+                    else -> say("${row.fileName} is not in the project or its attached sources.")
                 }
             }) { isDisposed() || project.isDisposed }
         }
+    }
+
+    /** [row]'s file by name in the index, the one under its directory when several are. */
+    private fun indexed(row: CountRow): VirtualFile? = ReadAction.compute<VirtualFile?, RuntimeException> {
+        if (project.isDisposed) return@compute null
+        val candidates = FilenameIndex.getVirtualFilesByName(row.fileName, GlobalSearchScope.allScope(project))
+        pickSourceIn(candidates.toList(), row.directory) { it.path }
+    }
+
+    /**
+     * A Flutter row's reported file under the pubspec root of the project's directory or a module's
+     * content root, refreshed into the file system if the IDE never looked there. On a pooled thread.
+     */
+    private fun flutterSource(row: CountRow): VirtualFile? {
+        if (row.reportedFile.isEmpty()) return null
+        val dirs = ReadAction.compute<List<String>, RuntimeException> {
+            if (project.isDisposed) return@compute emptyList()
+            val contentRoots = ModuleManager.getInstance(project).modules
+                .flatMap { ModuleRootManager.getInstance(it).contentRoots.toList() }
+                .filter { it.isInLocalFileSystem }
+                .map { it.path }
+            listOfNotNull(project.basePath) + contentRoots
+        }
+        val path = FlutterSources.resolve(row.reportedFile, dirs.mapNotNull(::pathOrNull)) ?: return null
+        return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
     }
 
     private class CountsModel : AbstractTableModel() {
@@ -273,6 +307,7 @@ internal class RecompositionPanel(
         /** Widget locations listed for a Flutter app, most built first. */
         const val FLUTTER_ROWS = 200
         const val NOT_RECORDED = "Record to count how often each composable runs."
+        const val INDEXING = "Indexing; try again when it finishes."
         const val EXPLANATION =
             "Counts come from Compose's composition tracing. The app needs " +
                 "androidx.compose.runtime:runtime-tracing and androidx.tracing:tracing-perfetto-binary " +
@@ -288,6 +323,12 @@ internal class RecompositionPanel(
  */
 internal fun <T> pickSource(candidates: List<T>, packageName: String, pathOf: (T) -> String): T? =
     pickSourceIn(candidates, if (packageName.isEmpty()) "" else "/" + packageName.replace('.', '/') + "/", pathOf)
+
+private fun pathOrNull(path: String): Path? = try {
+    Path.of(path)
+} catch (_: InvalidPathException) {
+    null
+}
 
 /** Of [candidates], the one whose path holds [directory]; the first when none does, or [directory] is empty. */
 internal fun <T> pickSourceIn(candidates: List<T>, directory: String, pathOf: (T) -> String): T? {

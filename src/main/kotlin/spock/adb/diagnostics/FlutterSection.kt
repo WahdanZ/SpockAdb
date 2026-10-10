@@ -84,8 +84,8 @@ class FlutterDiagnosticSource(
  * that replaced `FlutterError.onError` — the section says so.
  *
  * Each error group carries `nearbyLogs`: the ids, in `likelyProblems`, of the log problems any of
- * whose lines fell within [NEARBY_WINDOW_MS] of the group — listed right after the error, however
- * low they would rank alone — widened by the clock's
+ * whose lines fell within [NEARBY_WINDOW_MS] of one of the group's occurrences — listed right after
+ * the error, however low they would rank alone — widened by the clock's
  * uncertainty, compared on the device's own epoch (design §3, §4a).
  *
  * Reads only; never starts rebuild recording, which writes to the app.
@@ -370,9 +370,10 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
     /**
      * Before ranking, against every log problem the report found — not only those that will make
      * the list: a warning the app logged a second before the error must not lose its place to the
-     * platform's start-up noise. Every occurrence counts, not only the last: a warning that
-     * repeated is near the error if any of its lines is. At most [FlutterSection.MAX_NEARBY_LOGS]
-     * per error, the closest first; the collector lists them right after the error.
+     * platform's start-up noise. Every occurrence counts on both sides, not only the last: a
+     * warning that repeated is near the error if any of its lines is beside any of the error's
+     * occurrences. At most [FlutterSection.MAX_NEARBY_LOGS] per error, the closest first; the
+     * collector lists them right after the error.
      */
     private fun pair(all: List<LikelyProblem>): Map<LikelyProblem, List<LikelyProblem>> {
         // After the merges: one the collector dropped (a part merged elsewhere) names no problem.
@@ -421,7 +422,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
     private fun together(group: FlutterErrorReader.Group, epochs: List<Long>): Together? {
         val time = live?.deviceTime ?: return null
         val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
-        val gaps = group.occurrencesMs.map { at -> epochs.minOf { abs(it - at) } }.filter { it <= window }
+        val gaps = occurrences(group).map { at -> epochs.minOf { abs(it - at) } }.filter { it <= window }
         return gaps.minOrNull()?.let { Together(it, gaps.size) }
     }
 
@@ -452,20 +453,23 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
     }
 
     /**
-     * How far the closest of [epochs] is from [group]'s span, when within the pairing window
-     * widened by the clock's uncertainty; null when farther, or without a clock.
+     * How far the closest of [epochs] is from one of [group]'s occurrences, when within the pairing
+     * window widened by the clock's uncertainty; null when farther, or without a clock. Between
+     * single occurrences, as [together] measures: a group seen at the start and the end of ten
+     * minutes is not near a warning in the middle.
      */
     private fun distance(group: FlutterErrorReader.Group, epochs: List<Long>): Long? {
         val time = live?.deviceTime ?: return null
-        val closest = epochs.minOf { epochMs ->
-            when {
-                epochMs < group.firstSeenMs -> group.firstSeenMs - epochMs
-                epochMs > group.lastSeenMs -> epochMs - group.lastSeenMs
-                else -> 0L
-            }
-        }
+        val closest = occurrences(group).minOf { at -> epochs.minOf { abs(it - at) } }
         return closest.takeIf { it <= FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs }
     }
+
+    /**
+     * When [group] was seen: the latest occurrences it keeps, and its first, which a group seen
+     * more often than that would otherwise lose — and with it the warning that came before it.
+     */
+    private fun occurrences(group: FlutterErrorReader.Group): List<Long> =
+        (listOf(group.firstSeenMs) + group.occurrencesMs).distinct()
 
     /** The problem listed for an error group: its own, or the cross-layer one it became part of. */
     private fun anchor(problem: LikelyProblem): LikelyProblem = crossLayer[problem] ?: problem

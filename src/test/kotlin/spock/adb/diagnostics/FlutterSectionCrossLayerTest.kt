@@ -38,6 +38,15 @@ class FlutterSectionCrossLayerTest : FlutterSectionFixture() {
     }
 
     @Test
+    fun `a native crash beside the first of more occurrences than are kept still merges`() {
+        val errors = listOf(error(AT)) + (1..120).map { error(AT + 60_000 + it * 1_000L) }
+        val report = collect(live(errors = errors), crashAt("13:59:59.500"))
+
+        val types = report.getAsJsonArray("likelyProblems").map { it.asJsonObject["type"].asString }
+        assertTrue(FlutterProblemTypes.CROSS_LAYER in types, "$types")
+    }
+
+    @Test
     fun `a native crash five seconds away stays a problem of its own`() {
         val crash = crashAt("14:00:05.000")
         val report = collect(live(errors = listOf(error(AT))), crash)

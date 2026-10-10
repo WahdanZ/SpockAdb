@@ -191,9 +191,37 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
      really ends (`flutter run` quits, the app dies).
    - Start a 30 s recording and press `R` (hot restart) in `flutter run`: it ends early with "the
      app restarted during the recording … counts stop at the restart".
+   - **A session lost mid-recording** (`LEFT_ON`). With the IDE's counts off and the storm running,
+     start a 30 s recording, and while it runs run `adb kill-server` in another terminal, as in H
+     gate item 9: `flutter run` prints `Lost connection to device.` and exits, its DDS goes with
+     it, and the app runs on with the flag on. Not `q`, which stops the app (and the flag with it),
+     nor `d`: whether a detached `flutter run` keeps its DDS alive differs between Flutter versions,
+     and a live DDS is not a lost session. The recording ends early with "The Flutter session ended
+     during the recording" and "Spock switched it on and could not switch it off again (the
+     connection to the app was lost …)". Then `flutter attach`: once Spock connects (idea.log
+     `Connected (new), pid N`, the same pid), the Timeline shows "Rebuild tracking that Spock's
+     earlier recording left on for spock.adb.spock_flutter_sample stays on: this debugger session
+     does not show Spock's switch-on, so Spock cannot prove it is still its own", and
+     `flutter_app_status` has `rebuildTracking: "left on: … cannot prove nothing else wrote it
+     since …"`. The new DDS `flutter attach` starts has no history of Spock's switch-on, so Spock
+     leaves the flag on rather than guess — a new recording says "it was on already". Press `R`:
+     the restart resets the flag, and a recording reads it off again. Spock switches the flag off
+     by itself only when the DDS outlived Spock's connection and replays Spock's switch-on with no
+     write after it; there is no simple way to drop Spock's connection while `flutter run` keeps
+     its DDS, so that path is covered by unit tests, not by this step.
+   - The same loss, then select the `.second` copy in Spock before `flutter attach`, so Spock stays
+     away, and press `R` in `flutter attach`; select the sample again: nothing is said about the
+     flag, and a recording reads it off — the restart reset it, and Spock forgot what it owed the
+     old isolate.
    - In the IDE, the UI Inspector's **Recompositions** tab, **Record** with the storm running: rows
      are widget locations with their counts; double-click the storm's row to open
      `lib/fixtures/frames.dart` at its line. The note ends with what became of the tracking flag.
+   - The same with only the Android part open, as Android Studio is often used for a Flutter app:
+     **File → Open** `sample/flutter_app/android`, select the app in Spock, record the storm, and
+     double-click its row. `lib/fixtures/frames.dart` opens at the storm's line, although `lib/` is
+     not in that project: Spock finds it from the `pubspec.yaml` (with a `flutter:` section) next to
+     `android/`. Before this, the note said "frames.dart is not in the project or its attached
+     sources".
    - In a `--profile` run the call is refused (debug only). With `flutter run` stopped and the
      app started from the launcher, the call records Compose instead and fails with the
      runtime-tracing advice followed by "… ships the Flutter engine; recording its widget rebuilds
@@ -211,7 +239,11 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
    build), wait two minutes, press *Checked exception in a channel handler* (Android only), wait
    two more minutes, *Hide overflow* and *Show overflow* again, then Diagnose. The overflow is one
    group seen at the start and the end; the Android failure in the middle stays a problem of its
-   own, with **no** `flutterCrossLayer` problem and no `crossLayer` on the group.
+   own, with **no** `flutterCrossLayer` problem and no `crossLayer` on the group, and the group's
+   `nearbyLogs` does not name it either (log context is measured from each occurrence, not across
+   the group's span). Then *Hide overflow* and *Overflow with a native warning*, and Diagnose
+   again: the group, one occurrence more, now lists the `SpockSample` warning in `nearbyLogs` —
+   beside its latest occurrence — and still not the channel failure.
 
 ## A second copy (two application IDs)
 

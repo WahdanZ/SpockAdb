@@ -18,6 +18,7 @@ import spock.adb.flutter.FlutterSessionSnapshot
 import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.IdentifiedCandidate
 import spock.adb.flutter.IdentityCheck
+import spock.adb.flutter.RebuildFlagRestore
 import spock.adb.flutter.SessionState
 import spock.adb.flutter.vmservice.ConnectionKind
 import spock.adb.flutter.vmservice.PastedUriDiscovery
@@ -87,6 +88,21 @@ class FlutterAppStatusToolTest {
         val clock = json.getAsJsonObject("clock")
         assertEquals("measured", clock["state"].asString)
         assertEquals("+02:00", clock["zone"].asString)
+        assertFalse(json.has("rebuildTracking"), "nothing was owed: $json")
+    }
+
+    @Test
+    fun `rebuild tracking an earlier recording left on is reported only when the session settled it`() {
+        fun trackingOf(restore: RebuildFlagRestore) = run(
+            status(
+                FlutterAttachOutcome.Connected(FlutterSession(), identity, reused = true),
+                live(snapshot = snapshot().copy(rebuildFlagRestore = restore)),
+            ),
+        )["rebuildTracking"].asString
+
+        assertTrue(trackingOf(RebuildFlagRestore.SWITCHED_OFF).startsWith("off: an earlier Spock recording left it on"))
+        assertTrue(trackingOf(RebuildFlagRestore.LEFT_UNPROVEN).contains("cannot prove nothing else wrote it"))
+        assertTrue(trackingOf(RebuildFlagRestore.LEFT_TO_OTHERS).contains("something else"))
     }
 
     @Test

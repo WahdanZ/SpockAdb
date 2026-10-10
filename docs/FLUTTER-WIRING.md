@@ -163,6 +163,9 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   (`SectionReport.companions`), at most 5 per error, the closest first, and the collector lists each right after
   its error — one that already ranks higher (a crash) stays where it is. `nearbyLogs` are ids in `likelyProblems`
   again; `moreNearbyLogs` counts pairs below the cut, which happens only when the error itself is below it.
+  Follow-up (2026-10-10): pairing measures between single occurrences, as the cross-layer merge does
+  (`Group.occurrencesMs`, the latest 100, plus `firstSeenMs`, against each line of a log problem), not to the group's span
+  (firstSeen..lastSeen), which paired a group seen at 0 s and 600 s with any log problem in between.
 - **Frames on the Timeline.** No frame rows in debug or an unknown build (§6's "debug frames produce no rows"); in
   profile, one row per burst per 2-second window. Frames are placed at batch time: no engine-clock offset is measured.
 - **Follower memory.** Terminal outcomes are remembered for the automatic triggers only; Diagnose always asks, since
@@ -243,6 +246,25 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   `RecompositionRecording`. The cross-layer merge measures between occurrences (`Group.occurrencesMs`, the latest
   100); logcat repeats join their full report; a profile build's first error is read from its
   `debugPrintStack` form.
+- **Rebuild tracking owned across sessions (follow-up, 2026-10-10).** A window whose connection was lost (not
+  closed by Spock) left `trackRebuildDirtyWidgets` on (`LEFT_ON`). Now, when Spock's switch-on was confirmed and
+  its announcement was the only write the window saw, the window records (serial, pid, isolate) with that
+  announcement's device time in `RebuildFlagOwners` (the service's, beside `HttpOwners`, dropped when the pid
+  changes). A session on that process over DDS (`LeftOnRebuildFlag`, listening from before it connects) waits
+  until the `Extension` replay is delivered (`VmServiceClient.afterQueuedEvents`), then: the isolate gone (a hot
+  restart) → forgets it; paused or not answering → keeps it for a later session; the flag off → forgets it; the
+  replay not holding Spock's own announcement (on, at exactly the recorded device time: DDS replays the original
+  event) → leaves it (`LEFT_UNPROVEN`); a write of the flag after that announcement, by arrival order — not by
+  timestamp, as the device clock can step back — → leaves it (`LEFT_TO_OTHERS`); else switches it off
+  (`SWITCHED_OFF`). Only a DDS that outlived Spock's connection replays the announcement: after `flutter run`
+  died, `flutter attach`'s new DDS has no history, and the flag is left on. Any session, DDS or direct, that sees
+  a write after Spock's (live, or after the announcement in the replay) forgets the record. The outcome is
+  `FlutterSessionSnapshot.rebuildFlagRestore`: a Timeline row and `flutter_app_status.rebuildTracking`. A
+  recording opened right after the connect waits for it before it listens or reads the flag — its calls are
+  bounded at 2 s each, and the switch-off waits up to 1 s for its own announcement — and is refused ("still
+  switching off …") if it has not settled within 7.5 s or the caller cancels, rather than read Spock's earlier
+  flag as the IDE's and then blame the IDE for Spock's own switch-off. The wait ends at once when the connection
+  ends first or the session's thread refuses the task; nothing owed, no wait.
 
 ## 9. Home: current Flutter route and back stack (2026-10-03)
 

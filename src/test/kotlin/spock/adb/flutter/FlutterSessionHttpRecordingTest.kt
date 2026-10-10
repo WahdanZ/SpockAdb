@@ -273,7 +273,7 @@ class FlutterSessionHttpRecordingTest : FlutterSessionFixture() {
     fun `logging Spock switched on before its connection ended is adopted and switched off by the next session`() {
         val owners = HttpOwners()
         session.httpOwners = owners
-        session.httpOwnerSerial = SERIAL
+        session.ownerSerial = SERIAL
         session.connect(pasted())
         assertEquals(HttpRecording.EnabledBySpock, session.snapshot.httpRecording)
         // DDS ends with `flutter run`: no restore is possible.
@@ -283,7 +283,7 @@ class FlutterSessionHttpRecordingTest : FlutterSessionFixture() {
 
         val next = FlutterSession(clock = { connectedAt }).apply {
             httpOwners = owners
-            httpOwnerSerial = SERIAL
+            ownerSerial = SERIAL
         }
         next.connect(pasted())
         assertEquals(HttpRecording.AdoptedBySpock, next.snapshot.httpRecording)
@@ -300,7 +300,7 @@ class FlutterSessionHttpRecordingTest : FlutterSessionFixture() {
         owners.record(HttpOwners.key(SERIAL, OTHER_PID, UI_ISOLATE))
         vm.httpLogging = true
         session.httpOwners = owners
-        session.httpOwnerSerial = SERIAL
+        session.ownerSerial = SERIAL
 
         session.connect(pasted())
         assertEquals(HttpRecording.AlreadyOn, session.snapshot.httpRecording)

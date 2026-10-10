@@ -98,8 +98,9 @@ carry a `flutter` section for a Flutter app — and none for any other app. The 
   `MissingPluginException`, a failed channel handler, DartMessenger's "Uncaught exception in binary
   message listener") moments apart are **one** `flutterCrossLayer` problem naming both layers,
   with each layer's own problem in `parts`.
-- **`nearbyLogs`** — the log problems within two seconds of each error, on the device's measured
-  clock, listed right after the error in `likelyProblems`.
+- **`nearbyLogs`** — the log problems within two seconds of one of an error's occurrences, on the
+  device's measured clock, listed right after the error in `likelyProblems`. An error seen at the
+  start and the end of ten minutes is not paired with a warning in the middle.
 - **`frames`** — build and raster times. A verdict only in a profile build; a debug build says the
   times are not representative.
 - **`http`** — failed `dart:io` requests (4xx, 5xx, no response), while HTTP recording is on.
@@ -129,8 +130,20 @@ tab record Flutter widget rebuilds for a debug build with a session over DDS: ea
 with its count and `lib/…:line:column`, most built first. The flag behind it,
 `trackRebuildDirtyWidgets`, is shared with the IDE's rebuild counts and DevTools, so Spock switches
 it on only if it was off, and off afterwards only if it switched it on, on the same isolate, and
-nothing else wrote it meanwhile — the result says which. The whole-tree rebuild that switching it
-on forces is not counted. Diagnose never records rebuilds.
+nothing else wrote it meanwhile — the result says which. If the connection is lost during a
+recording while the app runs on, Spock cannot switch it off then. Its next session on the same
+process switches it off only when the debugger session (DDS) outlived Spock's connection and
+replays Spock's switch-on with no write of the flag after it. When `flutter run` itself died, a
+later `flutter attach` starts a new DDS with no such history, so Spock leaves the flag on — it
+cannot see what the IDE or DevTools wrote meanwhile — and the Timeline and `flutter_app_status`
+say so; a hot restart or DevTools switches it off. Double-clicking a row of the Recompositions tab
+opens its `lib/…` file at the line, also when the IDE has only the app's `android/` folder open,
+and while it indexes: Spock looks for the app's `pubspec.yaml` (with a `flutter:` section) in the
+project's folder, its modules' folders, and the folder above one named `android` — nowhere else —
+and opens the file Flutter reported under the root that holds it (or, for an app built in another
+checkout, the root of the same folder name). A file of a path dependency or of another app is
+looked up by name in the index instead, never opened as this app's file of the same name. The
+whole-tree rebuild that switching it on forces is not counted. Diagnose never records rebuilds.
 
 ## Home: Flutter route and App back stack
 

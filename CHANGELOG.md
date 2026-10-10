@@ -130,6 +130,35 @@
   chosen again. Now the app chosen last time is selected again if the device has it installed;
   once Gradle sync names the project's own app, that one takes its place unless you chose another.
 
+### Fixed
+
+- **Flutter rebuild tracking left on by a lost connection is followed up.** A rebuild recording
+  (the UI Inspector's Recompositions tab, `android_get_recomposition_counts`) switches on a flag
+  the app shares with the IDE's rebuild counts and DevTools. If the connection was lost during the
+  recording while the app ran on, Spock could not switch it off, and the app kept tracking every
+  rebuild until it restarted, with nothing said later. Spock now remembers that it switched the
+  flag on in that process. Its next session there switches it off only when it can prove the flag
+  is still Spock's: the debugger session (DDS) outlived Spock's connection and its history shows
+  Spock's switch-on with no write after it. When `flutter run` itself died, the next `flutter
+  attach` starts a new DDS with no history, so whatever the IDE or DevTools wrote in between cannot
+  be seen: Spock leaves the flag on and says so, in the Timeline and `flutter_app_status`, rather
+  than switch off a flag another tool may be using. After a hot restart the flag is reset anyway,
+  and Spock forgets it.
+- **Diagnose no longer pairs a long-lived Flutter error with unrelated log lines.** A Flutter error's
+  `nearbyLogs` — the log problems listed beside it as its context — were measured against the
+  whole stretch between the error's first and last occurrence, so an overflow seen at the start
+  and again ten minutes later claimed every warning logged in between. They are now measured
+  against each occurrence, as the cross-layer merge already was: a log line is beside the error
+  only if it is within two seconds of one of its occurrences.
+- **The Recompositions tab opens a Flutter widget's source when only `android/` is open.**
+  Android Studio is often pointed at a Flutter app's `android` folder, which leaves the app's
+  `lib/` folder outside the project, so double-clicking a widget row said "frames.dart is not in
+  the project or its attached sources". Spock now takes the file Flutter reported and finds it
+  under the app's `pubspec.yaml` — in the project's folder, a module's folder, or the folder above
+  one named `android` — and opens it at the line, outside the project or not, and while the IDE
+  indexes. A file outside that app (a path dependency, a second app) is looked up by name as
+  before, never opened as a same-named file of the app.
+
 ## [4.0.7] - 2026-09-29
 
 ### Added

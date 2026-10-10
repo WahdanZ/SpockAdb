@@ -51,6 +51,11 @@ data class FlutterSessionSnapshot(
     val operatingSystem: String? = null,
     /** HTTP timeline logging on the UI isolate; null until decided for it. */
     val httpRecording: HttpRecording? = null,
+    /**
+     * What this connection did about rebuild tracking an earlier session's recording left on
+     * ([LeftOnRebuildFlag]); null when nothing was owed, or not settled yet.
+     */
+    val rebuildFlagRestore: RebuildFlagRestore? = null,
 ) {
     val uiIsolateId: String? get() = uiIsolate?.id
 
@@ -63,6 +68,7 @@ data class FlutterSessionSnapshot(
         vmStartTimeMs = null,
         operatingSystem = null,
         httpRecording = null,
+        rebuildFlagRestore = null,
     )
 }
 

@@ -13,6 +13,7 @@ import spock.adb.flutter.FlutterSessionListener
 import spock.adb.flutter.FlutterSessionService
 import spock.adb.flutter.FlutterSessionServiceListener
 import spock.adb.flutter.HttpRecording
+import spock.adb.flutter.RebuildFlagRestore
 import spock.adb.flutter.SessionReads
 import spock.adb.flutter.SessionState
 import spock.adb.flutter.analysis.FlutterErrorReader
@@ -48,7 +49,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * And the session's own story: its start ("Flutter session: <app> on <device> — DDS, pid N"), its
  * end with why — including the engine destroyed by Back at the root activity, which leaves the
- * session connected with no UI isolate — and Spock turning HTTP recording on and back off.
+ * session connected with no UI isolate — Spock turning HTTP recording on and back off, and
+ * switching off the rebuild tracking a recording left on when its connection was lost.
  *
  * Rows come from the P5a mapper, which scrubs VM Service tokens and URL queries again (A8, A12).
  */
@@ -86,6 +88,7 @@ class FlutterTimelineRecorder(
         var uiIsolateId: String? = null
         var isolateExitAt: Long? = null
         var enabledBySpock = false
+        var rebuildFlagNoted = false
         var frames = mutableListOf<FlutterExtensionEvent>()
         var windowStartedAt = 0L
         var fps: Double? = null
@@ -188,6 +191,7 @@ class FlutterTimelineRecorder(
             drain(followed, placement)
             checkIsolate(followed)
             checkRecording(followed)
+            checkLeftOnRebuilds(followed)
         }
         pollHttp(followed)
     }
@@ -347,6 +351,25 @@ class FlutterTimelineRecorder(
         }
         followed.enabledBySpock = true
         row(followed, clock(), TimelineSeverity.INFO, category = TimelineCategory.HTTP, title = title)
+    }
+
+    /** Under [lock]: one row when the session settled rebuild tracking an earlier recording left on. */
+    private fun checkLeftOnRebuilds(followed: Followed) {
+        if (followed.rebuildFlagNoted) return
+        val title = when (followed.session.snapshot.rebuildFlagRestore) {
+            RebuildFlagRestore.SWITCHED_OFF ->
+                "Spock switched off the rebuild tracking its earlier recording left on for ${followed.app} " +
+                    "when that session's connection was lost"
+            RebuildFlagRestore.LEFT_UNPROVEN ->
+                "Rebuild tracking that Spock's earlier recording left on for ${followed.app} stays on: this " +
+                    "debugger session does not show Spock's switch-on, so Spock cannot prove it is still its own"
+            RebuildFlagRestore.LEFT_TO_OTHERS ->
+                "Rebuild tracking that Spock's earlier recording left on for ${followed.app} stays on: something " +
+                    "else wrote it since, so it is theirs"
+            null -> return
+        }
+        followed.rebuildFlagNoted = true
+        row(followed, clock(), TimelineSeverity.INFO, title)
     }
 
     /** Off the lock: a VM call. Failed requests, one row per request id. */

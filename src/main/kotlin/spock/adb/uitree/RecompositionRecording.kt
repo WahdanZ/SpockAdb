@@ -57,8 +57,11 @@ internal class RecompositionRecording(
                 "Rebuild tracking: it was on already (the IDE's rebuild counts or DevTools), so Spock left it on."
             FlutterRebuildRecorder.Tracking.LEFT_ON ->
                 "Rebuild tracking: Spock switched it on and could not switch it off again (the connection to the " +
-                    "app was lost, the app was paused in the debugger, or it did not answer); it stays on until the " +
-                    "app restarts or the IDE's rebuild counts switch it off."
+                    "app was lost, the app was paused in the debugger, or it did not answer). After a lost " +
+                    "connection, Spock's next session switches it off only if the same debugger session (DDS) is " +
+                    "still running and shows nothing else wrote it; after `flutter run` itself ended, Spock cannot " +
+                    "tell, and it stays on until the app restarts (R) or DevTools or the IDE's rebuild counts switch " +
+                    "it off."
             FlutterRebuildRecorder.Tracking.ISOLATE_GONE ->
                 "Rebuild tracking: the app restarted during the recording, and the tracking Spock switched on " +
                     "went with the old isolate; counts stop at the restart."
@@ -89,6 +92,8 @@ internal data class CountRow(
     /** A path fragment the right file of that name sits under: `/com/example/ui/`, `/lib/fixtures/`. */
     val directory: String,
     val line: Int,
+    /** A Flutter widget's file as Flutter reported it, `file:///…/lib/fixtures/frames.dart`; empty for a composable. */
+    val reportedFile: String = "",
 ) {
     companion object {
         fun of(composable: ComposableCount) = CountRow(
@@ -111,6 +116,7 @@ internal data class CountRow(
                 fileName = path.substringAfterLast('/'),
                 directory = path.substringBeforeLast('/', "").takeIf { it.isNotEmpty() }?.let { "/$it/" }.orEmpty(),
                 line = at?.line ?: 0,
+                reportedFile = at?.file.orEmpty(),
             )
         }
     }
