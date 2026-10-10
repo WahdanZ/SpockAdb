@@ -65,6 +65,9 @@ internal class NavigatorReader(
     /** A mounted `NavigatorState`, opened, and its class for the heap walk. */
     private class Navigator(val state: JsonObject, val classId: String)
 
+    /** A stack as read, with each `_RouteEntry`'s identity, bottom to top, to tell it was not changed. */
+    private class Stack(val state: FlutterNavigationState, val entries: List<Long?>)
+
     /** Why a read stopped, in words fit to show. */
     private class Unreadable(val reason: String, val transient: Boolean = false) : Exception(reason)
 
@@ -81,21 +84,42 @@ internal class NavigatorReader(
      * [readKeyed], then one `getInstances` to count the mounted navigators: [Confidence.EXACT]
      * when the keyed one is the only one. The heap walk pauses the app (120–364 ms measured on
      * 3.47.5), so this runs on request only.
+     *
+     * The stack and the count are read at different moments, so EXACT also needs the one mounted
+     * navigator to be the keyed one (by `identityHashCode`: object ids are not stable between
+     * calls) and the stack, read again after the walk, to hold the same entries, all still idle.
+     * A push between the two halves, or `runApp` replacing the navigator, is a change, not a stack.
      */
     fun readChecked(): FlutterNavigationState = guarded {
         val keyed = keyedNavigators()
-        val state = keyedState(keyed)
-        if (state.confidence != Confidence.KEYED) return@guarded state
+        if (keyed.size != 1) return@guarded keyedState(keyed)
+        val navigator = keyed.single()
+        val stack = stackOf(navigator.state)
+        if (stack.state.confidence != Confidence.KEYED) return@guarded stack.state
         val started = clock()
-        val found = objects.instances(keyed.single().classId, limits.maxInstances)
+        val found = objects.instances(navigator.classId, limits.maxInstances)
         val heapWalkMs = clock() - started
-        NavigationConfidence.checked(state, mountedAmong(found), heapWalkMs, limits.maxInstances)
+        val mounted = mountedAmong(found)
+        val same = mounted?.singleOrNull()?.let { only ->
+            identity(only) == identity(navigator.state) && unchanged(navigator, stack)
+        } ?: true
+        NavigationConfidence.checked(stack.state, mounted?.size, heapWalkMs, limits.maxInstances, same)
     }
 
     private fun keyedState(navigators: List<Navigator>): FlutterNavigationState = when (navigators.size) {
         0 -> FlutterNavigationState.unavailable(NO_KEYED_NAVIGATOR)
-        1 -> stackOf(navigators.single().state)
+        1 -> stackOf(navigators.single().state).state
         else -> FlutterNavigationState.unavailable(severalKeyed(navigators.size))
+    }
+
+    /** Whether [navigator], opened afresh, is still mounted and holds the same entries as [before]. */
+    private fun unchanged(navigator: Navigator, before: Stack): Boolean {
+        opened.clear()
+        val state = open(navigator.state)
+        if (!isMounted(state)) return false
+        val after = stackOf(state)
+        return after.state.stack == before.state.stack && after.entries == before.entries &&
+            before.entries.none { it == null }
     }
 
     // ---------------------------------------------------------------- finding the navigator
@@ -159,22 +183,25 @@ internal class NavigatorReader(
         return open(instance)
     }
 
-    /** How many of the heap walk's navigators are mounted; null when it found more than it returned. */
-    private fun mountedAmong(found: JsonObject): Int? {
+    /** The heap walk's mounted navigators, opened; null when it found more than it returned. */
+    private fun mountedAmong(found: JsonObject): List<JsonObject>? {
         val refs = found.array("instances") ?: fail(missing("InstanceSet", "instances"))
         if (refs.any { it !is JsonObject }) fail("The VM returned an unreadable navigator instance.")
         val instances = refs.objects()
         val total = found.int("totalCount") ?: fail(missing("InstanceSet", "totalCount"))
         if (total > instances.size) return null
-        return instances.count {
+        return instances.map {
             opened.remove(it.string("id"))
-            isMounted(open(it))
-        }
+            open(it)
+        }.filter(::isMounted)
     }
+
+    /** An instance's `identityHashCode`: the same object answers the same one on every call. */
+    private fun identity(instance: JsonObject): Long = identityOrNull(instance) ?: fail(NO_IDENTITY)
 
     // ---------------------------------------------------------------- the stack
 
-    private fun stackOf(navigator: JsonObject): FlutterNavigationState {
+    private fun stackOf(navigator: JsonObject): Stack {
         val history = navigator.field("_history", NAVIGATOR)
         // `_History` since Flutter 3.7; a plain list before, read the same way.
         val list = if (history.string("kind") == LIST) {
@@ -184,7 +211,7 @@ internal class NavigatorReader(
         }
         val entries = list.array("elements") ?: fail(missing("_History._value", "elements"))
         checkWhole(list, entries, "the navigator's history")
-        if (entries.size() == 0) return FlutterNavigationState.unavailable("The navigator has no routes yet.")
+        if (entries.size() == 0) return Stack(FlutterNavigationState.unavailable(NO_ROUTES), emptyList())
         val routes = entries.objects().map { ref ->
             val entry = open(ref)
             val routeRef = entry.field("route", ENTRY)
@@ -193,7 +220,7 @@ internal class NavigatorReader(
             if (lifecycle != IDLE) fail(inProgress(routeClass, lifecycle), transient = true)
             FlutterRoute(nameOf(open(routeRef), routeClass), routeClass)
         }
-        return FlutterNavigationState(routes, Confidence.KEYED)
+        return Stack(FlutterNavigationState(routes, Confidence.KEYED), entries.objects().map(::identityOrNull))
     }
 
     /** `_RouteLifecycle`'s value by name: `idle`, `pushing`… */
@@ -281,6 +308,11 @@ internal class NavigatorReader(
         /** Every enum's `_name` is `_Enum`'s, in `dart:core`. */
         private val ENUM = Owner("_Enum", "dart:core")
 
+        const val NO_ROUTES = "The navigator has no routes yet."
+
+        const val NO_IDENTITY = "The VM sent no identityHashCode for a navigator, so Spock cannot tell the one " +
+            "it counted is the one it read."
+
         const val NO_KEYED_NAVIGATOR = "No navigator with a GlobalKey is mounted. MaterialApp and WidgetsApp key " +
             "their own; a Navigator an app builds without a key cannot be found."
 
@@ -312,6 +344,9 @@ internal class NavigatorReader(
             return (name == null || name == owner.className) && (library == null || library == owner.library)
         }
 
+        private fun identityOrNull(instance: JsonObject): Long? = (instance.get("identityHashCode") as? JsonPrimitive)
+            ?.takeIf { it.isNumber }?.asLong?.takeIf { it > 0 }
+
         private fun isInstance(ref: JsonObject): Boolean =
             ref.string("type")?.removePrefix("@") == "Instance" && ref.string("id") != null
     }
@@ -326,26 +361,28 @@ internal object NavigationConfidence {
     const val NESTED_SEEN = "The last Flutter back stack check found a nested navigator without a key, so " +
         "Spock can't tell which one is showing. Open Flutter back stack to check again."
 
-    const val CHANGED = "The app's navigators changed while Spock read them; read again."
+    const val CHANGED = "The navigation changed while Spock checked it; read again."
 
     fun tooManyInstances(limit: Int) = "More than $limit NavigatorState objects are in the app's heap; Spock " +
         "counts at most $limit."
 
     /**
      * The keyed read [keyed], with the heap walk's count of mounted navigators: exact when the keyed
-     * one is the only one. [mounted] is null when the walk found more than it returned.
+     * one is the only one. [mounted] is null when the walk found more than it returned; [same] is
+     * whether the one it found is the keyed navigator, its stack unchanged since [keyed] was read.
      */
     fun checked(
         keyed: FlutterNavigationState,
         mounted: Int?,
         heapWalkMs: Long,
         limit: Int = NavigatorLimits().maxInstances,
+        same: Boolean = true,
     ): FlutterNavigationState = when {
         keyed.confidence != Confidence.KEYED -> keyed
         mounted == null -> FlutterNavigationState.unavailable(tooManyInstances(limit), heapWalkMs = heapWalkMs)
-        mounted == 1 -> keyed.copy(confidence = Confidence.EXACT, heapWalkMs = heapWalkMs)
+        mounted == 1 && same -> keyed.copy(confidence = Confidence.EXACT, heapWalkMs = heapWalkMs)
         mounted > 1 -> FlutterNavigationState.unavailable(NESTED_UNKEYED, heapWalkMs = heapWalkMs)
-        // The keyed navigator was mounted a moment ago and the walk found none: the app moved on.
+        // Another navigator, a changed stack, or none mounted where the keyed one was: the app moved on.
         else -> FlutterNavigationState.unavailable(CHANGED, transient = true, heapWalkMs = heapWalkMs)
     }
 

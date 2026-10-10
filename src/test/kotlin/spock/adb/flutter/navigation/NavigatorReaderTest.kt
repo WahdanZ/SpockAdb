@@ -193,6 +193,112 @@ class NavigatorReaderTest {
         assertEquals(Confidence.EXACT, reader(objects).readChecked().confidence)
     }
 
+    /** [objects], with [meanwhile] run on the app's side just after the heap walk answers. */
+    private fun walkThen(objects: FixtureObjects, meanwhile: () -> Unit) = object : VmObjects by objects {
+        override fun instances(classId: String, limit: Int): JsonObject =
+            objects.instances(classId, limit).also { meanwhile() }
+    }
+
+    private fun historyList(objects: FixtureObjects): JsonObject {
+        val history = objects.ref(objects.keyedNavigatorIds().single(), "_history").get("id").asString
+        return objects.objects().getAsJsonObject(objects.ref(history, "_value").get("id").asString)
+    }
+
+    @Test
+    fun `a push between the stack read and the heap walk is a change, not an exact stack`() {
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        val list = historyList(objects)
+        val pushed = objects.objects().getAsJsonObject("objects/116").deepCopy().apply {
+            addProperty("id", "objects/116b")
+            addProperty("identityHashCode", 116_002)
+        }
+
+        val state = reader(
+            walkThen(objects) {
+                objects.objects().add("objects/116b", pushed)
+                val ref = list.getAsJsonArray("elements").last().deepCopy().asJsonObject.apply {
+                    addProperty("id", "objects/116b")
+                    addProperty("identityHashCode", 116_002)
+                }
+                list.getAsJsonArray("elements").add(ref)
+                list.addProperty("length", 4)
+            },
+        ).readChecked()
+
+        assertEquals(NavigationConfidence.CHANGED, state.unavailable)
+        assertTrue(state.transient)
+        assertTrue(state.stack.isEmpty())
+    }
+
+    @Test
+    fun `an entry replaced in place is a change too`() {
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        val list = historyList(objects)
+
+        val state = reader(
+            walkThen(objects) {
+                list.getAsJsonArray("elements").last().asJsonObject.addProperty("identityHashCode", 116_003)
+            },
+        ).readChecked()
+
+        assertEquals(NavigationConfidence.CHANGED, state.unavailable)
+    }
+
+    @Test
+    fun `a navigator replaced between the stack read and the heap walk is a change`() {
+        // The sample's runApp(PagesNavigationSample()): the keyed navigator goes, another is mounted.
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        val keyed = objects.keyedNavigatorIds().single()
+        val other = objects.fixture.getAsJsonObject("instances").entrySet().single().value.asJsonObject
+            .getAsJsonArray("instances").map { it.asJsonObject.get("id").asString }.single { it != keyed }
+        val element = objects.ref(keyed, "_element")
+
+        val state = reader(
+            walkThen(objects) {
+                objects.setField(keyed, "_element", FixtureObjects.nullRef())
+                objects.setField(other, "_element", element)
+            },
+        ).readChecked()
+
+        assertEquals(NavigationConfidence.CHANGED, state.unavailable)
+        assertTrue(state.transient)
+    }
+
+    @Test
+    fun `a stack in transition after the heap walk is not exact`() {
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        val enumId = objects.objects().entrySet().first { it.key.startsWith("objects/lifecycle-") }.key
+
+        val state = reader(
+            walkThen(objects) {
+                val popping = objects.ref(enumId, "_name").deepCopy().apply { addProperty("valueAsString", "popping") }
+                objects.setField(enumId, "_name", popping)
+            },
+        ).readChecked()
+
+        assertEquals(Confidence.UNAVAILABLE, state.confidence)
+        assertTrue(state.transient)
+    }
+
+    @Test
+    fun `without identityHashCode the check cannot tell the navigator it counted is the one it read`() {
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        objects.objects().getAsJsonObject(objects.keyedNavigatorIds().single()).remove("identityHashCode")
+
+        assertEquals(NavigatorReader.NO_IDENTITY, reader(objects).readChecked().unavailable)
+    }
+
+    @Test
+    fun `the walk finding no mounted navigator where the keyed one was is a change`() {
+        val keyed = FlutterNavigationState(listOf(FlutterRoute("/", "MaterialPageRoute")), Confidence.KEYED)
+
+        val state = NavigationConfidence.checked(keyed, mounted = 0, heapWalkMs = 120)
+
+        assertEquals(NavigationConfidence.CHANGED, state.unavailable)
+        assertTrue(state.transient)
+        assertEquals(120L, state.heapWalkMs)
+    }
+
     @Test
     fun `3_47_5 - the check is exact too`() {
         assertEquals(Confidence.EXACT, reader(FixtureObjects.load("root-3.47.5.json")).readChecked().confidence)
