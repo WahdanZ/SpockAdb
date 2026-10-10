@@ -103,10 +103,15 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
    shows `Flutter follower: session lost: following …`, and the old pid runs on without DDS — the
    follower then logs `…; checking again in 30000 ms` (no VM contact while the "no DDS" verdict
    stands). Within ten minutes, start the app again with a new `flutter run`, and touch nothing in
-   Spock: within ~30 s of the new process (seconds when ddmlib names it), idea.log shows
-   `… runs as a new process [N]: following it` or `a new process appeared: following …`, then
-   `Connected (new), pid N`, and the Timeline shows the new session row. Repeat with **Record device
-   events** off: the same, since ddmlib and the slow check do not need the device log. The way it
+   Spock: within ~30 s of the new process, idea.log shows
+   `… runs as a new process [N]: following it` (the slow check) or `a new process appeared:
+   following …` (ddmlib naming the process), then `Connected (new), pid N`, and the Timeline shows
+   the new session row. Which line appears is what this item measures: ddmlib sees only debuggable
+   processes, so a profile build on a production phone that is not rooted is caught by the slow
+   check alone; and in recent Android Studio ddmlib's process tracking is backed by adblib, so that
+   ddmlib's line comes at all — and comes sooner — is unproven until it is seen here, on a device.
+   Repeat with **Record device events** off: the same, since ddmlib and the slow check do not need
+   the device log. The way it
    was first seen: close the IDE's only project window while `flutter run` runs (Android Studio then
    kills adb, and `flutter run` loses the device), reopen the project, and start a new `flutter run`:
    Spock's selector shows `spock.adb.spock_flutter_sample` again without being chosen, and the session

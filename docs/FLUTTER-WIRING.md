@@ -209,16 +209,26 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   19:08:45, and attached only when the app was selected by hand at 19:14:33. Fixed, with the gaps the same scenario
   shows with the project left open:
   - `SpockSelection` remembers the selected app per project and, when Gradle names none, restores it if the device
-    has it installed;
+    has it installed. A restored app is provisional: when the device arrives before sync ends, the sync's end reads
+    the apps again and the project's app replaces it; choosing an app clears that;
   - ddmlib naming one of the selected app's processes (`IClientChangeListener`, `CHANGE_NAME`; static, so it outlives
     an adb restart, unlike the device log that carries `Start proc`) starts a run when the pid is new and none is
-    under way;
+    under way. Matched on the process name (`clientDescription`): ddmlib's `packageName` is the package for every
+    process of the app, `com.foo:bg` too, while `pidof com.foo` lists only the main one, so a restarting secondary
+    process re-armed the follower each time. This is a shortcut, not the mechanism: ddmlib sees only debuggable
+    processes — a profile build on a production phone that is not rooted never fires `CHANGE_NAME`, and only the
+    watch below catches its restart — and in recent Android Studio ddmlib's process tracking is backed by adblib, so
+    that the listener fires there is unproven until H gate item 9 runs on a device;
   - a run that ends without a session — its time spent, no DDS, the app not running — keeps watching
     (`RECHECK_MS` 30 s, `RECHECKS` 20: the old "no DDS" re-check, generalised), and a new pid seen there starts a
-    fresh run with its own time budget (before, a pid change kept the spent budget and gave up at once);
+    fresh run with its own time budget (before, a pid change kept the spent budget and gave up at once). Diagnose
+    finding the app not ready during a watch starts a run with the backoff, rather than waiting up to 30 s for the
+    next check, so a `flutter attach` it found starting is followed at once;
   - an attempt that throws (ddmlib throws `CancellationException` while adb restarts) is asked again like a
-    failure, where it ended the run with nothing scheduled; and a null build for an app already read as Flutter is
-    adb failing, asked again, not "not a Flutter app".
+    failure, where it ended the run with nothing scheduled; and the follower reads the app's build as an answer or
+    adb failing (`FlutterBuildCache.readOn`): adb failing is asked again, while an app read as not Flutter — one
+    uninstalled answers `dumpsys package` with no `versionCode`, and its listing is empty — stops the follower,
+    even after a Flutter build was read.
   Sample README, H gate item 9.
 - **P5b review (PR #168, 2026-10-03).** The rebuild window counts from the app's
   `Flutter.ServiceExtensionStateChanged` for the tracking flag, which Flutter posts after the frame its switch
