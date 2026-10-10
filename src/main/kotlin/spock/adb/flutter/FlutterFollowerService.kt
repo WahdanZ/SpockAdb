@@ -57,7 +57,7 @@ class FlutterFollowerService(private val project: Project) : Disposable {
     private val clientNamed = AndroidDebugBridge.IClientChangeListener { client, mask ->
         if (mask and Client.CHANGE_NAME == 0) return@IClientChangeListener
         val data = client.clientData
-        val app = data.packageName?.takeIf { it.isNotBlank() } ?: data.clientDescription ?: return@IClientChangeListener
+        val app = processName(data.clientDescription, data.packageName) ?: return@IClientChangeListener
         follower.processSeen(client.device.serialNumber, app, data.pid.toLong())
     }
 
@@ -204,6 +204,17 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
         /** What Flutter printed in the last [lines] of logcat, for framework errors while structured errors are off. */
         private fun flutterLogCommand(lines: Int) = "logcat -d -v threadtime -t $lines ${FlutterLogcatErrors.FILTER}"
+
+        /**
+         * The name to match a ddmlib client against the selected app: its process name, which is
+         * the applicationId only for the app's main process. Not ddmlib's `packageName`, which is
+         * the package for every process of the app — `com.foo:bg` too (ddmlib 31.8: the real
+         * package on Android 11+, the process name up to its `:` before) — while `pidof com.foo`
+         * lists only the main process, so a restarting secondary process would re-arm the
+         * follower each time. The package only while the process name is not known.
+         */
+        internal fun processName(description: String?, packageName: String?): String? =
+            description?.takeIf { it.isNotBlank() } ?: packageName?.takeIf { it.isNotBlank() }
 
         /** `pidof` as the follower needs it; null when adb fails. */
         private fun pidsOrNull(device: ConnectedDevice, applicationId: String): Set<Long>? = adbOrNull {
