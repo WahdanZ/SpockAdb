@@ -19,7 +19,9 @@
     warning the app logged a second before is not pushed out of the report by the platform's
     start-up noise. When it cannot connect it says why in words — the app is still starting, it
     runs without a debugger session, it is a release build — and it never reads silence as
-    "no errors".
+    "no errors". Telling whether the app is Flutter at all gives adb five seconds per read before
+    the report starts, so a hung adb costs the *flutter* section rather than holding back every
+    other one.
   - **Timeline** records the session: errors, routes, bursts of slow frames in profile builds,
     failed requests, and the session starting and ending — including the Flutter engine going away
     when Back leaves the root screen. Device and log times are lined up with the device's measured
