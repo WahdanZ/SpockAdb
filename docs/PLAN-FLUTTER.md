@@ -67,9 +67,12 @@ waits for it. User docs: [FLUTTER.md](FLUTTER.md).
 - **#168 device re-checks.** Done 2026-10-10: `errors.source` after switching structured errors off now reads
   "Flutter.Error events from the VM Service: these arrived while structured errors were on; they are off now …"
   (3.47.5); a 3.22.2 profile build lists "Exception caught by Flutter: Bad state: …" (count 1) and "Another
-  framework error; a profile build prints repeats without their message" (count 2) with its note. Still open,
-  all UI checks: the Recompositions tab's rows and double-click to source; selecting another app mid-recording;
-  the `.second` copy through the selector.
+  framework error; a profile build prints repeats without their message" (count 2) with its note.  UI checks done 2026-10-10 (3.22.2): the
+  Recompositions tab lists widget locations with counts and ends with what became of the tracking flag; selecting
+  another app mid-recording keeps measuring the first app (its session stays open) and restores the flag; the
+  `.second` copy is described with no arguments while the first copy's session stays connected. Open: a
+  double-click opens `lib/…` only when the Flutter project root is open — with only `android/` open it says the
+  file is not in the project; resolving `lib/` from the pubspec next to `android/` would fix that.
 - **`LEFT_ON` when a session dies mid-window**: a connection lost (not closed by Spock) during a rebuild window
   leaves `trackRebuildDirtyWidgets` on, and the result says so; the next session could adopt and restore it, as
   HTTP recording does.
