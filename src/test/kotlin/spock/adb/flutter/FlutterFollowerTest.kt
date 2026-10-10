@@ -619,6 +619,54 @@ class FlutterFollowerTest {
         assertTrue(logged.any { "selection changed: following $APP on emulator-5554" in it }, "$logged")
     }
 
+    @Test
+    fun `an app whose pid changes at every attempt is not asked for ever`() {
+        // A crash loop: every attempt finds a new process. Each one restarts the backoff, but the
+        // run's time is not renewed inside a run, and the watch renews it once.
+        var nextPid = 10_000L
+        duringAttach = { pids = setOf(nextPid++) }
+        repeat(MANY * MANY) { outcomes += notReady() }
+        follower.follow(device, APP)
+        val start = now
+
+        while (scheduler.due > 0 && calls.size < MANY * MANY) runNext()
+
+        assertEquals(0, scheduler.due, "the follower went quiet")
+        val perRun = FlutterFollower.FOLLOW_BUDGET_MS / FlutterFollower.BACKOFF_MS.first() + 1
+        assertTrue(calls.size <= 2 * perRun + FlutterFollower.RECHECKS, "${calls.size} attempts")
+        val bound = 2 * FlutterFollower.FOLLOW_BUDGET_MS + (FlutterFollower.RECHECKS + 1) * FlutterFollower.RECHECK_MS
+        assertTrue(now - start <= bound, "${now - start} ms")
+    }
+
+    @Test
+    fun `the watch after a lost session asks a bounded number of times`() {
+        follower.follow(device, APP)
+        runNext()
+        repeat(MANY) { outcomes += FlutterAttachOutcome.Failed("the VM did not answer") }
+        follower.sessionChanged(FlutterSessionChange.Disconnected(FlutterSession(), identity(), "connection closed"))
+
+        while (scheduler.due > 0) runNext()
+
+        val inRun = FlutterFollower.FOLLOW_BUDGET_MS / FlutterFollower.BACKOFF_MS.first() + 1
+        assertTrue(calls.size - 1 <= inRun + FlutterFollower.RECHECKS, "${calls.size} attempts")
+    }
+
+    @Test
+    fun `a watch that ends connected is not re-armed by the next foreground`() {
+        repeat(MANY) { outcomes += notReady() }
+        follower.follow(device, APP)
+        while (logged.none { "giving up" in it }) runNext()
+        outcomes.clear()
+        runNext()
+        assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+        val asked = calls.size
+
+        follower.foreground(device.serialNumber, APP)
+
+        assertEquals(0, scheduler.due)
+        assertEquals(asked, calls.size)
+    }
+
     private fun notReady() = FlutterAttachOutcome.NotReady("the app is starting", FlutterSessionService.RETRY_MS / 4)
 
     private fun identity() = AppIdentity(device.serialNumber, APP, 4242, IdentityCheck.LOGCAT_PID)

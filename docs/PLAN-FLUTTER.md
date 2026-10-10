@@ -63,7 +63,9 @@ waits for it. User docs: [FLUTTER.md](FLUTTER.md).
 ### Follow-ups
 
 - **Follower re-attach after a lost session**: when `flutter run` lost the device, the follower did not attach
-  to the restarted app until it was selected again (seen during #169). In progress in #171.
+  to the restarted app until it was selected again (seen during #169). Fixed in #171; the bounds a crash loop
+  needs (a run's time is renewed once per trigger, not at every new pid) in a follow-up. Pending: the device run
+  of the sample README's H gate item 9, ddmlib alone included.
 - **#168 device re-checks.** Done 2026-10-10: `errors.source` after switching structured errors off now reads
   "Flutter.Error events from the VM Service: these arrived while structured errors were on; they are off now …"
   (3.47.5); a 3.22.2 profile build lists "Exception caught by Flutter: Bad state: …" (count 1) and "Another
