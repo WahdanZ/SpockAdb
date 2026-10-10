@@ -4,38 +4,22 @@
 
 ### Added
 
-- **A guide for Flutter apps, and a Flutter section in the agent skill.** What Spock does for a
-  Flutter app was spread across the MCP reference and release notes, so it was hard to tell what
-  needs `flutter run`, what works in a profile or release build, and what is still unchecked.
-  [docs/FLUTTER.md](docs/FLUTTER.md) puts it on one page — the automatic session, Diagnose's
-  *flutter* section, the Timeline, HTTP recording, rebuilds, the Flutter route, the limits and how
-  VM Service tokens are kept out of everything — and says where Spock stops and the Flutter plugin
-  and the Dart MCP server take over, with a configuration that runs Spock's and Dart's MCP servers
-  side by side. The `spock-adb` skill now tells an agent to call `flutter_app_status` first, to read
-  silence in the *flutter* section as unknown rather than healthy, and to handle a permission dialog
-  over a Flutter app with Spock's element tools, since it is native and the widget tools cannot see it.
-- **Home: current Flutter route, and Flutter routes in App back stack.** An already connected
-  Flutter session supplies the root navigator’s current route. For a Flutter app, App back stack
-  lists its Flutter routes in their own section under its activities, after checking for nested
-  navigators before claiming an exact stack; if one half cannot be read, the other is still shown
-  and the popup says what failed. Unnamed routes show their class, and ambiguous or transitional
-  navigation is unavailable, never guessed. The check briefly pauses the app; Home never attaches
-  a session, and for any other app App back stack is unchanged.
-- **Flutter: Spock connects to your app by itself, and Diagnose and the Timeline read it.** Until now
-  Flutter's own errors — a layout overflow, an exception in `build()` or a tap handler — never
-  reached Spock in a debug build: Flutter sends them to the Dart VM Service, not logcat, so Diagnose
-  could only say they were somewhere else. Now, for the Flutter app selected in Spock and run with
-  `flutter run`, Spock finds its debugger session, checks it is that app's process on that device,
-  and connects — when you select the app, when its process starts, and when you press Diagnose.
-  Nothing to copy or paste.
+- **Flutter: Spock connects to your app by itself, and Diagnose and the Timeline read it.**
+  Flutter's own errors — a layout overflow, an exception in `build()` or a tap handler — do not
+  reach logcat in a debug build: Flutter sends them to the Dart VM Service. Now, for the Flutter
+  app selected in Spock and run with `flutter run`, Spock finds its debugger session, checks it is
+  that app's process on that device, and connects — when you select the app, when its process
+  starts, and when you press Diagnose. Nothing to copy or paste.
   - **Diagnose** has a *flutter* section: the app's framework errors since Spock connected (those
-    from before are counted apart and said to be), each with the logcat problems from the same
-    two seconds beside it, so the overflow and the warning it caused are read together; frame
-    times (a verdict only in a profile build); failed `dart:io` requests; the last routes. The log
-    problems beside an error are listed right after it, so a warning the app logged a second before
-    is not pushed out of the report by the platform's start-up noise. When it
-    cannot connect it says why in words — the app is still starting, it runs without a debugger
-    session, it is a release build — and it never reads silence as "no errors".
+    from before are counted apart and said to be), each with the log problems logged within two
+    seconds of one of its occurrences beside it, so the overflow and the warning it caused are read
+    together, and an overflow seen at the start and again ten minutes later does not claim every
+    warning in between; frame times (a verdict only in a profile build); failed `dart:io`
+    requests; the last routes. The log problems beside an error are listed right after it, so a
+    warning the app logged a second before is not pushed out of the report by the platform's
+    start-up noise. When it cannot connect it says why in words — the app is still starting, it
+    runs without a debugger session, it is a release build — and it never reads silence as
+    "no errors".
   - **Timeline** records the session: errors, routes, bursts of slow frames in profile builds,
     failed requests, and the session starting and ending — including the Flutter engine going away
     when Back leaves the root screen. Device and log times are lined up with the device's measured
@@ -43,10 +27,10 @@
   - Spock never connects to the app's VM while `flutter run` or `flutter attach` may be starting
     its debugger session — a client there first would make it fail. On Flutter 3.22, which has no
     Dart Tooling Daemon to name the session, Spock therefore connects about 10–15 seconds after the
-    app's Dart VM starts; Diagnose says a Flutter tool is attaching meanwhile. An app started without a debugger session
-    is checked again now and then, so a later `flutter attach` is found. An app Android has frozen
-    in the background is reported as such, not as a failure, and Spock connects as soon as it comes
-    back to the foreground.
+    app's Dart VM starts; Diagnose says a Flutter tool is attaching meanwhile. An app started
+    without a debugger session is checked again now and then, so a later `flutter attach` is found.
+    An app Android has frozen in the background is reported as such, not as a failure, and Spock
+    connects as soon as it comes back to the foreground.
   - When `flutter run` loses the device — Android Studio restarting adb, or closing its last
     project window, does that — the app runs on with no debugger session, and nothing on the
     device may say when it is started again. Spock keeps an eye on it: for ten minutes after a
@@ -56,8 +40,9 @@
   - To see failed requests, Spock switches on Dart's HTTP recording for the session — only through
     `flutter run`'s debugger service, only in debug and profile builds — and switches it back off
     when it disconnects, leaving it alone if something else turned it on. If the connection ends
-    before it can (`flutter run` stopped), the next session on the same app process takes that over. **Settings → Tools → Spock
-    ADB → Record Flutter HTTP traffic automatically** turns that off.
+    before it can (`flutter run` stopped), the next session on the same app process takes that
+    over. **Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** turns that
+    off.
   - **`android_get_debug_context`** and **`android_diagnose_current_screen`** return the same
     *flutter* section; each `likelyProblems` entry now has an `id`, which the section's errors point
     at. VM Service addresses and their tokens, which let whoever holds them run code in the app, are
@@ -74,15 +59,14 @@
     without their message, so they could be any error: they are one entry of their own that says
     so, rather than added to whichever error came before, and the report says the message shows
     only in a debug build or through an app's own `FlutterError.onError`. The section says where
-    the errors it lists came from — the debugger, logcat, or both. Before, it only pointed at
-    logcat. When neither the debugger nor logcat has any error, it says that an app that replaced
-    `FlutterError.onError` (Crashlytics, Sentry) hides errors from both. It still never reads
-    silence as "no errors".
+    the errors it lists came from — the debugger, logcat, or both. When neither has any error, it
+    says that an app that replaced `FlutterError.onError` (Crashlytics, Sentry) hides errors from
+    both. It still never reads silence as "no errors".
   - **Diagnose** lists a Dart error and the native crash, `MissingPluginException` or failed
-    channel handler a moment beside it as **one** problem, naming both layers. Before, they were
-    two unrelated entries, and an agent had to notice the timestamps to see one fault. Each layer's
-    own problem is kept inside it. The moment is measured between single occurrences, so an error
-    that repeats over ten minutes is not tied to a crash somewhere in between.
+    channel handler a moment beside it as **one** problem, naming both layers, rather than two
+    unrelated entries an agent would have to line up by their timestamps. Each layer's own problem
+    is kept inside it. The moment is measured between single occurrences, so an error that repeats
+    over ten minutes is not tied to a crash somewhere in between.
   - **`android_get_recomposition_counts`** and the UI Inspector's **Recompositions** tab record
     Flutter widget rebuilds for a Flutter app run with `flutter run` in a debug build, in their
     usual shape. Spock switches the inspector's rebuild tracking on for the window only if it was
@@ -90,42 +74,75 @@
     counts, DevTools) wrote it meanwhile, so the IDE's own counts are left as they were. Switching
     it on rebuilds the whole widget tree once; that frame is not counted, so an idle screen reads
     0 frames. If Spock closes the session mid-recording, it switches tracking off as it
-    disconnects. A Compose app that embeds a Flutter module, with no Flutter session, is recorded
-    as Compose. Diagnose never records.
+    disconnects. If the connection is lost instead while the app runs on, Spock remembers that it
+    switched tracking on in that process, and its next session there switches it off only when it
+    can prove the flag is still Spock's: the debugger session (DDS) outlived Spock's connection and
+    its history shows Spock's switch-on with no write after it. When `flutter run` itself died, the
+    next `flutter attach` starts a new DDS with no history, so what the IDE or DevTools wrote in
+    between cannot be seen: Spock leaves tracking on and says so, in the Timeline and
+    `flutter_app_status`, rather than switch off a flag another tool may be using. A hot restart
+    resets the flag anyway, and Spock forgets it. Double-clicking a widget row opens its source at
+    the line, also when Android Studio has only the app's `android` folder open and `lib/` is
+    outside the project: Spock finds the file under the app's `pubspec.yaml` — in the project's
+    folder, a module's folder, or the folder above one named `android` — and opens it, outside the
+    project or not, even while the IDE indexes. A file outside that app (a path dependency, a second
+    app) is looked up by name, never opened as a same-named file of the app. A Compose app that
+    embeds a Flutter module, with no Flutter session, is recorded as Compose. Diagnose never
+    records.
   - **`flutter_app_status`**, a new read-only MCP tool, says whether Spock has a Flutter session on
     the app and why not: how the attach went, how the session was found and verified, DDS or a
     read-only direct connection, the build mode, the UI isolate, the Dart version, HTTP recording
     and the device clock. Like Diagnose, it is about the app selected in Spock unless told
     otherwise, and an attach it makes switches on HTTP recording as Diagnose's does. It never
     returns a VM Service address or token.
-- **Flutter apps, first pass.** Spock now understands what a Flutter app puts on the device:
+- **Flutter apps in App Storage, Home, Diagnose, Logcat, the Timeline and the element tools.** Spock
+  now understands what a Flutter app puts on the device:
   - **App Storage** reads `FlutterSharedPreferences.xml` the way Dart does: doubles and lists
     show as a double and a new *string list* type instead of encoded strings, and edits are
     written back in the plugin's own encoding.
-  - **Home** shows *Flutter debug*, *profile* or *release* beside the version.
-  - **Diagnose** reports each unhandled Dart exception once, tells a missing plugin and a
-    platform channel error apart, and says that Flutter's framework errors (overflow, `build()`)
-    are not in logcat for a debug build. **Timeline** titles drop the engine's source prefix.
-  - **Diagnose** no longer blames a missing plugin when a native channel handler threw. A checked
-    exception in a handler (Kotlin throws them undeclared) makes Android's `DartMessenger` reply
-    with nothing, which Dart reads as `MissingPluginException` though the plugin is there; the
-    report now names the method, the channel and the exception the handler threw, so the fix is
-    looked for in the handler rather than in plugin registration. Nothing in the log links the two
-    lines, so the pairing is kept narrow — same process, within half a second, nothing else logged
-    in between — and the report says it is inferred.
-  - **`android_get_debug_timeline`** takes four new categories, `flutter_error`, `flutter_frame`,
-    `navigation` and `http`, so an agent can ask for a Flutter app's errors, bursts of slow
-    frames, routes and failed requests on their own, recorded while Spock holds the app's Flutter
-    session (above). `flutter` on its own is refused rather than guessed at, since it could mean
-    either Flutter category.
-  - **Logcat** has a *Flutter* view.
   - **App Storage** shows a Hive box (`*.hive`) as a key/type/value table and a SQLite database
     as its tables, row counts and first rows (read on the device with `sqlite3`, where it
     exists, so a database of any size is shown without downloading it, and a table that cannot
     be read says why). Any other binary file is a hex dump instead of garbled text. All read-only.
+  - **Home** shows *Flutter debug*, *profile* or *release* beside the version.
+  - **Diagnose** reports each unhandled Dart exception once and tells a missing plugin and a
+    platform channel error apart. When a native channel handler threw, it says so rather than
+    blaming a missing plugin: a checked exception in a handler (Kotlin throws them undeclared)
+    makes Android's `DartMessenger` reply with nothing, which Dart reads as
+    `MissingPluginException` though the plugin is there, so the report names the method, the
+    channel and the exception the handler threw, and the fix is looked for in the handler rather
+    than in plugin registration. Nothing in the log links the two lines, so the pairing is kept
+    narrow — same process, within half a second, nothing else logged in between — and the report
+    says it is inferred.
+  - **Timeline** titles drop the engine's source prefix, and **`android_get_debug_timeline`** takes
+    four new categories, `flutter_error`, `flutter_frame`, `navigation` and `http`, so an agent can
+    ask for a Flutter app's errors, bursts of slow frames, routes and failed requests on their own,
+    recorded while Spock holds the app's Flutter session (above). `flutter` on its own is refused
+    rather than guessed at, since it could mean either Flutter category.
+  - **Logcat** has a *Flutter* view.
   - **Element tools** tap a Flutter button by its `Semantics(identifier:)`, and say so when a
     screen is one drawn surface with nothing to find.
   - `sample/flutter_app` is a Flutter fixture app for all of it.
+- **Home: current Flutter route, and Flutter routes in App back stack.** An already connected
+  Flutter session supplies the root navigator’s current route. For a Flutter app, App back stack
+  lists its Flutter routes in their own section under its activities, after checking for nested
+  navigators before claiming an exact stack; if one half cannot be read, the other is still shown
+  and the popup says what failed. Unnamed routes show their class, and ambiguous or transitional
+  navigation is unavailable, never guessed. The check briefly pauses the app; Home never attaches
+  a session, and for any other app App back stack is unchanged.
+- **A guide for Flutter apps, and a Flutter section in the agent skill.** What Spock does for a
+  Flutter app was spread across the MCP reference and release notes, so it was hard to tell what
+  needs `flutter run`, what works in a profile or release build, and what is still unchecked.
+  [docs/FLUTTER.md](docs/FLUTTER.md) puts it on one page — the automatic session, Diagnose's
+  *flutter* section, the Timeline, HTTP recording, rebuilds, the Flutter route, the limits and how
+  VM Service tokens are kept out of everything — and says where Spock stops and the Flutter plugin
+  and the Dart MCP server take over, with a configuration that runs Spock's and Dart's MCP servers
+  side by side. The `spock-adb` skill now tells an agent to call `flutter_app_status` first, to read
+  silence in the *flutter* section as unknown rather than healthy, and to handle a permission dialog
+  over a Flutter app with Spock's element tools, since it is native and the widget tools cannot see it.
+
+### Changed
+
 - **Spock remembers the selected app per project.** A project reopened whose Gradle sync names no
   app — the sync failed, or the project is a Flutter app's `android` folder — came back with no
   app selected, so nothing worked on it, and a Flutter app was not connected to, until the app was
@@ -134,32 +151,6 @@
 
 ### Fixed
 
-- **Flutter rebuild tracking left on by a lost connection is followed up.** A rebuild recording
-  (the UI Inspector's Recompositions tab, `android_get_recomposition_counts`) switches on a flag
-  the app shares with the IDE's rebuild counts and DevTools. If the connection was lost during the
-  recording while the app ran on, Spock could not switch it off, and the app kept tracking every
-  rebuild until it restarted, with nothing said later. Spock now remembers that it switched the
-  flag on in that process. Its next session there switches it off only when it can prove the flag
-  is still Spock's: the debugger session (DDS) outlived Spock's connection and its history shows
-  Spock's switch-on with no write after it. When `flutter run` itself died, the next `flutter
-  attach` starts a new DDS with no history, so whatever the IDE or DevTools wrote in between cannot
-  be seen: Spock leaves the flag on and says so, in the Timeline and `flutter_app_status`, rather
-  than switch off a flag another tool may be using. After a hot restart the flag is reset anyway,
-  and Spock forgets it.
-- **Diagnose no longer pairs a long-lived Flutter error with unrelated log lines.** A Flutter error's
-  `nearbyLogs` — the log problems listed beside it as its context — were measured against the
-  whole stretch between the error's first and last occurrence, so an overflow seen at the start
-  and again ten minutes later claimed every warning logged in between. They are now measured
-  against each occurrence, as the cross-layer merge already was: a log line is beside the error
-  only if it is within two seconds of one of its occurrences.
-- **The Recompositions tab opens a Flutter widget's source when only `android/` is open.**
-  Android Studio is often pointed at a Flutter app's `android` folder, which leaves the app's
-  `lib/` folder outside the project, so double-clicking a widget row said "frames.dart is not in
-  the project or its attached sources". Spock now takes the file Flutter reported and finds it
-  under the app's `pubspec.yaml` — in the project's folder, a module's folder, or the folder above
-  one named `android` — and opens it at the line, outside the project or not, and while the IDE
-  indexes. A file outside that app (a path dependency, a second app) is looked up by name as
-  before, never opened as a same-named file of the app.
 - **The device and app popup tells two emulators apart and keeps underscores.** Devices that would
   read the same — two emulators booted from one system image — now show their serial
   (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
