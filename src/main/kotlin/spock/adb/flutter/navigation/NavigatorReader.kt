@@ -35,7 +35,9 @@ internal data class NavigatorLimits(
  * proven on Flutter 3.22.2 and 3.47.5 with the same field names).
  *
  * Every Flutter-private name Spock depends on is here and nowhere else, so a Flutter version that
- * moves one shows up as "unavailable" naming the field, never as a wrong stack:
+ * moves one shows up as "unavailable" naming the field, never as a wrong stack. A field counts only
+ * when the VM says Flutter's class declares it, so an app subclass's same-named private field
+ * cannot stand in for it; a class counts as `NavigatorState` only from `navigator.dart`:
  * - finding the navigator: `WidgetsBinding._instance` (static, `package:flutter/src/widgets/binding.dart`)
  *   → `_buildOwner` → `_globalKeyRegistry` (a `Map<GlobalKey, Element>`) → each `StatefulElement`'s
  *   `_state`, kept when its class is `NavigatorState` and it is mounted (`State._element` set).
@@ -56,6 +58,9 @@ internal class NavigatorReader(
     private val limits: NavigatorLimits = NavigatorLimits(),
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
+
+    /** Where Flutter declares a field Spock reads. */
+    private class Owner(val className: String, val library: String)
 
     /** A mounted `NavigatorState`, opened, and its class for the heap walk. */
     private class Navigator(val state: JsonObject, val classId: String)
@@ -96,8 +101,8 @@ internal class NavigatorReader(
     // ---------------------------------------------------------------- finding the navigator
 
     private fun keyedNavigators(): List<Navigator> {
-        val owner = open(binding().field("_buildOwner", "WidgetsBinding"))
-        val registry = open(owner.field("_globalKeyRegistry", "BuildOwner"))
+        val owner = open(binding().field("_buildOwner", BINDING))
+        val registry = open(owner.field("_globalKeyRegistry", BUILD_OWNER))
         val associations = registry.array("associations")
             ?: fail(missing("BuildOwner._globalKeyRegistry", "associations"))
         checkWhole(registry, associations, "the GlobalKey registry")
@@ -108,7 +113,7 @@ internal class NavigatorReader(
         }.filter { it.className == STATEFUL_ELEMENT }
         if (elements.size > limits.maxElements) fail(tooManyElements(limits.maxElements))
         return elements.mapNotNull { element ->
-            val state = open(element).field("_state", STATEFUL_ELEMENT)
+            val state = open(element).field("_state", ELEMENT)
             val classId = navigatorClass(state) ?: return@mapNotNull null
             open(state).takeIf(::isMounted)?.let { Navigator(it, classId) }
         }
@@ -121,15 +126,19 @@ internal class NavigatorReader(
         while (true) {
             val id = type.string("id") ?: fail(missing("Class", "id"))
             if (!visited.add(id)) fail("The VM returned a cyclic class hierarchy.")
-            if (type.string("name") == NAVIGATOR_STATE) return id
+            if (type.string("name") == NAVIGATOR_STATE && libraryOf(type) == NAVIGATOR_LIBRARY) return id
             if (type.string("name") == "Object") return null
             type = open(type).obj("super") ?: fail(missing("Class", "super"))
             if (type.isNull) return null
         }
     }
 
+    /** A class's library uri: on the reference when the VM sends it, else on the class. */
+    private fun libraryOf(type: JsonObject): String =
+        (type.obj("library") ?: open(type).obj("library"))?.string("uri") ?: fail(missing("Class", "library"))
+
     private fun isMounted(state: JsonObject): Boolean {
-        val element = state.field("_element", NAVIGATOR_STATE)
+        val element = state.field("_element", STATE, NAVIGATOR_STATE)
         if (element.isNull) return false
         if (!isInstance(element)) fail(missing(NAVIGATOR_STATE, "_element instance"))
         return true
@@ -166,21 +175,21 @@ internal class NavigatorReader(
     // ---------------------------------------------------------------- the stack
 
     private fun stackOf(navigator: JsonObject): FlutterNavigationState {
-        val history = navigator.field("_history", NAVIGATOR_STATE)
+        val history = navigator.field("_history", NAVIGATOR)
         // `_History` since Flutter 3.7; a plain list before, read the same way.
         val list = if (history.string("kind") == LIST) {
             open(history)
         } else {
-            open(open(history).field("_value", "_History"))
+            open(open(history).field("_value", HISTORY))
         }
         val entries = list.array("elements") ?: fail(missing("_History._value", "elements"))
         checkWhole(list, entries, "the navigator's history")
         if (entries.size() == 0) return FlutterNavigationState.unavailable("The navigator has no routes yet.")
         val routes = entries.objects().map { ref ->
             val entry = open(ref)
-            val routeRef = entry.field("route", ROUTE_ENTRY)
+            val routeRef = entry.field("route", ENTRY)
             val routeClass = routeRef.className ?: fail(missing(ROUTE_ENTRY, "route class"))
-            val lifecycle = lifecycleOf(entry.field("currentState", ROUTE_ENTRY))
+            val lifecycle = lifecycleOf(entry.field("currentState", ENTRY))
             if (lifecycle != IDLE) fail(inProgress(routeClass, lifecycle), transient = true)
             FlutterRoute(nameOf(open(routeRef), routeClass), routeClass)
         }
@@ -188,14 +197,14 @@ internal class NavigatorReader(
     }
 
     /** `_RouteLifecycle`'s value by name: `idle`, `pushing`… */
-    private fun lifecycleOf(ref: JsonObject): String = stringOf(open(ref).field("_name", ROUTE_LIFECYCLE))
+    private fun lifecycleOf(ref: JsonObject): String = stringOf(open(ref).field("_name", ENUM, ROUTE_LIFECYCLE))
         ?: fail(missing(ROUTE_LIFECYCLE, "_name"))
 
     /** `RouteSettings.name`; null when the route has none. */
     private fun nameOf(route: JsonObject, routeClass: String): String? {
-        val settings = route.field("_settings", routeClass)
+        val settings = route.field("_settings", ROUTE, routeClass)
         if (!isInstance(settings)) fail(missing(routeClass, "_settings"))
-        return stringOf(open(settings).field("name", "RouteSettings"))
+        return stringOf(open(settings).field("name", ROUTE_SETTINGS))
     }
 
     /** A `String`'s value, or null for `null`; a value the VM shortened is opened for the rest. */
@@ -219,9 +228,13 @@ internal class NavigatorReader(
         return result.also { opened[id] = it }
     }
 
-    /** The value of the field [name]; a field the object does not have is unavailable, by name. */
-    private fun JsonObject.field(name: String, owner: String): JsonObject =
-        array("fields").objects().firstOrNull { fieldName(it) == name }?.obj("value") ?: fail(missing(owner, name))
+    /**
+     * The value of the field [name] that [owner] declares; a field the object does not have is
+     * unavailable, by name, as a field of [shownAs].
+     */
+    private fun JsonObject.field(name: String, owner: Owner, shownAs: String = owner.className): JsonObject =
+        array("fields").objects().firstOrNull { fieldName(it) == name && declaredBy(it, owner) }?.obj("value")
+            ?: fail(missing(shownAs, name))
 
     /** The VM lists the whole of a map or list unless told otherwise; a part of one proves nothing. */
     private fun checkWhole(collection: JsonObject, items: JsonArray, what: String) {
@@ -243,6 +256,8 @@ internal class NavigatorReader(
 
     companion object {
         const val BINDING_LIBRARY = "package:flutter/src/widgets/binding.dart"
+        const val NAVIGATOR_LIBRARY = "package:flutter/src/widgets/navigator.dart"
+        private const val FRAMEWORK_LIBRARY = "package:flutter/src/widgets/framework.dart"
         const val NAVIGATOR_STATE = "NavigatorState"
         private const val WIDGETS_BINDING = "WidgetsBinding"
         private const val STATEFUL_ELEMENT = "StatefulElement"
@@ -252,6 +267,19 @@ internal class NavigatorReader(
         private const val LIST = "List"
         private const val STRING = "String"
         private const val SENTINEL = "Sentinel"
+
+        private val BINDING = Owner(WIDGETS_BINDING, BINDING_LIBRARY)
+        private val BUILD_OWNER = Owner("BuildOwner", FRAMEWORK_LIBRARY)
+        private val ELEMENT = Owner(STATEFUL_ELEMENT, FRAMEWORK_LIBRARY)
+        private val STATE = Owner("State", FRAMEWORK_LIBRARY)
+        private val NAVIGATOR = Owner(NAVIGATOR_STATE, NAVIGATOR_LIBRARY)
+        private val HISTORY = Owner("_History", NAVIGATOR_LIBRARY)
+        private val ENTRY = Owner(ROUTE_ENTRY, NAVIGATOR_LIBRARY)
+        private val ROUTE = Owner("Route", NAVIGATOR_LIBRARY)
+        private val ROUTE_SETTINGS = Owner("RouteSettings", NAVIGATOR_LIBRARY)
+
+        /** Every enum's `_name` is `_Enum`'s, in `dart:core`. */
+        private val ENUM = Owner("_Enum", "dart:core")
 
         const val NO_KEYED_NAVIGATOR = "No navigator with a GlobalKey is mounted. MaterialApp and WidgetsApp key " +
             "their own; a Navigator an app builds without a key cannot be found."
@@ -270,6 +298,19 @@ internal class NavigatorReader(
 
         /** A `BoundField`'s name: `decl.name`, or `name` on newer VMs. */
         private fun fieldName(field: JsonObject): String? = field.obj("decl")?.string("name") ?: field.string("name")
+
+        /**
+         * Whether [field] is [owner]'s, as far as the VM says: a reply that names no owner is taken
+         * at its name. A mixin's field is declared by the mixin application the VM builds for it
+         * (`…&WidgetsBinding`), which only the compiler can name, in whichever library applies it.
+         */
+        private fun declaredBy(field: JsonObject, owner: Owner): Boolean {
+            val declared = field.obj("decl")?.obj("owner") ?: return true
+            val name = declared.string("name")
+            if (name != null && name.endsWith("&${owner.className}")) return true
+            val library = declared.obj("library")?.string("uri")
+            return (name == null || name == owner.className) && (library == null || library == owner.library)
+        }
 
         private fun isInstance(ref: JsonObject): Boolean =
             ref.string("type")?.removePrefix("@") == "Instance" && ref.string("id") != null

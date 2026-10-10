@@ -1,5 +1,6 @@
 package spock.adb.flutter.navigation
 
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -22,6 +23,19 @@ class NavigatorReaderTest {
         NavigatorReader(objects, limits, clock)
 
     private fun names(state: FlutterNavigationState) = state.stack.map { it.name }
+
+    private fun classRef(id: String, name: String, library: String) = JsonObject().apply {
+        addProperty("type", "@Class")
+        addProperty("id", id)
+        addProperty("name", name)
+        add(
+            "library",
+            JsonObject().apply {
+                addProperty("type", "@Library")
+                addProperty("uri", library)
+            },
+        )
+    }
 
     @Test
     fun `missing heap total cannot prove the navigator count`() {
@@ -68,6 +82,61 @@ class NavigatorReaderTest {
         objects.objects().add("classes/CustomNavigator", subtype.deepCopy().apply { add("super", base) })
         assertEquals(Confidence.EXACT, reader(objects).readChecked().confidence)
         assertTrue(objects.calls.contains("getInstances ${base.get("id").asString}"))
+    }
+
+    @Test
+    fun `an app subclass's same-named private field does not stand in for Flutter's`() {
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        val navigator = objects.keyedNavigatorIds().single()
+        val flutters = objects.field(navigator, "_history").apply {
+            val owner = classRef("classes/400", "NavigatorState", NavigatorReader.NAVIGATOR_LIBRARY)
+            getAsJsonObject("decl").add("owner", owner)
+        }
+        val apps = flutters.deepCopy().apply {
+            getAsJsonObject("decl").add("owner", classRef("classes/9000", "NavigatorState", "package:app/main.dart"))
+            add("value", FixtureObjects.nullRef())
+        }
+        val state = objects.objects().getAsJsonObject(navigator)
+        val fields = JsonArray().apply {
+            add(apps)
+            state.getAsJsonArray("fields").forEach(::add)
+        }
+        state.add("fields", fields)
+
+        assertEquals(listOf("/", "/items", "/item/3"), names(reader(objects).readKeyed()))
+
+        objects.removeField(navigator, "_history")
+        state.getAsJsonArray("fields").add(apps)
+        assertEquals(NavigatorReader.missing("NavigatorState", "_history"), reader(objects).readKeyed().unavailable)
+    }
+
+    @Test
+    fun `a mixin's field is declared by its mixin application`() {
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        val application = "_WidgetsFlutterBinding&BindingBase&GestureBinding&WidgetsBinding"
+        objects.field("objects/1", "_buildOwner").getAsJsonObject("decl")
+            .add("owner", classRef("classes/9001", application, NavigatorReader.BINDING_LIBRARY))
+
+        assertEquals(Confidence.KEYED, reader(objects).readKeyed().confidence)
+    }
+
+    @Test
+    fun `an app class named NavigatorState is not Flutter's`() {
+        val objects = FixtureObjects.load("root-3.22.2.json")
+        val navigator = objects.keyedNavigatorIds().single()
+        val impostor = classRef("classes/9002", "NavigatorState", "package:app/main.dart")
+        objects.objects().entrySet().forEach { (_, value) ->
+            value.asJsonObject.getAsJsonArray("fields")?.forEach { field ->
+                val ref = field.asJsonObject.getAsJsonObject("value")
+                if (ref?.get("id")?.asString == navigator) ref.add("class", impostor)
+            }
+        }
+        objects.objects().add(
+            "classes/9002",
+            impostor.deepCopy().apply { add("super", classRef("classes/Object", "Object", "dart:core")) },
+        )
+
+        assertEquals(NavigatorReader.NO_KEYED_NAVIGATOR, reader(objects).readKeyed().unavailable)
     }
 
     @Test
