@@ -4,6 +4,16 @@
 
 ### Added
 
+- **A guide for Flutter apps, and a Flutter section in the agent skill.** What Spock does for a
+  Flutter app was spread across the MCP reference and release notes, so it was hard to tell what
+  needs `flutter run`, what works in a profile or release build, and what is still unchecked.
+  [docs/FLUTTER.md](docs/FLUTTER.md) puts it on one page — the automatic session, Diagnose's
+  *flutter* section, the Timeline, HTTP recording, rebuilds, the Flutter route, the limits and how
+  VM Service tokens are kept out of everything — and says where Spock stops and the Flutter plugin
+  and the Dart MCP server take over, with a configuration that runs Spock's and Dart's MCP servers
+  side by side. The `spock-adb` skill now tells an agent to call `flutter_app_status` first, to read
+  silence in the *flutter* section as unknown rather than healthy, and to handle a permission dialog
+  over a Flutter app with Spock's element tools, since it is native and the widget tools cannot see it.
 - **Home: current Flutter route, and Flutter routes in App back stack.** An already connected
   Flutter session supplies the root navigator’s current route. For a Flutter app, App back stack
   lists its Flutter routes in their own section under its activities, after checking for nested

@@ -178,10 +178,12 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
    - Turn the IDE's counts off, start a 30 s recording, and turn them on while it runs: "something
      else (the IDE's rebuild counts or DevTools) switched it during the recording, so Spock left it
      as that set it", and the IDE's counts keep running afterwards.
-   - Start a 30 s recording and select another app in Spock while it runs: the result ends early
-     with "The Flutter session ended during the recording, so it stopped early." and "Spock
-     switched it on for the recording and off again"; the IDE's *Show widget rebuild information*
-     is still off.
+   - Start a 30 s recording and select another app in Spock while it runs (here the `.second` copy,
+     not running): the recording keeps measuring the app it started on, since selecting another app
+     does not close that app's session, and ends with "Spock switched it on for the recording and
+     off again"; the flag reads off afterwards (checked 2026-10-10, 3.22.2). It ends early with
+     "The Flutter session ended during the recording, so it stopped early." only when that session
+     really ends (`flutter run` quits, the app dies).
    - Start a 30 s recording and press `R` (hot restart) in `flutter run`: it ends early with "the
      app restarted during the recording … counts stop at the restart".
    - In the IDE, the UI Inspector's **Recompositions** tab, **Record** with the storm running: rows
@@ -251,7 +253,7 @@ version (or "direct VM, no DDS"), and counts the events it hears, split into rep
 
 ## Navigation checks
 
-**All expectations below are unverified on device**, for both Flutter 3.22.2 and 3.47.5.
+**Checked on device** (Android 14 emulator) on Flutter 3.22.2 and 3.47.5, every row below (#169). Still unchecked: hot restart, switching the selected app during a read, transition retries.
 Run with `flutter run`, select this app in Spock, and wait for its existing Flutter session.
 Open **Navigation** from the hub. Let transitions settle before checking Home → This screen.
 
