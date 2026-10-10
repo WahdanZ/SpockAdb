@@ -1,6 +1,8 @@
 package spock.adb.flutter
 
 import com.android.ddmlib.AdbCommandRejectedException
+import com.android.ddmlib.AndroidDebugBridge
+import com.android.ddmlib.Client
 import com.android.ddmlib.ShellCommandUnresponsiveException
 import com.google.gson.JsonObject
 import com.intellij.openapi.Disposable
@@ -26,8 +28,9 @@ import com.android.ddmlib.TimeoutException as AdbTimeoutException
 
 /**
  * The project's automatic Flutter attach, and what it keeps: a [FlutterFollower] driven by the
- * selection, the selected app's process starts (read by the Timeline's device recorder) and
- * Diagnose; and the [FlutterEventLog] of the live session, for Diagnose.
+ * selection, the selected app's process starts (read by the Timeline's device recorder, and
+ * ddmlib naming a new process), and Diagnose; and the [FlutterEventLog] of the live session,
+ * for Diagnose.
  *
  * Created with the tool window, or by the first Diagnose an agent asks for.
  */
@@ -50,6 +53,14 @@ class FlutterFollowerService(private val project: Project) : Disposable {
         background = { ApplicationManager.getApplication().executeOnPooledThread(it) },
     )
 
+    /** ddmlib named a process: the selected app's, maybe restarted with no device log to say so. */
+    private val clientNamed = AndroidDebugBridge.IClientChangeListener { client, mask ->
+        if (mask and Client.CHANGE_NAME == 0) return@IClientChangeListener
+        val data = client.clientData
+        val app = data.packageName?.takeIf { it.isNotBlank() } ?: data.clientDescription ?: return@IClientChangeListener
+        follower.processSeen(client.device.serialNumber, app, data.pid.toLong())
+    }
+
     init {
         Disposer.register(this, follower)
         sessions.addListener(this, eventLog)
@@ -65,6 +76,8 @@ class FlutterFollowerService(private val project: Project) : Disposable {
             }
             timeline.addForegroundListener(this, follower::foreground)
         }
+        // ddmlib's listeners are static: they outlive an adb restart, which the device log may not.
+        AndroidDebugBridge.addClientChangeListener(clientNamed)
     }
 
     /**
@@ -173,7 +186,9 @@ class FlutterFollowerService(private val project: Project) : Disposable {
         )
     }
 
-    override fun dispose() = Unit
+    override fun dispose() {
+        AndroidDebugBridge.removeClientChangeListener(clientNamed)
+    }
 
     companion object {
         /** How long Diagnose waits for an attach before saying the app is starting (design §3). */

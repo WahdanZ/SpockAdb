@@ -2,6 +2,7 @@ package spock.adb.context
 
 import com.intellij.execution.ExecutionTargetListener
 import com.intellij.execution.ExecutionTargetManager
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -246,15 +247,29 @@ class SpockSelection(private val project: Project) : Disposable {
                 val apps = InstalledPackages.choices(installed.getOrDefault(emptyList()), projectApp)
                 snapshot = snapshot.copy(apps = apps, projectApp = projectApp)
                 val current = snapshot.app
-                val app = SelectionRules.nextApp(current = current, projectApp = projectApp, keep = keepApp)
+                val app = SelectionRules.nextApp(
+                    current = current,
+                    projectApp = projectApp,
+                    keep = keepApp,
+                    remembered = rememberedApp()?.takeIf { it in apps },
+                )
                 val changes = SelectionRules.afterAppsRead(current = current, next = app, sameDevice = keepApp)
                 if (app != null && Change.APP in changes) setApp(app, setOf(Change.APPS)) else notify(changes)
             }) { project.isDisposed }
         }
     }
 
+    /**
+     * The app chosen when the project was last open. Without it, a project reopened whose Gradle
+     * model names no app — a sync that failed, a Flutter app's `android` folder — came back with no
+     * app, and the Flutter follower had nothing to follow (sandbox, 2026-10-09).
+     */
+    private fun rememberedApp(): String? =
+        PropertiesComponent.getInstance(project).getValue(SELECTED_APP_KEY)?.takeIf { it.isNotBlank() }
+
     private fun setApp(app: String, extra: Set<Change>) {
         snapshot = snapshot.copy(app = app)
+        PropertiesComponent.getInstance(project).setValue(SELECTED_APP_KEY, app)
         SpockAdbService.getInstance(project).controller.selectedApp = app
         notify(extra + Change.APP)
     }
@@ -266,6 +281,9 @@ class SpockSelection(private val project: Project) : Disposable {
     }
 
     companion object {
+        /** Where the project keeps its selected app across a reopen. */
+        private const val SELECTED_APP_KEY = "spock.adb.selectedApp"
+
         fun getInstance(project: Project): SpockSelection = project.getService(SpockSelection::class.java)
 
         /**
@@ -296,10 +314,11 @@ internal object SelectionRules {
     /**
      * The app to select after a device's apps are read: the one already chosen when it is kept,
      * else the project's, else whatever was chosen before, so a project with no app module does
-     * not lose the package the developer typed.
+     * not lose the package the developer typed — and, in a project just reopened with none of
+     * those, the app [remembered] from its last session, when the device has it installed.
      */
-    fun nextApp(current: String?, projectApp: String?, keep: Boolean): String? =
-        if (keep && current != null) current else projectApp ?: current
+    fun nextApp(current: String?, projectApp: String?, keep: Boolean, remembered: String? = null): String? =
+        if (keep && current != null) current else projectApp ?: current ?: remembered
 
     /**
      * What to announce once a device's apps are read and [next] is chosen. The app only when it

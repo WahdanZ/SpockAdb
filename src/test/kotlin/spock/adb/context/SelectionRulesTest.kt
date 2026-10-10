@@ -67,6 +67,24 @@ class SelectionRulesTest {
     }
 
     @Test
+    fun `a reopened project with no app from Gradle gets the app it had last time`() {
+        val app = SelectionRules.nextApp(current = null, projectApp = null, keep = false, remembered = "com.last")
+        assertEquals("com.last", app)
+    }
+
+    @Test
+    fun `the app remembered from last time never overrides the project's or the one chosen now`() {
+        assertEquals(
+            "com.project",
+            SelectionRules.nextApp(current = null, projectApp = "com.project", keep = false, remembered = "com.last"),
+        )
+        assertEquals(
+            "com.typed",
+            SelectionRules.nextApp(current = "com.typed", projectApp = null, keep = false, remembered = "com.last"),
+        )
+    }
+
+    @Test
     fun `re-reading the same device's apps does not announce the same app again`() {
         assertEquals(
             setOf(SpockSelection.Change.APPS),
