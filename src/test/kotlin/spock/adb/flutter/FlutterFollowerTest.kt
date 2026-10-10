@@ -44,6 +44,9 @@ class FlutterFollowerTest {
     private val calls = mutableListOf<Call>()
     private val outcomes = ArrayDeque<FlutterAttachOutcome>()
     private var builds = mutableMapOf<String, FlutterBuild?>(APP to FlutterBuild.DEBUG, OTHER_APP to FlutterBuild.DEBUG)
+
+    /** adb fails to read any app's build while set. */
+    private var buildReadFails = false
     private var pids: Set<Long>? = setOf(4242)
     private var recordHttp = true
 
@@ -60,7 +63,13 @@ class FlutterFollowerTest {
             duringAttach()
             outcomes.removeFirstOrNull() ?: connected(app)
         },
-        buildOf = { _, app -> builds[app] },
+        buildOf = { _, app ->
+            if (buildReadFails) {
+                FlutterBuildCache.Detection.AdbFailed
+            } else {
+                FlutterBuildCache.Detection.Listed(builds[app])
+            }
+        },
         pidsOf = { _, _ -> pids },
         recordHttp = { recordHttp },
         scheduler = scheduler,
@@ -252,7 +261,7 @@ class FlutterFollowerTest {
                 Thread.sleep(SLOW_MS)
                 connected(app)
             },
-            buildOf = { _, _ -> FlutterBuild.DEBUG },
+            buildOf = { _, _ -> FlutterBuildCache.Detection.Listed(FlutterBuild.DEBUG) },
             pidsOf = { _, _ -> setOf(1L) },
             recordHttp = { true },
             scheduler = scheduler,
@@ -414,7 +423,7 @@ class FlutterFollowerTest {
                 calls += Call(device.serialNumber, app, startedAt, record)
                 connected(app)
             },
-            buildOf = { _, _ -> FlutterBuild.DEBUG },
+            buildOf = { _, _ -> FlutterBuildCache.Detection.Listed(FlutterBuild.DEBUG) },
             pidsOf = { _, _ ->
                 if (failing) throw java.util.concurrent.CancellationException("AdbLibIDeviceManager has been closed")
                 setOf(4292L)
@@ -443,17 +452,61 @@ class FlutterFollowerTest {
     fun `a Flutter app whose build adb cannot read is asked again, not taken for another app`() {
         follower.follow(device, APP)
         runNext()
-        builds[APP] = null
+        buildReadFails = true
 
         follower.sessionChanged(FlutterSessionChange.Disconnected(FlutterSession(), identity(), "connection closed"))
         runNext()
 
         assertEquals(1, scheduler.due)
         assertTrue(logged.none { "not a Flutter app" in it }, "$logged")
-        builds[APP] = FlutterBuild.DEBUG
+        buildReadFails = false
         runNext()
         assertEquals(2, calls.size)
         assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `a Flutter app uninstalled, or installed again as another app, stops the follower`() {
+        follower.follow(device, APP)
+        runNext()
+        builds[APP] = null
+
+        follower.sessionChanged(FlutterSessionChange.Disconnected(FlutterSession(), identity(), "connection closed"))
+        runNext()
+
+        assertEquals(0, scheduler.due, "not polled for the run's time and the watch")
+        assertTrue(logged.any { "$APP on emulator-5554 is not a Flutter app: not attaching" in it }, "$logged")
+        assertEquals(1, calls.size)
+    }
+
+    @Test
+    fun `Diagnose finding it not ready during a watch asks again after the backoff, not the slow check`() {
+        repeat(MANY) { outcomes += FlutterAttachOutcome.NoDdsSession(identity(), FlutterSessionService.NO_DDS_MESSAGE) }
+        follower.follow(device, APP)
+        runNext()
+        assertEquals(FlutterFollower.RECHECK_MS, scheduler.tasks.last().delayMs, "watching")
+        outcomes.clear()
+        outcomes += notReady()
+
+        follower.attachNow(device, APP, FlutterBuild.DEBUG, budgetMs = 5_000)
+
+        assertEquals(1, scheduler.due, "the slow check is replaced, not added to")
+        assertEquals(FlutterFollower.BACKOFF_MS.first(), runNext())
+        assertTrue(follower.lastOutcome is FlutterAttachOutcome.Connected)
+    }
+
+    @Test
+    fun `Diagnose finding it not ready leaves a run under way alone`() {
+        repeat(2) { outcomes += notReady() }
+        follower.follow(device, APP)
+        runNext()
+        val due = scheduler.tasks.last()
+        outcomes += notReady()
+
+        follower.attachNow(device, APP, FlutterBuild.DEBUG, budgetMs = 5_000)
+
+        assertEquals(1, scheduler.due)
+        assertTrue(!due.future.isDone, "the run's own retry stays")
     }
 
     @Test

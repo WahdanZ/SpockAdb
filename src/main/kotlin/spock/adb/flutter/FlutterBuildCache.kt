@@ -19,6 +19,15 @@ class FlutterBuildCache(
 
     data class Key(val serial: String, val packageName: String, val versionCode: String, val lastUpdateTime: String)
 
+    /** What a read of an app's build came to: an answer, or adb failing before there was one. */
+    sealed interface Detection {
+        /** The install was read: [build], or null for an app that is not Flutter. */
+        data class Listed(val build: FlutterBuild?) : Detection
+
+        /** `dumpsys package` or the APK listing failed: nothing is known about the app. */
+        data object AdbFailed : Detection
+    }
+
     /** Null [build] is an answer too: the install was listed and is not a Flutter app. */
     private data class Detected(val build: FlutterBuild?)
 
@@ -34,30 +43,47 @@ class FlutterBuildCache(
      * so the next read tries again. Without a version and an update time in [dumpsys] there is no
      * telling one install from the next, so nothing is remembered then either.
      */
-    fun detect(serial: String, packageName: String, dumpsys: String, list: () -> String): FlutterBuild? {
+    fun detect(serial: String, packageName: String, dumpsys: String, list: () -> String): FlutterBuild? =
+        (read(serial, packageName, dumpsys, list) as? Detection.Listed)?.build
+
+    /** [detect], telling a listing that failed from an app that is not Flutter. */
+    fun read(serial: String, packageName: String, dumpsys: String, list: () -> String): Detection {
         val key = keyOf(serial, packageName, dumpsys)
-        key?.let { synchronized(detected) { detected[it] } }?.let { return it.build }
-        val listing = runCatching(list).getOrNull() ?: return null
+        key?.let { synchronized(detected) { detected[it] } }?.let { return Detection.Listed(it.build) }
+        val listing = runCatching(list).getOrNull() ?: return Detection.AdbFailed
         val build = FlutterBuild.of(listing, FlutterBuild.isDebuggable(dumpsys))
         key?.let { synchronized(detected) { detected[it] = Detected(build) } }
-        return build
+        return Detection.Listed(build)
     }
 
     /**
      * [detect] on [device]: reads `dumpsys package` and, for an install not listed before, the
      * APK listing. Null when [packageName] is not a Flutter app, or adb fails. Blocking.
      */
-    fun detectOn(device: IDevice, serial: String, packageName: String): FlutterBuild? {
+    fun detectOn(device: IDevice, serial: String, packageName: String): FlutterBuild? =
+        (readOn(device, serial, packageName) as? Detection.Listed)?.build
+
+    /**
+     * [detectOn], telling adb failing from an app that is not Flutter, for a caller that asks
+     * again when adb fails and stops when the app is not Flutter. A package that is not installed
+     * is not Flutter: its `dumpsys package` answers, with no `versionCode`, and its listing is
+     * empty. Blocking.
+     */
+    fun readOn(device: IDevice, serial: String, packageName: String): Detection {
         val asked = "$serial $packageName"
-        synchronized(recent) { recent[asked]?.takeIf { clock() - it.first < RECENT_MS }?.let { return it.second } }
-        val dumpsys = runCatching { shell(device, "dumpsys package ${ShellQuote.quote(packageName)}") }
-            .getOrNull() ?: return null
-        val build = detect(serial, packageName, dumpsys) { shell(device, FlutterBuild.listingCommand(packageName)) }
         synchronized(recent) {
-            recent[asked] = clock() to build
-            if (recent.size > capacity) recent.remove(recent.keys.first())
+            recent[asked]?.takeIf { clock() - it.first < RECENT_MS }?.let { return Detection.Listed(it.second) }
         }
-        return build
+        val dumpsys = runCatching { shell(device, "dumpsys package ${ShellQuote.quote(packageName)}") }
+            .getOrNull() ?: return Detection.AdbFailed
+        val read = read(serial, packageName, dumpsys) { shell(device, FlutterBuild.listingCommand(packageName)) }
+        if (read is Detection.Listed) {
+            synchronized(recent) {
+                recent[asked] = clock() to read.build
+                if (recent.size > capacity) recent.remove(recent.keys.first())
+            }
+        }
+        return read
     }
 
     /**

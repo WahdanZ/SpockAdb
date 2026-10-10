@@ -46,7 +46,7 @@ class FlutterFollowerService(private val project: Project) : Disposable {
             sessions.ensureSession(device, applicationId, startedAt, build, recordHttp)
         },
         buildOf = { device, applicationId ->
-            FlutterBuildCache.shared.detectOn(device.device, device.serialNumber, applicationId)
+            FlutterBuildCache.shared.readOn(device.device, device.serialNumber, applicationId)
         },
         pidsOf = ::pidsOrNull,
         recordHttp = { AppSettingService.getInstance().state.recordFlutterHttp },

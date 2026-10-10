@@ -41,8 +41,8 @@ import java.util.concurrent.TimeoutException
 @Suppress("LongParameterList")
 class FlutterFollower(
     private val attach: Attach,
-    /** Null for an app that is not Flutter. Blocking: adb, cached per install. */
-    private val buildOf: (ConnectedDevice, String) -> FlutterBuild?,
+    /** The app's build, or adb failing to read it. Blocking: adb, cached per install. */
+    private val buildOf: (ConnectedDevice, String) -> FlutterBuildCache.Detection,
     /** `pidof`; null when adb failed. Blocking. */
     private val pidsOf: (ConnectedDevice, String) -> Set<Long>?,
     /** The Settings switch, read at each attempt. */
@@ -127,9 +127,6 @@ class FlutterFollower(
     /** Between runs: the app has no session, and a slow check every [RECHECK_MS] looks again. */
     private var watching = false
 
-    /** The selected app's build, once read: a later null is adb failing, not the app changing. */
-    private var knownBuild: FlutterBuild? = null
-
     /** Waiting, without spending the run's time, for the frozen app to come to the foreground. */
     private var parked = false
 
@@ -156,7 +153,6 @@ class FlutterFollower(
                 return
             }
             lastOutcome = null
-            knownBuild = null
             restart(next, Trigger.SELECTION, startedAt = null)
         }
     }
@@ -263,7 +259,7 @@ class FlutterFollower(
             null
         } ?: FlutterAttachOutcome.NotReady(STILL_ATTACHING, BACKOFF_MS.first())
         say("Diagnose's attach for $applicationId on ${device.serialNumber}: ${answer.logLine()}")
-        if (answer is FlutterAttachOutcome.NotReady) keepTrying(device.serialNumber, applicationId)
+        if (answer is FlutterAttachOutcome.NotReady) keepTrying(device.serialNumber, applicationId, answer.retryAfterMs)
         return answer
     }
 
@@ -305,14 +301,26 @@ class FlutterFollower(
         pending = scheduler.schedule(delayMs, Runnable { run(generationNow) })
     }
 
-    /** After Diagnose's NotReady: the selected app gets an attempt soon, unless one is already due. */
-    private fun keepTrying(serial: String, applicationId: String) = synchronized(lock) {
+    /**
+     * After Diagnose's NotReady: the selected app gets an attempt soon, after the backoff or the
+     * service's [retryAfterMs]. A run under way, or a frozen app's check, is left as it is; a
+     * watch's slow check is not waited for — it is up to [RECHECK_MS] away, and a `flutter attach`
+     * Diagnose found starting would land that late.
+     */
+    private fun keepTrying(serial: String, applicationId: String, retryAfterMs: Long) = synchronized(lock) {
         val now = target ?: return@synchronized
         if (disposed || now.serial != serial || now.applicationId != applicationId) return@synchronized
-        if (pending?.isDone == false) return@synchronized
+        if (pending?.isDone == false && !watching) return@synchronized
+        if (watching) {
+            generation++
+            pending?.cancel(false)
+            watching = false
+        }
+        gaveUp = false
         step = 0
+        rechecks = 0
         anchor = maxOf(anchor, clock())
-        retry(null, "Diagnose found it not ready")
+        retry(retryAfterMs, "Diagnose found it not ready")
     }
 
     // An attempt that throws — a bug, adb going away — must not end the follower's thread, nor
@@ -346,25 +354,27 @@ class FlutterFollower(
     }
 
     /**
-     * The app's build when it may be attached to, else null. A null read for an app already read
-     * as Flutter is adb failing — as it does while adb restarts — and is asked again.
+     * The app's build when it may be attached to, else null. adb failing to read it — as it does
+     * while adb restarts — is asked again; an app read as not Flutter, or a release build, is not:
+     * uninstalled, or installed again as another app, it stops the follower.
      */
     private fun attachableBuild(now: Target, generationNow: Long): FlutterBuild? {
-        val build = buildOf(now.device, now.applicationId)
+        val read = buildOf(now.device, now.applicationId)
         synchronized(lock) {
             if (generation != generationNow) return null
-            when {
-                build == null && knownBuild != null -> again(null, "could not read $now's build")
-                build == null || build == FlutterBuild.RELEASE -> {
-                    say("$now is ${build?.let { "a ${it.label} build" } ?: "not a Flutter app"}: not attaching")
-                    stopWatching()
+            val build = when (read) {
+                FlutterBuildCache.Detection.AdbFailed -> {
+                    again(null, "adb could not read $now's build")
+                    return null
                 }
-                else -> {
-                    knownBuild = build
-                    return build
-                }
+                is FlutterBuildCache.Detection.Listed -> read.build
             }
-            return null
+            if (build == null || build == FlutterBuild.RELEASE) {
+                say("$now is ${build?.let { "a ${it.label} build" } ?: "not a Flutter app"}: not attaching")
+                stopWatching()
+                return null
+            }
+            return build
         }
     }
 
