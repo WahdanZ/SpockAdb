@@ -163,6 +163,9 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   (`SectionReport.companions`), at most 5 per error, the closest first, and the collector lists each right after
   its error — one that already ranks higher (a crash) stays where it is. `nearbyLogs` are ids in `likelyProblems`
   again; `moreNearbyLogs` counts pairs below the cut, which happens only when the error itself is below it.
+  Follow-up (2026-10-10): pairing measures between single occurrences, as the cross-layer merge does
+  (`Group.occurrencesMs`, the latest 100, against each line of a log problem), not to the group's span
+  (firstSeen..lastSeen), which paired a group seen at 0 s and 600 s with any log problem in between.
 - **Frames on the Timeline.** No frame rows in debug or an unknown build (§6's "debug frames produce no rows"); in
   profile, one row per burst per 2-second window. Frames are placed at batch time: no engine-clock offset is measured.
 - **Follower memory.** Terminal outcomes are remembered for the automatic triggers only; Diagnose always asks, since

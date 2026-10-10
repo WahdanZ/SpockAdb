@@ -364,6 +364,28 @@ class FlutterSectionTest : FlutterSectionFixture() {
     }
 
     @Test
+    fun `a log problem between two far apart occurrences of a long-lived error is not paired with it`() {
+        // Seen at the start and ten minutes later: the warning five minutes in is beside neither.
+        val errors = listOf(error(AT), error(AT + TEN_MINUTES))
+        val middle = logProblem("exception: middle", "10-02 14:05:00.000")
+        val report = collect(live(errors = errors), middle)
+
+        assertEquals(2, groupOf(report)["count"].asInt)
+        assertEquals(0, groupOf(report).getAsJsonArray("nearbyLogs").size())
+    }
+
+    @Test
+    fun `a log problem beside the second occurrence of an error is paired with it`() {
+        val errors = listOf(error(AT), error(AT + TEN_MINUTES))
+        val middle = logProblem("exception: middle", "10-02 14:05:00.000")
+        val beside = logProblem("exception: beside the second", "10-02 14:10:01.000")
+        val report = collect(live(errors = errors), middle, beside)
+
+        val nearby = groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString }
+        assertEquals(listOf(idOf(report, "exception: beside the second")), nearby)
+    }
+
+    @Test
     fun `an app warning a second before the error is paired and shown, above older platform noise`() {
         // The device gate of 2026-10-02: start-up noise from minutes earlier filled the top ten.
         val noise = (1..12).map {
@@ -419,5 +441,9 @@ class FlutterSectionTest : FlutterSectionFixture() {
 
         assertEquals(anr.summary, problemById(report, "p1")["summary"].asString)
         assertEquals(listOf("p1"), groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString })
+    }
+
+    private companion object {
+        const val TEN_MINUTES = 600_000L
     }
 }

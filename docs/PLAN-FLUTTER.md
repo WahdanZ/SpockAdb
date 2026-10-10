@@ -75,8 +75,6 @@ waits for it. User docs: [FLUTTER.md](FLUTTER.md).
   `.second` copy is described with no arguments while the first copy's session stays connected. Open: a
   double-click opens `lib/…` only when the Flutter project root is open — with only `android/` open it says the
   file is not in the project; resolving `lib/` from the pubspec next to `android/` would fix that.
-- **`nearbyLogs` pairing by the group's span**: the cross-layer merge measures between single occurrences;
-  pairing an error with its log problems still measures against the group's whole span.
 - **Cross-layer pair lost with the native half**: once the native line is older than the 1,500 logcat lines
   Diagnose reads, the pair stops merging while the Dart side keeps its history. Correct for the data read;
   documented, not fixed.

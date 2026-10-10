@@ -140,6 +140,12 @@
   that process, and its next session there (`flutter attach`) switches it off — only if it is still
   on and nothing else was seen writing it since — and says so in the Timeline and
   `flutter_app_status`. After a hot restart the flag is reset anyway, and Spock forgets it.
+- **Diagnose no longer pairs a long-lived Flutter error with unrelated log lines.** A Flutter error's
+  `nearbyLogs` — the log problems listed beside it as its context — were measured against the
+  whole stretch between the error's first and last occurrence, so an overflow seen at the start
+  and again ten minutes later claimed every warning logged in between. They are now measured
+  against each occurrence, as the cross-layer merge already was: a log line is beside the error
+  only if it is within two seconds of one of its occurrences.
 
 ## [4.0.7] - 2026-09-29
 

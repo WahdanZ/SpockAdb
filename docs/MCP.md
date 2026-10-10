@@ -834,8 +834,10 @@ Flutter tool is attaching meanwhile.
   replaced `FlutterError.onError` (a crash reporter: Crashlytics, Sentry) reports to neither place,
   and `notes` says so. It says so more firmly when the UI section shows an error on screen.
 - `nearbyLogs` pairs each Flutter error with the log problems (by `id` in `likelyProblems`) any of
-  whose lines fell within 2 seconds of it, widened by `clock.uncertaintyMs` — at most 5, the
-  closest first. Both are compared on the device's own clock: logcat prints the device's local
+  whose lines fell within 2 seconds of one of its occurrences (the latest 100), widened by
+  `clock.uncertaintyMs` — at most 5, the closest first. An error seen at the start and the end of
+  ten minutes is not paired with a warning in the middle. Both are compared on the device's own
+  clock: logcat prints the device's local
   time, so its stamps are moved by the device's zone first. A paired log problem is listed right
   after its error in `likelyProblems`, however low it would rank alone, so start-up noise cannot
   push it off the list; one that ranks higher already (a crash) keeps its place.

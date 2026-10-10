@@ -98,8 +98,9 @@ carry a `flutter` section for a Flutter app — and none for any other app. The 
   `MissingPluginException`, a failed channel handler, DartMessenger's "Uncaught exception in binary
   message listener") moments apart are **one** `flutterCrossLayer` problem naming both layers,
   with each layer's own problem in `parts`.
-- **`nearbyLogs`** — the log problems within two seconds of each error, on the device's measured
-  clock, listed right after the error in `likelyProblems`.
+- **`nearbyLogs`** — the log problems within two seconds of one of an error's occurrences, on the
+  device's measured clock, listed right after the error in `likelyProblems`. An error seen at the
+  start and the end of ten minutes is not paired with a warning in the middle.
 - **`frames`** — build and raster times. A verdict only in a profile build; a debug build says the
   times are not representative.
 - **`http`** — failed `dart:io` requests (4xx, 5xx, no response), while HTTP recording is on.

@@ -230,7 +230,11 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
    build), wait two minutes, press *Checked exception in a channel handler* (Android only), wait
    two more minutes, *Hide overflow* and *Show overflow* again, then Diagnose. The overflow is one
    group seen at the start and the end; the Android failure in the middle stays a problem of its
-   own, with **no** `flutterCrossLayer` problem and no `crossLayer` on the group.
+   own, with **no** `flutterCrossLayer` problem and no `crossLayer` on the group, and the group's
+   `nearbyLogs` does not name it either (log context is measured from each occurrence, not across
+   the group's span). Then *Hide overflow* and *Overflow with a native warning*, and Diagnose
+   again: the group, one occurrence more, now lists the `SpockSample` warning in `nearbyLogs` —
+   beside its latest occurrence — and still not the channel failure.
 
 ## A second copy (two application IDs)
 
