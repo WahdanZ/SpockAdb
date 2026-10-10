@@ -55,9 +55,8 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
     /** ddmlib named a process: the selected app's, maybe restarted with no device log to say so. */
     private val clientNamed = AndroidDebugBridge.IClientChangeListener { client, mask ->
-        if (mask and Client.CHANGE_NAME == 0) return@IClientChangeListener
         val data = client.clientData
-        val app = processName(data.clientDescription, data.packageName) ?: return@IClientChangeListener
+        val app = namedProcess(mask, data.clientDescription, data.packageName) ?: return@IClientChangeListener
         follower.processSeen(client.device.serialNumber, app, data.pid.toLong())
     }
 
@@ -215,6 +214,10 @@ class FlutterFollowerService(private val project: Project) : Disposable {
          */
         internal fun processName(description: String?, packageName: String?): String? =
             description?.takeIf { it.isNotBlank() } ?: packageName?.takeIf { it.isNotBlank() }
+
+        /** The process a ddmlib client change with [mask] names, or null when it names none. */
+        internal fun namedProcess(mask: Int, description: String?, packageName: String?): String? =
+            if (mask and Client.CHANGE_NAME == 0) null else processName(description, packageName)
 
         /** `pidof` as the follower needs it; null when adb fails. */
         private fun pidsOrNull(device: ConnectedDevice, applicationId: String): Set<Long>? = adbOrNull {

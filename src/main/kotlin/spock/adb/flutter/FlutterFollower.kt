@@ -127,6 +127,13 @@ class FlutterFollower(
     /** Between runs: the app has no session, and a slow check every [RECHECK_MS] looks again. */
     private var watching = false
 
+    /**
+     * Whether this trigger's watch has already started a fresh run for a new process. Once per
+     * trigger: an app that crashes and restarts at every attempt would otherwise renew the run's
+     * time for ever.
+     */
+    private var renewed = false
+
     /** Waiting, without spending the run's time, for the frozen app to come to the foreground. */
     private var parked = false
 
@@ -286,6 +293,7 @@ class FlutterFollower(
         pids = null
         step = 0
         rechecks = 0
+        renewed = false
         frozenChecks = 0
         parked = false
         gaveUp = false
@@ -404,19 +412,23 @@ class FlutterFollower(
 
     /**
      * Under [lock]: [found] are not the pids the run last saw — a new process, or the app started
-     * while the follower watched. What the old process taught is not about it: a fresh run, with
-     * its own time, from now.
+     * while the follower watched. What the old process taught is not about it: the backoff starts
+     * over. Inside a run the run's time stays as it is, or an app whose pid changes at every attempt
+     * would be asked every 500 ms for ever. Seen from the watch, it is the restart the watch waits
+     * for: a fresh run with its own time, once per trigger ([renewed]); a later one is asked once
+     * and the watch goes on.
      */
     private fun newProcess(now: Target, found: Set<Long>) {
-        if (watching) {
-            say("$now runs as a new process ${found.sorted()}: following it")
-            trigger = Trigger.NEW_PROCESS
-            processStartedAt = null
-            watching = false
-            gaveUp = false
-        }
-        anchor = clock()
         step = 0
+        if (!watching) return
+        say("$now runs as a new process ${found.sorted()}: following it")
+        trigger = Trigger.NEW_PROCESS
+        processStartedAt = null
+        watching = false
+        if (renewed) return
+        renewed = true
+        gaveUp = false
+        anchor = clock()
         rechecks = 0
     }
 
@@ -445,6 +457,7 @@ class FlutterFollower(
     private fun stopWatching() {
         pending = null
         watching = false
+        gaveUp = false
     }
 
     /** Under [lock]: the next attempt after the backoff step, or none once the run's time is spent. */

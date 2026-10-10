@@ -229,6 +229,10 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
     adb failing (`FlutterBuildCache.readOn`): adb failing is asked again, while an app read as not Flutter — one
     uninstalled answers `dumpsys package` with no `versionCode`, and its listing is empty — stops the follower,
     even after a Flutter build was read.
+  Follow-up review: a pid change inside a run restarts the backoff but no longer renews the run's time, and the
+  watch renews it once per trigger — before, an app restarting at every attempt was asked every 500 ms for ever
+  (7,201 attempts in a simulated hour). A watch that ends connected clears "gave up", so the next foreground
+  starts nothing.
   Sample README, H gate item 9.
 - **P5b review (PR #168, 2026-10-03).** The rebuild window counts from the app's
   `Flutter.ServiceExtensionStateChanged` for the tracking flag, which Flutter posts after the frame its switch

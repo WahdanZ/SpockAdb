@@ -111,7 +111,12 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
    check alone; and in recent Android Studio ddmlib's process tracking is backed by adblib, so that
    ddmlib's line comes at all — and comes sooner — is unproven until it is seen here, on a device.
    Repeat with **Record device events** off: the same, since ddmlib and the slow check do not need
-   the device log. The way it
+   the device log. **ddmlib alone:** within ten minutes the slow check can answer first, so to see
+   ddmlib's path by itself, keep **Record device events** off, lose the device as above, and wait
+   until idea.log says `… asking again at the next trigger` (about 11–12 minutes: the run's time,
+   then 20 checks 30 s apart). Only then start a new `flutter run`: `a new process appeared:
+   following …` within seconds of the app's start says ddmlib's listener fired; nothing until the
+   app is selected again says it did not. The way it
    was first seen: close the IDE's only project window while `flutter run` runs (Android Studio then
    kills adb, and `flutter run` loses the device), reopen the project, and start a new `flutter run`:
    Spock's selector shows `spock.adb.spock_flutter_sample` again without being chosen, and the session
