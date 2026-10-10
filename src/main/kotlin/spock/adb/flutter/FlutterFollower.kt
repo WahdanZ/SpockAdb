@@ -12,8 +12,9 @@ import java.util.concurrent.TimeoutException
 
 /**
  * Decides **when** to attach to the selected Flutter app (design §2), so a developer never
- * pastes an address: on a selection change, when the selected app's process starts, when its
- * session is lost or taken by another app's, and when Diagnose asks. It only calls
+ * pastes an address: on a selection change, when the selected app's process starts (the device
+ * log's `Start proc`, or ddmlib naming a new process), when its session is lost or taken by
+ * another app's, and when Diagnose asks. It only calls
  * [FlutterSessionService.ensureSession]; which session that gives, and how, is the service's
  * business — including what it remembers about a process with no DDS.
  *
@@ -25,10 +26,14 @@ import java.util.concurrent.TimeoutException
  * more tries. Within it, an answer that is not final is asked again with backoff ([BACKOFF_MS],
  * the last step repeating, or the service's own `retryAfterMs` when longer): not ready, nothing
  * found yet, failed, and — right after a process start, before Android has named the process —
- * not running. [FlutterAttachOutcome.NoDdsSession] is final for the process but not for ever:
- * it is asked again every [NO_DDS_RECHECK_MS], which costs adb reads and no VM contact until a
- * Flutter tool forwards the VM, up to [NO_DDS_RECHECKS] times. A run stops on a selection
- * change, a new trigger, or [dispose].
+ * not running. A run that ends without a session — no debugger session, its time spent, the app
+ * not running, an attempt that threw — keeps watching: every [RECHECK_MS], up to [RECHECKS]
+ * times, it reads `pidof` and, while the app runs, asks once more, which costs adb reads and no
+ * VM contact once the service has said "no DDS" for the process. A new process seen there starts
+ * a fresh run. The watch is what re-arms the follower when nothing else says the app restarted:
+ * `flutter run` losing the device (an adb restart) leaves the old process running with no DDS,
+ * and the device log that would show the next start may be gone with adb (emulator-5554,
+ * 2026-10-09). A run stops on a selection change, a new trigger, or [dispose].
  *
  * Thread-safe. Everything blocking runs on [scheduler] or the caller's pooled thread.
  */
@@ -36,8 +41,8 @@ import java.util.concurrent.TimeoutException
 @Suppress("LongParameterList")
 class FlutterFollower(
     private val attach: Attach,
-    /** Null for an app that is not Flutter. Blocking: adb, cached per install. */
-    private val buildOf: (ConnectedDevice, String) -> FlutterBuild?,
+    /** The app's build, or adb failing to read it. Blocking: adb, cached per install. */
+    private val buildOf: (ConnectedDevice, String) -> FlutterBuildCache.Detection,
     /** `pidof`; null when adb failed. Blocking. */
     private val pidsOf: (ConnectedDevice, String) -> Set<Long>?,
     /** The Settings switch, read at each attempt. */
@@ -98,6 +103,7 @@ class FlutterFollower(
         SESSION_LOST("session lost", true),
         SESSION_TAKEN("another app's session took its place", false),
         FOREGROUND("came to the foreground", true),
+        NEW_PROCESS("a new process appeared", true),
     }
 
     private data class Target(val device: ConnectedDevice, val applicationId: String) {
@@ -115,8 +121,11 @@ class FlutterFollower(
     private var anchor = 0L
     private var pids: Set<Long>? = null
     private var step = 0
-    private var noDdsChecks = 0
+    private var rechecks = 0
     private var frozenChecks = 0
+
+    /** Between runs: the app has no session, and a slow check every [RECHECK_MS] looks again. */
+    private var watching = false
 
     /** Waiting, without spending the run's time, for the frozen app to come to the foreground. */
     private var parked = false
@@ -159,6 +168,23 @@ class FlutterFollower(
             if (disposed || now.serial != serial || now.applicationId != applicationId) return
             if (pids?.contains(pid) == true && pending != null) return
             restart(now, Trigger.PROCESS_START, startedAt = hostMs)
+        }
+    }
+
+    /**
+     * ddmlib named a process of the selected app — it does as the process registers for
+     * debugging, and again after adb reconnects. A pid the follower already knows, or a run
+     * already under way (it reads `pidof` at each attempt), changes nothing; otherwise the
+     * follower starts over: this is the restart a lost `flutter run` leaves behind, seen even
+     * when device events are not recorded. Cheap: safe on ddmlib's thread.
+     */
+    fun processSeen(serial: String, applicationId: String, pid: Long) {
+        synchronized(lock) {
+            val now = target ?: return
+            if (disposed || now.serial != serial || now.applicationId != applicationId) return
+            val runActive = pending?.isDone == false && !watching && !parked
+            if (runActive || pids?.contains(pid) == true) return
+            restart(now, Trigger.NEW_PROCESS, startedAt = null)
         }
     }
 
@@ -233,7 +259,7 @@ class FlutterFollower(
             null
         } ?: FlutterAttachOutcome.NotReady(STILL_ATTACHING, BACKOFF_MS.first())
         say("Diagnose's attach for $applicationId on ${device.serialNumber}: ${answer.logLine()}")
-        if (answer is FlutterAttachOutcome.NotReady) keepTrying(device.serialNumber, applicationId)
+        if (answer is FlutterAttachOutcome.NotReady) keepTrying(device.serialNumber, applicationId, answer.retryAfterMs)
         return answer
     }
 
@@ -259,10 +285,11 @@ class FlutterFollower(
         anchor = startedAt ?: clock()
         pids = null
         step = 0
-        noDdsChecks = 0
+        rechecks = 0
         frozenChecks = 0
         parked = false
         gaveUp = false
+        watching = false
         if (next == null) return
         say("${why.label}: following $next" + if (delayMs > 0) " in $delayMs ms" else "")
         schedule(delayMs)
@@ -274,33 +301,47 @@ class FlutterFollower(
         pending = scheduler.schedule(delayMs, Runnable { run(generationNow) })
     }
 
-    /** After Diagnose's NotReady: the selected app gets an attempt soon, unless one is already due. */
-    private fun keepTrying(serial: String, applicationId: String) = synchronized(lock) {
+    /**
+     * After Diagnose's NotReady: the selected app gets an attempt soon, after the backoff or the
+     * service's [retryAfterMs]. A run under way, or a frozen app's check, is left as it is; a
+     * watch's slow check is not waited for — it is up to [RECHECK_MS] away, and a `flutter attach`
+     * Diagnose found starting would land that late.
+     */
+    private fun keepTrying(serial: String, applicationId: String, retryAfterMs: Long) = synchronized(lock) {
         val now = target ?: return@synchronized
         if (disposed || now.serial != serial || now.applicationId != applicationId) return@synchronized
-        if (pending?.isDone == false) return@synchronized
+        if (pending?.isDone == false && !watching) return@synchronized
+        if (watching) {
+            generation++
+            pending?.cancel(false)
+            watching = false
+        }
+        gaveUp = false
         step = 0
+        rechecks = 0
         anchor = maxOf(anchor, clock())
-        retry(null, "Diagnose found it not ready")
+        retry(retryAfterMs, "Diagnose found it not ready")
     }
 
-    // An attempt that throws — a bug, adb going away — must not end the follower's thread.
+    // An attempt that throws — a bug, adb going away — must not end the follower's thread, nor
+    // its run: ddmlib throws CancellationException while adb restarts (emulator-5554, 2026-10-09).
     @Suppress("TooGenericExceptionCaught")
     private fun run(generationNow: Long) {
         try {
             attemptOnce(generationNow)
         } catch (e: RuntimeException) {
             log.warn("Attaching to the Flutter app failed", e)
+            synchronized(lock) {
+                if (generation == generationNow && !disposed) {
+                    again(null, "the attempt failed (${e.javaClass.simpleName})")
+                }
+            }
         }
     }
 
     private fun attemptOnce(generationNow: Long) {
         val now = synchronized(lock) { target?.takeIf { generation == generationNow && !disposed } } ?: return
-        val build = buildOf(now.device, now.applicationId)
-        if (build == null || build == FlutterBuild.RELEASE) {
-            say("$now is ${build?.let { "a ${it.label} build" } ?: "not a Flutter app"}: not attaching")
-            return
-        }
+        val build = attachableBuild(now, generationNow) ?: return
         if (!running(now, generationNow)) return
         val startedAt = synchronized(lock) { processStartedAt }
         val outcome = attach.ensure(now.device, now.applicationId, startedAt, build, recordHttp())
@@ -309,6 +350,31 @@ class FlutterFollower(
             lastOutcome = outcome
             say("$now (${build.label} build): ${outcome.logLine()}")
             decide(outcome)
+        }
+    }
+
+    /**
+     * The app's build when it may be attached to, else null. adb failing to read it — as it does
+     * while adb restarts — is asked again; an app read as not Flutter, or a release build, is not:
+     * uninstalled, or installed again as another app, it stops the follower.
+     */
+    private fun attachableBuild(now: Target, generationNow: Long): FlutterBuild? {
+        val read = buildOf(now.device, now.applicationId)
+        synchronized(lock) {
+            if (generation != generationNow) return null
+            val build = when (read) {
+                FlutterBuildCache.Detection.AdbFailed -> {
+                    again(null, "adb could not read $now's build")
+                    return null
+                }
+                is FlutterBuildCache.Detection.Listed -> read.build
+            }
+            if (build == null || build == FlutterBuild.RELEASE) {
+                say("$now is ${build?.let { "a ${it.label} build" } ?: "not a Flutter app"}: not attaching")
+                stopWatching()
+                return null
+            }
+            return build
         }
     }
 
@@ -323,15 +389,11 @@ class FlutterFollower(
         synchronized(lock) {
             if (generation != generationNow) return false
             when {
-                found == null -> retry(null, "adb could not list $now's processes")
-                found.isEmpty() && trigger.expectsProcess -> retry(null, "$now is not running yet")
-                found.isEmpty() -> say("$now is not running; waiting for its process to start")
+                found == null -> again(null, "adb could not list $now's processes")
+                found.isEmpty() && trigger.expectsProcess && !watching -> retry(null, "$now is not running yet")
+                found.isEmpty() -> idle("$now is not running; waiting for its process to start")
                 else -> {
-                    // A new process starts the backoff over: what the old one taught is not about it.
-                    if (found != pids) {
-                        step = 0
-                        noDdsChecks = 0
-                    }
+                    if (found != pids && (pids != null || watching)) newProcess(now, found)
                     pids = found
                     return true
                 }
@@ -340,22 +402,49 @@ class FlutterFollower(
         }
     }
 
+    /**
+     * Under [lock]: [found] are not the pids the run last saw — a new process, or the app started
+     * while the follower watched. What the old process taught is not about it: a fresh run, with
+     * its own time, from now.
+     */
+    private fun newProcess(now: Target, found: Set<Long>) {
+        if (watching) {
+            say("$now runs as a new process ${found.sorted()}: following it")
+            trigger = Trigger.NEW_PROCESS
+            processStartedAt = null
+            watching = false
+            gaveUp = false
+        }
+        anchor = clock()
+        step = 0
+        rechecks = 0
+    }
+
     /** Under [lock]: what to do after [outcome]. */
     private fun decide(outcome: FlutterAttachOutcome) {
         parked = false
         when (outcome) {
             is FlutterAttachOutcome.NotReady ->
-                if (outcome.frozen) park() else retry(outcome.retryAfterMs, "not ready")
-            is FlutterAttachOutcome.NotFound -> retry(null, "nothing found yet")
-            is FlutterAttachOutcome.Failed -> retry(null, "the attach failed")
+                if (outcome.frozen) park() else again(outcome.retryAfterMs, "not ready")
+            is FlutterAttachOutcome.NotFound -> again(null, "nothing found yet")
+            is FlutterAttachOutcome.Failed -> again(null, "the attach failed")
             is FlutterAttachOutcome.NotRunning ->
-                if (trigger.expectsProcess) retry(null, "not running yet") else pending = null
-            is FlutterAttachOutcome.NoDdsSession -> recheckNoDds()
+                if (trigger.expectsProcess && !watching) retry(null, "not running yet") else idle("not running")
+            is FlutterAttachOutcome.NoDdsSession -> idle("no debugger session")
             is FlutterAttachOutcome.Connected,
             is FlutterAttachOutcome.Ambiguous,
             is FlutterAttachOutcome.ReleaseBuild,
-            -> pending = null
+            -> stopWatching()
         }
+    }
+
+    /** Under [lock]: within a run, the next backoff step; between runs, the next slow check. */
+    private fun again(suggestedMs: Long?, why: String) = if (watching) idle(why) else retry(suggestedMs, why)
+
+    /** Under [lock]: nothing more to ask. */
+    private fun stopWatching() {
+        pending = null
+        watching = false
     }
 
     /** Under [lock]: the next attempt after the backoff step, or none once the run's time is spent. */
@@ -366,10 +455,10 @@ class FlutterFollower(
         if (spent + delay > FOLLOW_BUDGET_MS) {
             say(
                 "giving up on ${target ?: "the app"} after $spent ms: $why; " +
-                    "trying again when it comes to the foreground",
+                    "trying again when it comes to the foreground or a new process starts",
             )
-            pending = null
             gaveUp = true
+            idle(why)
             return
         }
         step++
@@ -384,6 +473,7 @@ class FlutterFollower(
      */
     private fun park() {
         parked = true
+        watching = false
         if (frozenChecks >= FROZEN_CHECKS) {
             say("${target ?: "the app"} stays frozen; waiting for it to come to the foreground")
             pending = null
@@ -394,17 +484,23 @@ class FlutterFollower(
         schedule(FlutterSessionService.FROZEN_RETRY_MS)
     }
 
-    /** Under [lock]: no DDS now is not no DDS for ever — someone may run `flutter attach`. */
-    private fun recheckNoDds() {
-        if (noDdsChecks >= NO_DDS_RECHECKS) {
-            say("no debugger session after $noDdsChecks checks; asking again at the next trigger")
+    /**
+     * Under [lock]: the run ends without a session, and the follower watches. No DDS now is not no
+     * DDS for ever — someone may run `flutter attach` — and the app may restart with nothing else
+     * saying so. A slow check, up to [RECHECKS] times; then only a trigger asks again.
+     */
+    private fun idle(why: String) {
+        if (rechecks >= RECHECKS) {
+            say("$why after $rechecks checks; asking again at the next trigger")
             pending = null
+            watching = false
             gaveUp = true
             return
         }
-        noDdsChecks++
-        say("no debugger session; checking again in $NO_DDS_RECHECK_MS ms")
-        schedule(NO_DDS_RECHECK_MS)
+        rechecks++
+        watching = true
+        say("$why; checking again in $RECHECK_MS ms")
+        schedule(RECHECK_MS)
     }
 
     private fun isTarget(identity: AppIdentity?, target: Target): Boolean =
@@ -427,11 +523,11 @@ class FlutterFollower(
         /** The longest wait the service's suggestion is followed for. */
         const val MAX_DELAY_MS = 10_000L
 
-        /** How often a process with no debugger session is asked about again. */
-        const val NO_DDS_RECHECK_MS = 30_000L
+        /** How often an app the follower has no session for is looked at again, between runs. */
+        const val RECHECK_MS = 30_000L
 
         /** Ten minutes of re-checks; a selection change or a new process starts them again. */
-        const val NO_DDS_RECHECKS = 20
+        const val RECHECKS = 20
 
         /** Slow checks of a frozen app before only a foreground re-arms the follower: ten minutes. */
         const val FROZEN_CHECKS = 20

@@ -37,6 +37,12 @@
     is checked again now and then, so a later `flutter attach` is found. An app Android has frozen
     in the background is reported as such, not as a failure, and Spock connects as soon as it comes
     back to the foreground.
+  - When `flutter run` loses the device — Android Studio restarting adb, or closing its last
+    project window, does that — the app runs on with no debugger session, and nothing on the
+    device may say when it is started again. Spock keeps an eye on it: for ten minutes after a
+    session ends without a new one, it checks every 30 seconds, and connects to the next process a
+    new `flutter run` starts, with nothing pressed. An app reinstalled as a non-Flutter app, or
+    uninstalled, is let go of rather than polled.
   - To see failed requests, Spock switches on Dart's HTTP recording for the session — only through
     `flutter run`'s debugger service, only in debug and profile builds — and switches it back off
     when it disconnects, leaving it alone if something else turned it on. If the connection ends
@@ -108,6 +114,11 @@
   - **Element tools** tap a Flutter button by its `Semantics(identifier:)`, and say so when a
     screen is one drawn surface with nothing to find.
   - `sample/flutter_app` is a Flutter fixture app for all of it.
+- **Spock remembers the selected app per project.** A project reopened whose Gradle sync names no
+  app — the sync failed, or the project is a Flutter app's `android` folder — came back with no
+  app selected, so nothing worked on it, and a Flutter app was not connected to, until the app was
+  chosen again. Now the app chosen last time is selected again if the device has it installed;
+  once Gradle sync names the project's own app, that one takes its place unless you chose another.
 
 ## [4.0.7] - 2026-09-29
 

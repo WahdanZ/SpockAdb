@@ -81,7 +81,7 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
    Timeline shows `…'s UI isolate exited — the Flutter engine was destroyed (on Android, Back at the
    root activity does this)`. Open the app again: a new session row, or the old one picking up the
    new isolate.
-5. **A session's end.** With both copies running (item 8), select the other one: `Flutter session
+5. **A session's end.** With both copies running (item 10), select the other one: `Flutter session
    ended: … — Spock connected again, to a newer session` and `Spock switched HTTP recording back off
    for …`, then the new session's row. Quit `flutter run` with `q`: the end row says the connection
    was lost, as a warning.
@@ -97,7 +97,26 @@ Nothing is pasted at any step. Before each run: in Spock's tool window select th
    minutes to hours), select it: Diagnose's `flutter.attach` says Android froze it, and idea.log shows
    `Flutter follower: … is frozen in the background`. Bring it to the foreground: the session row follows
    within seconds, with nothing pressed in Spock.
-9. **Two copies, two emulators.** The second copy below, both running: select each in turn — the
+9. **A lost `flutter run`, then a new one (issue: follower re-attach).** With the session up, make
+   `flutter run` lose the device while the app keeps running: `adb kill-server` (or `adb forward
+   --remove-all`) in another terminal. `flutter run` prints `Lost connection to device.`, idea.log
+   shows `Flutter follower: session lost: following …`, and the old pid runs on without DDS — the
+   follower then logs `…; checking again in 30000 ms` (no VM contact while the "no DDS" verdict
+   stands). Within ten minutes, start the app again with a new `flutter run`, and touch nothing in
+   Spock: within ~30 s of the new process, idea.log shows
+   `… runs as a new process [N]: following it` (the slow check) or `a new process appeared:
+   following …` (ddmlib naming the process), then `Connected (new), pid N`, and the Timeline shows
+   the new session row. Which line appears is what this item measures: ddmlib sees only debuggable
+   processes, so a profile build on a production phone that is not rooted is caught by the slow
+   check alone; and in recent Android Studio ddmlib's process tracking is backed by adblib, so that
+   ddmlib's line comes at all — and comes sooner — is unproven until it is seen here, on a device.
+   Repeat with **Record device events** off: the same, since ddmlib and the slow check do not need
+   the device log. The way it
+   was first seen: close the IDE's only project window while `flutter run` runs (Android Studio then
+   kills adb, and `flutter run` loses the device), reopen the project, and start a new `flutter run`:
+   Spock's selector shows `spock.adb.spock_flutter_sample` again without being chosen, and the session
+   row follows.
+10. **Two copies, two emulators.** The second copy below, both running: select each in turn — the
    session row names the selected one's pid. Two emulators of one image: the session follows the
    selected emulator's serial.
 

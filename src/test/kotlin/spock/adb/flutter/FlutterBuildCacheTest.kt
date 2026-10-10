@@ -89,6 +89,29 @@ class FlutterBuildCacheTest {
     }
 
     @Test
+    fun `adb failing is told from an app that is not Flutter`() {
+        val device = mockk<IDevice>()
+        every { device.executeShellCommand(any(), any(), any(), any<TimeUnit>()) } throws IOException("adb went away")
+
+        assertEquals(FlutterBuildCache.Detection.AdbFailed, cache.readOn(device, "emulator-5554", "com.example.app"))
+        assertNull(cache.detectOn(device, "emulator-5554", "com.example.app"))
+        val listingFailed = cache.read("emulator-5554", "com.example.app", dumpsys) { throw IOException("gone") }
+        assertEquals(FlutterBuildCache.Detection.AdbFailed, listingFailed)
+    }
+
+    @Test
+    fun `a package that is not installed is read as not Flutter`() {
+        // `dumpsys package` of a package that is not installed answers, with no versionCode;
+        // `pm path` lists nothing, so neither does the listing.
+        val device = mockk<IDevice>(relaxed = true)
+
+        assertEquals(
+            FlutterBuildCache.Detection.Listed(null),
+            cache.readOn(device, "emulator-5554", "com.example.gone"),
+        )
+    }
+
+    @Test
     fun `one report asking twice reads the package once`() {
         val device = mockk<IDevice>(relaxed = true)
         val commands = mutableListOf<String>()
