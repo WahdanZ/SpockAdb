@@ -130,6 +130,17 @@
   chosen again. Now the app chosen last time is selected again if the device has it installed;
   once Gradle sync names the project's own app, that one takes its place unless you chose another.
 
+### Fixed
+
+- **Flutter rebuild tracking no longer stays on after a lost `flutter run`.** A rebuild recording
+  (the UI Inspector's Recompositions tab, `android_get_recomposition_counts`) switches on a flag
+  the app shares with the IDE's rebuild counts and DevTools. If `flutter run` died during the
+  recording while the app ran on, Spock had no connection left to switch it off, and the app kept
+  tracking every rebuild until it restarted. Spock now remembers that it switched the flag on in
+  that process, and its next session there (`flutter attach`) switches it off — only if it is still
+  on and nothing else was seen writing it since — and says so in the Timeline and
+  `flutter_app_status`. After a hot restart the flag is reset anyway, and Spock forgets it.
+
 ## [4.0.7] - 2026-09-29
 
 ### Added

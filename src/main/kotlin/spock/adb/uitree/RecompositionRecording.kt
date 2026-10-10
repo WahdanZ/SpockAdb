@@ -57,8 +57,9 @@ internal class RecompositionRecording(
                 "Rebuild tracking: it was on already (the IDE's rebuild counts or DevTools), so Spock left it on."
             FlutterRebuildRecorder.Tracking.LEFT_ON ->
                 "Rebuild tracking: Spock switched it on and could not switch it off again (the connection to the " +
-                    "app was lost, the app was paused in the debugger, or it did not answer); it stays on until the " +
-                    "app restarts or the IDE's rebuild counts switch it off."
+                    "app was lost, the app was paused in the debugger, or it did not answer). After a lost " +
+                    "connection, Spock's next session on the app switches it off unless something else wrote it " +
+                    "meanwhile; otherwise it stays on until the app restarts or the IDE's rebuild counts switch it off."
             FlutterRebuildRecorder.Tracking.ISOLATE_GONE ->
                 "Rebuild tracking: the app restarted during the recording, and the tracking Spock switched on " +
                     "went with the old isolate; counts stop at the restart."

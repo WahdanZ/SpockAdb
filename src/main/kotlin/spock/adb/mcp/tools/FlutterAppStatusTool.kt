@@ -10,6 +10,7 @@ import spock.adb.flutter.FlutterBuild
 import spock.adb.flutter.FlutterBuildCache
 import spock.adb.flutter.FlutterFollowerService
 import spock.adb.flutter.IdentityCheck
+import spock.adb.flutter.RebuildFlagRestore
 import spock.adb.flutter.vmservice.Redaction
 
 /**
@@ -117,7 +118,18 @@ class FlutterAppStatusTool(
         )
         addProperty("structuredErrors", FlutterWords.onOff(snapshot.structuredErrorsEnabled))
         addProperty("httpRecording", FlutterWords.recording(snapshot.httpRecording))
+        snapshot.rebuildFlagRestore?.let { addProperty("rebuildTracking", leftOnWords(it)) }
         add("clock", clock(live))
+    }
+
+    /** Rebuild tracking an earlier recording left on when its connection was lost. */
+    private fun leftOnWords(restore: RebuildFlagRestore): String = when (restore) {
+        RebuildFlagRestore.SWITCHED_OFF ->
+            "off: an earlier Spock recording left it on when its connection was lost, and this session " +
+                "switched it off"
+        RebuildFlagRestore.LEFT_AS_IS ->
+            "left as it is: an earlier Spock recording left it on when its connection was lost, and something " +
+                "else may have written it since"
     }
 
     private fun clock(live: FlutterAppStatus.Live) = JsonObject().apply {

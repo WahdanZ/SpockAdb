@@ -58,6 +58,9 @@ import kotlin.concurrent.withLock
  *   [FlutterSessionSnapshot.httpRecording] says which, or why not. A direct connection kept by
  *   opt-in makes no writes at all. A direct address the VM hands to DDS on connect answers the
  *   probe as DDS, and is a DDS connection like any other.
+ * - `trackRebuildDirtyWidgets` that a rebuild window ([FlutterRebuildRecorder]) switched on and
+ *   could not switch off, its connection lost, is switched off by the next session on that
+ *   process over DDS, when it is provably still Spock's ([LeftOnRebuildFlag]).
  */
 class FlutterSession(
     private val connector: (VmServiceUri) -> VmServiceClient = { VmServiceClient.connect(it) },
@@ -92,17 +95,19 @@ class FlutterSession(
     private var structuredErrorsReadFor: String? = null
 
     /**
-     * Where Spock's switching HTTP logging on is remembered across sessions, and the device it is
-     * keyed by; set by [FlutterSessionService] before [connect]. Null keeps it to this session.
+     * Where Spock's switching HTTP logging and rebuild tracking on is remembered across sessions,
+     * and the device both are keyed by; set by [FlutterSessionService] before [connect]. Null keeps
+     * it to this session.
      */
     internal var httpOwners: HttpOwners? = null
-    internal var httpOwnerSerial: String? = null
+    internal var rebuildOwners: RebuildFlagOwners? = null
+    internal var ownerSerial: String? = null
 
     /** What Spock switched on, so [close] switches it off. */
     private val httpLogging = HttpLogging(
         owners = { httpOwners },
         keyOf = { isolateId ->
-            val serial = httpOwnerSerial
+            val serial = ownerSerial
             val pid = snapshot.vmPid
             if (serial != null && pid != null) HttpOwners.key(serial, pid, isolateId) else null
         },
@@ -118,6 +123,13 @@ class FlutterSession(
         setKeepAliveTime(WORKER_IDLE_SECONDS, TimeUnit.SECONDS)
         allowCoreThreadTimeOut(true)
     }
+
+    /** Rebuild tracking an earlier session's recording left on: switched off on connect when provably Spock's. */
+    internal val leftOnRebuilds = LeftOnRebuildFlag(
+        this,
+        runLater = { worker.execute(it) },
+        report = { restore -> synchronized(lock) { snapshot = snapshot.copy(rebuildFlagRestore = restore) } },
+    ).also(listeners::add)
 
     /** Everything below, as one consistent value. */
     @Volatile
@@ -301,6 +313,7 @@ class FlutterSession(
             }
             notifier.flush()
             streams.forEach { listen(connected, it) }
+            if (kind == ConnectionKind.DDS) leftOnRebuilds.restoreSoon(connected)
             selectionLock.withLock { applySelection(connected, IsolateSelector(connected).select(), keepChoice = true) }
             notifier.flush()
             synchronized(lock) { ensureCurrent(attempt) }

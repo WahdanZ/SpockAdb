@@ -191,6 +191,25 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
      really ends (`flutter run` quits, the app dies).
    - Start a 30 s recording and press `R` (hot restart) in `flutter run`: it ends early with "the
      app restarted during the recording … counts stop at the restart".
+   - **A session lost mid-recording** (`LEFT_ON`). With the IDE's counts off and the storm running,
+     start a 30 s recording, and while it runs run `adb kill-server` in another terminal, as in H
+     gate item 9: `flutter run` prints `Lost connection to device.` and exits, its DDS goes with
+     it, and the app runs on with the flag on. Not `q`, which stops the app (and the flag with it),
+     nor `d`: whether a detached `flutter run` keeps its DDS alive differs between Flutter versions,
+     and a live DDS is not a lost session. The recording ends early with "The Flutter session ended
+     during the recording" and "Spock switched it on and could not switch it off again (the
+     connection to the app was lost …)". Then `flutter attach`: once Spock connects (idea.log
+     `Connected (new), pid N`, the same pid), the Timeline shows "Spock switched off the rebuild
+     tracking its earlier recording left on for spock.adb.spock_flutter_sample when that session's
+     connection was lost", `flutter_app_status` has `rebuildTracking: "off: an earlier Spock
+     recording left it on …"`, and a new recording ends with "Spock switched it on for the
+     recording and off again" — it read the flag off, not "it was on already".
+   - The same loss, then select the `.second` copy in Spock before `flutter attach`, so Spock stays
+     away: switch rebuild tracking on from DevTools (`v` in `flutter attach`) and leave it on, then
+     select the sample again. The Timeline says the tracking "stays on: something else may have
+     written it since", `rebuildTracking` starts "left as it is", and DevTools' tracking keeps
+     running. Press `R` instead of using DevTools: nothing is said, and a recording reads the flag
+     off — the restart reset it, and Spock forgot what it owed the old isolate.
    - In the IDE, the UI Inspector's **Recompositions** tab, **Record** with the storm running: rows
      are widget locations with their counts; double-click the storm's row to open
      `lib/fixtures/frames.dart` at its line. The note ends with what became of the tracking flag.

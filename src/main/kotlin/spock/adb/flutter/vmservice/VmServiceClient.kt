@@ -156,6 +156,13 @@ class VmServiceClient private constructor(
      */
     internal fun failPendingCalls(reason: String) = failPending(VmServiceClosedException(reason))
 
+    /**
+     * Runs [task] on the event thread once every event received so far has been delivered — after
+     * `streamListen` returns, its stream's replay included. Never, if the connection closes first.
+     * [task] must not block: hand any call to another thread.
+     */
+    internal fun afterQueuedEvents(task: () -> Unit) = queueEvent(EventTask(droppable = false, task))
+
     /** Fails every call still waiting, closes the socket and tells listeners. Safe to repeat. */
     override fun close() {
         shutdown("closed by Spock", sendClose = true)

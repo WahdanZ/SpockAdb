@@ -348,6 +348,126 @@ class FlutterRebuildRecorderTest : FlutterSessionFixture() {
         assertTrue(recorded.windowMs < 60_000, "${recorded.windowMs}")
     }
 
+    /** A window on [session], owned across sessions, whose connection is lost mid-window: tracking stays on. */
+    private fun leftOnByLostWindow(owners: RebuildFlagOwners) {
+        session.rebuildOwners = owners
+        session.ownerSerial = SERIAL
+        serveTracking()
+        connected()
+        val recorded = recorder(
+            during = {
+                vm.server.drop()
+                eventually { session.state is SessionState.Disconnected }
+            },
+        ).record(windowMs = 60_000, cancelled = { false }) as FlutterRebuildRecorder.Result.Recorded
+        assertEquals(FlutterRebuildRecorder.Tracking.LEFT_ON, recorded.tracking)
+        assertEquals("true", tracking)
+    }
+
+    /** The next session on the same process, as `flutter attach` gives one, sharing [owners]. */
+    private fun nextSession(owners: RebuildFlagOwners) = FlutterSession(clock = { connectedAt }).apply {
+        rebuildOwners = owners
+        ownerSerial = SERIAL
+    }
+
+    @Test
+    fun `tracking a lost window left on is switched off by the next session on the process, and it says so`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        assertEquals(1, owners.ofProcess(SERIAL, PID).size)
+
+        val next = nextSession(owners)
+        try {
+            next.connect(pasted())
+            eventually(message = "switched off") { next.snapshot.rebuildFlagRestore == RebuildFlagRestore.SWITCHED_OFF }
+            eventually(message = "owed no more") { owners.ofProcess(SERIAL, PID).isEmpty() }
+        } finally {
+            next.close()
+        }
+
+        assertEquals(listOf("true", "false"), writes())
+        assertEquals("false", tracking)
+    }
+
+    @Test
+    fun `tracking another tool wrote after the lost window is left as it is`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        // The IDE switched it on again through the new DDS before Spock connected: DDS replays its announcement.
+        val laterWrite = trackingChanged("true")
+        vm.replayOnListen = { stream -> if (stream == "Extension") vm.pushEvent("Extension", laterWrite) }
+
+        val next = nextSession(owners)
+        try {
+            next.connect(pasted())
+            eventually(message = "left as it is") { next.snapshot.rebuildFlagRestore == RebuildFlagRestore.LEFT_AS_IS }
+            eventually(message = "not Spock's any more") { owners.ofProcess(SERIAL, PID).isEmpty() }
+        } finally {
+            vm.replayOnListen = {}
+            next.close()
+        }
+
+        assertEquals(listOf("true"), writes())
+        assertEquals("true", tracking)
+    }
+
+    @Test
+    fun `a hot restart between the sessions took the flag along, and the record is forgotten`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        val restarted = "isolates/5555"
+        vm.addIsolate(restarted, listOf(FakeVmService.STRUCTURED_ERRORS, TRACK_REBUILDS, LOCATION_MAP))
+        vm.viewIsolates = listOf(restarted)
+        vm.isolates.remove(UI_ISOLATE)
+
+        val next = nextSession(owners)
+        try {
+            next.connect(pasted())
+            eventually(message = "the record forgotten") { owners.ofProcess(SERIAL, PID).isEmpty() }
+            assertEquals(null, next.snapshot.rebuildFlagRestore, "nothing to say: Flutter reset it")
+        } finally {
+            next.close()
+        }
+
+        assertEquals(listOf("true"), writes())
+    }
+
+    @Test
+    fun `what a lost window left on in another process is never written, and a new process drops it`() {
+        val owners = RebuildFlagOwners()
+        owners.record(RebuildFlagOwners.Owed(SERIAL, PID + 1, UI_ISOLATE, connectedAt))
+        owners.record(RebuildFlagOwners.Owed("emulator-5556", PID + 1, UI_ISOLATE, connectedAt))
+        tracking = "true"
+        serveTracking()
+        val next = nextSession(owners)
+        try {
+            // Nothing is owed this process, so nothing is queued: the connect is all there is.
+            next.connect(pasted())
+        } finally {
+            next.close()
+        }
+        assertEquals(emptyList<String>(), writes())
+        assertEquals(0, extensionCalls(TRACK_REBUILDS).size)
+
+        owners.retainPids(SERIAL, setOf(PID.toLong()))
+
+        assertEquals(emptyList<RebuildFlagOwners.Owed>(), owners.ofProcess(SERIAL, PID + 1))
+        assertEquals(1, owners.ofProcess("emulator-5556", PID + 1).size, "another device's is kept")
+    }
+
+    @Test
+    fun `a window Spock closed itself leaves nothing owed`() {
+        val owners = RebuildFlagOwners()
+        session.rebuildOwners = owners
+        session.ownerSerial = SERIAL
+        serveTracking()
+        connected()
+
+        recorder(during = { session.close() }).record(windowMs = 60_000, cancelled = { false })
+
+        assertEquals(emptyList<RebuildFlagOwners.Owed>(), owners.ofProcess(SERIAL, PID))
+    }
+
     @Test
     fun `a hot restart during the window stops the counts there, and the flag went with the old isolate`() {
         serveTracking()
@@ -406,5 +526,9 @@ class FlutterRebuildRecorderTest : FlutterSessionFixture() {
     private companion object {
         /** The whole tree, once: what a reassemble builds. */
         const val FORCED_BUILDS = 120
+        const val SERIAL = "emulator-5554"
+
+        /** The recorded `getVM`'s. */
+        const val PID = 12345
     }
 }

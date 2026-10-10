@@ -243,6 +243,18 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   `RecompositionRecording`. The cross-layer merge measures between occurrences (`Group.occurrencesMs`, the latest
   100); logcat repeats join their full report; a profile build's first error is read from its
   `debugPrintStack` form.
+- **Rebuild tracking owned across sessions (follow-up, 2026-10-10).** A window whose connection was lost (not
+  closed by Spock) left `trackRebuildDirtyWidgets` on (`LEFT_ON`). Now, when Spock's switch-on was confirmed and
+  its announcement was the only write the window saw, the window records (serial, pid, isolate) with that
+  announcement's device time in `RebuildFlagOwners` (the service's, beside `HttpOwners`, dropped when the pid
+  changes). A session on that process over DDS (`LeftOnRebuildFlag`, listening from before it connects) waits
+  until the `Extension` replay is delivered (`VmServiceClient.afterQueuedEvents`), then: the isolate gone (a hot
+  restart) → forgets it; paused or not answering → keeps it for a later session; the flag off → forgets it; a
+  write of the flag announced after Spock's, or a replay as long as DDS keeps (10,000: the oldest may be lost)
+  → leaves it (`LEFT_AS_IS`); else switches it off (`SWITCHED_OFF`). The outcome is
+  `FlutterSessionSnapshot.rebuildFlagRestore`: a Timeline row and `flutter_app_status.rebuildTracking`. A
+  recording opened right after the connect waits for it (at most 6.5 s), so it does not read Spock's earlier
+  flag as the IDE's.
 
 ## 9. Home: current Flutter route and back stack (2026-10-03)
 

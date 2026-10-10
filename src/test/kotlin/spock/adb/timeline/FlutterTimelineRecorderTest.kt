@@ -8,12 +8,15 @@ import org.junit.jupiter.api.Test
 import spock.adb.flutter.AppIdentity
 import spock.adb.flutter.DeviceTime
 import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterRebuildRecorder
 import spock.adb.flutter.FlutterSession
 import spock.adb.flutter.FlutterSessionChange
 import spock.adb.flutter.FlutterSessionService
 import spock.adb.flutter.HttpOwners
 import spock.adb.flutter.HttpRecording
 import spock.adb.flutter.IdentityCheck
+import spock.adb.flutter.RebuildFlagOwners
+import spock.adb.flutter.RebuildFlagRestore
 import spock.adb.flutter.analysis.FlutterFixtures
 import spock.adb.flutter.vmservice.FakeVmService
 import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
@@ -156,7 +159,7 @@ class FlutterTimelineRecorderTest {
         val owners = HttpOwners().apply { record(HttpOwners.key(SERIAL, 12345, UI_ISOLATE)) }
         vm.httpLogging = true
         session.httpOwners = owners
-        session.httpOwnerSerial = SERIAL
+        session.ownerSerial = SERIAL
         connect()
         eventually(message = "adopted") { session.snapshot.httpRecording == HttpRecording.AdoptedBySpock }
 
@@ -170,6 +173,33 @@ class FlutterTimelineRecorderTest {
             "$rows",
         )
         assertTrue(rows.none { it.title.startsWith("Spock turned on HTTP recording") })
+    }
+
+    @Test
+    fun `rebuild tracking an earlier recording left on is switched off, and the row says so`() {
+        var tracking = "true"
+        vm.on(FlutterRebuildRecorder.TRACK_REBUILDS) { params ->
+            params.get("enabled")?.let { tracking = it.asString }
+            FakeVmService.Reply.Result(JsonObject().apply { addProperty("enabled", tracking) })
+        }
+        session.rebuildOwners = RebuildFlagOwners().apply {
+            record(RebuildFlagOwners.Owed(SERIAL, 12345, UI_ISOLATE, lastAnnouncedAt = DEVICE_START))
+        }
+        session.ownerSerial = SERIAL
+        connect()
+        eventually(message = "switched off") { session.snapshot.rebuildFlagRestore == RebuildFlagRestore.SWITCHED_OFF }
+
+        recorder.tick()
+        recorder.tick()
+
+        val restored = rows.filter { it.title.startsWith("Spock switched off the rebuild tracking") }
+        assertEquals(1, restored.size, "once: $rows")
+        assertEquals(
+            "Spock switched off the rebuild tracking its earlier recording left on for $APP when that session's " +
+                "connection was lost",
+            restored.single().title,
+        )
+        assertEquals("false", tracking)
     }
 
     @Test

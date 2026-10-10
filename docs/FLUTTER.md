@@ -129,8 +129,11 @@ tab record Flutter widget rebuilds for a debug build with a session over DDS: ea
 with its count and `lib/…:line:column`, most built first. The flag behind it,
 `trackRebuildDirtyWidgets`, is shared with the IDE's rebuild counts and DevTools, so Spock switches
 it on only if it was off, and off afterwards only if it switched it on, on the same isolate, and
-nothing else wrote it meanwhile — the result says which. The whole-tree rebuild that switching it
-on forces is not counted. Diagnose never records rebuilds.
+nothing else wrote it meanwhile — the result says which. If `flutter run` dies during a recording
+while the app runs on, Spock cannot switch it off then; the next session on the same process
+(`flutter attach`) does, if the flag is still on and no other write of it was announced since,
+and the Timeline and `flutter_app_status` say so. The whole-tree rebuild that switching it on
+forces is not counted. Diagnose never records rebuilds.
 
 ## Home: Flutter route and App back stack
 
