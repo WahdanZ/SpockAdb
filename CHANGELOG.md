@@ -146,6 +146,12 @@
   and again ten minutes later claimed every warning logged in between. They are now measured
   against each occurrence, as the cross-layer merge already was: a log line is beside the error
   only if it is within two seconds of one of its occurrences.
+- **The Recompositions tab opens a Flutter widget's source when only `android/` is open.**
+  Android Studio is often pointed at a Flutter app's `android` folder, which leaves the app's
+  `lib/` folder outside the project, so double-clicking a widget row said "frames.dart is not in
+  the project or its attached sources". Spock now finds `lib/…` files from the app's
+  `pubspec.yaml` — in the project's folder, a module's folder, or the folder above one named
+  `android` — and opens them at the line, outside the project or not.
 
 ## [4.0.7] - 2026-09-29
 

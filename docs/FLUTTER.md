@@ -133,7 +133,10 @@ it on only if it was off, and off afterwards only if it switched it on, on the s
 nothing else wrote it meanwhile — the result says which. If `flutter run` dies during a recording
 while the app runs on, Spock cannot switch it off then; the next session on the same process
 (`flutter attach`) does, if the flag is still on and no other write of it was announced since,
-and the Timeline and `flutter_app_status` say so. The whole-tree rebuild that switching it on
+and the Timeline and `flutter_app_status` say so. Double-clicking a row of the Recompositions tab
+opens its `lib/…` file at the line, also when the IDE has only the app's `android/` folder open:
+Spock looks for the app's `pubspec.yaml` (with a `flutter:` section) in the project's folder,
+its modules' folders, and the folder above one named `android` — nowhere else. The whole-tree rebuild that switching it on
 forces is not counted. Diagnose never records rebuilds.
 
 ## Home: Flutter route and App back stack

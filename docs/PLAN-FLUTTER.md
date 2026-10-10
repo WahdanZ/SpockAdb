@@ -72,9 +72,9 @@ waits for it. User docs: [FLUTTER.md](FLUTTER.md).
   framework error; a profile build prints repeats without their message" (count 2) with its note.  UI checks done 2026-10-10 (3.22.2): the
   Recompositions tab lists widget locations with counts and ends with what became of the tracking flag; selecting
   another app mid-recording keeps measuring the first app (its session stays open) and restores the flag; the
-  `.second` copy is described with no arguments while the first copy's session stays connected. Open: a
-  double-click opens `lib/…` only when the Flutter project root is open — with only `android/` open it says the
-  file is not in the project; resolving `lib/` from the pubspec next to `android/` would fix that.
+  `.second` copy is described with no arguments while the first copy's session stays connected. A double-click
+  opened `lib/…` only when the Flutter project root was open; it now resolves `lib/` from the pubspec next to
+  `android/` too (#175). Pending: that device check, in the sample README.
 - **Cross-layer pair lost with the native half**: once the native line is older than the 1,500 logcat lines
   Diagnose reads, the pair stops merging while the Dart side keeps its history. Correct for the data read;
   documented, not fixed.

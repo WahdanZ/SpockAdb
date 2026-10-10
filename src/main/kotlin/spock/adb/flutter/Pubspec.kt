@@ -19,6 +19,9 @@ object Pubspec {
     /** A top-level `workspace:` key: the root of a pub workspace (melos 7 builds on it). */
     private val WORKSPACE = Regex("""(?m)^workspace\s*:""")
 
+    /** A top-level `flutter:` section: a Flutter app or package, not a plain Dart one. */
+    private val FLUTTER = Regex("""(?m)^flutter\s*:""")
+
     /**
      * The package name in [dir]'s pubspec — what `flutter run` reports as `Package:` to the Dart
      * Tooling Daemon, not the Android applicationId. Null when there is no readable pubspec or it
@@ -44,6 +47,12 @@ object Pubspec {
 
     /** Whether pubspec text has a top-level `workspace:` key. */
     fun declaresWorkspace(text: String): Boolean = WORKSPACE.containsMatchIn(text)
+
+    /** Whether [dir]'s pubspec has a top-level `flutter:` section. Blocking (file read); never throws. */
+    fun isFlutter(dir: Path): Boolean = read(dir.toString())?.let(::declaresFlutter) == true
+
+    /** Whether pubspec text has a top-level `flutter:` section. */
+    fun declaresFlutter(text: String): Boolean = FLUTTER.containsMatchIn(text)
 
     private fun read(dir: String): String? {
         val file = try {

@@ -4,9 +4,12 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
@@ -21,9 +24,12 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.RecompositionOperations
 import spock.adb.flutter.FlutterFollowerService
 import spock.adb.flutter.FlutterRebuildRecorder
+import spock.adb.flutter.FlutterSources
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseEvent
+import java.nio.file.InvalidPathException
+import java.nio.file.Path
 import java.util.Locale
 import javax.swing.JButton
 import javax.swing.JPanel
@@ -220,12 +226,16 @@ internal class RecompositionPanel(
         note.text = message
     }
 
-    /** Finds [row]'s file off the EDT, in the index, and opens it at the line Compose or Flutter recorded. */
+    /**
+     * Finds [row]'s file off the EDT and opens it at the line Compose or Flutter recorded: a Flutter
+     * `lib/…` file under the app's pubspec root first — also when only its `android/` folder is the
+     * project ([FlutterSources]) — else by name in the index.
+     */
     private fun openSource(row: CountRow) {
         if (row.fileName.isEmpty()) return say("Flutter did not say where widget ${row.location} is.")
         if (DumbService.isDumb(project)) return say("Indexing; try again when it finishes.")
         ApplicationManager.getApplication().executeOnPooledThread {
-            val file = ReadAction.compute<VirtualFile?, RuntimeException> {
+            val file = flutterSource(row) ?: ReadAction.compute<VirtualFile?, RuntimeException> {
                 if (project.isDisposed) return@compute null
                 val candidates = FilenameIndex.getVirtualFilesByName(row.fileName, GlobalSearchScope.allScope(project))
                 pickSourceIn(candidates.toList(), row.directory) { it.path }
@@ -238,6 +248,25 @@ internal class RecompositionPanel(
                 }
             }) { isDisposed() || project.isDisposed }
         }
+    }
+
+    /**
+     * A Flutter row's `lib/…` file under the pubspec root next to the project's directory or a
+     * module's content root, refreshed into the file system if the IDE never looked there. On a
+     * pooled thread.
+     */
+    private fun flutterSource(row: CountRow): VirtualFile? {
+        if (row.sourcePath.isEmpty()) return null
+        val dirs = ReadAction.compute<List<String>, RuntimeException> {
+            if (project.isDisposed) return@compute emptyList()
+            val contentRoots = ModuleManager.getInstance(project).modules
+                .flatMap { ModuleRootManager.getInstance(it).contentRoots.toList() }
+                .filter { it.isInLocalFileSystem }
+                .map { it.path }
+            listOfNotNull(project.basePath) + contentRoots
+        }
+        val path = FlutterSources.resolve(row.sourcePath, dirs.mapNotNull(::pathOrNull)) ?: return null
+        return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
     }
 
     private class CountsModel : AbstractTableModel() {
@@ -288,6 +317,12 @@ internal class RecompositionPanel(
  */
 internal fun <T> pickSource(candidates: List<T>, packageName: String, pathOf: (T) -> String): T? =
     pickSourceIn(candidates, if (packageName.isEmpty()) "" else "/" + packageName.replace('.', '/') + "/", pathOf)
+
+private fun pathOrNull(path: String): Path? = try {
+    Path.of(path)
+} catch (_: InvalidPathException) {
+    null
+}
 
 /** Of [candidates], the one whose path holds [directory]; the first when none does, or [directory] is empty. */
 internal fun <T> pickSourceIn(candidates: List<T>, directory: String, pathOf: (T) -> String): T? {

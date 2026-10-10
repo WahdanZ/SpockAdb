@@ -213,6 +213,12 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
    - In the IDE, the UI Inspector's **Recompositions** tab, **Record** with the storm running: rows
      are widget locations with their counts; double-click the storm's row to open
      `lib/fixtures/frames.dart` at its line. The note ends with what became of the tracking flag.
+   - The same with only the Android part open, as Android Studio is often used for a Flutter app:
+     **File → Open** `sample/flutter_app/android`, select the app in Spock, record the storm, and
+     double-click its row. `lib/fixtures/frames.dart` opens at the storm's line, although `lib/` is
+     not in that project: Spock finds it from the `pubspec.yaml` (with a `flutter:` section) next to
+     `android/`. Before this, the note said "frames.dart is not in the project or its attached
+     sources".
    - In a `--profile` run the call is refused (debug only). With `flutter run` stopped and the
      app started from the launcher, the call records Compose instead and fails with the
      runtime-tracing advice followed by "… ships the Flutter engine; recording its widget rebuilds
