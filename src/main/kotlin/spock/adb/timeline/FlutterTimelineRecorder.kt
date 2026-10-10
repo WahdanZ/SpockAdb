@@ -360,9 +360,12 @@ class FlutterTimelineRecorder(
             RebuildFlagRestore.SWITCHED_OFF ->
                 "Spock switched off the rebuild tracking its earlier recording left on for ${followed.app} " +
                     "when that session's connection was lost"
-            RebuildFlagRestore.LEFT_AS_IS ->
+            RebuildFlagRestore.LEFT_UNPROVEN ->
+                "Rebuild tracking that Spock's earlier recording left on for ${followed.app} stays on: this " +
+                    "debugger session does not show Spock's switch-on, so Spock cannot prove it is still its own"
+            RebuildFlagRestore.LEFT_TO_OTHERS ->
                 "Rebuild tracking that Spock's earlier recording left on for ${followed.app} stays on: something " +
-                    "else may have written it since, so Spock leaves it as it is"
+                    "else wrote it since, so it is theirs"
             null -> return
         }
         followed.rebuildFlagNoted = true

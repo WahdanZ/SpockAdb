@@ -127,9 +127,13 @@ class FlutterAppStatusTool(
         RebuildFlagRestore.SWITCHED_OFF ->
             "off: an earlier Spock recording left it on when its connection was lost, and this session " +
                 "switched it off"
-        RebuildFlagRestore.LEFT_AS_IS ->
-            "left as it is: an earlier Spock recording left it on when its connection was lost, and something " +
-                "else may have written it since"
+        RebuildFlagRestore.LEFT_UNPROVEN ->
+            "left on: an earlier Spock recording left it on when its connection was lost, and this debugger " +
+                "session (a new flutter run or flutter attach) has no record of Spock's switch-on, so Spock cannot " +
+                "prove nothing else wrote it since; switch it off in DevTools or the IDE if nothing uses it"
+        RebuildFlagRestore.LEFT_TO_OTHERS ->
+            "left on: an earlier Spock recording left it on when its connection was lost, and something else " +
+                "(the IDE's rebuild counts or DevTools) wrote it since, so it is theirs"
     }
 
     private fun clock(live: FlutterAppStatus.Live) = JsonObject().apply {

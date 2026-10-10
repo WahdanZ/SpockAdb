@@ -101,7 +101,8 @@ class FlutterAppStatusToolTest {
         )["rebuildTracking"].asString
 
         assertTrue(trackingOf(RebuildFlagRestore.SWITCHED_OFF).startsWith("off: an earlier Spock recording left it on"))
-        assertTrue(trackingOf(RebuildFlagRestore.LEFT_AS_IS).startsWith("left as it is"))
+        assertTrue(trackingOf(RebuildFlagRestore.LEFT_UNPROVEN).contains("cannot prove nothing else wrote it"))
+        assertTrue(trackingOf(RebuildFlagRestore.LEFT_TO_OTHERS).contains("something else"))
     }
 
     @Test

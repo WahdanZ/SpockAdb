@@ -252,9 +252,13 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   announcement's device time in `RebuildFlagOwners` (the service's, beside `HttpOwners`, dropped when the pid
   changes). A session on that process over DDS (`LeftOnRebuildFlag`, listening from before it connects) waits
   until the `Extension` replay is delivered (`VmServiceClient.afterQueuedEvents`), then: the isolate gone (a hot
-  restart) → forgets it; paused or not answering → keeps it for a later session; the flag off → forgets it; a
-  write of the flag announced after Spock's, or a replay as long as DDS keeps (10,000: the oldest may be lost)
-  → leaves it (`LEFT_AS_IS`); else switches it off (`SWITCHED_OFF`). The outcome is
+  restart) → forgets it; paused or not answering → keeps it for a later session; the flag off → forgets it; the
+  replay not holding Spock's own announcement (on, at exactly the recorded device time: DDS replays the original
+  event) → leaves it (`LEFT_UNPROVEN`); a write of the flag after that announcement, by arrival order — not by
+  timestamp, as the device clock can step back — → leaves it (`LEFT_TO_OTHERS`); else switches it off
+  (`SWITCHED_OFF`). Only a DDS that outlived Spock's connection replays the announcement: after `flutter run`
+  died, `flutter attach`'s new DDS has no history, and the flag is left on. Any session, DDS or direct, that sees
+  a write after Spock's (live, or after the announcement in the replay) forgets the record. The outcome is
   `FlutterSessionSnapshot.rebuildFlagRestore`: a Timeline row and `flutter_app_status.rebuildTracking`. A
   recording opened right after the connect waits for it (at most 6.5 s), so it does not read Spock's earlier
   flag as the IDE's.

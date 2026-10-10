@@ -199,17 +199,20 @@ Same setup as above: the emulator and the app selected in Spock, nothing pasted.
      and a live DDS is not a lost session. The recording ends early with "The Flutter session ended
      during the recording" and "Spock switched it on and could not switch it off again (the
      connection to the app was lost …)". Then `flutter attach`: once Spock connects (idea.log
-     `Connected (new), pid N`, the same pid), the Timeline shows "Spock switched off the rebuild
-     tracking its earlier recording left on for spock.adb.spock_flutter_sample when that session's
-     connection was lost", `flutter_app_status` has `rebuildTracking: "off: an earlier Spock
-     recording left it on …"`, and a new recording ends with "Spock switched it on for the
-     recording and off again" — it read the flag off, not "it was on already".
+     `Connected (new), pid N`, the same pid), the Timeline shows "Rebuild tracking that Spock's
+     earlier recording left on for spock.adb.spock_flutter_sample stays on: this debugger session
+     does not show Spock's switch-on, so Spock cannot prove it is still its own", and
+     `flutter_app_status` has `rebuildTracking: "left on: … cannot prove nothing else wrote it
+     since …"`. The new DDS `flutter attach` starts has no history of Spock's switch-on, so Spock
+     leaves the flag on rather than guess — a new recording says "it was on already". Press `R`:
+     the restart resets the flag, and a recording reads it off again. Spock switches the flag off
+     by itself only when the DDS outlived Spock's connection and replays Spock's switch-on with no
+     write after it; there is no simple way to drop Spock's connection while `flutter run` keeps
+     its DDS, so that path is covered by unit tests, not by this step.
    - The same loss, then select the `.second` copy in Spock before `flutter attach`, so Spock stays
-     away: switch rebuild tracking on from DevTools (`v` in `flutter attach`) and leave it on, then
-     select the sample again. The Timeline says the tracking "stays on: something else may have
-     written it since", `rebuildTracking` starts "left as it is", and DevTools' tracking keeps
-     running. Press `R` instead of using DevTools: nothing is said, and a recording reads the flag
-     off — the restart reset it, and Spock forgot what it owed the old isolate.
+     away, and press `R` in `flutter attach`; select the sample again: nothing is said about the
+     flag, and a recording reads it off — the restart reset it, and Spock forgot what it owed the
+     old isolate.
    - In the IDE, the UI Inspector's **Recompositions** tab, **Record** with the storm running: rows
      are widget locations with their counts; double-click the storm's row to open
      `lib/fixtures/frames.dart` at its line. The note ends with what became of the tracking flag.

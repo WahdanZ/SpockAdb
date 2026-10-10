@@ -13,6 +13,7 @@ import spock.adb.flutter.vmservice.FakeVmService
 import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
 import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -39,21 +40,25 @@ class FlutterRebuildRecorderTest : FlutterSessionFixture() {
             // Flutter's setter forces a rebuild of the whole tree when tracking goes on, then announces the write.
             if (enabled == "true" && tracking == "false") pushRebuilt(count = FORCED_BUILDS)
             tracking = enabled
-            vm.pushEvent("Extension", trackingChanged(enabled))
+            vm.pushEvent("Extension", trackingChanged(enabled).also { announced += it })
         }
         FakeVmService.Reply.Result(JsonObject().apply { addProperty("enabled", tracking) })
     }
 
-    private fun trackingChanged(value: String) = isolateEvent("Extension", UI_ISOLATE, stamps.incrementAndGet()) {
-        addProperty("extensionKind", "Flutter.ServiceExtensionStateChanged")
-        add(
-            "extensionData",
-            JsonObject().apply {
-                addProperty("extension", TRACK_REBUILDS)
-                addProperty("value", value)
-            },
-        )
-    }
+    /** What the app announced of Spock's writes, as a DDS that outlived the connection keeps them. */
+    private val announced = CopyOnWriteArrayList<JsonObject>()
+
+    private fun trackingChanged(value: String, stamp: Long = stamps.incrementAndGet()) =
+        isolateEvent("Extension", UI_ISOLATE, stamp) {
+            addProperty("extensionKind", "Flutter.ServiceExtensionStateChanged")
+            add(
+                "extensionData",
+                JsonObject().apply {
+                    addProperty("extension", TRACK_REBUILDS)
+                    addProperty("value", value)
+                },
+            )
+        }
 
     private fun serveLocations() = vm.on(LOCATION_MAP) {
         FakeVmService.Reply.Result(
@@ -370,45 +375,104 @@ class FlutterRebuildRecorderTest : FlutterSessionFixture() {
         ownerSerial = SERIAL
     }
 
+    /** The next session's DDS replays [events] on the `Extension` stream, as DDS does to a new client. */
+    private fun replaying(vararg events: JsonObject) {
+        vm.replayOnListen = { stream ->
+            if (stream == "Extension") events.forEach { vm.pushEvent("Extension", it.deepCopy()) }
+        }
+    }
+
+    /** What the next session on the process did about the flag; what was owed is settled either way. */
+    private fun nextSessionSettles(owners: RebuildFlagOwners): RebuildFlagRestore? {
+        val next = nextSession(owners)
+        try {
+            next.connect(pasted())
+            eventually(message = "settled") { next.snapshot.rebuildFlagRestore != null }
+            eventually(message = "owed no more") { owners.ofProcess(SERIAL, PID).isEmpty() }
+            return next.snapshot.rebuildFlagRestore
+        } finally {
+            vm.replayOnListen = {}
+            next.close()
+        }
+    }
+
+    /** The lost window's own switch-on, as the app announced it. */
+    private val spocksSwitchOn: JsonObject
+        get() = announced.single { it.getAsJsonObject("extensionData")["value"].asString == "true" }
+
+    private val spocksStamp: Long get() = spocksSwitchOn["timestamp"].asLong
+
     @Test
-    fun `tracking a lost window left on is switched off by the next session on the process, and it says so`() {
+    fun `after a lost flutter run, a new DDS with no history of Spock's switch-on leaves the flag on, unproven`() {
         val owners = RebuildFlagOwners()
         leftOnByLostWindow(owners)
         assertEquals(1, owners.ofProcess(SERIAL, PID).size)
 
-        val next = nextSession(owners)
-        try {
-            next.connect(pasted())
-            eventually(message = "switched off") { next.snapshot.rebuildFlagRestore == RebuildFlagRestore.SWITCHED_OFF }
-            eventually(message = "owed no more") { owners.ofProcess(SERIAL, PID).isEmpty() }
-        } finally {
-            next.close()
-        }
+        assertEquals(RebuildFlagRestore.LEFT_UNPROVEN, nextSessionSettles(owners))
+
+        assertEquals(listOf("true"), writes())
+        assertEquals("true", tracking)
+    }
+
+    @Test
+    fun `a DDS that outlived the connection replays Spock's switch-on, and with nothing after it the flag goes off`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        replaying(spocksSwitchOn)
+
+        assertEquals(RebuildFlagRestore.SWITCHED_OFF, nextSessionSettles(owners))
 
         assertEquals(listOf("true", "false"), writes())
         assertEquals("false", tracking)
     }
 
     @Test
-    fun `tracking another tool wrote after the lost window is left as it is`() {
+    fun `a write replayed before Spock's switch-on is the past, not someone else's since`() {
         val owners = RebuildFlagOwners()
         leftOnByLostWindow(owners)
-        // The IDE switched it on again through the new DDS before Spock connected: DDS replays its announcement.
-        val laterWrite = trackingChanged("true")
-        vm.replayOnListen = { stream -> if (stream == "Extension") vm.pushEvent("Extension", laterWrite) }
+        replaying(trackingChanged("false", spocksStamp - 1_000), spocksSwitchOn)
 
-        val next = nextSession(owners)
-        try {
-            next.connect(pasted())
-            eventually(message = "left as it is") { next.snapshot.rebuildFlagRestore == RebuildFlagRestore.LEFT_AS_IS }
-            eventually(message = "not Spock's any more") { owners.ofProcess(SERIAL, PID).isEmpty() }
-        } finally {
-            vm.replayOnListen = {}
-            next.close()
-        }
+        assertEquals(RebuildFlagRestore.SWITCHED_OFF, nextSessionSettles(owners))
+        assertEquals("false", tracking)
+    }
 
+    @Test
+    fun `a write replayed after Spock's switch-on leaves the flag on, though it reads the same millisecond`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        // The IDE switching its rebuild counts off, through the DDS that outlived Spock's connection. (The
+        // same write, value and millisecond as Spock's, would read as a repeat of it: nothing tells them apart.)
+        replaying(spocksSwitchOn, trackingChanged("false", spocksStamp))
+
+        assertEquals(RebuildFlagRestore.LEFT_TO_OTHERS, nextSessionSettles(owners))
         assertEquals(listOf("true"), writes())
         assertEquals("true", tracking)
+    }
+
+    @Test
+    fun `a write replayed after Spock's switch-on leaves the flag on, though the device clock stepped back`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        replaying(spocksSwitchOn, trackingChanged("true", spocksStamp - 60_000))
+
+        assertEquals(RebuildFlagRestore.LEFT_TO_OTHERS, nextSessionSettles(owners))
+        assertEquals(listOf("true"), writes())
+    }
+
+    @Test
+    fun `any session that sees a live write after Spock's forgets what was owed, a direct one too`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        vm.dds = false
+        val next = nextSession(owners)
+        try {
+            next.connect(pasted(), allowDirect = true)
+            vm.pushEvent("Extension", trackingChanged("true"))
+            eventually(message = "forgotten") { owners.ofProcess(SERIAL, PID).isEmpty() }
+        } finally {
+            next.close()
+        }
+        assertEquals(listOf("true"), writes())
     }
 
     @Test

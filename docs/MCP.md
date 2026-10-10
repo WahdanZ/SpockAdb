@@ -499,10 +499,11 @@ it either, the error says why for both.
 - If Spock closes the session during the window (another app selected, another app's attach,
   the project closing), the close switches the flag off through DDS first, and the recording
   stops early and says the session ended. If the connection is lost, the result says the flag was
-  left on, and Spock remembers it for that process: the next session on the same isolate over DDS
-  switches it off, if it is still on and no other write of it was announced since (DDS replays the
-  app's announcements to a new client). Otherwise it is left as it is. `flutter_app_status` and
-  the Timeline say which. If the app hot-restarts, the flag went with the old isolate and counts
+  left on, and Spock remembers it for that process. The next session on the same isolate over DDS
+  switches it off only if the flag is still on and that DDS replays Spock's own switch-on with no
+  write of the flag after it — that is, the DDS outlived Spock's connection. After `flutter run`
+  died, `flutter attach` starts a new DDS that holds no such history, so the flag is left on:
+  Spock cannot see what else wrote it meanwhile. `flutter_app_status` and the Timeline say which. If the app hot-restarts, the flag went with the old isolate and counts
   stop at the restart.
 - Widget locations are read from `ext.flutter.inspector.widgetLocationIdMap`. The app sends each
   location once per isolate, so without this a window opened after the IDE's counts would see
@@ -936,8 +937,10 @@ on Dart's HTTP recording unless that setting is off.
 - `clock` is `measured`, `measuring` for a session just opened, or `unavailable` when the
   device's `date` could not be read.
 - `rebuildTracking` appears only when an earlier session's rebuild recording left
-  `trackRebuildDirtyWidgets` on, its connection lost: this session switched it off, or left it as
-  it is because something else may have written it since.
+  `trackRebuildDirtyWidgets` on, its connection lost: this session switched it off (its DDS showed
+  Spock's switch-on and nothing after), left it on because this DDS has no record of Spock's
+  switch-on (a new `flutter run` or `flutter attach`), or left it on because something else wrote
+  it since.
 - It never returns a VM Service, DDS or DevTools address, nor a token: any that a message carried
   reads `<VM Service address>`.
 

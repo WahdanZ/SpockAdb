@@ -136,7 +136,7 @@ class FlutterRebuildRecorder(
         /** Writes of the flag the app announced since the listener was added: Spock's, and anyone's. */
         private val writes = AtomicInteger()
 
-        /** The device time of the newest of [writes]: what a later session compares the writes it sees with. */
+        /** The device time of the newest of [writes]: Spock's switch-on's, which a later session looks for. */
         @Volatile
         private var lastAnnouncedAt: Long? = null
 
@@ -245,7 +245,8 @@ class FlutterRebuildRecorder(
         private fun leaveOwed() {
             if (!confirmed || writes.get() != 1 || restoreClaimed.get()) return
             val owners = session.rebuildOwners ?: return
-            owners.record(RebuildFlagOwners.Owed(serial ?: return, pid ?: return, isolateId, lastAnnouncedAt))
+            val announced = lastAnnouncedAt ?: return
+            owners.record(RebuildFlagOwners.Owed(serial ?: return, pid ?: return, isolateId, announced))
         }
 
         /** Spock's close, before the socket closes: switches off what the window switched on, unless it did. */

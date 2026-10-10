@@ -132,14 +132,18 @@
 
 ### Fixed
 
-- **Flutter rebuild tracking no longer stays on after a lost `flutter run`.** A rebuild recording
+- **Flutter rebuild tracking left on by a lost connection is followed up.** A rebuild recording
   (the UI Inspector's Recompositions tab, `android_get_recomposition_counts`) switches on a flag
-  the app shares with the IDE's rebuild counts and DevTools. If `flutter run` died during the
-  recording while the app ran on, Spock had no connection left to switch it off, and the app kept
-  tracking every rebuild until it restarted. Spock now remembers that it switched the flag on in
-  that process, and its next session there (`flutter attach`) switches it off — only if it is still
-  on and nothing else was seen writing it since — and says so in the Timeline and
-  `flutter_app_status`. After a hot restart the flag is reset anyway, and Spock forgets it.
+  the app shares with the IDE's rebuild counts and DevTools. If the connection was lost during the
+  recording while the app ran on, Spock could not switch it off, and the app kept tracking every
+  rebuild until it restarted, with nothing said later. Spock now remembers that it switched the
+  flag on in that process. Its next session there switches it off only when it can prove the flag
+  is still Spock's: the debugger session (DDS) outlived Spock's connection and its history shows
+  Spock's switch-on with no write after it. When `flutter run` itself died, the next `flutter
+  attach` starts a new DDS with no history, so whatever the IDE or DevTools wrote in between cannot
+  be seen: Spock leaves the flag on and says so, in the Timeline and `flutter_app_status`, rather
+  than switch off a flag another tool may be using. After a hot restart the flag is reset anyway,
+  and Spock forgets it.
 - **Diagnose no longer pairs a long-lived Flutter error with unrelated log lines.** A Flutter error's
   `nearbyLogs` — the log problems listed beside it as its context — were measured against the
   whole stretch between the error's first and last occurrence, so an overflow seen at the start

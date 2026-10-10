@@ -186,6 +186,18 @@ class FlutterTimelineRecorderTest {
             record(RebuildFlagOwners.Owed(SERIAL, 12345, UI_ISOLATE, lastAnnouncedAt = DEVICE_START))
         }
         session.ownerSerial = SERIAL
+        // The DDS outlived the lost connection: it replays the window's own switch-on.
+        val spocksSwitchOn = isolateEvent("Extension", UI_ISOLATE, DEVICE_START) {
+            addProperty("extensionKind", "Flutter.ServiceExtensionStateChanged")
+            add(
+                "extensionData",
+                JsonObject().apply {
+                    addProperty("extension", FlutterRebuildRecorder.TRACK_REBUILDS)
+                    addProperty("value", "true")
+                },
+            )
+        }
+        vm.replayOnListen = { stream -> if (stream == "Extension") vm.pushEvent("Extension", spocksSwitchOn) }
         connect()
         eventually(message = "switched off") { session.snapshot.rebuildFlagRestore == RebuildFlagRestore.SWITCHED_OFF }
 

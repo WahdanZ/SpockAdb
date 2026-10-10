@@ -130,10 +130,13 @@ tab record Flutter widget rebuilds for a debug build with a session over DDS: ea
 with its count and `lib/…:line:column`, most built first. The flag behind it,
 `trackRebuildDirtyWidgets`, is shared with the IDE's rebuild counts and DevTools, so Spock switches
 it on only if it was off, and off afterwards only if it switched it on, on the same isolate, and
-nothing else wrote it meanwhile — the result says which. If `flutter run` dies during a recording
-while the app runs on, Spock cannot switch it off then; the next session on the same process
-(`flutter attach`) does, if the flag is still on and no other write of it was announced since,
-and the Timeline and `flutter_app_status` say so. Double-clicking a row of the Recompositions tab
+nothing else wrote it meanwhile — the result says which. If the connection is lost during a
+recording while the app runs on, Spock cannot switch it off then. Its next session on the same
+process switches it off only when the debugger session (DDS) outlived Spock's connection and
+replays Spock's switch-on with no write of the flag after it. When `flutter run` itself died, a
+later `flutter attach` starts a new DDS with no such history, so Spock leaves the flag on — it
+cannot see what the IDE or DevTools wrote meanwhile — and the Timeline and `flutter_app_status`
+say so; a hot restart or DevTools switches it off. Double-clicking a row of the Recompositions tab
 opens its `lib/…` file at the line, also when the IDE has only the app's `android/` folder open:
 Spock looks for the app's `pubspec.yaml` (with a `flutter:` section) in the project's folder,
 its modules' folders, and the folder above one named `android` — nowhere else. The whole-tree rebuild that switching it on
