@@ -78,7 +78,6 @@ waits for it. User docs: [FLUTTER.md](FLUTTER.md).
 - **Cross-layer pair lost with the native half**: once the native line is older than the 1,500 logcat lines
   Diagnose reads, the pair stops merging while the Dart side keeps its history. Correct for the data read;
   documented, not fixed.
-- **Sample README**: the Navigation checks now say what #169 checked on both SDKs, and what is still unchecked.
 
 ## Phases
 
