@@ -92,8 +92,8 @@ internal data class CountRow(
     /** A path fragment the right file of that name sits under: `/com/example/ui/`, `/lib/fixtures/`. */
     val directory: String,
     val line: Int,
-    /** A Flutter widget's file as Flutter names it, `lib/fixtures/frames.dart`; empty for a composable. */
-    val sourcePath: String = "",
+    /** A Flutter widget's file as Flutter reported it, `file:///…/lib/fixtures/frames.dart`; empty for a composable. */
+    val reportedFile: String = "",
 ) {
     companion object {
         fun of(composable: ComposableCount) = CountRow(
@@ -116,7 +116,7 @@ internal data class CountRow(
                 fileName = path.substringAfterLast('/'),
                 directory = path.substringBeforeLast('/', "").takeIf { it.isNotEmpty() }?.let { "/$it/" }.orEmpty(),
                 line = at?.line ?: 0,
-                sourcePath = path,
+                reportedFile = at?.file.orEmpty(),
             )
         }
     }

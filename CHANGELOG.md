@@ -153,9 +153,11 @@
 - **The Recompositions tab opens a Flutter widget's source when only `android/` is open.**
   Android Studio is often pointed at a Flutter app's `android` folder, which leaves the app's
   `lib/` folder outside the project, so double-clicking a widget row said "frames.dart is not in
-  the project or its attached sources". Spock now finds `lib/…` files from the app's
-  `pubspec.yaml` — in the project's folder, a module's folder, or the folder above one named
-  `android` — and opens them at the line, outside the project or not.
+  the project or its attached sources". Spock now takes the file Flutter reported and finds it
+  under the app's `pubspec.yaml` — in the project's folder, a module's folder, or the folder above
+  one named `android` — and opens it at the line, outside the project or not, and while the IDE
+  indexes. A file outside that app (a path dependency, a second app) is looked up by name as
+  before, never opened as a same-named file of the app.
 
 ## [4.0.7] - 2026-09-29
 

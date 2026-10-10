@@ -137,10 +137,13 @@ replays Spock's switch-on with no write of the flag after it. When `flutter run`
 later `flutter attach` starts a new DDS with no such history, so Spock leaves the flag on — it
 cannot see what the IDE or DevTools wrote meanwhile — and the Timeline and `flutter_app_status`
 say so; a hot restart or DevTools switches it off. Double-clicking a row of the Recompositions tab
-opens its `lib/…` file at the line, also when the IDE has only the app's `android/` folder open:
-Spock looks for the app's `pubspec.yaml` (with a `flutter:` section) in the project's folder,
-its modules' folders, and the folder above one named `android` — nowhere else. The whole-tree rebuild that switching it on
-forces is not counted. Diagnose never records rebuilds.
+opens its `lib/…` file at the line, also when the IDE has only the app's `android/` folder open,
+and while it indexes: Spock looks for the app's `pubspec.yaml` (with a `flutter:` section) in the
+project's folder, its modules' folders, and the folder above one named `android` — nowhere else —
+and opens the file Flutter reported under the root that holds it (or, for an app built in another
+checkout, the root of the same folder name). A file of a path dependency or of another app is
+looked up by name in the index instead, never opened as this app's file of the same name. The
+whole-tree rebuild that switching it on forces is not counted. Diagnose never records rebuilds.
 
 ## Home: Flutter route and App back stack
 

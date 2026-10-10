@@ -227,36 +227,41 @@ internal class RecompositionPanel(
     }
 
     /**
-     * Finds [row]'s file off the EDT and opens it at the line Compose or Flutter recorded: a Flutter
-     * `lib/…` file under the app's pubspec root first — also when only its `android/` folder is the
-     * project ([FlutterSources]) — else by name in the index.
+     * Finds [row]'s file off the EDT and opens it at the line Compose or Flutter recorded: the file a
+     * Flutter widget was reported in, under the app's pubspec root — also when only its `android/`
+     * folder is the project, and while indexing, as it needs no index ([FlutterSources]) — else by
+     * name in the index.
      */
     private fun openSource(row: CountRow) {
         if (row.fileName.isEmpty()) return say("Flutter did not say where widget ${row.location} is.")
-        if (DumbService.isDumb(project)) return say("Indexing; try again when it finishes.")
+        if (row.reportedFile.isEmpty() && DumbService.isDumb(project)) return say(INDEXING)
         ApplicationManager.getApplication().executeOnPooledThread {
-            val file = flutterSource(row) ?: ReadAction.compute<VirtualFile?, RuntimeException> {
-                if (project.isDisposed) return@compute null
-                val candidates = FilenameIndex.getVirtualFilesByName(row.fileName, GlobalSearchScope.allScope(project))
-                pickSourceIn(candidates.toList(), row.directory) { it.path }
-            }
+            val flutter = flutterSource(row)
+            val indexing = flutter == null && DumbService.isDumb(project)
+            val file = flutter ?: if (indexing) null else indexed(row)
             ApplicationManager.getApplication().invokeLater({
-                if (file == null) {
-                    say("${row.fileName} is not in the project or its attached sources.")
-                } else {
-                    OpenFileDescriptor(project, file, (row.line - 1).coerceAtLeast(0), 0).navigate(true)
+                when {
+                    file != null -> OpenFileDescriptor(project, file, (row.line - 1).coerceAtLeast(0), 0).navigate(true)
+                    indexing -> say(INDEXING)
+                    else -> say("${row.fileName} is not in the project or its attached sources.")
                 }
             }) { isDisposed() || project.isDisposed }
         }
     }
 
+    /** [row]'s file by name in the index, the one under its directory when several are. */
+    private fun indexed(row: CountRow): VirtualFile? = ReadAction.compute<VirtualFile?, RuntimeException> {
+        if (project.isDisposed) return@compute null
+        val candidates = FilenameIndex.getVirtualFilesByName(row.fileName, GlobalSearchScope.allScope(project))
+        pickSourceIn(candidates.toList(), row.directory) { it.path }
+    }
+
     /**
-     * A Flutter row's `lib/…` file under the pubspec root next to the project's directory or a
-     * module's content root, refreshed into the file system if the IDE never looked there. On a
-     * pooled thread.
+     * A Flutter row's reported file under the pubspec root of the project's directory or a module's
+     * content root, refreshed into the file system if the IDE never looked there. On a pooled thread.
      */
     private fun flutterSource(row: CountRow): VirtualFile? {
-        if (row.sourcePath.isEmpty()) return null
+        if (row.reportedFile.isEmpty()) return null
         val dirs = ReadAction.compute<List<String>, RuntimeException> {
             if (project.isDisposed) return@compute emptyList()
             val contentRoots = ModuleManager.getInstance(project).modules
@@ -265,7 +270,7 @@ internal class RecompositionPanel(
                 .map { it.path }
             listOfNotNull(project.basePath) + contentRoots
         }
-        val path = FlutterSources.resolve(row.sourcePath, dirs.mapNotNull(::pathOrNull)) ?: return null
+        val path = FlutterSources.resolve(row.reportedFile, dirs.mapNotNull(::pathOrNull)) ?: return null
         return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
     }
 
@@ -302,6 +307,7 @@ internal class RecompositionPanel(
         /** Widget locations listed for a Flutter app, most built first. */
         const val FLUTTER_ROWS = 200
         const val NOT_RECORDED = "Record to count how often each composable runs."
+        const val INDEXING = "Indexing; try again when it finishes."
         const val EXPLANATION =
             "Counts come from Compose's composition tracing. The app needs " +
                 "androidx.compose.runtime:runtime-tracing and androidx.tracing:tracing-perfetto-binary " +
