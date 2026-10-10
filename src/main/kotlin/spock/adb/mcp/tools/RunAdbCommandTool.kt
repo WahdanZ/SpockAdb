@@ -1,6 +1,7 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
+import spock.adb.flutter.vmservice.Redaction
 
 /**
  * `android_run_adb_command` — the escape hatch, deliberately awkward.
@@ -52,7 +53,9 @@ class RunAdbCommandTool : AdbTool {
             return ToolResult.error("The developer declined to run: $command")
         }
 
-        val output = McpShell.run(target.device, command, timeoutSeconds = timeout)
+        // `logcat` is the obvious thing to run here, and a Flutter debug build logs its VM
+        // Service address with the token in it: the same redaction android_get_logcat applies.
+        val output = Redaction.scrub(McpShell.run(target.device, command, timeoutSeconds = timeout))
         return ToolResult.text(output.ifBlank { "The command produced no output." })
     }
 

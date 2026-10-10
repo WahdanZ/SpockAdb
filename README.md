@@ -309,7 +309,7 @@ See [Flutter apps](docs/FLUTTER.md) for what works in which build, the limits, a
 
 Spock ADB includes a built-in **MCP server** for tools such as Claude Code, Claude Desktop, Cursor, and other MCP clients.
 
-Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **70 structured Android debugging tools**.
+Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **70 structured debugging tools for Android and Flutter apps**.
 
 Agents can inspect things such as:
 

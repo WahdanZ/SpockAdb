@@ -24,14 +24,18 @@ class LogcatDiscoveryTest {
             "http://127.0.0.1:43181/AbCdEfGh123=/"
 
     /** A device that answers `pidof` with 5021, and fails `logcat` with [logcatFailure] when given. */
-    private fun device(logcatFailure: Exception? = null, pidofFailure: Exception? = null): IDevice {
+    private fun device(
+        logcatFailure: Exception? = null,
+        pidofFailure: Exception? = null,
+        logcat: String = announcement,
+    ): IDevice {
         val device = mockk<IDevice>(relaxed = true)
         val command = slot<String>()
         val receiver = slot<IShellOutputReceiver>()
         every { device.executeShellCommand(capture(command), capture(receiver), any(), any<TimeUnit>()) } answers {
             val reply = when {
                 command.captured.startsWith("pidof") -> pidofFailure?.let { throw it } ?: "5021"
-                command.captured.startsWith("logcat") -> logcatFailure?.let { throw it } ?: announcement
+                command.captured.startsWith("logcat") -> logcatFailure?.let { throw it } ?: logcat
                 else -> ""
             }
             val bytes = reply.toByteArray()
@@ -53,6 +57,17 @@ class LogcatDiscoveryTest {
         assertEquals(VmServiceSource.LOGCAT, candidate.source)
         verify { device.createForward(uri.port, 43_181) }
         verify { device.removeForward(uri.port) }
+    }
+
+    @Test
+    fun `discovery reads the real token, which only the way out to agents and the clipboard redacts`() {
+        val logcat = javaClass.getResource("/vmservice/logcat-vm-service.txt")!!.readText()
+        val candidate = LogcatDiscovery(device(logcat = logcat), "com.example.app").discover().single()
+
+        val uri = candidate.open()
+        candidate.release()
+
+        assertTrue(uri.webSocketUri.toString().contains("AbCdEfGh123="), "discovery must connect with the token")
     }
 
     @Test

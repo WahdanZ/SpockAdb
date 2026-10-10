@@ -189,10 +189,15 @@ is read from the VM.
 ## Security: VM Service addresses
 
 A VM Service address carries a token, and whoever holds it can run code in the app. Spock never
-stores or logs one: addresses are redacted from every report, Timeline row, audit entry, log line
-and MCP answer (they read `<VM Service address>`), including the percent-encoded form inside
-DevTools links. Spock only connects to loopback addresses, and closes the `adb forward` it made
-when the session ends.
+stores or logs one: the token is taken out of every report, Timeline row, audit entry, log line
+and MCP answer, including the percent-encoded form inside DevTools links. That covers raw logcat
+too — a debug build prints `The Dart VM service is listening on http://127.0.0.1:…/<token>=/` —
+wherever Spock hands it to an agent: `android_get_logcat`, the `full` format of
+`android_get_debug_context` and `android_run_adb_command`. The token reads `<redacted>`;
+`flutter_app_status` writes `<VM Service address>` for the whole address. Only addresses on the
+loopback, where a VM Service serves, are recognised. The Logcat panel itself shows the line as the
+device printed it, and its **Copy** commands copy it unchanged. Spock only connects to loopback
+addresses, and closes the `adb forward` it made when the session ends.
 
 ## Spock vs the Flutter IntelliJ plugin vs Dart MCP
 
