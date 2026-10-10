@@ -187,8 +187,13 @@ internal class HttpLogging(
 }
 
 /** Called with no `enabled` argument, a bool extension only reports its value. */
-internal fun readBool(connected: VmServiceClient, extension: String, isolateId: String): Boolean? = try {
-    ExtensionResults.bool(connected.callServiceExtension(extension, isolateId))
+internal fun readBool(
+    connected: VmServiceClient,
+    extension: String,
+    isolateId: String,
+    timeoutMs: Long = connected.defaultTimeoutMs,
+): Boolean? = try {
+    ExtensionResults.bool(connected.callServiceExtension(extension, isolateId, timeoutMs = timeoutMs))
 } catch (e: VmServiceException) {
     Logger.getInstance(HttpLogging::class.java).warn("Could not read $extension: ${e.message}")
     null

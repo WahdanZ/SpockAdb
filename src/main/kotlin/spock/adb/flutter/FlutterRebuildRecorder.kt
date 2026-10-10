@@ -49,6 +49,8 @@ class FlutterRebuildRecorder(
     private val session: FlutterSession,
     private val sleep: (Long) -> Unit = Thread::sleep,
     private val clock: () -> Long = System::currentTimeMillis,
+    /** How long a window waits for an earlier window's flag to be settled ([LeftOnRebuildFlag]). */
+    private val settleWaitMs: Long = LeftOnRebuildFlag.SETTLE_WAIT_MS,
 ) {
 
     sealed interface Result {
@@ -168,10 +170,11 @@ class FlutterRebuildRecorder(
         private var closeOutcome: Tracking? = null
 
         fun record(windowMs: Long, cancelled: CancellationSignal, limit: Int): Result {
+            // Right after a connect, the flag may be one an earlier window left on: settled first, and
+            // before listening, so the switch-off is not counted as someone else's write.
+            if (!session.leftOnRebuilds.awaitSettled(settleWaitMs, cancelled)) return Result.Refused(SETTLING)
             // Listening before the flag is read, so a write by anyone from then on is seen.
             session.addListener(this)
-            // Right after a connect, the flag may be one an earlier window left on: settled first.
-            session.leftOnRebuilds.awaitSettled(LeftOnRebuildFlag.SETTLE_WAIT_MS)
             var switched = false
             var tracking: Tracking? = null
             try {
@@ -433,6 +436,7 @@ class FlutterRebuildRecorder(
             "not a debug build, or has not registered its inspector yet."
         const val NO_ISOLATE = "The app has no Flutter UI isolate selected yet; try again in a moment."
         const val ALREADY_RECORDING = "A rebuild recording is already running on this app; wait for it to end."
+        const val SETTLING = LeftOnRebuildFlag.SETTLING
         private const val UNREADABLE_FLAG =
             "The app did not say whether rebuild tracking is on, so Spock changed nothing."
         private const val UNANSWERED_STILL_OFF =

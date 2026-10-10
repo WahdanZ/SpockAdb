@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.CancellationSignal
@@ -14,6 +15,8 @@ import spock.adb.flutter.vmservice.FakeVmService.Companion.UI_ISOLATE
 import spock.adb.flutter.vmservice.FakeVmService.Companion.eventually
 import spock.adb.flutter.vmservice.FakeVmService.Companion.isolateEvent
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -473,6 +476,92 @@ class FlutterRebuildRecorderTest : FlutterSessionFixture() {
             next.close()
         }
         assertEquals(listOf("true"), writes())
+    }
+
+    @Test
+    fun `an isolate paused when the next session settles is not written to, and the record waits for a later one`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        val rpcs = listOf(FakeVmService.STRUCTURED_ERRORS, TRACK_REBUILDS, LOCATION_MAP)
+        vm.addIsolate(UI_ISOLATE, rpcs, pauseKind = "PauseBreakpoint")
+        replaying(spocksSwitchOn)
+
+        val next = nextSession(owners)
+        try {
+            next.connect(pasted())
+            assertTrue(next.leftOnRebuilds.awaitSettled(5_000) { false })
+            assertEquals(1, owners.ofProcess(SERIAL, PID).size, "still owed")
+            assertNull(next.snapshot.rebuildFlagRestore)
+        } finally {
+            vm.replayOnListen = {}
+            next.close()
+        }
+        assertEquals(listOf("true"), writes())
+        assertEquals("true", tracking)
+    }
+
+    @Test
+    fun `a recording while an earlier window's flag is still being settled is refused, and writes nothing`() {
+        val owners = RebuildFlagOwners()
+        leftOnByLostWindow(owners)
+        // The app takes its time with the read the settle makes.
+        vm.on(TRACK_REBUILDS) { FakeVmService.Reply.None }
+
+        val next = nextSession(owners)
+        val result = try {
+            next.connect(pasted())
+            FlutterRebuildRecorder(next, settleWaitMs = 200).record(windowMs = 100, cancelled = { false })
+        } finally {
+            next.close()
+        }
+
+        assertEquals(FlutterRebuildRecorder.Result.Refused(FlutterRebuildRecorder.SETTLING), result)
+        assertEquals(listOf("true"), writes())
+    }
+
+    /** A flag tracker on the fixture's connected session, owed a switch-off, whose restore goes to [runLater]. */
+    private fun owedFlag(runLater: (Runnable) -> Unit): LeftOnRebuildFlag {
+        session.connect(pasted())
+        session.rebuildOwners = RebuildFlagOwners().apply {
+            record(RebuildFlagOwners.Owed(SERIAL, PID, UI_ISOLATE, connectedAt))
+        }
+        session.ownerSerial = SERIAL
+        return LeftOnRebuildFlag(session, runLater) {}.also {
+            session.addListener(it)
+            it.restoreSoon(checkNotNull(session.client))
+        }
+    }
+
+    @Test
+    fun `nothing owed is nothing to wait for`() {
+        assertTrue(LeftOnRebuildFlag(session, {}) {}.awaitSettled(60_000) { false })
+    }
+
+    @Test
+    fun `waiting for a settle that never comes ends at its timeout, or at once when cancelled`() {
+        val flag = owedFlag(runLater = {})
+
+        assertFalse(flag.awaitSettled(100) { false })
+        val started = System.nanoTime()
+        assertFalse(flag.awaitSettled(60_000) { true })
+        assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(1))
+    }
+
+    @Test
+    fun `a restore the session's thread refuses lets recordings go at once`() {
+        val flag = owedFlag(runLater = { throw RejectedExecutionException("shut down") })
+
+        assertTrue(flag.awaitSettled(5_000) { false })
+    }
+
+    @Test
+    fun `a connection that ends before its restore ran lets recordings go`() {
+        val flag = owedFlag(runLater = {})
+
+        vm.server.drop()
+        eventually { session.state is SessionState.Disconnected }
+
+        assertTrue(flag.awaitSettled(5_000) { false })
     }
 
     @Test

@@ -260,8 +260,11 @@ On by default, so Diagnose and the Timeline already hold the HTTP failure that c
   died, `flutter attach`'s new DDS has no history, and the flag is left on. Any session, DDS or direct, that sees
   a write after Spock's (live, or after the announcement in the replay) forgets the record. The outcome is
   `FlutterSessionSnapshot.rebuildFlagRestore`: a Timeline row and `flutter_app_status.rebuildTracking`. A
-  recording opened right after the connect waits for it (at most 6.5 s), so it does not read Spock's earlier
-  flag as the IDE's.
+  recording opened right after the connect waits for it before it listens or reads the flag — its calls are
+  bounded at 2 s each, and the switch-off waits up to 1 s for its own announcement — and is refused ("still
+  switching off …") if it has not settled within 7.5 s or the caller cancels, rather than read Spock's earlier
+  flag as the IDE's and then blame the IDE for Spock's own switch-off. The wait ends at once when the connection
+  ends first or the session's thread refuses the task; nothing owed, no wait.
 
 ## 9. Home: current Flutter route and back stack (2026-10-03)
 

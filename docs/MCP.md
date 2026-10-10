@@ -509,7 +509,9 @@ it either, the error says why for both.
   location once per isolate, so without this a window opened after the IDE's counts would see
   bare ids. A location still unknown is listed by number (`#42`).
 - Only the app's own widgets are tracked, so `includeLibraries` changes nothing for Flutter.
-- One window per app at a time; a second call while one runs is refused.
+- One window per app at a time; a second call while one runs is refused. A call made while a new
+  session is still settling the flag an earlier, lost window left on waits for it (a few seconds at
+  most), and is refused if it has not settled by then.
 - Diagnose never records rebuilds: only this explicit call does.
 
 ### Accessibility audit

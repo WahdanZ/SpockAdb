@@ -2,6 +2,7 @@ package spock.adb.flutter
 
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
+import spock.adb.CancellationSignal
 import spock.adb.flutter.FlutterRebuildRecorder.Companion.TRACK_REBUILDS
 import spock.adb.flutter.analysis.FlutterExtensionEvent
 import spock.adb.flutter.vmservice.ExtensionResults
@@ -10,6 +11,7 @@ import spock.adb.flutter.vmservice.VmServiceClient
 import spock.adb.flutter.vmservice.VmServiceException
 import spock.adb.flutter.vmservice.string
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 
 /** What a session did about rebuild tracking an earlier session's recording left on. */
@@ -74,9 +76,16 @@ internal class LeftOnRebuildFlag(
     /** What this session forgot on seeing someone else's write, still to be said; guarded by this. */
     private val takenOver = ArrayList<RebuildFlagOwners.Owed>()
 
-    /** Counted down once an owed restore is settled, or given up on; null when none was owed. */
+    /**
+     * Counted down once an owed restore is settled or given up on — also when the connection ends
+     * first, or the session's thread refuses it; null when none was owed.
+     */
     @Volatile
     private var settling: CountDownLatch? = null
+
+    /** Counted down at the next live write of the flag: the announcement of Spock's own switch-off. */
+    @Volatile
+    private var switchedOff: CountDownLatch? = null
 
     /** On the event thread, in the order the app's writes arrived: replay first, then live. */
     override fun onEvent(event: FlutterEvent) {
@@ -84,6 +93,7 @@ internal class LeftOnRebuildFlag(
         if (read.kind != STATE_CHANGED || read.data.string("extension") != TRACK_REBUILDS) return
         val isolateId = read.isolateId ?: return
         val owed = owedOn(isolateId)
+        if (!event.history) switchedOff?.countDown()
         // The flag is someone else's from now on, whichever session would settle it; this one says so.
         if (note(isolateId, read, event.history, owed) && owed != null) session.rebuildOwners?.forget(owed)
     }
@@ -122,28 +132,44 @@ internal class LeftOnRebuildFlag(
         val settled = CountDownLatch(1).also { settling = it }
         // DDS sends a stream's replay before it answers streamListen: it is all queued by now.
         connected.afterQueuedEvents {
-            runLater(
-                Runnable {
-                    try {
-                        owed.forEach { restore(connected, owners, it) }
-                    } finally {
-                        settled.countDown()
-                    }
-                },
-            )
+            val task = Runnable {
+                try {
+                    owed.forEach { restore(connected, owners, it) }
+                } finally {
+                    settled.countDown()
+                }
+            }
+            try {
+                runLater(task)
+            } catch (_: RejectedExecutionException) {
+                settled.countDown()
+            }
         }
     }
 
+    /** A connection that ended before its restore ran will not run it: nobody waits for it. */
+    override fun onStateChanged(state: SessionState) {
+        if (state is SessionState.Disconnected) settling?.countDown()
+    }
+
     /**
-     * Waits up to [timeoutMs] for an owed switch-off to settle, so a recording opened right after
-     * connecting does not take Spock's earlier flag for the IDE's.
+     * Waits up to [timeoutMs], or until [cancelled], for an owed switch-off to settle, so a
+     * recording opened right after connecting does not take Spock's earlier flag for the IDE's.
+     * True when it settled, or nothing was owed; false when it did not in time.
      */
-    fun awaitSettled(timeoutMs: Long) {
+    fun awaitSettled(timeoutMs: Long, cancelled: CancellationSignal): Boolean {
+        val latch = settling ?: return true
+        val end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
         try {
-            settling?.await(timeoutMs, TimeUnit.MILLISECONDS)
+            while (!cancelled.isCancelled()) {
+                val left = end - System.nanoTime()
+                if (left <= 0) return false
+                if (latch.await(minOf(left, TimeUnit.MILLISECONDS.toNanos(POLL_MS)), TimeUnit.NANOSECONDS)) return true
+            }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
         }
+        return latch.count == 0L
     }
 
     /** Spock's owed switch-on, replayed: on, at exactly the device time the window saw it announced. */
@@ -175,7 +201,7 @@ internal class LeftOnRebuildFlag(
             isolate == null -> return true
             // It would not answer.
             isolate.paused -> return false
-            else -> readBool(connected, TRACK_REBUILDS, owed.isolateId) ?: return false
+            else -> readBool(connected, TRACK_REBUILDS, owed.isolateId, CALL_MS) ?: return false
         }
         // Decided right before the write, so a write announced meanwhile counts.
         val left = if (on) leftOn(owed) else null
@@ -197,17 +223,37 @@ internal class LeftOnRebuildFlag(
         }
     }
 
+    /**
+     * Switches the flag off, and waits a moment for the app to announce it, so a recording that
+     * starts once this settles does not count Spock's own write as someone else's.
+     */
     private fun switchOff(connected: VmServiceClient, owed: RebuildFlagOwners.Owed) {
+        val announced = CountDownLatch(1).also { switchedOff = it }
         connected.callServiceExtension(TRACK_REBUILDS, owed.isolateId, mapOf("enabled" to "false"), CALL_MS)
+        try {
+            announced.await(ANNOUNCE_WAIT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            switchedOff = null
+        }
         report(RebuildFlagRestore.SWITCHED_OFF)
         log.info("Spock switched off the rebuild tracking its recording left on in pid ${owed.pid}")
     }
 
     companion object {
-        /** A recording waits this long for an owed switch-off: its three calls, and a little. */
-        const val SETTLE_WAIT_MS = 3 * 2_000L + 500L
+        /**
+         * A recording waits this long for an owed switch-off — its three calls and the switch-off's
+         * announcement, and a little — and is refused past it rather than read Spock's flag as the IDE's.
+         */
+        const val SETTLE_WAIT_MS = 3 * 2_000L + 1_000L + 500L
+
+        const val SETTLING = "Spock is still switching off the rebuild tracking an earlier recording left on " +
+            "in this app; try again in a moment."
 
         private const val CALL_MS = 2_000L
+        private const val ANNOUNCE_WAIT_MS = 1_000L
+        private const val POLL_MS = 100L
         private const val STATE_CHANGED = "Flutter.ServiceExtensionStateChanged"
         private val log = Logger.getInstance(LeftOnRebuildFlag::class.java)
     }
