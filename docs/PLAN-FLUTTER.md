@@ -297,3 +297,14 @@ The v1 review lives outside the repo; these are the findings this plan cites.
 | FR20 | Phase ordering |
 | FR21 | Test strategy gaps |
 | FR22 | Flavors, add-to-app and multi-view apps |
+
+## Home navigation state (2026-10-03)
+
+- [x] Current Flutter route, and Flutter routes as their own section of App back stack, from
+  read-only VM object inspection (S25), using existing verified sessions; bounded reads,
+  KEYED/EXACT/unavailable confidence, nested navigator refusal, event-triggered refresh, popup
+  sharing Home's snapshot, and parser/guard tests.
+- [x] Navigation sample: imperative routes, unnamed dialog, nested navigators with/without keys,
+  and a standalone two-page declarative Navigator. No new dependencies or MCP tool.
+- [ ] Device validation on Flutter 3.22.2 and 3.47.5: all Navigation checks in the sample README,
+  hot restart, selection switching during reads, transition retries, and popup layout in AS 232.

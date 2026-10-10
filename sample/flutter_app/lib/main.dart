@@ -6,6 +6,7 @@ import 'fixtures/layout.dart';
 import 'fixtures/login.dart';
 import 'fixtures/logs.dart';
 import 'fixtures/network.dart';
+import 'fixtures/navigation.dart';
 import 'fixtures/permissions.dart';
 import 'fixtures/push.dart';
 import 'fixtures/routes.dart';
@@ -25,6 +26,7 @@ class Fixture {
 }
 
 final fixtures = <Fixture>[
+  Fixture('/navigation', 'Navigation', 'Current Flutter route and exact back stack checks', (_) => const NavigationScreen()),
   Fixture('/login', 'Login', 'UI tree + android_* element tools via Semantics(identifier:)', (_) => const LoginScreen()),
   Fixture('/items', 'List → detail routes', 'Deep links, route stack, back navigation', (_) => const ItemListScreen()),
   Fixture('/layout', 'Layout overflow', 'Flutter errors in Diagnose / Timeline', (_) => const LayoutScreen()),
@@ -55,6 +57,9 @@ class SpockFlutterSample extends StatelessWidget {
 Route<dynamic>? generateRoute(RouteSettings settings) {
   final uri = Uri.parse(settings.name ?? '/');
   final segments = uri.pathSegments;
+  if (uri.path == '/nav/a' || uri.path == '/nav/a/b') {
+    return MaterialPageRoute(settings: settings, builder: (_) => NavigationStep(name: uri.path));
+  }
   if (segments.length == 2 && segments.first == 'item') {
     return MaterialPageRoute(
       settings: settings,
