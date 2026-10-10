@@ -26,6 +26,7 @@ import spock.adb.SpockAdbService
 import spock.adb.command.GetApplicationIDCommand
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.ScreenshotOperations
+import spock.adb.flutter.FlutterFollowerService
 import spock.adb.openIn
 import spock.adb.psiClassByNameFromProjct
 import spock.adb.ui.CollapsibleSection
@@ -242,10 +243,12 @@ class DiagnosePanel(
      */
     private fun collect(target: ConnectedDevice, app: String?): Pair<JsonObject, ByteArray?> {
         val shot = runCatching { ScreenshotOperations(target.device).capture() }
-        val probe = DiagnosticProbe(
+        val probe = AndroidProbe(
             device = target.device,
             serialNumber = target.serialNumber,
             packageName = app,
+            // Attaches to a Flutter app with no session yet, within the report's budget.
+            flutter = FlutterFollowerService.getInstance(project).diagnosticSource(target, app),
         )
         val preamble = JsonObject().apply {
             add(
@@ -381,6 +384,15 @@ class DiagnosePanel(
                     append("<li><b>").append(problem.severity.uppercase()).append("</b> ")
                     append(escape(problem.summary))
                     if (problem.count > 1) append(" ×").append(problem.count)
+                    // A Flutter error's logcat context, so the two are read together.
+                    result.nearby[problem.id]?.let { logs ->
+                        append("<br><i>In logcat around it:</i>")
+                        logs.forEach { log ->
+                            append("<br>&nbsp;&nbsp;")
+                            log.lastSeen?.let { append(escape(it)).append(" ") }
+                            append(escape(log.summary))
+                        }
+                    }
                     append("</li>")
                 }
                 append("</ul>")

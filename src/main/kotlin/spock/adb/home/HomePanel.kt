@@ -1,6 +1,7 @@
 package spock.adb.home
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
@@ -28,6 +29,7 @@ import spock.adb.SpockAction
 import spock.adb.command.GetApplicationPermission
 import spock.adb.command.Network
 import spock.adb.compat.DebuggerSupport
+import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.logcat.SpockLogcatToolWindow
 import spock.adb.premission.CheckBoxDialog
@@ -115,11 +117,15 @@ class HomePanel(private val project: Project) : SimpleToolWindowPanel(true) {
         applySettings(AppSettingService.getInstance().state)
     }
 
-    fun attach(controller: AdbController) {
+    /** [parent] ends what Home follows beyond the device: the Flutter session's navigation. */
+    fun attach(controller: AdbController, parent: Disposable) {
         this.controller = controller
         val target = { device }
         appInfoCard.attach(controller, target)
         screenCard.attach(controller, target)
+        screenCard.attachFlutter(FlutterRouteSource(project, parent)) {
+            SpockSelection.getInstance(project).snapshot.app
+        }
         developerOptions.attach(controller, target)
         httpProxyRow.attach(controller, target)
         pushMessageRow.attach(controller, target)

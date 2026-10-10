@@ -22,7 +22,12 @@ class ToolSafetyTest {
     fun `tool names are unique and namespaced`() {
         val names = ToolRegistry.all().map { it.name }
         assertEquals(names.size, names.toSet().size, "duplicate tool names")
-        names.forEach { assertTrue(it.startsWith("android_"), "$it must be namespaced") }
+        // One prefix per platform the tool acts on: Android over ADB, the iOS simulator over
+        // simctl, and a running Flutter app over its VM Service.
+        val namespaces = listOf("android_", "ios_", "flutter_")
+        names.forEach { name ->
+            assertTrue(namespaces.any { name.startsWith(it) }, "$name must start with one of $namespaces")
+        }
     }
 
     @Test
@@ -81,6 +86,8 @@ class ToolSafetyTest {
                 "android_get_device_conditions",
                 "android_get_debug_timeline",
                 "android_list_recipes",
+                // Attaches as Diagnose does (which may switch on HTTP recording), and reads the session's state.
+                "flutter_app_status",
             ),
             ToolRegistry.bySafety(ToolSafety.READ_ONLY).map { it.name }.toSet(),
         )

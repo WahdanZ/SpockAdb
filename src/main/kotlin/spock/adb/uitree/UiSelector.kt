@@ -163,15 +163,37 @@ object UiTreeSearch {
 
     enum class Action { TAP, LONG_PRESS, TEXT_INPUT }
 
-    /** The nearest ancestor-or-self that [action] can land on, before any policy checks. */
+    /**
+     * The nearest ancestor-or-self that [action] can land on, before any policy checks.
+     *
+     * Failing that, the control a Flutter `Semantics(identifier:)` wraps: see [wrappedControl].
+     */
     private fun eligibleTarget(tree: UiTree, node: UiNode, action: Action): UiNode? =
-        (listOf(node) + ancestorsOf(tree, node)).firstOrNull {
-            it.bounds.hasArea && when (action) {
-                Action.TAP -> it.clickable
-                Action.LONG_PRESS -> it.longClickable
-                Action.TEXT_INPUT -> it.focusable && it.className.endsWith("EditText")
+        (listOf(node) + ancestorsOf(tree, node)).firstOrNull { it.accepts(action) }
+            ?: wrappedControl(node, action)
+
+    /**
+     * Flutter's `Semantics(identifier:)` around a button publishes the identifier on an
+     * unlabelled, non-clickable wrapper and the button as its child, so the control an agent
+     * names by its resource id is below the node it matched.
+     *
+     * Only that shape: [node] says nothing of its own, each node from it down to the control has
+     * exactly one child, all inside its bounds, and nothing else under it takes [action]. A
+     * labelled card holding its one delete button, or a form holding one field beside its
+     * label, is a container, not the control.
+     */
+    private fun wrappedControl(node: UiNode, action: Action): UiNode? {
+        if (node.text.isNotBlank() || node.contentDescription.isNotBlank()) return null
+        var current = node
+        while (current.children.size == 1) {
+            current = current.children.single()
+            if (!node.bounds.contains(current.bounds)) return null
+            if (current.accepts(action)) {
+                return current.takeIf { current.flatten().drop(1).none { it.accepts(action) } }
             }
         }
+        return null
+    }
 
     fun actionTarget(
         tree: UiTree,
@@ -222,3 +244,12 @@ object UiTreeSearch {
         return path
     }
 }
+
+private fun UiNode.accepts(action: UiTreeSearch.Action): Boolean = bounds.hasArea && when (action) {
+    UiTreeSearch.Action.TAP -> clickable
+    UiTreeSearch.Action.LONG_PRESS -> longClickable
+    UiTreeSearch.Action.TEXT_INPUT -> focusable && className.endsWith("EditText")
+}
+
+private fun UiNode.Bounds.contains(other: UiNode.Bounds): Boolean =
+    other.left >= left && other.top >= top && other.right <= right && other.bottom <= bottom

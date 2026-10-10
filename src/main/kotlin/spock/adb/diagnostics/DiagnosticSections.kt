@@ -13,8 +13,11 @@ import spock.adb.device.ops.AppNotInstalledException
 import spock.adb.device.ops.InspectionOperations
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.diagnostics.LikelyProblem.Severity
+import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterBuildCache
 import spock.adb.premission.ListItem
 import spock.adb.uitree.AccessibilityAudit
+import spock.adb.uitree.OPAQUE_SURFACE_NOTE
 import spock.adb.uitree.UiTree
 
 /** The sections this build knows, in the order a developer reads a bug report. */
@@ -25,10 +28,11 @@ object DiagnosticSections {
      * section is one line here. Earlier sections survive a size cut longest; see
      * [DiagnosticCollector].
      */
-    val ALL: List<DiagnosticSection> = listOf(
+    val ALL: List<DiagnosticSection<AndroidProbe>> = listOf(
         ScreenSection,
         AppSection,
         LogsSection,
+        FlutterSection,
         UiSection,
         BackgroundWorkSection,
         DeviceConditionsSection,
@@ -44,18 +48,18 @@ object DiagnosticSections {
         "logcat" to LogsSection.id,
     )
 
-    fun byId(id: String): DiagnosticSection? {
+    fun byId(id: String): DiagnosticSection<AndroidProbe>? {
         val wanted = ALIASES[id] ?: id
         return ALL.firstOrNull { it.id.equals(wanted, ignoreCase = true) }
     }
 }
 
 /** Which screen is showing, and whether it belongs to the app at all. */
-object ScreenSection : DiagnosticSection {
+object ScreenSection : DiagnosticSection<AndroidProbe> {
     override val id = "screen"
     override val detail = DetailRef("android_get_activity_stack")
 
-    override fun collect(probe: DiagnosticProbe): SectionReport {
+    override fun collect(probe: AndroidProbe): SectionReport {
         val resumed = parseResumed(DiagnosticShell.run(probe.device, RESUMED_COMMAND))
         val data = JsonObject()
 
@@ -95,7 +99,7 @@ object ScreenSection : DiagnosticSection {
      * The app's own activities, top first. Best effort, like the fragments: "which screen led
      * here" is context, and a dump that will not parse must not cost the activity above.
      */
-    private fun addActivityStack(data: JsonObject, probe: DiagnosticProbe, app: String) {
+    private fun addActivityStack(data: JsonObject, probe: AndroidProbe, app: String) {
         val activities = runCatching { InspectionOperations(probe.device).activityStack() }
             .getOrDefault(emptyList())
             .filter { it.appPackage == app }
@@ -108,7 +112,7 @@ object ScreenSection : DiagnosticSection {
     }
 
     /** Best effort: a screen without fragments, or a dump that will not parse, is not a problem. */
-    private fun addFragments(data: JsonObject, probe: DiagnosticProbe, app: String) {
+    private fun addFragments(data: JsonObject, probe: AndroidProbe, app: String) {
         val rows = runCatching { InspectionOperations(probe.device).fragments(app) }
             .getOrDefault(emptyList())
             .flatMap { it.flatten() }
@@ -136,11 +140,11 @@ object ScreenSection : DiagnosticSection {
 }
 
 /** Whether the app is alive at all, which changes what every other section means. */
-object AppSection : DiagnosticSection {
+object AppSection : DiagnosticSection<AndroidProbe> {
     override val id = "app"
     override val detail = DetailRef("android_get_processes")
 
-    override fun collect(probe: DiagnosticProbe): SectionReport {
+    override fun collect(probe: AndroidProbe): SectionReport {
         val app = probe.packageName
             ?: return SectionReport(
                 JsonObject().apply {
@@ -148,10 +152,18 @@ object AppSection : DiagnosticSection {
                 },
             )
         val pids = probe.pids
+        val flutter = flutterBuild(probe, app)
         val data = JsonObject().apply {
             addProperty("packageName", app)
             addProperty("running", pids.isNotEmpty())
             add("pids", JsonArray().apply { pids.forEach(::add) })
+            flutter?.let { addProperty("flutter", it.label) }
+            // Structured errors are a debug-build behaviour: profile and release have no
+            // inspector to send them to, so for those builds there is nothing missing to explain.
+            // With a `flutter` section the errors are there, so the note points at it.
+            if (flutter == FlutterBuild.DEBUG) {
+                addProperty("flutterNote", if (probe.flutter != null) FLUTTER_SECTION_NOTE else FLUTTER_ERRORS_NOTE)
+            }
         }
         val problems = if (pids.isEmpty()) {
             listOf(
@@ -167,6 +179,29 @@ object AppSection : DiagnosticSection {
         }
         return SectionReport(data, problems)
     }
+
+    /**
+     * Best effort, and one `unzip -l` per install rather than per report: a `dumpsys` or a
+     * listing that fails or times out leaves the section without the Flutter fields.
+     */
+    private fun flutterBuild(probe: AndroidProbe, app: String): FlutterBuild? =
+        probe.flutter?.build ?: FlutterBuildCache.shared.detectOn(probe.device, probe.serialNumber, app)
+
+    /**
+     * Mobile debug builds have structured errors on by default, so layout, build() and gesture
+     * errors are posted to the VM Service as `Flutter.Error` and never printed to logcat. Saying
+     * so stops an agent from reading "no problems" as "no errors".
+     */
+    const val FLUTTER_ERRORS_NOTE =
+        "Flutter framework errors (layout overflow, build() and gesture errors) go to the Dart VM Service, " +
+            "not logcat, so this report does not include them. Read them with the Dart MCP server's " +
+            "get_runtime_errors, or in the Flutter run console. Unhandled async exceptions and plugin " +
+            "failures do reach logcat and are listed below."
+
+    /** [FLUTTER_ERRORS_NOTE] when Spock has the app's session: the errors are in the report after all. */
+    const val FLUTTER_SECTION_NOTE =
+        "Flutter framework errors (layout overflow, build() and gesture errors) go to the Dart VM Service, " +
+            "not logcat: they are in the `flutter` section, read from the app's session."
 }
 
 /**
@@ -174,11 +209,11 @@ object AppSection : DiagnosticSection {
  * the device: a process that has crashed has no pid left to filter by, and ANRs are printed by
  * the system on the app's behalf. [LogProblemExtractor] does the attribution instead.
  */
-object LogsSection : DiagnosticSection {
+object LogsSection : DiagnosticSection<AndroidProbe> {
     override val id = "logs"
     override val detail = DetailRef("android_get_logcat", JsonObject().apply { addProperty("minLevel", "W") })
 
-    override fun collect(probe: DiagnosticProbe): SectionReport {
+    override fun collect(probe: AndroidProbe): SectionReport {
         val log = DiagnosticShell.run(probe.device, "logcat -d -v threadtime -t ${probe.logWindowLines} *:W")
         val result = LogProblemExtractor.extract(log, probe.packageName, probe.pids)
         val data = JsonObject().apply {
@@ -193,11 +228,11 @@ object LogsSection : DiagnosticSection {
 }
 
 /** How the screen is built and what it says, without the tree. */
-object UiSection : DiagnosticSection {
+object UiSection : DiagnosticSection<AndroidProbe> {
     override val id = "ui"
     override val detail = DetailRef("android_get_ui_tree")
 
-    override fun collect(probe: DiagnosticProbe): SectionReport = summarise(UiTreeOperations(probe.device).read())
+    override fun collect(probe: AndroidProbe): SectionReport = summarise(UiTreeOperations(probe.device).read())
 
     fun summarise(tree: UiTree): SectionReport {
         val nodes = tree.nodes().filter { it.bounds.hasArea }.toList()
@@ -207,6 +242,7 @@ object UiSection : DiagnosticSection {
             addProperty("composeTestTags", tree.testTagSupport.name.lowercase())
             addProperty("visibleNodes", nodes.size)
             addProperty("interactive", nodes.count { it.isInteractive })
+            if (tree.isOpaqueSurface) addProperty("note", OPAQUE_SURFACE_NOTE)
             nodes.firstOrNull { it.focused }
                 ?.let { addProperty("focused", DiagnosticShell.clip(it.label.ifBlank { it.className })) }
             add(
@@ -253,11 +289,11 @@ object UiSection : DiagnosticSection {
 }
 
 /** Jobs and alarms, counted; the failing and the stuck named. */
-object BackgroundWorkSection : DiagnosticSection {
+object BackgroundWorkSection : DiagnosticSection<AndroidProbe> {
     override val id = "backgroundWork"
     override val detail = DetailRef("android_get_scheduled_jobs")
 
-    override fun collect(probe: DiagnosticProbe): SectionReport {
+    override fun collect(probe: AndroidProbe): SectionReport {
         val app = probe.packageName ?: error("No app is known, so there is no background work to read.")
         val jobs = probe.device.scheduledJobs(app)
         val alarms = runCatching { probe.device.pendingAlarms(app) }.getOrNull()
@@ -296,11 +332,11 @@ object BackgroundWorkSection : DiagnosticSection {
 }
 
 /** Doze, the standby bucket and the battery: the conditions that silently defer work. */
-object DeviceConditionsSection : DiagnosticSection {
+object DeviceConditionsSection : DiagnosticSection<AndroidProbe> {
     override val id = "deviceConditions"
     override val detail = DetailRef("android_get_device_conditions")
 
-    override fun collect(probe: DiagnosticProbe): SectionReport {
+    override fun collect(probe: AndroidProbe): SectionReport {
         val conditions = probe.device.deviceConditions(probe.packageName)
         DeviceConditionTracker.reconcile(probe.serialNumber, conditions)
         val changed = DeviceConditionTracker.conditions(probe.serialNumber)
@@ -369,11 +405,11 @@ object DeviceConditionsSection : DiagnosticSection {
  * it is reported as information: the line an agent needs before it concludes the camera preview
  * is black because of a bug in the preview.
  */
-object PermissionsSection : DiagnosticSection {
+object PermissionsSection : DiagnosticSection<AndroidProbe> {
     override val id = "permissions"
     override val detail = DetailRef("android_get_package_info")
 
-    override fun collect(probe: DiagnosticProbe): SectionReport {
+    override fun collect(probe: AndroidProbe): SectionReport {
         val app = probe.packageName ?: error("No app is known, so there are no permissions to read.")
         ShellQuote.requireValidComponent(app, "Package name")
         val dump = DiagnosticShell.run(probe.device, "dumpsys package ${ShellQuote.quote(app)}")

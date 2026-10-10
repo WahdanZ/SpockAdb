@@ -1,0 +1,9 @@
+10-01 22:31:04.512 21877 21877 E DartMessenger: Uncaught exception in binary message listener
+10-01 22:31:04.512 21877 21877 E DartMessenger: java.io.IOException: Sample checked exception thrown in a channel handler
+10-01 22:31:04.519 21877 21902 E flutter : [ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: MissingPluginException(No implementation found for method throwChecked on channel spock.sample/native)
+10-01 22:31:04.519 21877 21902 E flutter : #0      MethodChannel._invokeMethod (package:flutter/src/services/platform_channel.dart:332:7)
+10-01 22:31:04.519 21877 21902 E flutter : <asynchronous suspension>
+10-01 22:31:04.519 21877 21902 E flutter :
+10-01 22:31:09.204 21877 21877 E AndroidRuntime: FATAL EXCEPTION: main
+10-01 22:31:09.204 21877 21877 E AndroidRuntime: Process: spock.adb.spock_flutter_sample, PID: 21877
+10-01 22:31:09.204 21877 21877 E AndroidRuntime: kotlin.NotImplementedError: An operation is not implemented: Sample

@@ -2,6 +2,7 @@ package spock.adb.diagnostics
 
 import spock.adb.diagnostics.LikelyProblem.Severity
 import spock.adb.logcat.LogcatRedactor
+import spock.adb.timeline.DeviceClock
 
 /**
  * Turns a window of `logcat -v threadtime` into a handful of one-line problems.
@@ -37,7 +38,15 @@ object LogProblemExtractor {
 
         return Result(
             problems = walk.found.values.map {
-                LikelyProblem(it.type, it.severity, it.summary, it.count, it.lastSeen, SECTION)
+                LikelyProblem(
+                    it.type,
+                    it.severity,
+                    it.summary,
+                    it.count,
+                    it.lastSeen,
+                    SECTION,
+                    seenAt = it.seen.takeLast(MAX_OCCURRENCES),
+                )
             },
             errorLines = relevant.count { it.level in ERROR_LEVELS },
             warningLines = relevant.count { it.level == 'W' },
@@ -115,12 +124,40 @@ object LogProblemExtractor {
         /** A W/E line waiting to see whether an exception head follows it. */
         private var pending: Line? = null
 
+        /**
+         * The Flutter engine prints an unhandled Dart exception as one burst of `flutter` lines
+         * with one timestamp: the head, Dart frames, and for a PlatformException the native
+         * stack it carries. Everything after the head belongs to it, as `(pid, time)`.
+         */
+        private var flutterBurst: Pair<String, String>? = null
+
+        /** Whether [flutterBurst] is a `MissingPluginException`'s. */
+        private var missingPluginBurst = false
+
+        /**
+         * DartMessenger's "Uncaught exception in binary message listener" lines, already reported
+         * on their own, oldest first, by pid: a `MissingPluginException` right after one takes its
+         * place. Dart gets the empty replies in the order the handlers failed.
+         */
+        private val channelFailures = mutableMapOf<String, ArrayDeque<ChannelFailure>>()
+
+        /** Lines classified so far: orders a channel failure against the lines after it. */
+        private var lineNumber = 0L
+
+        /** The [lineNumber] of [pending]. */
+        private var pendingLineNumber = 0L
+
+        /**
+         * By pid, the [lineNumber] of its latest line that is neither part of a DartMessenger
+         * failure nor of a `MissingPluginException`. A failure followed by one is not paired.
+         */
+        private val unrelatedLine = mutableMapOf<String, Long>()
+
         fun report(key: String, type: String, severity: Severity, summary: String, at: String): Accumulator {
             // Redacted whole, then clipped: a clip can cut a token short of the length its
             // redaction rule needs, and leave the part it kept in plain sight.
             val acc = found.getOrPut(key) { Accumulator(type, severity, clipLine(redact(summary))) }
-            acc.count++
-            acc.lastSeen = at
+            acc.seen += at
             return acc
         }
 
@@ -131,12 +168,116 @@ object LogProblemExtractor {
 
         fun classify(line: Line) {
             val message = line.message
+            lineNumber++
+            // A head first: a second exception in the same millisecond starts a burst of its own.
+            val flutterHead = line.tag == FLUTTER && FLUTTER_UNHANDLED.containsMatchIn(message)
+            val inBurst = !flutterHead && line.tag == FLUTTER && flutterBurst == (line.pid to line.time)
+            if (!inBurst) flutterBurst = null
+            if (!channelRelated(line, flutterHead, inBurst)) unrelatedLine[line.pid] = lineNumber
             when {
+                flutterHead -> flutterUnhandled(line)
+                inBurst -> Unit
                 isStackFrame(message) -> stackFrame(line)
                 line.tag == ANDROID_RUNTIME -> runtime(line)
                 line.tag == ACTIVITY_MANAGER -> activityManager(line)
                 else -> appLine(line)
             }
+        }
+
+        /** Part of a DartMessenger failure, or of the `MissingPluginException` it causes. */
+        private fun channelRelated(line: Line, flutterHead: Boolean, inBurst: Boolean): Boolean =
+            line.tag == DART_MESSENGER ||
+                (flutterHead && unhandled(line.message).startsWith(MISSING_PLUGIN)) ||
+                (inBurst && missingPluginBurst)
+
+        /** `[ERROR:flutter/…] Unhandled Exception: X` → `X`. */
+        private fun unhandled(message: String): String = message.substringAfter(FLUTTER_UNHANDLED_MARKER).trim()
+
+        /**
+         * `Unhandled Exception: …` from the Flutter engine. A missing plugin and an error a
+         * platform channel returned are told apart: they are fixed on the native side, not in Dart.
+         */
+        private fun flutterUnhandled(line: Line) {
+            flushPending()
+            flutterBurst = line.pid to line.time
+            val exception = unhandled(line.message)
+            val missingPlugin = exception.startsWith(MISSING_PLUGIN)
+            missingPluginBurst = missingPlugin
+            if (missingPlugin && channelHandlerFailed(line, exception)) return
+            val (type, summary) = when {
+                missingPlugin ->
+                    TYPE_FLUTTER_PLUGIN to "Flutter plugin not registered: " +
+                        exception.removePrefix("MissingPluginException(").removeSuffix(")")
+                exception.startsWith("PlatformException") ->
+                    TYPE_FLUTTER_PLUGIN to "Platform channel returned an error: " + platformError(exception)
+                else -> TYPE_EXCEPTION to "Unhandled Dart exception: $exception"
+            }
+            report("flutter:${normalise(exception)}", type, Severity.ERROR, summary, line.time)
+        }
+
+        /**
+         * A checked exception thrown in a platform channel handler is caught by DartMessenger,
+         * which logs "Uncaught exception in binary message listener" and replies with nothing —
+         * and an empty reply is what Dart reads as a `MissingPluginException`, though the plugin
+         * is there (spike S8). Nothing in the log ties the two together, so the pairing is an
+         * inference, kept narrow and said so in the summary: same process, within
+         * [CHANNEL_FAILURE_WINDOW_MS], and no other line of that process in between but other
+         * such failures. True when [exception] was reported that way.
+         */
+        private fun channelHandlerFailed(line: Line, exception: String): Boolean {
+            val queue = channelFailures[line.pid] ?: return false
+            val unrelated = unrelatedLine[line.pid] ?: 0
+            // Oldest first; one that expired, or that another line followed, explains nothing.
+            while (queue.isNotEmpty()) {
+                val oldest = queue.first()
+                val elapsed = elapsedMs(oldest.time, line.time)
+                if (oldest.lineNumber > unrelated && elapsed != null && elapsed in 0..CHANNEL_FAILURE_WINDOW_MS) break
+                queue.removeFirst()
+            }
+            val failure = queue.removeFirstOrNull() ?: return false
+            retract(failure.key, failure.time)
+            val call = NO_IMPLEMENTATION.find(exception)
+                ?.let { "for ${it.groupValues[1]} on ${it.groupValues[2]} " }
+                .orEmpty()
+            val head = "Platform channel handler ${call}threw ${failure.exception ?: "an exception"}"
+            // Clipped before the note, so a long exception cannot cut off that this is inferred.
+            val summary =
+                DiagnosticShell.clip(redact(head), DiagnosticShell.MAX_VALUE_CHARS - INFERRED.length) + INFERRED
+            report("channel:${normalise(head)}", TYPE_FLUTTER_PLUGIN, Severity.ERROR, summary, line.time)
+            return true
+        }
+
+        /** Takes back the occurrence at [at] of a problem that turned out to be part of another. */
+        private fun retract(key: String, at: String) {
+            val acc = found[key] ?: return
+            acc.seen.remove(at)
+            if (acc.seen.isEmpty()) found.remove(key)
+        }
+
+        /** Keeps [key] for [channelHandlerFailed] when [listener] is DartMessenger's failure line. */
+        private fun rememberChannelFailure(listener: Line?, at: Line, exception: String?, key: String) {
+            if (listener?.tag == DART_MESSENGER && listener.message.startsWith(LISTENER_FAILURE)) {
+                val queue = channelFailures.getOrPut(at.pid) { ArrayDeque() }
+                queue.addLast(ChannelFailure(at.time, exception, key, pendingLineNumber))
+                if (queue.size > MAX_CHANNEL_FAILURES) queue.removeFirst()
+            }
+        }
+
+        /**
+         * `PlatformException(CODE, message, details, stacktrace)` → `CODE — message`.
+         *
+         * The message may itself hold `, `, so it ends where the fields after it begin: `details`
+         * is `null` in practice, and `stacktrace` is `null` or a native exception that runs on
+         * past this line. Anything else is shown whole after the code rather than cut short.
+         */
+        private fun platformError(exception: String): String {
+            val fields = exception.removePrefix("PlatformException(")
+            val code = fields.substringBefore(", ")
+            val rest = fields.substringAfter(", ", missingDelimiterValue = "")
+            val message = PLATFORM_ERROR_TAIL.find(rest)?.let { rest.substring(0, it.range.first) }
+                ?: rest.removeSuffix(")")
+            return listOfNotNull(code.removeSuffix(")"), message.takeIf { it.isNotEmpty() && it != "null" })
+                .joinToString(" — ")
         }
 
         /** Stack frames carry nothing a one-line summary can use, except a network root cause. */
@@ -192,7 +333,10 @@ object LogProblemExtractor {
                 EXCEPTION_HEAD.matches(message) -> exception(line)
                 else -> {
                     flushPending()
-                    if (line.level in ERROR_LEVELS || line.level == 'W') pending = line
+                    if (line.level in ERROR_LEVELS || line.level == 'W') {
+                        pending = line
+                        pendingLineNumber = lineNumber
+                    }
                 }
             }
         }
@@ -209,25 +353,17 @@ object LogProblemExtractor {
                 else -> Severity.WARNING
             }
             val context = previous?.message?.takeIf { it.isNotBlank() }?.let { "$it — " }.orEmpty()
-            report(
-                "exc:${line.tag}:${normalise(className + (previous?.message ?: ""))}",
-                type,
-                severity,
-                "${line.tag}: ${(context + line.message).trim()}",
-                line.time,
-            )
+            val key = "exc:${line.tag}:${normalise(className + (previous?.message ?: ""))}"
+            report(key, type, severity, "${line.tag}: ${(context + line.message).trim()}", line.time)
+            rememberChannelFailure(previous, line, line.message.trim(), key)
         }
 
         private fun reportPlain(line: Line) {
             val severity = if (line.level in ERROR_LEVELS) Severity.ERROR else Severity.WARNING
             val type = if (line.tag == STRICT_MODE) TYPE_STRICT_MODE else TYPE_LOG
-            report(
-                "log:${line.level}:${line.tag}:${normalise(line.message)}",
-                type,
-                severity,
-                "${line.tag}: ${line.message.trim()}",
-                line.time,
-            )
+            val key = "log:${line.level}:${line.tag}:${normalise(line.message)}"
+            report(key, type, severity, "${line.tag}: ${line.message.trim()}", line.time)
+            rememberChannelFailure(line, line, null, key)
         }
     }
 
@@ -261,7 +397,7 @@ object LogProblemExtractor {
     }
 
     /** `/payment (api.example.com)`: the path is what a developer greps for, the host disambiguates. */
-    private fun describeUrl(url: String): String {
+    internal fun describeUrl(url: String): String {
         val match = URL_PARTS.matchEntire(url) ?: return url
         // `user:pass@host` loses its `://` here, and with it the shape the redactor recognises.
         val host = match.groupValues[1].substringAfterLast('@')
@@ -270,7 +406,7 @@ object LogProblemExtractor {
     }
 
     /** Query strings are where tokens and personal data ride along; the path is enough. */
-    private fun stripQuery(url: String): String = url.substringBefore('?').substringBefore('#')
+    internal fun stripQuery(url: String): String = url.substringBefore('?').substringBefore('#')
 
     private fun networkException(className: String): String? =
         NETWORK_EXCEPTIONS.firstOrNull { className.endsWith(it) }
@@ -290,11 +426,29 @@ object LogProblemExtractor {
 
     private class Accumulator(val type: String, val severity: Severity, summary: String) {
         var summary: String = summary
-        var count = 0
-        var lastSeen: String? = null
+
+        /** When each occurrence was logged, in log order, so taking one back keeps the right last. */
+        val seen = mutableListOf<String>()
+        val count: Int get() = seen.size
+        val lastSeen: String? get() = seen.lastOrNull()
+    }
+
+    /** A channel handler's exception as DartMessenger logged it, and the problem it became. */
+    private class ChannelFailure(val time: String, val exception: String?, val key: String, val lineNumber: Long)
+
+    /**
+     * Milliseconds from one `threadtime` stamp to another, or null when either is unreadable.
+     * The stamps carry no year; a leap year reads every one, and only short gaps are compared.
+     */
+    private fun elapsedMs(from: String, to: String): Long? {
+        val start = DeviceClock.wallClockMillis(from, ANY_LEAP_YEAR) ?: return null
+        return DeviceClock.wallClockMillis(to, ANY_LEAP_YEAR)?.minus(start)
     }
 
     const val SECTION = "logs"
+
+    /** Occurrence times kept per problem, the latest: enough to pair a burst with what caused it. */
+    private const val MAX_OCCURRENCES = 50
 
     const val TYPE_CRASH = "crash"
     const val TYPE_ANR = "anr"
@@ -303,9 +457,45 @@ object LogProblemExtractor {
     const val TYPE_STRICT_MODE = "strictMode"
     const val TYPE_LOG = "log"
 
+    /** A Flutter plugin that is missing, or a platform channel call that returned an error. */
+    const val TYPE_FLUTTER_PLUGIN = "flutterPlugin"
+
     private const val ANDROID_RUNTIME = "AndroidRuntime"
     private const val ACTIVITY_MANAGER = "ActivityManager"
     private const val STRICT_MODE = "StrictMode"
+    private const val FLUTTER = "flutter"
+
+    /** What the engine prefixes, after `[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] `. */
+    private const val FLUTTER_UNHANDLED_MARKER = "Unhandled Exception:"
+    private val FLUTTER_UNHANDLED = Regex("""^\[ERROR:flutter/[^\]]*] Unhandled Exception:""")
+
+    internal const val DART_MESSENGER = "DartMessenger"
+    internal const val LISTENER_FAILURE = "Uncaught exception in binary message listener"
+
+    /**
+     * How long after DartMessenger's failure a `MissingPluginException` still belongs to it. The
+     * empty reply goes straight back to Dart, so on a device the two are milliseconds apart (7 ms
+     * in the sample's capture); half a second leaves room for a loaded emulator and little for
+     * an unrelated call to slip in.
+     */
+    private const val CHANNEL_FAILURE_WINDOW_MS = 500L
+
+    /** DartMessenger failures kept per process while waiting for their `MissingPluginException`. */
+    private const val MAX_CHANNEL_FAILURES = 8
+
+    private const val MISSING_PLUGIN = "MissingPluginException"
+
+    /** Ends a paired problem's summary: nothing in the log ties the two lines together. */
+    private const val INFERRED = " (inferred from DartMessenger's log)"
+
+    /** `MissingPluginException(No implementation found for method M on channel C)`. */
+    private val NO_IMPLEMENTATION = Regex("""No implementation found for method (\S+) on channel (.+?)\)?$""")
+
+    /** So that `02-29` parses. */
+    private const val ANY_LEAP_YEAR = 2024
+
+    /** What follows a PlatformException's message: `null` details, then `null)` or a native exception. */
+    private val PLATFORM_ERROR_TAIL = Regex(""", null, (?:null\)|[\w.$]+(?::.*)?)$""")
 
     private const val HTTP_CLIENT_ERROR = 400
     private const val HTTP_SERVER_ERROR = 500
@@ -350,4 +540,18 @@ object LogProblemExtractor {
         "NoRouteToHostException",
         "SocketException",
     )
+}
+
+/**
+ * Whether [problem], one of [LogProblemExtractor]'s, is a failure on the native side of a Flutter
+ * app: a crash, a missing plugin or a channel handler that failed
+ * ([LogProblemExtractor.TYPE_FLUTTER_PLUGIN]), or DartMessenger's "Uncaught exception in binary
+ * message listener" that no `MissingPluginException` followed.
+ */
+internal fun nativeLayer(problem: LikelyProblem): Boolean = with(LogProblemExtractor) {
+    when {
+        problem.section != SECTION -> false
+        problem.type == TYPE_CRASH || problem.type == TYPE_FLUTTER_PLUGIN -> true
+        else -> problem.summary.startsWith("$DART_MESSENGER: $LISTENER_FAILURE")
+    }
 }

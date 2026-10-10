@@ -16,7 +16,7 @@ import spock.adb.diagnostics.LikelyProblem.Severity
  */
 class DiagnosticCollectorTest {
 
-    private val probe = DiagnosticProbe(mockk<IDevice>(relaxed = true), "emulator-5554", "com.example.app")
+    private val probe = AndroidProbe(mockk<IDevice>(relaxed = true), "emulator-5554", "com.example.app")
 
     private fun section(
         id: String,
@@ -24,10 +24,10 @@ class DiagnosticCollectorTest {
         problems: List<LikelyProblem> = emptyList(),
         detail: DetailRef? = DetailRef("android_get_$id"),
         failure: Throwable? = null,
-    ) = object : DiagnosticSection {
+    ) = object : DiagnosticSection<AndroidProbe> {
         override val id = id
         override val detail = detail
-        override fun collect(probe: DiagnosticProbe): SectionReport {
+        override fun collect(probe: AndroidProbe): SectionReport {
             failure?.let { throw it }
             return SectionReport(data, problems)
         }
@@ -63,6 +63,49 @@ class DiagnosticCollectorTest {
     }
 
     @Test
+    fun `a merged problem is listed in place of its parts, and a merge missing a part is dropped`() {
+        val dart = LikelyProblem("flutterError", Severity.ERROR, "dart")
+        val native = LikelyProblem("crash", Severity.ERROR, "native")
+        val elsewhere = LikelyProblem("crash", Severity.ERROR, "not in this report")
+        val merging = object : DiagnosticSection<AndroidProbe> {
+            override val id = "merging"
+            override val detail: DetailRef? = null
+            override fun collect(probe: AndroidProbe) = SectionReport(
+                JsonObject(),
+                listOf(dart),
+                merges = {
+                    listOf(
+                        LikelyProblem("both", Severity.ERROR, "dart and native", parts = listOf(dart, native)),
+                        LikelyProblem("stale", Severity.ERROR, "never listed", parts = listOf(dart, elsewhere)),
+                    )
+                },
+            )
+        }
+
+        val report = DiagnosticCollector().collect(listOf(section("logs", problems = listOf(native)), merging), probe)
+
+        val listed = report["likelyProblems"].asJsonArray.map { it.asJsonObject }
+        assertEquals(listOf("dart and native"), listed.map { it["summary"].asString })
+        val parts = listed.single()["parts"].asJsonArray.map { it.asJsonObject["summary"].asString }
+        assertEquals(listOf("dart", "native"), parts)
+    }
+
+    @Test
+    fun `a failing merge step merges nothing and costs nothing else`() {
+        val problem = LikelyProblem("log", Severity.ERROR, "kept")
+        val failing = object : DiagnosticSection<AndroidProbe> {
+            override val id = "failing"
+            override val detail: DetailRef? = null
+            override fun collect(probe: AndroidProbe) =
+                SectionReport(JsonObject(), listOf(problem), merges = { error("bug") })
+        }
+
+        val report = DiagnosticCollector().collect(listOf(failing), probe)
+
+        assertEquals(listOf("kept"), report["likelyProblems"].asJsonArray.map { it.asJsonObject["summary"].asString })
+    }
+
+    @Test
     fun `the problem list is capped and says how many it left out`() {
         val many = (1..25).map { LikelyProblem("log", Severity.ERROR, "error $it") }
 
@@ -87,10 +130,10 @@ class DiagnosticCollectorTest {
     @Test
     fun `sections past the time budget are skipped and say so`() {
         var now = 0L
-        val slow = object : DiagnosticSection {
+        val slow = object : DiagnosticSection<AndroidProbe> {
             override val id = "slow"
             override val detail: DetailRef? = null
-            override fun collect(probe: DiagnosticProbe): SectionReport {
+            override fun collect(probe: AndroidProbe): SectionReport {
                 now += 10
                 return SectionReport(JsonObject())
             }
@@ -129,10 +172,10 @@ class DiagnosticCollectorTest {
     }
 
     /** The real logs section's id and detail, without its device read. */
-    private object LogsSectionStub : DiagnosticSection {
+    private object LogsSectionStub : DiagnosticSection<AndroidProbe> {
         override val id = LogsSection.id
         override val detail = LogsSection.detail
-        override fun collect(probe: DiagnosticProbe) = SectionReport(JsonObject())
+        override fun collect(probe: AndroidProbe) = SectionReport(JsonObject())
     }
 
     @Test

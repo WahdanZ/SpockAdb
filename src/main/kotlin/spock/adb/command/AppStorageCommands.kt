@@ -9,8 +9,8 @@ import spock.adb.startActivity
 import spock.adb.storage.AppStoragePaths
 import spock.adb.storage.StorageFile
 import spock.adb.storage.StorageKind
+import spock.adb.storage.format
 import java.nio.file.Files
-import java.util.Base64
 import java.util.UUID
 
 /**
@@ -60,14 +60,15 @@ internal object AppStorageShell {
      * The file as base64, so XML and protobuf take the same byte-exact path through ddmlib's
      * text-only shell channel.
      */
-    fun readCommand(packageName: String, path: String): String = RunAs.command(
-        packageName,
+    fun readCommand(packageName: String, path: String): String = RunAs.command(packageName, readScript(path))
+
+    /** [readCommand]'s script, for a caller that has a step of its own to run first. */
+    fun readScript(path: String): String =
         "f=${ShellQuote.quote(path)}; " +
             "if [ ! -f \"\$f\" ]; then echo \"\$f was not found\"; echo rc=$STATUS_NOT_FOUND; " +
             "elif [ \$(wc -c < \"\$f\") -gt $MAX_FILE_BYTES ]; then " +
             "echo \"\$f is larger than $MAX_FILE_BYTES bytes\"; echo rc=$STATUS_TOO_LARGE; " +
-            "else base64 \"\$f\"; echo rc=\$?; fi",
-    )
+            "else base64 \"\$f\"; echo rc=\$?; fi"
 
     /**
      * Replaces [file] with the bytes pushed to [staged].
@@ -235,14 +236,7 @@ internal fun IDevice.readAppStorageFile(packageName: String, file: StorageFile):
 internal fun IDevice.readAppStorageBytes(packageName: String, path: String): ByteArray {
     ShellQuote.requireValidComponent(packageName, "Package name")
     AppStoragePaths.requireBrowsable(path)
-    val outcome = RunAs.classify(runAsShell(AppStorageShell.readCommand(packageName, path)))
-    val lines = (outcome as? RunAsOutcome.Succeeded)?.lines
-        ?: error(AppStorageShell.failureMessage(packageName, "read $path", outcome))
-    return try {
-        Base64.getDecoder().decode(lines.joinToString(""))
-    } catch (e: IllegalArgumentException) {
-        throw IllegalStateException("$path did not come back as base64: ${lines.take(2).joinToString(" ")}", e)
-    }
+    return readBase64(packageName, path, RunAs.classify(runAsShell(AppStorageShell.readCommand(packageName, path))))
 }
 
 /**
@@ -279,7 +273,7 @@ internal fun IDevice.writeAppStorageFile(
     restart: Boolean,
 ): AppStorageWrite {
     ShellQuote.requireValidComponent(packageName, "Package name")
-    require(file.kind.format != null) { "${file.path} is a ${file.kind.label} file and cannot be written." }
+    require(file.format != null) { "${file.path} is a ${file.kind.label} file and cannot be written." }
     require(content.size <= AppStorageShell.MAX_FILE_BYTES) {
         "${content.size} bytes is more than the ${AppStorageShell.MAX_FILE_BYTES}-byte limit for a preferences file."
     }

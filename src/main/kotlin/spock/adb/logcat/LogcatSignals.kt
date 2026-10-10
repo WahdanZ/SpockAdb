@@ -94,6 +94,14 @@ object LogcatSignals {
         entry.tag.lowercase() in NETWORK_TAGS ||
             NETWORK_MARKERS.any { entry.message.contains(it, ignoreCase = true) }
 
+    /**
+     * Flutter's own lines: the `flutter` tag carries Dart's `print`/`debugPrint` and the engine's
+     * unhandled exceptions, `MethodChannel#…`/`EventChannel#…` a native handler that failed, and
+     * the embedding logs under its class names.
+     */
+    fun isFlutter(entry: LogcatEntry): Boolean =
+        entry.tag == "flutter" || FLUTTER_TAG_PREFIXES.any { entry.tag.startsWith(it) }
+
     /** True for a line that only makes sense underneath the exception header above it. */
     fun isStackFrame(entry: LogcatEntry): Boolean {
         val message = entry.message.trimStart()
@@ -108,4 +116,6 @@ object LogcatSignals {
     /** `java.lang.IllegalStateException: Required value was null`, and its kin. */
     private val EXCEPTION_HEADER =
         Regex("""^\s*(Caused by:\s*)?([a-z][\w.]*\.)+[A-Z]\w*(Exception|Error|Throwable)""")
+
+    private val FLUTTER_TAG_PREFIXES = listOf("MethodChannel#", "EventChannel#", "BasicMessageChannel#", "Flutter")
 }

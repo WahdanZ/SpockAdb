@@ -6,6 +6,7 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.uitree.DisplayMetrics
 import spock.adb.uitree.NodeVisibility
+import spock.adb.uitree.OPAQUE_SURFACE_NOTE
 import spock.adb.uitree.Presence
 import spock.adb.uitree.UiCaptureException
 import spock.adb.uitree.UiFramework
@@ -78,6 +79,7 @@ internal object UiTreeReader {
                 )
             UiTree.TestTagSupport.NOT_APPLICABLE -> Unit
         }
+        if (isOpaqueSurface) append("\n").append(OPAQUE_SURFACE_NOTE)
         if (framework == UiFramework.COMPOSE || framework == UiFramework.HYBRID) {
             append(
                 "\nThis screen is Compose: do not assume a View hierarchy, and prefer semantic " +

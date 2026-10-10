@@ -137,6 +137,6 @@ class PrefsEditSessionTest {
         val session = PrefsEditSession(file, bytes)
 
         assertEquals(listOf("2"), session.rows.map { it.text })
-        assertEquals(PrefType.entries.toList(), session.types)
+        assertEquals(PrefType.entries - PrefType.STRING_LIST, session.types)
     }
 }

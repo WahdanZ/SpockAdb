@@ -60,6 +60,8 @@ object ToolRegistry {
         DiagnoseCurrentScreenTool(),
         // What happened before now, from every part of Spock, on one clock
         GetDebugTimelineTool(),
+        // The Flutter session Diagnose and the Timeline read from: found, verified, and how
+        FlutterAppStatusTool(),
         // UI inspection — semantics-first, so it covers Views, Compose and hybrid screens
         TakeScreenshotTool(),
         GetUiTreeTool(),

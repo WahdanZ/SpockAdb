@@ -15,6 +15,7 @@ import spock.adb.commandcenter.CommandCenterPanel
 import spock.adb.context.ContextLine
 import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
+import spock.adb.flutter.FlutterFollowerService
 import spock.adb.home.HomePanel
 import spock.adb.mcp.McpServerPanel
 import spock.adb.screen.SpockScreenToolWindow
@@ -116,7 +117,7 @@ class SpockAdbShell(
 
     fun start(controller: AdbController) {
         this.controller = controller
-        home.attach(controller)
+        home.attach(controller, parentDisposable)
         home.onDiagnose = { SpockScreenToolWindow.diagnose(project) }
         home.onCopyScreenForAi = { SpockScreenToolWindow.diagnose(project, thenCopy = true) }
         home.onBackgroundWork = { tabs.select(BACKGROUND_WORK_TAB) }
@@ -137,8 +138,10 @@ class SpockAdbShell(
         }
         listenForToolWindow()
         // Created here so the Debug Timeline follows the selection from the moment the window
-        // opens, whether or not its tab is ever shown.
+        // opens, whether or not its tab is ever shown — and the selected Flutter app is attached
+        // to before anyone asks.
         DebugTimelineService.getInstance(project)
+        FlutterFollowerService.getInstance(project)
     }
 
     // ---------------------------------------------------------------- device

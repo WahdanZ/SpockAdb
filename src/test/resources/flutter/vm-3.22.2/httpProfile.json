@@ -1,0 +1,124 @@
+{
+  "type": "HttpProfile",
+  "timestamp": 1790888286591993,
+  "requests": [
+    {
+      "type": "@HttpProfileRequest",
+      "id": "-812882783",
+      "isolateId": "isolates/4273892695459887",
+      "method": "GET",
+      "uri": "https://httpbin.org/status/500",
+      "events": [
+        {
+          "timestamp": 1790888258750308,
+          "event": "Connection established"
+        },
+        {
+          "timestamp": 1790888258755625,
+          "event": "Request sent"
+        },
+        {
+          "timestamp": 1790888259281441,
+          "event": "Waiting (TTFB)"
+        },
+        {
+          "timestamp": 1790888259293690,
+          "event": "Content Download"
+        }
+      ],
+      "startTime": 1790888257230195,
+      "endTime": 1790888258788784,
+      "request": {
+        "headers": {
+          "user-agent": [
+            "Dart/3.4 (dart:io)"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "host": [
+            "httpbin.org"
+          ]
+        },
+        "connectionInfo": {
+          "localPort": 46110,
+          "remoteAddress": "203.0.113.10",
+          "remotePort": 443
+        },
+        "contentLength": 0,
+        "cookies": [],
+        "followRedirects": true,
+        "maxRedirects": 5,
+        "method": "GET",
+        "persistentConnection": true,
+        "uri": "https://httpbin.org/status/500",
+        "filterKey": "HTTP/client"
+      },
+      "response": {
+        "startTime": 1790888259289760,
+        "headers": {
+          "connection": [
+            "keep-alive"
+          ],
+          "access-control-allow-credentials": [
+            "true"
+          ],
+          "date": [
+            "Thu, 01 Oct 2026 20:57:40 GMT"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "content-type": [
+            "text/html; charset=utf-8"
+          ],
+          "server": [
+            "gunicorn/19.9.0"
+          ]
+        },
+        "compressionState": "HttpClientResponseCompressionState.notCompressed",
+        "connectionInfo": {
+          "localPort": 46110,
+          "remoteAddress": "203.0.113.10",
+          "remotePort": 443
+        },
+        "contentLength": 0,
+        "cookies": [],
+        "isRedirect": false,
+        "persistentConnection": true,
+        "reasonPhrase": "INTERNAL SERVER ERROR",
+        "redirects": [],
+        "statusCode": 500,
+        "endTime": 1790888259293550
+      }
+    },
+    {
+      "type": "@HttpProfileRequest",
+      "id": "-812882663",
+      "isolateId": "isolates/4273892695459887",
+      "method": "GET",
+      "uri": "https://no-such-host.spock.invalid/",
+      "events": [],
+      "startTime": 1790888273521551,
+      "endTime": 1790888273563922,
+      "request": {
+        "error": "SocketException: Failed host lookup: 'no-such-host.spock.invalid' (OS Error: No address associated with hostname, errno = 7)"
+      }
+    },
+    {
+      "type": "@HttpProfileRequest",
+      "id": "-812882566",
+      "isolateId": "isolates/4273892695459887",
+      "method": "GET",
+      "uri": "https://httpbin.org/status/200",
+      "events": [],
+      "startTime": 1790888286208633
+    }
+  ]
+}

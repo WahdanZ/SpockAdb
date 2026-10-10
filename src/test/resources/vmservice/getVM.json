@@ -1,0 +1,19 @@
+{
+  "type": "VM",
+  "name": "vm",
+  "architectureBits": 64,
+  "hostCPU": "Unknown",
+  "operatingSystem": "android",
+  "targetCPU": "arm64",
+  "version": "3.4.3 (stable) (Tue Jun 4 19:51:39 2024 +0000) on \"android_arm64\"",
+  "pid": 12345,
+  "startTime": 1727776800000,
+  "isolates": [
+    {"type": "@Isolate", "id": "isolates/1111", "name": "main", "number": "1111", "isSystemIsolate": false, "isolateGroupId": "isolateGroups/2222"}
+  ],
+  "isolateGroups": [
+    {"type": "@IsolateGroup", "id": "isolateGroups/2222", "name": "main", "number": "2222", "isSystemIsolateGroup": false}
+  ],
+  "systemIsolates": [],
+  "systemIsolateGroups": []
+}

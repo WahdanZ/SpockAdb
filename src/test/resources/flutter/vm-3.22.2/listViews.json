@@ -1,0 +1,16 @@
+{
+  "type": "FlutterViewList",
+  "views": [
+    {
+      "type": "FlutterView",
+      "id": "_flutterView/0xb40000729a020e60",
+      "isolate": {
+        "type": "@Isolate",
+        "fixedId": true,
+        "id": "isolates/4273892695459887",
+        "name": "main.dart$main-4273892695459887",
+        "number": 4273892695459887
+      }
+    }
+  ]
+}

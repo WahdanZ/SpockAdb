@@ -11,6 +11,7 @@ import spock.adb.command.PushMessage
 import spock.adb.command.ShellAccess
 import spock.adb.command.WifiStatus
 import spock.adb.device.ConnectedDevice
+import spock.adb.models.ActivityData
 import spock.adb.premission.ListItem
 
 /**
@@ -46,6 +47,15 @@ interface AdbController {
     fun observeDevices(block: (devices: List<ConnectedDevice>) -> Unit)
     fun currentBackStack(device: IDevice)
     fun currentApplicationBackStack(device: IDevice)
+
+    /**
+     * The selected app's activities, top first, read without showing them: for a popup that shows
+     * more beside them, as Home's does with a Flutter app's routes. Answered on the EDT.
+     */
+    fun applicationBackStack(device: IDevice, block: (stack: Result<ApplicationBackStack>) -> Unit)
+
+    /** Opens [className] in the editor: qualified, or a fragment by its simple name. */
+    fun openClass(className: String)
     fun currentActivity(device: IDevice)
     fun currentFragment(device: IDevice)
     fun forceKillApp(device: IDevice)
@@ -155,3 +165,6 @@ data class PermissionSummary(val granted: Int, val denied: Int) {
  * @param activity fully qualified, or null when the device named none.
  */
 data class ScreenInfo(val activity: String?, val fragments: List<String>)
+
+/** [applicationId]'s activities, top first, each with its fragments. */
+data class ApplicationBackStack(val applicationId: String, val activities: List<ActivityData>)

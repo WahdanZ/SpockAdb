@@ -3,6 +3,9 @@ package spock.adb.diagnostics
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.intellij.openapi.diagnostic.Logger
+import spock.adb.flutter.analysis.FlutterProblemTypes
+import java.util.IdentityHashMap
 
 /**
  * Runs sections and assembles their summaries into one bounded report.
@@ -24,16 +27,17 @@ class DiagnosticCollector(
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
 
-    fun collect(
-        sections: List<DiagnosticSection>,
-        probe: DiagnosticProbe,
+    fun <P : DiagnosticProbe> collect(
+        sections: List<DiagnosticSection<P>>,
+        probe: P,
         preamble: JsonObject = JsonObject(),
     ): JsonObject {
         val deadline = nanoTime() + budgetNanos
-        val reports = linkedMapOf<DiagnosticSection, SectionReport>()
+        val reports = linkedMapOf<DiagnosticSection<P>, SectionReport>()
         val errors = JsonObject()
+        val applicable = sections.filter { it.appliesTo(probe) }
 
-        sections.forEach { section ->
+        applicable.forEach { section ->
             if (nanoTime() > deadline) {
                 errors.addProperty(section.id, SKIPPED)
                 return@forEach
@@ -53,28 +57,117 @@ class DiagnosticCollector(
         report.addProperty("schemaVersion", SCHEMA_VERSION)
         preamble.entrySet().forEach { (key, value) -> report.add(key, value) }
         report.addProperty("packageName", probe.packageName)
-        addProblems(report, reports.values.flatMap { it.problems })
+        val all = merged(reports.values, reports.values.flatMap { it.problems })
+        val listed = addProblems(report, all, companionsOf(reports.values, all))
         reports.forEach { (section, sectionReport) -> report.add(section.id, sectionReport.data) }
         if (errors.size() > 0) report.add("sectionErrors", errors)
-        report.add("more", references(sections, probe))
+        report.add("more", references(applicable, probe))
+        afterRanking(reports, listed)
 
         return fitToBudget(report, reports.keys.map { it.id })
     }
 
-    private fun addProblems(report: JsonObject, problems: List<LikelyProblem>) {
-        val ranked = problems.sortedWith(
-            compareBy<LikelyProblem> { it.severity.rank }
-                .thenBy { typePriority(it.type) }
-                .thenByDescending { it.count },
+    /**
+     * Ranks [problems], each of [companions] right after the problem it belongs with unless it
+     * already ranks higher, lists the first [MAX_PROBLEMS] with their ids, and returns them as listed.
+     */
+    private fun addProblems(
+        report: JsonObject,
+        problems: List<LikelyProblem>,
+        companions: Map<LikelyProblem, List<LikelyProblem>>,
+    ): List<Pair<String, LikelyProblem>> {
+        val ranked = withCompanions(
+            problems.sortedWith(
+                compareBy<LikelyProblem> { it.severity.rank }
+                    .thenBy { typePriority(it.type) }
+                    .thenByDescending { it.count },
+            ),
+            companions,
         )
+        val listed = ranked.take(MAX_PROBLEMS).mapIndexed { index, problem -> "p${index + 1}" to problem }
         report.add(
             "likelyProblems",
-            JsonArray().apply { ranked.take(MAX_PROBLEMS).forEach { add(it.toJson()) } },
+            JsonArray().apply { listed.forEach { (id, problem) -> add(problem.toJson(id)) } },
         )
         if (ranked.size > MAX_PROBLEMS) report.addProperty("moreProblems", ranked.size - MAX_PROBLEMS)
+        return listed
     }
 
-    private fun references(sections: List<DiagnosticSection>, probe: DiagnosticProbe): JsonObject {
+    /**
+     * [problems], with each section's [SectionReport.merges] in place of their parts — only when
+     * every part is still there, by identity. A step that fails merges nothing.
+     */
+    private fun merged(reports: Collection<SectionReport>, problems: List<LikelyProblem>): List<LikelyProblem> {
+        var all = problems
+        reports.forEach { report ->
+            val step = report.merges ?: return@forEach
+            runCatching { step(all) }
+                .onSuccess { merges ->
+                    merges.forEach { merge ->
+                        val parts = merge.parts
+                        if (parts.isNotEmpty() && parts.all { part -> all.any { it === part } }) {
+                            all = all.filterNot { problem -> parts.any { it === problem } } + merge
+                        }
+                    }
+                }
+                .onFailure { log.warn("A section's merging of problems failed", it) }
+        }
+        return all
+    }
+
+    /** Every section's [SectionReport.companions], by problem identity; one that fails adds none. */
+    private fun companionsOf(
+        reports: Collection<SectionReport>,
+        all: List<LikelyProblem>,
+    ): Map<LikelyProblem, List<LikelyProblem>> {
+        val found = IdentityHashMap<LikelyProblem, List<LikelyProblem>>()
+        reports.forEach { report ->
+            val step = report.companions ?: return@forEach
+            runCatching { step(all) }
+                .onSuccess { found.putAll(it) }
+                .onFailure { log.warn("A section's pairing of problems failed", it) }
+        }
+        return found
+    }
+
+    /** [ranked], with each companion moved up to just after the first problem it belongs with. */
+    private fun withCompanions(
+        ranked: List<LikelyProblem>,
+        companions: Map<LikelyProblem, List<LikelyProblem>>,
+    ): List<LikelyProblem> {
+        if (companions.isEmpty()) return ranked
+        val rank = IdentityHashMap<LikelyProblem, Int>().apply { ranked.forEachIndexed { i, p -> put(p, i) } }
+        val moved = IdentityHashMap<LikelyProblem, LikelyProblem>()
+        ranked.forEach { anchor ->
+            companions[anchor].orEmpty().forEach { companion ->
+                val below = (rank[companion] ?: return@forEach) > (rank[anchor] ?: return@forEach)
+                if (below && companion !in moved) moved[companion] = anchor
+            }
+        }
+        return ranked.flatMap { problem ->
+            if (problem in moved) {
+                emptyList()
+            } else {
+                listOf(problem) + companions[problem].orEmpty().filter { moved[it] === problem }
+            }
+        }
+    }
+
+    /** Each section's [SectionReport.afterRanking]; one that fails adds nothing and costs nothing else. */
+    private fun afterRanking(
+        reports: Map<out DiagnosticSection<*>, SectionReport>,
+        listed: List<Pair<String, LikelyProblem>>,
+    ) {
+        val sections = reports.entries.associate { (section, report) -> section.id to report.data }
+        val ranked = RankedProblems(listed, sections)
+        reports.values.forEach { report ->
+            report.afterRanking?.let { step ->
+                runCatching { step(ranked) }.onFailure { log.warn("A section's step after ranking failed", it) }
+            }
+        }
+    }
+
+    private fun references(sections: List<DiagnosticSection<*>>, probe: DiagnosticProbe): JsonObject {
         val more = JsonObject()
         sections.forEach { section ->
             val detail = section.detail ?: return@forEach
@@ -87,7 +180,7 @@ class DiagnosticCollector(
     }
 
     /** Points the follow-up at the same app, so it describes what this report did. */
-    private fun scopedArguments(section: DiagnosticSection, detail: DetailRef, packageName: String?): JsonObject {
+    private fun scopedArguments(section: DiagnosticSection<*>, detail: DetailRef, packageName: String?): JsonObject {
         val arguments = detail.arguments.deepCopy()
         if (packageName != null && section.id in APP_SCOPED_DETAILS) {
             arguments.addProperty(if (section.id == AppSection.id) "filter" else "packageName", packageName)
@@ -116,13 +209,16 @@ class DiagnosticCollector(
         return report
     }
 
-    private fun LikelyProblem.toJson() = JsonObject().apply {
+    private fun LikelyProblem.toJson(id: String?): JsonObject = JsonObject().apply {
+        id?.let { addProperty("id", it) }
         addProperty("type", type)
         addProperty("severity", severity.id)
         addProperty("summary", summary)
         if (count > 1) addProperty("count", count)
         lastSeen?.let { addProperty("lastSeen", it) }
         section?.let { addProperty("section", it) }
+        // Each layer's own problem, as its section reported it: not listed apart, so it has no id.
+        if (parts.isNotEmpty()) add("parts", JsonArray().apply { parts.forEach { add(it.toJson(null)) } })
     }
 
     companion object {
@@ -141,12 +237,18 @@ class DiagnosticCollector(
 
         /** Among equal severities, what explains the most goes first. */
         private val TYPE_PRIORITY = listOf(
+            // A fault seen in Dart and on the native side at once: it names the crash and its cause.
+            FlutterProblemTypes.CROSS_LAYER,
             LogProblemExtractor.TYPE_CRASH,
             LogProblemExtractor.TYPE_ANR,
             "process",
+            LogProblemExtractor.TYPE_FLUTTER_PLUGIN,
+            FlutterProblemTypes.FLUTTER_ERROR,
             LogProblemExtractor.TYPE_NETWORK,
             LogProblemExtractor.TYPE_EXCEPTION,
             "screen",
+            FlutterProblemTypes.JANK,
+            FlutterProblemTypes.FREQUENT_REBUILDS,
             "deviceCondition",
             "backgroundWork",
             "permission",
@@ -159,6 +261,8 @@ class DiagnosticCollector(
             DeviceConditionsSection.id,
             PermissionsSection.id,
         )
+
+        private val log = Logger.getInstance(DiagnosticCollector::class.java)
 
         private val GSON = GsonBuilder().serializeNulls().setPrettyPrinting().disableHtmlEscaping().create()
 

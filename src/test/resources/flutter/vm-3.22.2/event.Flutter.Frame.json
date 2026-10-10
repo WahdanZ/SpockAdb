@@ -1,0 +1,62 @@
+[
+  {
+    "timestamp": 1790887851654,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "number": 2,
+      "startTime": 116562250808,
+      "elapsed": 1937126,
+      "build": 7,
+      "raster": 1936821,
+      "vsyncOverhead": 0
+    }
+  },
+  {
+    "timestamp": 1790887851930,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "number": 3,
+      "startTime": 116562790574,
+      "elapsed": 1696592,
+      "build": 66972,
+      "raster": 242101,
+      "vsyncOverhead": 43219
+    }
+  },
+  {
+    "timestamp": 1790887854094,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "number": 4,
+      "startTime": 116566216460,
+      "elapsed": 390704,
+      "build": 126828,
+      "raster": 221722,
+      "vsyncOverhead": 35772
+    }
+  },
+  {
+    "timestamp": 1790887866655,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "number": 5,
+      "startTime": 116578310185,
+      "elapsed": 764636,
+      "build": 621542,
+      "raster": 46254,
+      "vsyncOverhead": 96164
+    }
+  },
+  {
+    "timestamp": 1790887866841,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "number": 6,
+      "startTime": 116579055582,
+      "elapsed": 326445,
+      "build": 221121,
+      "raster": 96374,
+      "vsyncOverhead": 8228
+    }
+  }
+]

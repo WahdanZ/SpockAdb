@@ -2,7 +2,9 @@ package spock.adb.storage
 
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
@@ -39,6 +41,15 @@ class PreferencesProtoTest {
         assertArrayEquals(hex("32 06 0a 01 61 0a 01 62"), valueBytes(PrefValue.StringSetValue(listOf("a", "b"))))
         assertArrayEquals(hex("39 00 00 00 00 00 00 f8 3f"), valueBytes(PrefValue.DoubleValue(1.5)))
         assertArrayEquals(hex("42 02 00 ff"), valueBytes(PrefValue.BytesValue(hex("00 ff"))))
+    }
+
+    @Test
+    fun `refuses a string list, which DataStore has no field for`() {
+        val thrown = assertThrows<IllegalArgumentException> {
+            PreferencesProto.write(ByteArray(0), listOf(PrefChange.Put("k", PrefValue.StringListValue(listOf("a")))))
+        }
+        assertTrue(thrown.message!!.contains("cannot store a string list"), thrown.message)
+        assertFalse(PrefType.STRING_LIST in PreferencesProto.types)
     }
 
     @Test
