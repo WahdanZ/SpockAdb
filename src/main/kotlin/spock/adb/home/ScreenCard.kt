@@ -65,7 +65,7 @@ internal class ScreenCard : JPanel() {
 
     private var flutter: FlutterRouteSource? = null
     private var app: () -> String? = { null }
-    private val flutterReads = LatestRequest()
+    private val flutterReads = FlutterReadRequests()
 
     /** What the settings dialog shows, and whether a Flutter session gave the rows something to say. */
     private var screenRowsOn = true
@@ -74,7 +74,6 @@ internal class ScreenCard : JPanel() {
 
     /** A burst of navigation costs one read; a read that met a transition tries again, a few times. */
     private val flutterSoon = Timer(SETTLE_MS) { refreshFlutter() }.apply { isRepeats = false }
-    private var settleRetries = 0
 
     /** A read skipped while Home was out of sight — another tab, a collapsed section, the window closed. */
     private var flutterMissed = false
@@ -117,8 +116,8 @@ internal class ScreenCard : JPanel() {
         flutter = source
         this.app = app
         source.onChange = {
-            flutterReads.begin()
-            settleRetries = 0
+            flutterReads.retireKeyed()
+            flutterReads.newBurst()
             flutterSoon.restart()
         }
     }
@@ -128,6 +127,7 @@ internal class ScreenCard : JPanel() {
         val request = reads.begin()
         val controller = controller
         val target = device()
+        flutterReads.newBurst()
         refreshFlutter()
         if (controller == null || target == null || !isVisible) return show(null)
         activityLink.text = READING
@@ -138,45 +138,52 @@ internal class ScreenCard : JPanel() {
 
     /** Reads the Flutter route, from a session already connected to the app; hides it without one. */
     private fun refreshFlutter() {
-        val request = flutterReads.begin()
         val source = flutter
         val session = source?.liveSession(device(), app())
         // Not read while out of sight: each Flutter.Navigation would cost a read nobody sees.
         flutterMissed = session != null && !isShowing
-        if (source == null || session == null || !isShowing) return showFlutter(null)
+        if (source == null || session == null || !isShowing) {
+            flutterReads.retireKeyed()
+            return showFlutter(null)
+        }
         if (!flutterLive) flutterRouteValue.text = READING
-        val isolate = session.snapshot.uiIsolateId
-        source.read(session, check = false) { state ->
-            if (!flutterReads.isLatest(request) || source.liveSession(device(), app()) !== session ||
-                session.snapshot.uiIsolateId != isolate
-            ) {
-                return@read
-            }
-            showFlutter(state)
-            if (state.transient && settleRetries < MAX_SETTLE_RETRIES) {
-                settleRetries++
-                flutterSoon.restart()
+        val request = flutterReads.keyed(session, session.snapshot.uiIsolateId)
+        source.read(session, check = false) { state -> landed(source, request, state) }
+    }
+
+    /**
+     * Counts the app's navigators, then shows the stack — and Home shows the same read. Its own
+     * request: a refresh while the heap walk runs does not swallow the popup the user asked for.
+     */
+    private fun checkFlutterStack() {
+        val source = flutter ?: return
+        val session = source.liveSession(device(), app()) ?: return showFlutter(null)
+        val request = flutterReads.check(session, session.snapshot.uiIsolateId)
+        flutterReads.newBurst()
+        flutterStackLink.isEnabled = false
+        source.read(session, check = true) { state ->
+            if (flutterReads.isLatest(request)) flutterStackLink.isEnabled = true
+            if (landed(source, request, state) && flutterStackLink.isShowing) {
+                FlutterBackStackPopup.show(state, flutterStackLink)
             }
         }
     }
 
-    /** Counts the app's navigators, then shows the stack — and Home shows the same read. */
-    private fun checkFlutterStack() {
-        val source = flutter ?: return
-        val session = source.liveSession(device(), app()) ?: return showFlutter(null)
-        val request = flutterReads.begin()
-        val isolate = session.snapshot.uiIsolateId
-        flutterStackLink.isEnabled = false
-        source.read(session, check = true) { state ->
-            flutterStackLink.isEnabled = true
-            if (!flutterReads.isLatest(request) || source.liveSession(device(), app()) !== session ||
-                session.snapshot.uiIsolateId != isolate
-            ) {
-                return@read
-            }
-            showFlutter(state)
-            if (flutterStackLink.isShowing) FlutterBackStackPopup.show(state, flutterStackLink)
-        }
+    /**
+     * Shows [state] on Home if [request] is still worth it, and reads again shortly if it met a
+     * navigation under way. False when [request] no longer describes the selected app's session.
+     */
+    private fun landed(
+        source: FlutterRouteSource,
+        request: FlutterReadRequests.Request,
+        state: FlutterNavigationState,
+    ): Boolean {
+        val session = source.liveSession(device(), app())
+        val isolate = session?.snapshot?.uiIsolateId
+        if (!flutterReads.current(request, session, isolate)) return false
+        if (flutterReads.showOnHome(request, session, isolate)) showFlutter(state)
+        if (flutterReads.retryAfter(state)) flutterSoon.restart()
+        return true
     }
 
     /** Shows or hides a row, for the actions switched off in the settings dialog. */
@@ -252,7 +259,6 @@ internal class ScreenCard : JPanel() {
 
         /** About a page transition: a read that met one sees it settled next time. */
         const val SETTLE_MS = 300
-        const val MAX_SETTLE_RETRIES = 3
 
         fun simpleName(className: String) = className.substringAfterLast('.')
     }
