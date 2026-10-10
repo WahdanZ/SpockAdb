@@ -2,12 +2,15 @@ package spock.adb.home
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.ApplicationBackStack
 import spock.adb.flutter.navigation.Confidence
 import spock.adb.flutter.navigation.FlutterNavigationState
 import spock.adb.flutter.navigation.FlutterRoute
 import spock.adb.flutter.navigation.NavigationConfidence
+import spock.adb.models.ActivityData
 
 class FlutterRouteTextTest {
     private val keyed = FlutterNavigationState(
@@ -23,7 +26,22 @@ class FlutterRouteTextTest {
         assertEquals("root", rows.first().mark)
         assertEquals("current", rows.last().mark)
         assertTrue(rows.last().unnamed)
-        assertTrue(FlutterRouteText.homeTooltip(keyed).contains("Flutter back stack checks"))
+        assertTrue(FlutterRouteText.homeTooltip(keyed).contains("App back stack checks"))
+    }
+
+    @Test
+    fun `App back stack names the app read, and says why there are no activities to list`() {
+        val app = "spock.adb.spock_flutter_sample"
+        val stack = ApplicationBackStack(app, listOf(ActivityData("$app.MainActivity", emptyList(), "Resumed")))
+        val none = ApplicationBackStack(app, emptyList())
+        val failed = Result.failure<ApplicationBackStack>(IllegalStateException("device offline"))
+
+        assertEquals("App Back Stack · $app", FlutterRouteText.title(Result.success(stack), "other.app"))
+        assertEquals("App Back Stack · other.app", FlutterRouteText.title(failed, "other.app"))
+        assertEquals("App Back Stack", FlutterRouteText.title(failed, null))
+        assertNull(FlutterRouteText.activitiesNote(Result.success(stack)))
+        assertEquals("No activities of $app are running.", FlutterRouteText.activitiesNote(Result.success(none)))
+        assertEquals("Could not read the activities: device offline", FlutterRouteText.activitiesNote(failed))
     }
 
     @Test

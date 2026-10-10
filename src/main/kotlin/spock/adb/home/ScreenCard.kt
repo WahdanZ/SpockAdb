@@ -6,9 +6,11 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import spock.adb.AdbController
+import spock.adb.ApplicationBackStack
 import spock.adb.LatestRequest
 import spock.adb.ScreenInfo
 import spock.adb.device.ConnectedDevice
+import spock.adb.flutter.FlutterSession
 import spock.adb.flutter.navigation.FlutterNavigationState
 import java.awt.FlowLayout
 import java.awt.GridBagConstraints
@@ -27,8 +29,9 @@ import javax.swing.Timer
  * cheap to read, so it is shown, and the click is kept for what it is actually for: going to
  * the code.
  *
- * For a Flutter app with a live session, the route on top of its Navigator too, and its back
- * stack: an Android activity alone says only "MainActivity" for every Flutter screen.
+ * For a Flutter app with a live session, the route on top of its Navigator too, and its routes in
+ * App back stack beside the activities: an Android activity alone says only "MainActivity" for
+ * every Flutter screen.
  */
 internal class ScreenCard : JPanel() {
 
@@ -37,16 +40,13 @@ internal class ScreenCard : JPanel() {
     private val activityLabel = rowLabel("Activity")
     private val fragmentLabel = rowLabel("Fragment")
 
-    private val appStackLink = ActionLink("App back stack") {
-        open { controller, device -> controller.currentApplicationBackStack(device) }
-    }
+    private val appStackLink = ActionLink("App back stack") { appBackStack() }
     private val allStackLink = ActionLink("All activities") {
         open { controller, device -> controller.currentBackStack(device) }
     }
 
     private val flutterRouteLabel = rowLabel("Flutter route")
     private val flutterRouteValue = JBLabel(UNKNOWN)
-    private val flutterStackLink = ActionLink("Flutter back stack") { checkFlutterStack() }
 
     /** Diagnoses, then copies the report: one click for what the AI needs about this screen. */
     val copyForAiButton = JButton("Copy screen for AI", AllIcons.Actions.Copy).apply {
@@ -69,7 +69,6 @@ internal class ScreenCard : JPanel() {
 
     /** What the settings dialog shows, and whether a Flutter session gave the rows something to say. */
     private var screenRowsOn = true
-    private var stacksOn = true
     private var flutterLive = false
 
     /** A burst of navigation costs one read; a read that met a transition tries again, a few times. */
@@ -95,7 +94,7 @@ internal class ScreenCard : JPanel() {
                 add(flutterRouteValue, valueAt(2))
             },
         )
-        add(flow(appStackLink, allStackLink, flutterStackLink))
+        add(flow(appStackLink, allStackLink))
         // Diagnose first: it is where a debugging session starts, and the copy is Diagnose too.
         add(flow(diagnoseButton, copyForAiButton))
         show(null)
@@ -152,21 +151,50 @@ internal class ScreenCard : JPanel() {
     }
 
     /**
-     * Counts the app's navigators, then shows the stack — and Home shows the same read. Its own
-     * request: a refresh while the heap walk runs does not swallow the popup the user asked for.
+     * The app's activities; for an app with a Flutter session, its routes too, in one popup. Without
+     * a session it is App Back Stack as it always was: no VM reads, no pause.
      */
-    private fun checkFlutterStack() {
-        val source = flutter ?: return
-        val session = source.liveSession(device(), app()) ?: return showFlutter(null)
+    private fun appBackStack() {
+        val controller = controller ?: return
+        val target = device() ?: return
+        val source = flutter
+        val session = source?.liveSession(target, app())
+        if (source == null || session == null) return controller.currentApplicationBackStack(target.device)
+        appStackLink.isEnabled = false
+        var activities: Result<ApplicationBackStack>? = null
+        var routes: FlutterNavigationState? = null
+        checkFlutterStack(source, session) { state ->
+            routes = state
+            activities?.let { showBackStack(it, state) }
+        }
+        controller.applicationBackStack(target.device) { stack ->
+            activities = stack
+            routes?.let { showBackStack(stack, it) }
+        }
+    }
+
+    /**
+     * Counts the app's navigators, and hands [answer] the stack — and Home shows the same read. Its
+     * own request: a refresh while the heap walk runs does not swallow the popup the user asked for.
+     */
+    private fun checkFlutterStack(
+        source: FlutterRouteSource,
+        session: FlutterSession,
+        answer: (FlutterNavigationState) -> Unit,
+    ) {
         val request = flutterReads.check(session, session.snapshot.uiIsolateId)
         flutterReads.newBurst()
-        flutterStackLink.isEnabled = false
         source.read(session, check = true) { state ->
-            if (flutterReads.isLatest(request)) flutterStackLink.isEnabled = true
-            if (landed(source, request, state) && flutterStackLink.isShowing) {
-                FlutterBackStackPopup.show(state, flutterStackLink)
-            }
+            val current = landed(source, request, state)
+            answer(if (current) state else FlutterNavigationState.unavailable(FlutterRouteText.SESSION_CHANGED))
         }
+    }
+
+    private fun showBackStack(activities: Result<ApplicationBackStack>, routes: FlutterNavigationState) {
+        appStackLink.isEnabled = true
+        if (!appStackLink.isShowing) return
+        val title = FlutterRouteText.title(activities, app())
+        AppBackStackPopup.show(activities, routes, title, appStackLink) { controller?.openClass(it) }
     }
 
     /**
@@ -195,7 +223,6 @@ internal class ScreenCard : JPanel() {
         appStackLink.isVisible = stacks
         allStackLink.isVisible = stacks
         screenRowsOn = activity || fragment
-        stacksOn = stacks
         applyFlutterVisibility()
     }
 
@@ -220,7 +247,6 @@ internal class ScreenCard : JPanel() {
     private fun applyFlutterVisibility() {
         flutterRouteLabel.isVisible = flutterLive && screenRowsOn
         flutterRouteValue.isVisible = flutterLive && screenRowsOn
-        flutterStackLink.isVisible = flutterLive && stacksOn
     }
 
     private fun open(run: (AdbController, com.android.ddmlib.IDevice) -> Unit) {

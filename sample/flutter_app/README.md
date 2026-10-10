@@ -238,14 +238,16 @@ Open **Navigation** from the hub. Let transitions settle before checking Home �
 
 | Action | Expected Spock result |
 |---|---|
-| Push /nav/a, then /nav/a/b | Home KEYED current `/nav/a/b`; Flutter back stack EXACT: `/`, `/navigation`, `/nav/a`, `/nav/a/b`, root/current marked. Back removes the top route. |
+| Push /nav/a, then /nav/a/b | Home KEYED current `/nav/a/b`; App back stack → Flutter routes EXACT: `/`, `/navigation`, `/nav/a`, `/nav/a/b`, root/current marked, under the Activities section. Back removes the top route. |
 | Show dialog | Current `DialogRoute (unnamed)`; no path invented, exact check includes it. Dismiss restores `/navigation`. |
 | Nested Navigator WITH key | Unavailable: several keyed navigators; no guessed visible child. |
 | Nested Navigator WITHOUT key | Initially Home KEYED `/nav/unkeyed`; click check unavailable for an unkeyed nested navigator. Home remains unavailable until a successful check or new isolate. Leave the nested screen and check again. |
 | Navigator.pages | Replaces the sample root with one keyed Navigator: `/pages/list`, `/pages/detail`; exact check, names read from Page.name in route settings. Remove/add detail and refresh Home (declarative changes need not emit Flutter.Navigation). Restart sample to return to hub. |
 
 For an unnamed Page, expect its route class rather than a fabricated path. During animation expect
-unavailable “navigation in progress”, followed by a bounded retry. A back-stack heap check briefly
-pauses the app; the popup reports its round-trip duration, not an exact measured pause.
-Also check hot restart, switch selected apps/devices during a slow read, hide stack actions in
-settings, and select a non-Flutter app: old Flutter rows/popups must not appear.
+unavailable “navigation in progress”, followed by a bounded retry. Each check opens from **App
+back stack**: one popup, Activities then Flutter routes, the routes never under an activity. Its
+heap check briefly pauses the app; the popup reports its round-trip duration, not an exact
+measured pause. Also check hot restart, switch selected apps/devices during a slow read, hide
+stack actions in settings, and select a non-Flutter app: App back stack must be the plain
+activity list, with no Flutter section and no pause.

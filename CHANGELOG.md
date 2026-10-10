@@ -4,10 +4,13 @@
 
 ### Added
 
-- **Home: current Flutter route and Flutter back stack.** An already connected Flutter session
-  supplies the root navigator’s current route; clicking the stack checks for nested navigators
-  before claiming an exact stack. Unnamed routes show their class, and ambiguous or transitional
-  navigation is unavailable. The check briefly pauses the app; Home never attaches a session.
+- **Home: current Flutter route, and Flutter routes in App back stack.** An already connected
+  Flutter session supplies the root navigator’s current route. For a Flutter app, App back stack
+  lists its Flutter routes in their own section under its activities, after checking for nested
+  navigators before claiming an exact stack; if one half cannot be read, the other is still shown
+  and the popup says what failed. Unnamed routes show their class, and ambiguous or transitional
+  navigation is unavailable, never guessed. The check briefly pauses the app; Home never attaches
+  a session, and for any other app App back stack is unchanged.
 - **Flutter: Spock connects to your app by itself, and Diagnose and the Timeline read it.** Until now
   Flutter's own errors — a layout overflow, an exception in `build()` or a tap handler — never
   reached Spock in a debug build: Flutter sends them to the Dart VM Service, not logcat, so Diagnose

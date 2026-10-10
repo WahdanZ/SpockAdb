@@ -222,21 +222,35 @@ No evaluate, invoke, runtime dependency, coroutine or MCP tool is added.
 `_buildOwner._globalKeyRegistry` → StatefulElement `_state` → mounted NavigatorState `_history`
 → `_value` → route `_settings.name`. A plain history list is also supported. VM class superclass
 reads recognise NavigatorState subclasses; the heap query includes subclasses of NavigatorState.
-Missing fields, expired objects, partial collections and exceeded bounds give unavailable.
-Home opens at most 200 keyed StatefulElements within a shared 3 s call budget; the click check
+Fields count only when the VM reports Flutter's class as their owner (a mixin's: its mixin
+application), and NavigatorState only from `navigator.dart`, so an app subclass's same-named
+private field or class cannot stand in. Missing fields, expired objects, partial collections and
+exceeded bounds give unavailable. Home opens at most 80 keyed StatefulElements per read within a
+shared 3 s call budget, and remembers for the isolate those that hold no navigator (by the
+`identityHashCode` of key and element: object ids change between calls), so later reads open only
+new ones; past 80 it says how many keyed widgets there are and goes on next read. The click check
 has 5 s and returns at most 20 heap instances (including unmounted instances in that limit).
 
 One keyed navigator gives KEYED: Home's tooltip describes the root navigator and the unchecked
 possibility of an unkeyed nested navigator. Several keyed navigators give unavailable: v1 does
-not prove nesting or choose a visible navigator. On clicking **Flutter back stack**, a heap count
-of exactly one mounted navigator gives EXACT; additional mounted navigators give unavailable,
-remembered for that session/isolate until a successful check. The same checked snapshot updates
-Home and the popup. A new isolate starts clean. The popup reports call duration and says the
-heap check briefly paused the app (S25 measured 120–364 ms; RPC duration is not exact pause time).
+not prove nesting or choose a visible navigator. On clicking **App back stack** for an app with a
+session, a heap count of exactly one mounted navigator gives EXACT, but only if that navigator is
+the keyed one (same `identityHashCode`) and the stack, read again after the walk, holds the same
+idle entries; otherwise “the navigation changed”, transient. Additional mounted navigators give
+unavailable, remembered for that session/isolate until a successful check. The same checked
+snapshot updates Home and the popup's **Flutter routes** section; the activities are read beside it
+and shown as their own **Activities** section, never nested under an activity (with add-to-app,
+Spock cannot prove which activity hosts the engine). Either section that fails says why while the
+other still shows. Without a session App back stack is the activity chooser as before: no VM
+reads, no pause. A new isolate starts clean. The popup reports call duration and says the heap
+check briefly paused the app (S25 measured 120–364 ms; RPC duration is not exact pause time).
 
 Normal Home refresh and debounced (300 ms) live Flutter.Navigation/session state notifications
-trigger reads. Events never supply route data. Latest-request and session/isolate checks discard
-late UI results after selection or hot restart. Transitional reads retry at most three times.
+trigger reads, only while Home is showing (a read skipped out of sight runs when it shows again).
+Events never supply route data. `FlutterReadRequests` keeps Home's reads and the click check as
+separate latest requests, so a refresh during the check does not swallow its popup; session/isolate
+checks discard late results after selection or hot restart. Transitional reads retry at most
+three times per burst.
 
 Flutter 3.22.2's [_RouteEntry.isPresent](https://github.com/flutter/flutter/blob/3.22.2/packages/flutter/lib/src/widgets/navigator.dart)
 uses the range add through remove, including pop and complete; popping is outside that range.

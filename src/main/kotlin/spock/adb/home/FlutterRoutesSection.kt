@@ -1,6 +1,5 @@
 package spock.adb.home
 
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -17,33 +16,24 @@ import javax.swing.ListCellRenderer
 import javax.swing.ListSelectionModel
 
 /**
- * The Flutter back stack, as App Back Stack shows the activities: one line per route, the root at
- * the top and the current route at the bottom, marked; then how sure Spock is, or why there is no
- * stack to show.
+ * The Flutter routes in App Back Stack, listed as the activities are: one line per route, the root
+ * at the top and the current route at the bottom, marked; then how sure Spock is, or why there is
+ * no stack to show.
  */
-internal object FlutterBackStackPopup {
+internal object FlutterRoutesSection {
 
-    fun show(state: FlutterNavigationState, under: JComponent) {
+    fun create(state: FlutterNavigationState): JComponent {
         val rows = FlutterRouteText.rows(state)
-        val list = rows.takeIf { it.isNotEmpty() }?.let(::RouteList)
-        val panel = JPanel(BorderLayout(0, JBUI.scale(GAP))).apply {
-            border = JBUI.Borders.empty(GAP)
-            list?.let { add(it, BorderLayout.CENTER) }
-            add(footer(FlutterRouteText.footer(state)), BorderLayout.SOUTH)
+        return JPanel(BorderLayout(0, JBUI.scale(GAP))).apply {
+            isOpaque = false
+            rows.takeIf { it.isNotEmpty() }?.let { add(RouteList(it), BorderLayout.CENTER) }
+            add(note(FlutterRouteText.footer(state)), BorderLayout.SOUTH)
         }
-        JBPopupFactory.getInstance()
-            .createComponentPopupBuilder(panel, list)
-            .setTitle("Flutter Back Stack")
-            .setMovable(true)
-            .setResizable(true)
-            .setRequestFocus(true)
-            .createPopup()
-            .showUnderneathOf(under)
     }
 
     /** Wrapped to a docked tool window's width; route names may hold anything, so it is escaped. */
-    private fun footer(text: String) = JBLabel(
-        "<html><body style='width: ${JBUI.scale(FOOTER_WIDTH)}px'>${StringUtil.escapeXmlEntities(text)}</body></html>",
+    fun note(text: String) = JBLabel(
+        "<html><body style='width: ${JBUI.scale(NOTE_WIDTH)}px'>${StringUtil.escapeXmlEntities(text)}</body></html>",
     ).apply {
         font = JBFont.small()
         foreground = UIUtil.getContextHelpForeground()
@@ -96,6 +86,6 @@ internal object FlutterBackStackPopup {
     private const val GAP = 4
     private const val PAD = 10
     private const val ROW_PAD = 3
-    private const val FOOTER_WIDTH = 300
+    private const val NOTE_WIDTH = 300
     private const val HTML_DISABLE = "html.disable"
 }

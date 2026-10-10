@@ -380,8 +380,8 @@ internal object NavigationConfidence {
     const val NESTED_UNKEYED = "A navigator without a GlobalKey is mounted besides the keyed one — a nested " +
         "Navigator — and Spock can't tell which one is showing."
 
-    const val NESTED_SEEN = "The last Flutter back stack check found a nested navigator without a key, so " +
-        "Spock can't tell which one is showing. Open Flutter back stack to check again."
+    const val NESTED_SEEN = "The last App back stack check found a nested navigator without a key, so " +
+        "Spock can't tell which one is showing. Open App back stack to check again."
 
     const val CHANGED = "The navigation changed while Spock checked it; read again."
 
