@@ -75,6 +75,11 @@ waits for it. User docs: [FLUTTER.md](FLUTTER.md).
   `.second` copy is described with no arguments while the first copy's session stays connected. A double-click
   opened `lib/…` only when the Flutter project root was open; it now resolves `lib/` from the pubspec next to
   `android/` too (#175). Pending: that device check, in the sample README.
+- **Rebuild tracking left on by a lost connection** (#175): the next session switches it off only when its DDS
+  outlived Spock's connection and replays Spock's switch-on with nothing written after it. After `flutter run`
+  died, `flutter attach`'s new DDS has no such history, so the flag is left on and the session says so
+  (`LEFT_UNPROVEN`) — by design, not fixed: what the IDE or DevTools wrote in between cannot be seen. Pending:
+  the device check in the sample README (P5b item 5); the switch-off path itself has no simple device repro.
 - **Cross-layer pair lost with the native half**: once the native line is older than the 1,500 logcat lines
   Diagnose reads, the pair stops merging while the Dart side keeps its history. Correct for the data read;
   documented, not fixed.
