@@ -61,7 +61,9 @@
   - **`android_get_debug_context`** and **`android_diagnose_current_screen`** return the same
     *flutter* section; each `likelyProblems` entry now has an `id`, which the section's errors point
     at. VM Service addresses and their tokens, which let whoever holds them run code in the app, are
-    kept out of every report, row and log line.
+    kept out of every report, row and log line — and out of raw logcat, where a debug build prints
+    its address: `android_get_logcat`, the `full` format of `android_get_debug_context` and
+    `android_run_adb_command` return it with the token as `<redacted>`.
 - **Flutter: errors from logcat, one problem for two layers, a rebuild window, and a status tool.**
   - **Diagnose** reads Flutter's framework errors from logcat when they are not sent to the
     debugger: with structured errors off (`--dart-define=flutter.inspector.structuredErrors=false`,

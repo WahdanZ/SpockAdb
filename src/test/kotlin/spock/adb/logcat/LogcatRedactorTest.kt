@@ -53,6 +53,20 @@ class LogcatRedactorTest {
     }
 
     @Test
+    fun `a VM Service address loses its token, and the redaction is counted`() {
+        val logcat = javaClass.getResource("/vmservice/logcat-vm-service.txt")!!.readText()
+
+        val result = LogcatRedactor.redact(logcat)
+
+        listOf("oLdToKeN1Ab", "AbCdEfGh123", "OtHeRaPp99x", "NeWeRpRoC4s").forEach { token ->
+            assertFalse(result.text.contains(token), "$token must not leave: ${result.text}")
+        }
+        assertTrue(result.text.contains("listening on http://127.0.0.1:43181/${LogcatRedactor.PLACEHOLDER}/"))
+        assertTrue(result.text.contains("hello from main()"))
+        assertEquals(4, result.count)
+    }
+
+    @Test
     fun `ordinary log text is left alone`() {
         val line = "12:00:00.000  1234  1250 I MainActivity: Screen opened: Offers (12 results)"
 

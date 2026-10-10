@@ -4,6 +4,7 @@ import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import spock.adb.device.ops.InspectionOperations
+import spock.adb.flutter.vmservice.Redaction
 import spock.adb.models.FragmentData
 
 /** `android_get_current_activity` — the resumed activity. */
@@ -112,7 +113,9 @@ internal object LogcatReader {
             append(" *:").append(minLevel)
         }
         return Read(
-            output = McpShell.run(device, command),
+            // Redacted here, at the way out: a Flutter debug build logs its VM Service address,
+            // and the token in it lets whoever reads it run code in the app.
+            output = Redaction.scrub(McpShell.run(device, command)),
             filteredByPackage = packageName != null,
             pidCount = pids.size,
         )
