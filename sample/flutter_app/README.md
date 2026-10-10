@@ -232,7 +232,7 @@ version (or "direct VM, no DDS"), and counts the events it hears, split into rep
 
 ## Navigation checks
 
-**All expectations below are unverified on device**, for both Flutter 3.22.2 and 3.47.5.
+**Checked on device** (Android 14 emulator) on Flutter 3.22.2 and 3.47.5, every row below (#169). Still unchecked: hot restart, switching the selected app during a read, transition retries.
 Run with `flutter run`, select this app in Spock, and wait for its existing Flutter session.
 Open **Navigation** from the hub. Let transitions settle before checking Home → This screen.
 
