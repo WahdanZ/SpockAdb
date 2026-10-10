@@ -148,6 +148,15 @@
   app selected, so nothing worked on it, and a Flutter app was not connected to, until the app was
   chosen again. Now the app chosen last time is selected again if the device has it installed;
   once Gradle sync names the project's own app, that one takes its place unless you chose another.
+- **`android_get_ui_tree` gives each control a tap point and can keep its labels.** Every
+  enabled clickable node now ends in `center=[x,y]`: the point `android_tap_element` taps, which
+  is the centre of the part in view, so a row half scrolled out of its list is not tapped under
+  the list's edge. A node outside the viewport, or disabled, gets none. The new `meaningfulOnly`
+  option lists what can be acted on plus anything with text or a content description, in screen
+  order, so a switch keeps the "Ticking" label beside it that `interactiveOnly` drops
+  ([#144](https://github.com/WahdanZ/SpockAdb/issues/144)). Both lists now show each element
+  once; `interactiveOnly` used to repeat a clickable row nested inside another match. The sample
+  app's Recomposition screen and fixture 15 show both.
 
 ### Fixed
 
@@ -334,15 +343,6 @@
 
 ### Changed
 
-- **`android_get_ui_tree` gives each control a tap point and can keep its labels.** Every
-  enabled clickable node now ends in `center=[x,y]`: the point `android_tap_element` taps, which
-  is the centre of the part in view, so a row half scrolled out of its list is not tapped under
-  the list's edge. A node outside the viewport, or disabled, gets none. The new `meaningfulOnly`
-  option lists what can be acted on plus anything with text or a content description, in screen
-  order, so a switch keeps the "Ticking" label beside it that `interactiveOnly` drops
-  ([#144](https://github.com/WahdanZ/SpockAdb/issues/144)). Both lists now show each element
-  once; `interactiveOnly` used to repeat a clickable row nested inside another match. The sample
-  app's Recomposition screen and fixture 15 show both.
 - **Home starts from the screen.** **This screen** is now the first section, with **Diagnose**
   ahead of **Copy screen for AI**, and the App section links to the **Debug timeline**. Text,
   deep links and push messages have their own **Send to app** section instead of sitting in the
@@ -518,7 +518,6 @@
   keeps the tree and says it is stale — "Captured from Pixel 7 — device changed; capture again" —
   rather than hiding what was captured.
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.6...HEAD
 ## [4.0.6] - 2026-09-22
 
 ### Added
