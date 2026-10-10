@@ -158,6 +158,10 @@
   one named `android` — and opens it at the line, outside the project or not, and while the IDE
   indexes. A file outside that app (a path dependency, a second app) is looked up by name as
   before, never opened as a same-named file of the app.
+- **The device and app popup tells two emulators apart and keeps underscores.** Devices that would
+  read the same — two emulators booted from one system image — now show their serial
+  (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
+  `spock.adb.spock_flutter_sample` no longer lose an underscore to a menu mnemonic.
 
 ## [4.0.7] - 2026-09-29
 
@@ -337,6 +341,15 @@
 
 ### Changed
 
+- **`android_get_ui_tree` gives each control a tap point and can keep its labels.** Every
+  enabled clickable node now ends in `center=[x,y]`: the point `android_tap_element` taps, which
+  is the centre of the part in view, so a row half scrolled out of its list is not tapped under
+  the list's edge. A node outside the viewport, or disabled, gets none. The new `meaningfulOnly`
+  option lists what can be acted on plus anything with text or a content description, in screen
+  order, so a switch keeps the "Ticking" label beside it that `interactiveOnly` drops
+  ([#144](https://github.com/WahdanZ/SpockAdb/issues/144)). Both lists now show each element
+  once; `interactiveOnly` used to repeat a clickable row nested inside another match. The sample
+  app's Recomposition screen and fixture 15 show both.
 - **Home starts from the screen.** **This screen** is now the first section, with **Diagnose**
   ahead of **Copy screen for AI**, and the App section links to the **Debug timeline**. Text,
   deep links and push messages have their own **Send to app** section instead of sitting in the

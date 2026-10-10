@@ -78,7 +78,8 @@ How to behave around them:
 
 - Find by semantics, not pixels: `android_find_ui_element` with `testTag`, then `text`, then
   `contentDescription`. `android_get_ui_tree` with `interactiveOnly: true` when you do not know
-  what is on screen.
+  what is on screen, or `meaningfulOnly: true` when you also need to know what each control is
+  for: it keeps the labels beside them.
 - Act with the element tools — `android_tap_element`, `android_long_press_element`,
   `android_scroll_to_element`, `android_input_text_into_element`. They refuse, and say why, when a
   selector matches several elements or a disabled one. Refine the selector (for example with
@@ -180,7 +181,8 @@ discard the saved instance state that process death keeps. Use them for cold sta
 
 1. `android_accessibility_audit` — each finding with its element and a fix.
 2. `android_get_ui_tree` with `interactiveOnly: true` — what a screen reader can reach, and what
-   each element announces (text, content description, role, state).
+   each element announces (text, content description, role, state). `meaningfulOnly: true` adds
+   the labels beside each control, for telling what an unlabelled one is for.
 3. For each finding, `android_find_ui_element` to identify the element in source terms (its
    test tag) so the developer can fix the right composable or view.
 4. After a fix is deployed: re-run `android_accessibility_audit` and compare the counts. A

@@ -6,6 +6,7 @@
   <a href="https://github.com/WahdanZ/SpockAdb/actions"><img src="https://github.com/WahdanZ/SpockAdb/workflows/Build/badge.svg" alt="Build status"></a>
   <a href="https://plugins.jetbrains.com/plugin/11591-spock-adb"><img src="https://img.shields.io/jetbrains/plugin/v/11591-spock-adb" alt="JetBrains Marketplace version"></a>
   <a href="https://plugins.jetbrains.com/plugin/11591-spock-adb"><img src="https://img.shields.io/jetbrains/plugin/d/11591-spock-adb" alt="Downloads"></a>
+  <a href="https://androidweekly.net/issues/issue-747"><img src="https://androidweekly.net/issues/issue-747/badge" alt="Featured in Android Weekly Issue #747"></a>
 </p>
 
 # Spock ADB

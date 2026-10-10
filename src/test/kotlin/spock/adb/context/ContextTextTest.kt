@@ -53,4 +53,40 @@ class ContextTextTest {
         assertTrue(ContextText.tooltip(snapshot, followsStudio = true).contains("Follows Android Studio"))
         assertTrue(ContextText.tooltip(snapshot, followsStudio = false).contains("Chosen here only"))
     }
+
+    private fun emulator(serial: String) = DeviceInfo(
+        serial,
+        "sdk_gphone64_arm64",
+        "Google",
+        "14",
+        34,
+        "arm64-v8a",
+        isEmulator = true,
+        state = DeviceState.ONLINE,
+    )
+
+    @Test
+    fun `two emulators from the same image are told apart by their serials`() {
+        val labels = ContextText.deviceLabels(listOf(emulator("emulator-5554"), emulator("emulator-5556"), pixel.info))
+        assertEquals(
+            listOf(
+                "Emulator: Google sdk_gphone64_arm64 · Android 14 · emulator-5554",
+                "Emulator: Google sdk_gphone64_arm64 · Android 14 · emulator-5556",
+                pixel.info.shortLabel(),
+            ),
+            labels,
+        )
+    }
+
+    @Test
+    fun `a device with a label of its own keeps it as it is`() {
+        val labels = ContextText.deviceLabels(listOf(emulator("emulator-5554"), pixel.info))
+        assertEquals(listOf(emulator("emulator-5554").shortLabel(), pixel.info.shortLabel()), labels)
+    }
+
+    @Test
+    fun `an underscore in a popup entry is shown, not read as a mnemonic`() {
+        val entry = ContextActions.choice("spock.adb.spock_flutter_sample", selected = false) {}
+        assertEquals("spock.adb.spock_flutter_sample", entry.templatePresentation.text)
+    }
 }
