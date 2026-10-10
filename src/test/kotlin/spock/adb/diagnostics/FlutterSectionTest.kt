@@ -386,6 +386,18 @@ class FlutterSectionTest : FlutterSectionFixture() {
     }
 
     @Test
+    fun `an error seen more often than the occurrences it keeps still pairs with the warning before its first`() {
+        // The first at AT, then 120 more from a minute later: only the latest 100 occurrences are kept.
+        val errors = listOf(error(AT)) + (1..120).map { error(AT + 60_000 + it * 1_000L) }
+        val before = logProblem("exception: before the first", "10-02 13:59:59.500")
+        val report = collect(live(errors = errors), before)
+
+        assertEquals(121, groupOf(report)["count"].asInt)
+        val nearby = groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString }
+        assertEquals(listOf(idOf(report, "exception: before the first")), nearby)
+    }
+
+    @Test
     fun `an app warning a second before the error is paired and shown, above older platform noise`() {
         // The device gate of 2026-10-02: start-up noise from minutes earlier filled the top ten.
         val noise = (1..12).map {

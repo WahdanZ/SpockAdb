@@ -422,7 +422,7 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
     private fun together(group: FlutterErrorReader.Group, epochs: List<Long>): Together? {
         val time = live?.deviceTime ?: return null
         val window = FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs
-        val gaps = group.occurrencesMs.map { at -> epochs.minOf { abs(it - at) } }.filter { it <= window }
+        val gaps = occurrences(group).map { at -> epochs.minOf { abs(it - at) } }.filter { it <= window }
         return gaps.minOrNull()?.let { Together(it, gaps.size) }
     }
 
@@ -460,9 +460,16 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
      */
     private fun distance(group: FlutterErrorReader.Group, epochs: List<Long>): Long? {
         val time = live?.deviceTime ?: return null
-        val closest = group.occurrencesMs.minOf { at -> epochs.minOf { abs(it - at) } }
+        val closest = occurrences(group).minOf { at -> epochs.minOf { abs(it - at) } }
         return closest.takeIf { it <= FlutterSection.NEARBY_WINDOW_MS + time.uncertaintyMs }
     }
+
+    /**
+     * When [group] was seen: the latest occurrences it keeps, and its first, which a group seen
+     * more often than that would otherwise lose — and with it the warning that came before it.
+     */
+    private fun occurrences(group: FlutterErrorReader.Group): List<Long> =
+        (listOf(group.firstSeenMs) + group.occurrencesMs).distinct()
 
     /** The problem listed for an error group: its own, or the cross-layer one it became part of. */
     private fun anchor(problem: LikelyProblem): LikelyProblem = crossLayer[problem] ?: problem
