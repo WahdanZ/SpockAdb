@@ -15,6 +15,7 @@ import spock.adb.flutter.analysis.FlutterExtensionEvent
 import spock.adb.flutter.navigation.FlutterNavigationState
 import spock.adb.flutter.navigation.NavigationConfidence
 import spock.adb.flutter.navigation.NavigatorReader
+import spock.adb.flutter.navigation.NonNavigatorElements
 import spock.adb.flutter.navigation.SessionObjects
 
 /**
@@ -33,6 +34,7 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
 
     private val sessions = FlutterSessionService.getInstance(project)
     private val nested = NestedNavigatorMemory()
+    private val notNavigators = NonNavigatorElements()
 
     /** Guards [watched] and [disposed] together: a session can connect while Home is being disposed. */
     private val lock = Any()
@@ -111,7 +113,8 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
         val isolate = snapshot.uiIsolateId
             ?: return FlutterNavigationState.unavailable("The session has no Flutter UI isolate selected yet.")
         val budget = if (check) CHECK_BUDGET_MS else HOME_BUDGET_MS
-        val reader = NavigatorReader(SessionObjects(session, isolate, budget))
+        val objects = SessionObjects(session, isolate, budget)
+        val reader = NavigatorReader(objects, notNavigators = notNavigators.scopeTo(session, isolate))
         if (!check) return NavigationConfidence.home(reader.readKeyed(), nested.seen(session, isolate))
         return reader.readChecked().also { nested.record(session, isolate, it) }
     }
@@ -134,7 +137,10 @@ internal class FlutterRouteSource(project: Project, parent: Disposable) {
     companion object {
         const val READ_FAILED = "Spock failed while reading the navigator; the error is in the IDE log."
 
-        /** Home's read, on every refresh: plain object reads, about twenty for a short stack. */
+        /**
+         * Home's read, on every refresh: plain object reads, one per keyed widget not yet known —
+         * bounded so they fit — and a few per route.
+         */
         const val HOME_BUDGET_MS = 3_000L
 
         /** The back stack check: Home's read and a heap walk (120–364 ms measured on 3.47.5). */

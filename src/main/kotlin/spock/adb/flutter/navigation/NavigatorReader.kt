@@ -24,8 +24,12 @@ internal interface VmObjects {
 
 /** How much a read may open before it gives up and says so. */
 internal data class NavigatorLimits(
-    /** `StatefulElement`s in the key registry opened to look for a `NavigatorState`. */
-    val maxElements: Int = 200,
+    /**
+     * Keyed `StatefulElement`s a read opens to look for a `NavigatorState`, one `getObject` each:
+     * about 11 ms a call measured on an emulator, so 80 fit Home's 3 s budget with room for the
+     * stack and a slower phone. Ones already known not to be navigators are not opened again.
+     */
+    val maxElements: Int = 80,
     /** `NavigatorState` instances counted by the heap walk. */
     val maxInstances: Int = 20,
 )
@@ -57,10 +61,20 @@ internal class NavigatorReader(
     private val objects: VmObjects,
     private val limits: NavigatorLimits = NavigatorLimits(),
     private val clock: () -> Long = System::currentTimeMillis,
+    private val notNavigators: NonNavigatorElements = NonNavigatorElements(),
 ) {
 
     /** Where Flutter declares a field Spock reads. */
     private class Owner(val className: String, val library: String)
+
+    /** A `StatefulElement` in the key registry, and the identities that let a later read skip it. */
+    private class KeyedElement(val element: JsonObject, val key: Long?, val identity: Long?) {
+        fun knownIn(memory: NonNavigatorElements) = key != null && identity != null && memory.contains(key, identity)
+
+        fun rememberIn(memory: NonNavigatorElements) {
+            if (key != null && identity != null) memory.add(key, identity)
+        }
+    }
 
     /** A mounted `NavigatorState`, opened, and its class for the heap walk. */
     private class Navigator(val state: JsonObject, val classId: String)
@@ -75,8 +89,10 @@ internal class NavigatorReader(
     private val opened = HashMap<String, JsonObject>()
 
     /**
-     * The stack of the one navigator with a `GlobalKey`: [Confidence.KEYED] at best. Plain reads,
-     * about twenty `getObject` calls for a short stack; no heap walk. For Home, on every refresh.
+     * The stack of the one navigator with a `GlobalKey`: [Confidence.KEYED] at best. Plain reads, no
+     * heap walk: a few to reach the key registry, one per keyed `StatefulElement` not yet known not
+     * to be a navigator (all of them the first time, 60 or more in a small app; a screen's new ones
+     * after), and four or five per route. For Home, on every refresh.
      */
     fun readKeyed(): FlutterNavigationState = guarded { keyedState(keyedNavigators()) }
 
@@ -130,17 +146,22 @@ internal class NavigatorReader(
         val associations = registry.array("associations")
             ?: fail(missing("BuildOwner._globalKeyRegistry", "associations"))
         checkWhole(registry, associations, "the GlobalKey registry")
-        val elements = associations.map { association ->
+        // Every StatefulElement is opened, whatever its key's class: a Navigator takes any
+        // GlobalKey<NavigatorState>, and at runtime that is the same LabeledGlobalKey an overlay's is.
+        val unknown = associations.map { association ->
             val element = association.asJsonObject.obj("value") ?: fail(missing("MapAssociation", "value"))
             if (element.className == null) fail(missing("Element", "class"))
-            element
-        }.filter { it.className == STATEFUL_ELEMENT }
-        if (elements.size > limits.maxElements) fail(tooManyElements(limits.maxElements))
-        return elements.mapNotNull { element ->
-            val state = open(element).field("_state", ELEMENT)
-            val classId = navigatorClass(state) ?: return@mapNotNull null
-            open(state).takeIf(::isMounted)?.let { Navigator(it, classId) }
+            KeyedElement(element, association.asJsonObject.obj("key")?.let(::identityOrNull), identityOrNull(element))
+        }.filter { it.element.className == STATEFUL_ELEMENT && !it.knownIn(notNavigators) }
+        val navigators = unknown.take(limits.maxElements).mapNotNull { keyed ->
+            val state = open(keyed.element).field("_state", ELEMENT)
+            val classId = navigatorClass(state)
+            if (classId == null) keyed.rememberIn(notNavigators)
+            classId?.let { open(state).takeIf(::isMounted)?.let { Navigator(it, classId) } }
         }
+        // What was opened is remembered, so reading again goes on from there.
+        if (unknown.size > limits.maxElements) fail(tooManyElements(unknown.size), transient = true)
+        return navigators
     }
 
     /** Follow the VM class hierarchy rather than guessing from an app's subclass name. */
@@ -319,7 +340,8 @@ internal class NavigatorReader(
         fun severalKeyed(count: Int) = "$count navigators have a GlobalKey — a nested Navigator, or a router's " +
             "shell — and Spock can't tell yet which one is showing."
 
-        fun tooManyElements(limit: Int) = "The app has more than $limit keyed stateful widgets; Spock stops there."
+        fun tooManyElements(count: Int) = "Too many keyed widgets to check ($count) in one read; Spock goes on " +
+            "with the rest when it reads again."
 
         fun inProgress(routeClass: String, lifecycle: String) =
             "Navigation in progress: a $routeClass is $lifecycle. Read again once it settles."

@@ -164,14 +164,14 @@ class NavigatorReaderTest {
         reader(objects).readKeyed()
 
         assertTrue(objects.calls.none { it.startsWith("getInstances") })
-        // About twenty plain reads, as the spike measured; nothing that is not a StatefulElement is opened.
+        // Plain reads only; nothing that is not a StatefulElement is opened.
         assertTrue(objects.calls.size < 40, "${objects.calls.size} calls")
     }
 
     @Test
     fun `the check is exact when the keyed navigator is the only one mounted`() {
         val objects = FixtureObjects.load("root-3.22.2.json")
-        val reader = NavigatorReader(objects, NavigatorLimits()) { now.also { now += 150 } }
+        val reader = NavigatorReader(objects, NavigatorLimits(), clock = { now.also { now += 150 } })
 
         val state = reader.readChecked()
 
@@ -456,15 +456,112 @@ class NavigatorReaderTest {
         assertTrue(state.stack.isEmpty())
     }
 
+    /**
+     * [count] more keyed `StatefulElement`s in [objects]' registry, as an app's overlay entries put
+     * there: each with its own key and an `_OverlayEntryWidgetState`, which is no navigator.
+     */
+    private fun withOverlayEntries(objects: FixtureObjects, count: Int): FixtureObjects {
+        val registry = objects.objects().getAsJsonObject(FixtureObjects.REGISTRY)
+        val associations = registry.getAsJsonArray("associations")
+        val overlay = "package:flutter/src/widgets/overlay.dart"
+        val stateClass = classRef("classes/2000", "_OverlayEntryWidgetState", overlay)
+        val baseClass = classRef("classes/2001", "State", "package:flutter/src/widgets/framework.dart")
+        objects.objects().add("classes/2000", stateClass.deepCopy().apply { add("super", baseClass) })
+        objects.objects().add(
+            "classes/2001",
+            baseClass.deepCopy().apply { add("super", classRef("classes/Object", "Object", "dart:core")) },
+        )
+        repeat(count) { i ->
+            val element = instanceRef("objects/e$i", 300_000L + i, classRef("classes/1000", "StatefulElement", ""))
+            val state = instanceRef("objects/s$i", 400_000L + i, stateClass)
+            val key = instanceRef("objects/k$i", 200_000L + i, classRef("classes/1016", "LabeledGlobalKey", ""))
+            associations.add(
+                JsonObject().apply {
+                    add("key", key)
+                    add("value", element)
+                },
+            )
+            objects.objects().add(
+                "objects/e$i",
+                element.deepCopy().apply {
+                    addProperty("type", "Instance")
+                    add(
+                        "fields",
+                        JsonArray().apply {
+                            add(
+                                JsonObject().apply {
+                                    addProperty("type", "BoundField")
+                                    add("decl", JsonObject().apply { addProperty("name", "_state") })
+                                    add("value", state)
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+        }
+        registry.addProperty("length", associations.size())
+        return objects
+    }
+
+    private fun instanceRef(id: String, identity: Long, type: JsonObject) = JsonObject().apply {
+        addProperty("type", "@Instance")
+        addProperty("kind", "PlainInstance")
+        addProperty("id", id)
+        addProperty("identityHashCode", identity)
+        add("class", type)
+    }
+
     @Test
-    fun `more keyed stateful widgets than the bound - unavailable rather than a long read`() {
-        val objects = FixtureObjects.load("root-3.22.2.json")
+    fun `a realistic key registry - one read opens each keyed widget once, the next only what is new`() {
+        val objects = withOverlayEntries(FixtureObjects.load("root-3.22.2.json"), 60)
+        val memory = NonNavigatorElements()
+        fun opens() = objects.calls.count { it.startsWith("getObject objects/e") }
 
-        val state = reader(objects, NavigatorLimits(maxElements = 2)).readKeyed()
+        val first = NavigatorReader(objects, clock = clock, notNavigators = memory).readKeyed()
+        assertEquals(listOf("/", "/items", "/item/3"), names(first))
+        assertEquals(60, opens())
+        assertTrue(objects.calls.size < 100, "${objects.calls.size} calls")
 
-        assertEquals(NavigatorReader.tooManyElements(2), state.unavailable)
-        // Counted before any is opened: the registry holds three StatefulElements here.
-        assertTrue(objects.calls.none { it.endsWith(objects.keyedNavigatorIds().single()) })
+        objects.calls.clear()
+        val again = NavigatorReader(objects, clock = clock, notNavigators = memory).readKeyed()
+        assertEquals(first, again)
+        assertEquals(0, opens())
+        assertTrue(objects.calls.size < 30, "${objects.calls.size} calls")
+    }
+
+    @Test
+    fun `more keyed widgets than one read opens - said so, and the next read goes on from there`() {
+        val objects = withOverlayEntries(FixtureObjects.load("root-3.22.2.json"), 60)
+        val memory = NonNavigatorElements()
+        val limits = NavigatorLimits(maxElements = 40)
+
+        val first = NavigatorReader(objects, limits, clock, memory).readKeyed()
+
+        // The fixture's three StatefulElements, and the sixty overlay entries.
+        assertEquals(NavigatorReader.tooManyElements(63), first.unavailable)
+        assertTrue(first.transient)
+        assertFalse(first.unavailable!!.contains("did not answer"))
+        val elements = objects.objects().getAsJsonObject(FixtureObjects.REGISTRY).getAsJsonArray("associations")
+            .map { "getObject " + it.asJsonObject.getAsJsonObject("value").get("id").asString }
+        assertEquals(40, objects.calls.count { it in elements })
+
+        val second = NavigatorReader(objects, limits, clock, memory).readKeyed()
+        assertEquals(listOf("/", "/items", "/item/3"), names(second))
+    }
+
+    @Test
+    fun `a keyed widget the VM gives no identity for is opened every time`() {
+        val objects = withOverlayEntries(FixtureObjects.load("root-3.22.2.json"), 2)
+        objects.objects().getAsJsonObject(FixtureObjects.REGISTRY).getAsJsonArray("associations")
+            .forEach { it.asJsonObject.getAsJsonObject("value").remove("identityHashCode") }
+        val memory = NonNavigatorElements()
+
+        NavigatorReader(objects, clock = clock, notNavigators = memory).readKeyed()
+        objects.calls.clear()
+        NavigatorReader(objects, clock = clock, notNavigators = memory).readKeyed()
+
+        assertEquals(2, objects.calls.count { it.startsWith("getObject objects/e") })
     }
 
     @Test
