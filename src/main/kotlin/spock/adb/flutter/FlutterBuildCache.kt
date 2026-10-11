@@ -58,10 +58,15 @@ class FlutterBuildCache(
 
     /**
      * [detect] on [device]: reads `dumpsys package` and, for an install not listed before, the
-     * APK listing. Null when [packageName] is not a Flutter app, or adb fails. Blocking.
+     * APK listing, each given [shellSeconds] to answer. Null when [packageName] is not a Flutter
+     * app, or adb fails or does not answer in time. Blocking.
      */
-    fun detectOn(device: IDevice, serial: String, packageName: String): FlutterBuild? =
-        (readOn(device, serial, packageName) as? Detection.Listed)?.build
+    fun detectOn(
+        device: IDevice,
+        serial: String,
+        packageName: String,
+        shellSeconds: Long = SHELL_SECONDS,
+    ): FlutterBuild? = (readOn(device, serial, packageName, shellSeconds) as? Detection.Listed)?.build
 
     /**
      * [detectOn], telling adb failing from an app that is not Flutter, for a caller that asks
@@ -69,14 +74,16 @@ class FlutterBuildCache(
      * is not Flutter: its `dumpsys package` answers, with no `versionCode`, and its listing is
      * empty. Blocking.
      */
-    fun readOn(device: IDevice, serial: String, packageName: String): Detection {
+    fun readOn(device: IDevice, serial: String, packageName: String, shellSeconds: Long = SHELL_SECONDS): Detection {
         val asked = "$serial $packageName"
         synchronized(recent) {
             recent[asked]?.takeIf { clock() - it.first < RECENT_MS }?.let { return Detection.Listed(it.second) }
         }
-        val dumpsys = runCatching { shell(device, "dumpsys package ${ShellQuote.quote(packageName)}") }
+        val dumpsys = runCatching { shell(device, "dumpsys package ${ShellQuote.quote(packageName)}", shellSeconds) }
             .getOrNull() ?: return Detection.AdbFailed
-        val read = read(serial, packageName, dumpsys) { shell(device, FlutterBuild.listingCommand(packageName)) }
+        val read = read(serial, packageName, dumpsys) {
+            shell(device, FlutterBuild.listingCommand(packageName), shellSeconds)
+        }
         if (read is Detection.Listed) {
             synchronized(recent) {
                 recent[asked] = clock() to read.build
@@ -92,9 +99,9 @@ class FlutterBuildCache(
      */
     private val recent = LinkedHashMap<String, Pair<Long, FlutterBuild?>>()
 
-    private fun shell(device: IDevice, command: String): String {
+    private fun shell(device: IDevice, command: String, seconds: Long): String {
         val receiver = ShellOutputReceiver()
-        device.executeShellCommand(command, receiver, SHELL_SECONDS, TimeUnit.SECONDS)
+        device.executeShellCommand(command, receiver, seconds, TimeUnit.SECONDS)
         return receiver.toString()
     }
 

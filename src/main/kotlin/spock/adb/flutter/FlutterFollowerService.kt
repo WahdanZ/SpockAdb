@@ -81,13 +81,14 @@ class FlutterFollowerService(private val project: Project) : Disposable {
 
     /**
      * What Diagnose reports in its `flutter` section for [applicationId] on [device]: null for an
-     * app that is not a Flutter app, so there is no section. Attaches when there is no session
-     * yet, within [ATTACH_BUDGET_MS], then reads the session within [READ_BUDGET_MS] more. Never
-     * starts rebuild recording. Blocking: from a pooled thread.
+     * app that is not a Flutter app, or not known to be one within [DETECT_SECONDS], so there is
+     * no section. Attaches when there is no session yet, within [ATTACH_BUDGET_MS], then reads the
+     * session within [READ_BUDGET_MS] more. Never starts rebuild recording. Blocking: from a
+     * pooled thread.
      */
     fun diagnosticSource(device: ConnectedDevice, applicationId: String?): FlutterDiagnosticSource? {
         val app = applicationId?.takeIf { it.isNotBlank() } ?: return null
-        val build = FlutterBuildCache.shared.detectOn(device.device, device.serialNumber, app) ?: return null
+        val build = detectForDiagnose(device, app) ?: return null
         val outcome = follower.attachNow(device, app, build, ATTACH_BUDGET_MS)
         val connected = outcome as? FlutterAttachOutcome.Connected
         return FlutterDiagnosticSource(
@@ -200,6 +201,20 @@ class FlutterFollowerService(private val project: Project) : Disposable {
         const val NEW_CLOCK_WAIT_MS = 5_000L
 
         private const val ADB_SECONDS = 5L
+
+        /**
+         * Each adb read of [diagnosticSource]'s detection. It runs before the report's own budget
+         * starts — for every app, and with an APK listing once per install — so a hung adb at the
+         * build cache's usual wait would hold Diagnose back for most of a minute before any section.
+         */
+        const val DETECT_SECONDS = 5L
+
+        /** How [applicationId] was built, for Diagnose; null when it is not Flutter or adb does not say in time. */
+        internal fun detectForDiagnose(
+            device: ConnectedDevice,
+            applicationId: String,
+            cache: FlutterBuildCache = FlutterBuildCache.shared,
+        ): FlutterBuild? = cache.detectOn(device.device, device.serialNumber, applicationId, DETECT_SECONDS)
 
         /** What Flutter printed in the last [lines] of logcat, for framework errors while structured errors are off. */
         private fun flutterLogCommand(lines: Int) = "logcat -d -v threadtime -t $lines ${FlutterLogcatErrors.FILTER}"

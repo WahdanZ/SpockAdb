@@ -1,5 +1,7 @@
 package spock.adb.logcat
 
+import spock.adb.flutter.vmservice.Redaction
+
 /**
  * Replaces things that look like credentials before log text leaves the machine.
  *
@@ -11,6 +13,9 @@ package spock.adb.logcat
  * Conservative on purpose. A false positive costs the model one value it probably did not need;
  * a false negative puts a live session token in a third party's request log, which cannot be
  * undone. Every replacement is counted so the generated context can say it happened.
+ *
+ * A Flutter debug build prints its VM Service address — token included — to logcat, so
+ * [Redaction.scrub] runs first, before a header rule can take part of the address with it.
  */
 object LogcatRedactor {
 
@@ -41,12 +46,14 @@ object LogcatRedactor {
     )
 
     fun redact(text: String): Result {
-        var current = text
-        var count = 0
+        var current = Redaction.scrub(text)
+        var count = current.placeholders() - text.placeholders()
         RULES.forEach { (pattern, replacement) ->
             count += pattern.findAll(current).count()
             current = pattern.replace(current, replacement)
         }
         return Result(current, count)
     }
+
+    private fun String.placeholders(): Int = split(Redaction.PLACEHOLDER).size - 1
 }
