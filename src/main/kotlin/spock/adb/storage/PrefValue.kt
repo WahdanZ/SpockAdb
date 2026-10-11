@@ -5,7 +5,10 @@ import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import java.util.Base64
 
-/** The value types SharedPreferences and Preferences DataStore can hold. */
+/**
+ * The value types SharedPreferences and Preferences DataStore can hold, plus [STRING_LIST], which
+ * only Flutter's shared_preferences stores (encoded inside a string; see [FlutterPrefsXml]).
+ */
 enum class PrefType(val label: String) {
     BOOLEAN("boolean"),
     INT("int"),
@@ -14,6 +17,7 @@ enum class PrefType(val label: String) {
     DOUBLE("double"),
     STRING("string"),
     STRING_SET("string set"),
+    STRING_LIST("string list"),
     BYTES("bytes"),
     ;
 
@@ -80,6 +84,12 @@ sealed interface PrefValue {
         override fun text(): String = GSON.toJson(values)
     }
 
+    /** Ordered and may repeat a value, unlike [StringSetValue]. */
+    data class StringListValue(val values: List<String>) : PrefValue {
+        override val type get() = PrefType.STRING_LIST
+        override fun text(): String = GSON.toJson(values)
+    }
+
     class BytesValue(val value: ByteArray) : PrefValue {
         override val type get() = PrefType.BYTES
         override fun text(): String = Base64.getEncoder().encodeToString(value)
@@ -98,6 +108,7 @@ sealed interface PrefValue {
             PrefType.DOUBLE -> DoubleValue(decimal(text, "double", String::toDouble, Double::isInfinite))
             PrefType.STRING -> StringValue(text)
             PrefType.STRING_SET -> StringSetValue(stringSet(text))
+            PrefType.STRING_LIST -> StringListValue(strings(text, "string list"))
             PrefType.BYTES -> BytesValue(bytes(text))
         }
 
@@ -134,20 +145,24 @@ sealed interface PrefValue {
         }
 
         private fun stringSet(text: String): List<String> {
-            val invalid = "'$text' is not a string set. Write it as a JSON array of strings, such as [\"a\", \"b\"]."
+            val values = strings(text, "string set")
+            val repeated = values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+            require(repeated.isEmpty()) { "A string set holds each value once; repeated: ${repeated.joinToString()}." }
+            return values
+        }
+
+        private fun strings(text: String, what: String): List<String> {
+            val invalid = "'$text' is not a $what. Write it as a JSON array of strings, such as [\"a\", \"b\"]."
             val element = try {
                 JsonParser.parseString(text)
             } catch (e: JsonParseException) {
                 throw IllegalArgumentException(invalid, e)
             }
             require(element.isJsonArray) { invalid }
-            val values = element.asJsonArray.map { item ->
+            return element.asJsonArray.map { item ->
                 require(item.isJsonPrimitive && item.asJsonPrimitive.isString) { invalid }
                 item.asString
             }
-            val repeated = values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
-            require(repeated.isEmpty()) { "A string set holds each value once; repeated: ${repeated.joinToString()}." }
-            return values
         }
 
         private val DECIMAL = Regex("""[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?""")

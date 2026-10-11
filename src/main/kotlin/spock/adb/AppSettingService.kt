@@ -127,6 +127,9 @@ class AppSettingService : PersistentStateComponent<AppSetting> {
  * @param recentActionIds the actions last run from that popup, newest first.
  * @param followStudioDevice selects the device chosen in Android Studio's run-target selector
  *   whenever that choice changes, so the device is picked once for running and debugging alike.
+ * @param recordFlutterHttp switches dart:io's HTTP recording on when Spock attaches to a Flutter
+ *   app by itself — only over DDS, in debug and profile builds, and back off when Spock
+ *   disconnects — so Diagnose and the Timeline hold the failed request that came before the bug.
  */
 data class AppSetting(
     val selectedDevice: String? = "",
@@ -137,6 +140,7 @@ data class AppSetting(
     val followStudioDevice: Boolean = true,
     val pinnedActionIds: List<String>? = null,
     val recentActionIds: List<String> = emptyList(),
+    val recordFlutterHttp: Boolean = true,
 )
 enum class SpockAction {
     APP_INFO,

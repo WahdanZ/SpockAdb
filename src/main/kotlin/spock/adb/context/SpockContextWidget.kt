@@ -19,6 +19,7 @@ import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
 import spock.adb.actions.SpockActionsPopup
+import spock.adb.device.DeviceInfo
 
 /**
  * The device and app every Spock surface acts on, in the status bar.
@@ -102,6 +103,18 @@ internal object ContextText {
         return "Spock ADB acts on $device, app $app. $follow Click to change."
     }
 
+    /**
+     * One popup line per device, in order. Two emulators booted from the same system image read
+     * the same, so a line shared with another device gets the serial, which tells them apart.
+     */
+    fun deviceLabels(devices: List<DeviceInfo>): List<String> {
+        val labels = devices.map { it.shortLabel() }
+        val shared = labels.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        return devices.zip(labels) { device, label ->
+            if (label in shared) "$label · ${device.serialNumber}" else label
+        }
+    }
+
     const val NO_DEVICE = "No Android device"
     const val NO_SELECTION = "Choose a device"
 }
@@ -113,9 +126,10 @@ internal object ContextActions {
         val snapshot = selection.snapshot
         add(Separator.create("Device"))
         if (snapshot.devices.isEmpty()) add(disabled(ContextText.NO_DEVICE))
-        snapshot.devices.forEach { device ->
+        val labels = ContextText.deviceLabels(snapshot.devices.map { it.info })
+        snapshot.devices.zip(labels).forEach { (device, label) ->
             add(
-                choice(device.info.shortLabel(), selected = device.serialNumber == snapshot.device?.serialNumber) {
+                choice(label, selected = device.serialNumber == snapshot.device?.serialNumber) {
                     selection.selectDevice(device.serialNumber)
                 },
             )
@@ -159,8 +173,17 @@ internal object ContextActions {
         )
     }
 
-    private fun choice(text: String, selected: Boolean, choose: () -> Unit): AnAction =
-        object : DumbAwareToggleAction(text) {
+    /**
+     * A device or app entry. Its text is a serial, a model or a package name, where `_` is part
+     * of the name, so it is set as plain text: read for a mnemonic, `sdk_gphone64` showed as
+     * `sdkgphone64`.
+     */
+    internal fun choice(text: String, selected: Boolean, choose: () -> Unit): AnAction =
+        object : DumbAwareToggleAction() {
+            init {
+                templatePresentation.setText(text, false)
+            }
+
             override fun getActionUpdateThread() = ActionUpdateThread.EDT
             override fun isSelected(event: AnActionEvent) = selected
             override fun setSelected(event: AnActionEvent, state: Boolean) = choose()

@@ -79,7 +79,9 @@ internal class AppInfoCard : JPanel(GridBagLayout()) {
 
     private fun show(info: AppInfo?) {
         packageValue.text = info?.packageName ?: UNKNOWN
-        versionValue.text = info?.version() ?: UNKNOWN
+        versionValue.text = listOfNotNull(info?.version(), info?.flutter?.let { "Flutter ${it.label}" })
+            .joinToString("  ·  ")
+            .ifEmpty { UNKNOWN }
         uidValue.text = info?.uid ?: UNKNOWN
         // "Stopped" rather than an empty line: an app that is not running is the answer to a
         // question, not a field the device failed to fill in.

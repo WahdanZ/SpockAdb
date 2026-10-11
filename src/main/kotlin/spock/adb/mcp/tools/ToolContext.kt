@@ -4,6 +4,7 @@ import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.CancellationSignal
 import spock.adb.device.ConnectedDevice
+import spock.adb.device.DeviceTarget
 
 /**
  * Everything a tool needs to reach a device, without knowing how it was resolved.
@@ -36,6 +37,15 @@ interface ToolContext {
      */
     fun requireDevice(serialOverride: String? = null): ConnectedDevice
 
+    /**
+     * The target this call acts on, for code that works on any platform. Android only until the
+     * iOS simulator backend registers its own targets; until then this is [requireDevice].
+     *
+     * A wrapper that overrides [requireDevice] must override this too: delegation by `by base`
+     * forwards this call to the base's [requireDevice], not the wrapper's.
+     */
+    fun requireTarget(idOverride: String? = null): DeviceTarget = DeviceTarget.Android(requireDevice(idOverride))
+
     /** Persists the agent's device choice for subsequent calls. */
     fun selectDevice(serial: String): ConnectedDevice
 
@@ -64,7 +74,7 @@ interface ToolContext {
      * Returns false when declined. Implementations must block until the developer answers
      * and must never default to true — an unattended IDE denies rather than approves.
      */
-    fun confirmDestructive(toolName: String, summary: String, device: ConnectedDevice): Boolean
+    fun confirmDestructive(toolName: String, summary: String, target: DeviceTarget): Boolean
 
     /** The application ID of the open project's app module, when it can be resolved. */
     fun projectApplicationId(): String?
@@ -89,6 +99,16 @@ interface ToolContext {
      */
     val canCancel: Boolean get() = true
 }
+
+/**
+ * [ToolContext.confirmDestructive] for an Android device, which is what every tool so far acts on.
+ *
+ * An extension rather than an interface member so that it always goes through the target
+ * overload: a member would be forwarded by `by base` delegation straight to the base, past a
+ * wrapper that overrides only the target overload.
+ */
+fun ToolContext.confirmDestructive(toolName: String, summary: String, device: ConnectedDevice): Boolean =
+    confirmDestructive(toolName, summary, DeviceTarget.Android(device))
 
 /** Convenience for the many tools that only need the ddmlib handle. */
 fun ToolContext.requireIDevice(serialOverride: String? = null): IDevice =

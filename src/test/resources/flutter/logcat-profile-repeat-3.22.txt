@@ -1,0 +1,8 @@
+10-02 14:03:05.000 29837 29837 I flutter : Sample app ready
+10-02 14:03:07.412 29837 29837 I flutter : Bad state: Sample error thrown in a tap handler
+10-02 14:03:07.413 29837 29837 I flutter : #0      _ErrorsScreenState.build.<anonymous closure> (package:spock_flutter_sample/fixtures/errors.dart:68)
+10-02 14:03:07.413 29837 29837 I flutter : #1      _InkResponseState.handleTap (package:flutter/src/material/ink_well.dart:1170)
+10-02 14:03:07.413 29837 29837 I flutter : #2      GestureRecognizer.invokeCallback (package:flutter/src/gestures/recognizer.dart:351)
+10-02 14:03:07.413 29837 29837 I flutter : #3      TapGestureRecognizer.handleTapUp (package:flutter/src/gestures/tap.dart:656)
+10-02 14:03:07.413 29837 29837 I flutter : #4      PlatformDispatcher._dispatchPointerDataPacket (dart:ui/platform_dispatcher.dart:442)
+10-02 14:03:09.208 29837 29837 I flutter : Another exception was thrown: Instance of 'ErrorSummary'

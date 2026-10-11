@@ -140,6 +140,17 @@ class SharedPrefsXmlTest {
     }
 
     @Test
+    fun `refuses a string list, which only Flutter's file stores`() {
+        val thrown = assertThrows<IllegalArgumentException> {
+            SharedPrefsXml.write(
+                android.toByteArray(),
+                listOf(PrefChange.Put("l", PrefValue.StringListValue(listOf("a")))),
+            )
+        }
+        assertTrue(thrown.message!!.contains("cannot store a string list"), thrown.message)
+    }
+
+    @Test
     fun `removing a key that is not there is an error, not a silent no-op`() {
         assertThrows<IllegalArgumentException> {
             SharedPrefsXml.write(android.toByteArray(), listOf(PrefChange.Remove("missing")))

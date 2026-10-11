@@ -1,6 +1,7 @@
 package spock.adb.uitree
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -167,5 +168,54 @@ class UiTreeParserTest {
 
         // The toolbar TextView sits outside the ComposeView; the inner one does not.
         assertEquals(UiFramework.HYBRID, UiTreeParser.parse(hybrid).framework)
+    }
+
+    private fun node(cls: String, bounds: String, extra: String = "", children: String = "") =
+        """<node index="0" text="" resource-id="" class="$cls" package="spock.adb.spock_flutter_sample" """ +
+            """content-desc="" checkable="false" checked="false" clickable="false" enabled="true" """ +
+            """focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" """ +
+            """selected="false" bounds="$bounds" $extra>$children</node>"""
+
+    @Test
+    fun `a screen that is one blank surface is opaque, a Flutter screen with semantics is not`() {
+        val surface = node("android.view.View", "[0,72][1080,2564]")
+        val content = node("android.widget.FrameLayout", "[0,0][1080,2636]", children = surface)
+        val blank = UiTreeParser.parse("<?xml version='1.0' ?><hierarchy rotation=\"0\">$content</hierarchy>")
+        assertTrue(blank.isOpaqueSurface)
+
+        val login = UiTreeParser.parse(
+            checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-login.xml")).bufferedReader().readText(),
+        )
+        assertFalse(login.isOpaqueSurface)
+    }
+
+    private fun hierarchy(root: String) =
+        UiTreeParser.parse("<?xml version='1.0' ?><hierarchy rotation=\"0\">$root</hierarchy>")
+
+    @Test
+    fun `a root with nothing under it is not a drawn surface`() {
+        // A dump taken while a window is being torn down or set up: nothing to say about the app yet.
+        assertFalse(hierarchy(node("android.widget.FrameLayout", "[0,0][1080,2636]")).isOpaqueSurface)
+    }
+
+    @Test
+    fun `a screen with no size is not a drawn surface`() {
+        val surface = node("android.view.View", "[0,0][0,0]")
+        assertFalse(hierarchy(node("android.widget.FrameLayout", "[0,0][0,0]", children = surface)).isOpaqueSurface)
+    }
+
+    @Test
+    fun `a surface beside anything an agent can act on is not opaque`() {
+        val surface = node("android.view.View", "[0,72][1080,2564]")
+        listOf("checkable=\"true\"", "scrollable=\"true\"").forEach { flag ->
+            val control = node("android.view.View", "[0,0][10,10]").replace(flag.replace("true", "false"), flag)
+            val screen = node("android.widget.FrameLayout", "[0,0][1080,2636]", children = surface + control)
+            assertFalse(hierarchy(screen).isOpaqueSurface, flag)
+        }
+    }
+
+    @Test
+    fun `the note leads with capturing again, not with Flutter`() {
+        assertTrue(OPAQUE_SURFACE_NOTE.substringBefore("Flutter").contains("capture again"), OPAQUE_SURFACE_NOTE)
     }
 }

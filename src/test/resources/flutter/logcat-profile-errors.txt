@@ -1,0 +1,14 @@
+10-02 14:03:05.000  4242  4242 I flutter : Sample app ready
+10-02 14:03:07.412  4242  4242 I flutter : Bad state: Sample error thrown in a tap handler
+10-02 14:03:07.413  4242  4242 I flutter : #0      _ErrorsScreenState._throwInTapHandler (package:spock_flutter_sample/fixtures/errors.dart:88:5)
+10-02 14:03:07.413  4242  4242 I flutter : #1      _InkResponseState.handleTap (package:flutter/src/material/ink_well.dart:1170:21)
+10-02 14:03:07.413  4242  4242 I flutter : #2      GestureRecognizer.invokeCallback (package:flutter/src/gestures/recognizer.dart:351:24)
+10-02 14:03:07.413  4242  4242 I flutter : (elided 3 frames from dart:async)
+10-02 14:03:07.413  4242  4242 I flutter : #6      PlatformDispatcher._dispatchPointerDataPacket (dart:ui/platform_dispatcher.dart:442:31)
+10-02 14:03:07.413  9999  9999 I flutter : #0      main (package:another_app/main.dart:3:1)
+10-02 14:03:07.500  4242  4242 I flutter : Settings saved
+10-02 14:03:08.001  4242  4242 I flutter : Another exception was thrown: Bad state: Sample error thrown in a tap handler
+10-02 14:03:08.400  4242  4242 I flutter : Another exception was thrown: Invalid argument(s): Sample error thrown in build()
+10-02 14:03:09.000  4242  4242 I flutter : The app printed a stack of its own
+10-02 14:03:09.001  4242  4242 I flutter : #0      main (package:spock_flutter_sample/main.dart:12:3)
+10-02 14:03:09.500  4242  4242 I flutter : Another exception was thrown: Bad state: Sample error thrown in a tap handler
