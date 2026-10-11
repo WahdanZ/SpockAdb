@@ -198,4 +198,250 @@ class LogProblemExtractorTest {
 
         assertEquals("anr", result.problems.single().type)
     }
+
+    /** Captured from `sample/flutter_app` (Errors screen) on an Android 14 emulator, Flutter 3.22. */
+    @Test
+    fun `Flutter's unhandled exceptions are one problem each, without their Dart frames`() {
+        val log = javaClass.getResource("/logcat/flutter-unhandled.txt")!!.readText()
+        val problems = LogProblemExtractor.extract(log, "spock.adb.spock_flutter_sample", listOf("14683")).problems
+
+        val summaries = problems.map { it.type to it.summary }
+        assertTrue(
+            LogProblemExtractor.TYPE_EXCEPTION to
+                "Unhandled Dart exception: FormatException: Sample unhandled async error" in summaries,
+            "$summaries",
+        )
+        assertTrue(
+            summaries.any { (type, summary) ->
+                type == LogProblemExtractor.TYPE_FLUTTER_PLUGIN && summary.startsWith(
+                    "Flutter plugin not registered: No implementation found for method ping on channel " +
+                        "spock.sample/not_registered",
+                )
+            },
+            "$summaries",
+        )
+        assertTrue(
+            LogProblemExtractor.TYPE_FLUTTER_PLUGIN to
+                "Platform channel returned an error: SAMPLE_ERROR — Sample PlatformException from Android" in summaries,
+            "$summaries",
+        )
+        // The native exception a channel handler threw: the Dart side, and the native side once.
+        assertTrue(
+            summaries.any { it.second.startsWith("Platform channel returned an error: error — Sample native crash") },
+            "$summaries",
+        )
+        val frames = summaries.filter { it.second.contains("#0 ") || it.second.contains("asynchronous suspension") }
+        assertTrue(frames.isEmpty(), "$frames")
+        assertTrue(problems.all { it.count == 1 }, "$problems")
+    }
+
+    private fun flutterHead(exception: String) =
+        line(100, 'E', "flutter", "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: $exception")
+
+    private fun flutterSummary(exception: String) = extract(flutterHead(exception)).problems.single().summary
+
+    @Test
+    fun `a second unhandled exception in the same millisecond is its own problem`() {
+        val result = extract(
+            flutterHead("FormatException: first"),
+            line(100, 'E', "flutter", "#0      main (package:app/main.dart:1:1)"),
+            flutterHead("StateError: second"),
+            line(100, 'E', "flutter", "#0      main (package:app/main.dart:2:1)"),
+        )
+
+        assertEquals(
+            listOf("Unhandled Dart exception: FormatException: first", "Unhandled Dart exception: StateError: second"),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `a platform error's message keeps its commas`() {
+        assertEquals(
+            "Platform channel returned an error: AUTH_FAILED — Sign-in failed, try again later",
+            flutterSummary("PlatformException(AUTH_FAILED, Sign-in failed, try again later, null, null)"),
+        )
+        // The native stack trace starts on the head line and runs over the lines after it.
+        assertEquals(
+            "Platform channel returned an error: error — Boom, again",
+            flutterSummary("PlatformException(error, Boom, again, null, java.lang.IllegalStateException: Boom, again"),
+        )
+        assertEquals(
+            "Platform channel returned an error: NO_MESSAGE",
+            flutterSummary("PlatformException(NO_MESSAGE, null, null, null)"),
+        )
+    }
+
+    /**
+     * The messages are the device's (Android 14, Flutter 3.22.2, sample `error_channel_checked`
+     * and `error_channel_todo`); pid and stamps are set to one process, a few ms apart.
+     */
+    @Test
+    fun `a checked exception in a channel handler is a handler failure, not a missing plugin`() {
+        val log = javaClass.getResource("/logcat/flutter-channel-handler.txt")!!.readText()
+        val problems = LogProblemExtractor.extract(log, "spock.adb.spock_flutter_sample", listOf("21877")).problems
+
+        assertEquals(
+            listOf(
+                LogProblemExtractor.TYPE_FLUTTER_PLUGIN to "Platform channel handler for throwChecked on " +
+                    "spock.sample/native threw java.io.IOException: " +
+                    "Sample checked exception thrown in a channel handler (inferred from DartMessenger's log)",
+                LogProblemExtractor.TYPE_CRASH to
+                    "App crashed: kotlin.NotImplementedError: An operation is not implemented: Sample (thread main)",
+            ),
+            problems.map { it.type to it.summary },
+        )
+        assertTrue(problems.all { it.count == 1 && it.severity == Severity.ERROR }, "$problems")
+        assertEquals("10-01 22:31:04.519", problems.first().lastSeen)
+    }
+
+    private val listenerFailure = "Uncaught exception in binary message listener"
+    private val noImplementation = "MissingPluginException(No implementation found for method m on channel c)"
+
+    @Test
+    fun `a missing plugin long after a handler failure is still a missing plugin`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure, time = "09-25 10:00:00.000"),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom", time = "09-25 10:00:00.000"),
+            line(
+                100,
+                'E',
+                "flutter",
+                "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: $noImplementation",
+                time = "09-25 10:00:05.000",
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "DartMessenger: $listenerFailure — java.io.IOException: boom",
+                "Flutter plugin not registered: No implementation found for method m on channel c",
+            ),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `a handler failure in another process does not explain a missing plugin`() {
+        val result = extract(
+            line(200, 'E', "DartMessenger", listenerFailure),
+            line(200, 'E', "DartMessenger", "java.io.IOException: boom"),
+            flutterHead(noImplementation),
+            pids = listOf("100", "200"),
+        )
+
+        assertTrue(result.problems.any { it.summary.startsWith("Flutter plugin not registered") }, "${result.problems}")
+    }
+
+    @Test
+    fun `a handler failure logged without its exception still explains the missing plugin`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure),
+            flutterHead(noImplementation),
+        )
+
+        assertEquals(
+            listOf("Platform channel handler for m on c threw an exception (inferred from DartMessenger's log)"),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `two handler failures in a row stay two failures with a count`() {
+        val failure = arrayOf(
+            line(100, 'E', "DartMessenger", listenerFailure),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom"),
+            flutterHead(noImplementation),
+        )
+
+        val problems = extract(*failure, *failure).problems
+
+        assertEquals(1, problems.size, "$problems")
+        assertEquals(2, problems.single().count)
+    }
+
+    @Test
+    fun `a missing plugin's message keeps its own closing parenthesis`() {
+        assertEquals(
+            "Flutter plugin not registered: No implementation found for method ping on channel app/x (v2)",
+            flutterSummary("MissingPluginException(No implementation found for method ping on channel app/x (v2))"),
+        )
+    }
+
+    private fun missing(method: String, time: String = "09-25 10:00:00.000") = line(
+        100,
+        'E',
+        "flutter",
+        "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: " +
+            "MissingPluginException(No implementation found for method $method on channel c)",
+        time = time,
+    )
+
+    @Test
+    fun `a missing plugin more than half a second after a handler failure is not paired`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure, time = "09-25 10:00:00.000"),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom", time = "09-25 10:00:00.000"),
+            missing("m", time = "09-25 10:00:00.600"),
+        )
+
+        assertTrue(result.problems.any { it.summary.startsWith("Flutter plugin not registered") }, "${result.problems}")
+    }
+
+    @Test
+    fun `another line of the process between the two breaks the pairing`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom"),
+            line(100, 'I', "flutter", "user tapped Save"),
+            missing("m"),
+        )
+
+        assertEquals(
+            listOf(
+                "DartMessenger: $listenerFailure — java.io.IOException: boom",
+                "Flutter plugin not registered: No implementation found for method m on channel c",
+            ),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `two failures before their replies pair first with first`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure),
+            line(100, 'E', "DartMessenger", "java.io.IOException: first"),
+            line(100, 'E', "DartMessenger", "\tat app.Handler.onMethodCall(Handler.kt:12)"),
+            line(100, 'E', "DartMessenger", listenerFailure),
+            line(100, 'E', "DartMessenger", "java.io.IOException: second"),
+            missing("one"),
+            line(100, 'E', "flutter", "#0      MethodChannel._invokeMethod (package:flutter/x.dart:1:1)"),
+            missing("two", time = "09-25 10:00:00.001"),
+        )
+
+        val inferred = " (inferred from DartMessenger's log)"
+        assertEquals(
+            listOf(
+                "Platform channel handler for one on c threw java.io.IOException: first$inferred",
+                "Platform channel handler for two on c threw java.io.IOException: second$inferred",
+            ),
+            result.problems.map { it.summary },
+        )
+    }
+
+    @Test
+    fun `a failure taken back leaves the problem its earlier time`() {
+        val result = extract(
+            line(100, 'E', "DartMessenger", listenerFailure, time = "09-25 10:00:00.000"),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom", time = "09-25 10:00:00.000"),
+            line(100, 'E', "DartMessenger", listenerFailure, time = "09-25 10:00:05.000"),
+            line(100, 'E', "DartMessenger", "java.io.IOException: boom", time = "09-25 10:00:05.000"),
+            missing("m", time = "09-25 10:00:05.010"),
+        )
+
+        val messenger = result.problems.single { it.summary.startsWith("DartMessenger") }
+        assertEquals(1, messenger.count)
+        assertEquals("09-25 10:00:00.000", messenger.lastSeen)
+        assertEquals("09-25 10:00:05.010", result.problems.single { it.summary.startsWith("Platform") }.lastSeen)
+    }
 }

@@ -1,6 +1,6 @@
 ---
 name: spock-adb
-description: Debug Android apps on a connected device or emulator through the Spock ADB MCP server (tools named android_*). Use when asked to investigate a UI bug, a state bug, a crash or ANR, process-death survival, background work (WorkManager, JobScheduler, alarms, Doze), a deep link, or an accessibility problem in an Android app — or whenever android_* tools are available and the task involves a running Android app.
+description: Debug Android apps on a connected device or emulator through the Spock ADB MCP server (tools named android_*). Use when asked to investigate a UI bug, a state bug, a crash or ANR, process-death survival, background work (WorkManager, JobScheduler, alarms, Doze), a deep link, or an accessibility problem in an Android app, Flutter apps included — or whenever android_* tools are available and the task involves a running Android app.
 ---
 
 # Spock ADB debugging workflows
@@ -201,6 +201,35 @@ discard the saved instance state that process death keeps. Use them for cold sta
 4. After a fix: record the same interaction again and compare the counts.
 
 Sample app screen: **UI Inspector — Recomposition counts**.
+
+## Flutter apps
+
+Spock covers the device half of a Flutter app; the Dart MCP server (`dart mcp-server`), when it
+is connected too, covers the widget half. Do not try one through the other.
+
+- **Spock**: logcat, native crashes, permissions, push, deep links, storage, activities, process
+  death, native dialogs, and Dart errors next to all of those on one clock.
+- **Dart MCP**: the widget tree and selected widget, hot reload and restart, analysis, and tapping
+  by widget key through Flutter Driver.
+
+1. `flutter_app_status` first. `connected: false` means no Flutter data below: `attach` says why
+   (no debugger session — the app must run under `flutter run` or `flutter attach`; a release
+   build; still starting; frozen in the background). Tell the developer; do not retry in a loop.
+2. `android_diagnose_current_screen`, then its `flutter` section. `errors.source` says where the
+   errors were read (VM Service or logcat). A `flutterCrossLayer` problem is one fault seen in Dart
+   and on Android; read both `parts` — a failed channel handler, for one, makes Dart see a
+   `MissingPluginException` though the plugin is there. Empty `errors` is not "no errors": read `notes`
+   (an app that replaced `FlutterError.onError` hides them). Frame times mean something only in a
+   profile build.
+3. A system permission dialog, share sheet or picker over the app is native: Dart MCP cannot see
+   it. Use `android_find_ui_element` and `android_tap_element` (or `android_grant_permission`
+   before the app asks), then re-read.
+4. Spock's element tools find Flutter widgets by `Semantics(identifier:)`, passed as `testTag`. A
+   widget without one has only its text or label to match. If the tree is one empty surface, the
+   app has semantics off: say so, and use a screenshot.
+5. Rebuilds: `android_get_recomposition_counts` on a debug build records Flutter widget rebuilds.
+
+Details: [docs/FLUTTER.md](../../docs/FLUTTER.md).
 
 ## Reporting
 

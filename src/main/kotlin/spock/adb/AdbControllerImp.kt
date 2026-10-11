@@ -228,6 +228,13 @@ class AdbControllerImp(
         }
     }
 
+    override fun applicationBackStack(device: IDevice, block: (stack: Result<ApplicationBackStack>) -> Unit) =
+        read(block) {
+            val applicationID = getApplicationID(device)
+            val activities = GetApplicationBackStackCommand().execute(applicationID, project, device)
+            ApplicationBackStack(applicationID, activities)
+        }
+
     /** The selected app's activities, top first, each with its state and the fragments it holds. */
     private fun showAppBackStackPopup(applicationID: String, rows: List<AppBackStackRow>) {
         if (rows.isEmpty()) {
@@ -245,7 +252,7 @@ class AdbControllerImp(
      * Opens [className] in the editor. A fragment is usually printed by its simple name, which
      * only the short-name cache can resolve; a qualified name goes through the project scope.
      */
-    private fun openClass(className: String) {
+    override fun openClass(className: String) {
         execute {
             val psiClass = com.intellij.openapi.application.ReadAction.compute<PsiClass?, RuntimeException> {
                 if (className.contains('.')) {

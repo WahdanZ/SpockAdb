@@ -159,4 +159,34 @@ class LogcatTimelineClassifierTest {
             events.all { it.severity == TimelineSeverity.ERROR && it.category == TimelineCategory.APP_LIFECYCLE }
         )
     }
+
+    @Test
+    fun `a Flutter unhandled exception is one event, titled without the engine's source prefix`() {
+        val error = LogLevel.ERROR
+        val events = classifier().all(
+            entry(
+                "flutter",
+                "[ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: MissingPluginException(x)",
+                level = error,
+            ),
+            entry("flutter", "#0      MethodChannel._invokeMethod (package:flutter/src/services/…)", level = error),
+            entry("flutter", "<asynchronous suspension>", level = error),
+            entry("flutter", "", level = error),
+        )
+        assertEquals(1, events.size, "$events")
+        assertEquals("flutter: Unhandled Exception: MissingPluginException(x)", events.single().title)
+        assertTrue(events.single().detail.contains("<asynchronous suspension>"))
+    }
+
+    @Test
+    fun `a process start is reported once, with its time`() {
+        val started = mutableListOf<Pair<Int, Long>>()
+        val classifier = LogcatTimelineClassifier(app, emptySet(), "emulator-5554") { pid, at -> started += pid to at }
+        val start = entry("ActivityManager", "Start proc 5000:$app/u0a188 for activity", pid = systemPid)
+
+        classifier.accept(start, 1_000)
+        classifier.accept(start, 2_000)
+
+        assertEquals(listOf(5000 to 1_000L), started)
+    }
 }

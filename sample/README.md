@@ -10,6 +10,8 @@ Gradle build: the plugin's build, tests and Detekt never see it.
 Then check that the status bar names **spock.adb.sample** (click it to choose it if not). Each screen of the app notes the
 feature it is for.
 
+For Flutter apps there is a second fixture app in [`flutter_app/`](flutter_app/README.md).
+
 | Plugin feature                                               | Where in the sample                  | What to look for                                                                                                                                                            |
 |--------------------------------------------------------------|--------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Current Activity, Activity Stack                             | *Activity stack*                     | Each push adds a numbered `StackActivity`; *Separate task* adds a second task                                                                                               |

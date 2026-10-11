@@ -117,6 +117,25 @@ data class UiTree(
 ) {
     fun nodes(): Sequence<UiNode> = root?.asSequence() ?: emptySequence()
 
+    /**
+     * True when the screen is one drawn surface that publishes nothing: no node has text, a
+     * description or an action, and a single leaf below the root covers most of the screen. That
+     * is a Flutter app whose semantics are off, a game, a video or a map — all of them invisible
+     * to element tools, which should say so rather than report an empty screen. A root with
+     * nothing under it is not one: it is a window caught being set up or torn down.
+     */
+    val isOpaqueSurface: Boolean
+        get() {
+            val root = root ?: return false
+            val nodes = nodes().toList()
+            val publishes = nodes.any { it.isInteractive || it.text.isNotBlank() || it.contentDescription.isNotBlank() }
+            if (publishes) return false
+            val screen = root.bounds.width.toLong() * root.bounds.height
+            return screen > 0 && nodes.drop(1).any {
+                it.children.isEmpty() && it.bounds.width.toLong() * it.bounds.height * 2 >= screen
+            }
+        }
+
     /** Whether Compose test tags can be seen at all on this screen. */
     enum class TestTagSupport {
         /** Not a Compose screen; resource ids are View ids. */
@@ -133,6 +152,14 @@ data class UiTree(
         UNAVAILABLE,
     }
 }
+
+/** What an agent is told when [UiTree.isOpaqueSurface]: why the tree is empty, and what to try. */
+const val OPAQUE_SURFACE_NOTE =
+    "This screen publishes no accessibility nodes: it is one drawn surface. It may have been " +
+        "captured mid-transition, so capture again first. If it stays this way: a Flutter app may " +
+        "have semantics off — they turn on when an accessibility service connects, or call " +
+        "SemanticsBinding.instance.ensureSemantics() in debug builds — and games, video and maps " +
+        "look the same. Element tools cannot see inside it; use a screenshot."
 
 /**
  * How the visible screen is built.

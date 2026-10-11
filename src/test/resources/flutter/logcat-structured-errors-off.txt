@@ -1,0 +1,41 @@
+10-02 14:03:05.100  4242  4242 W SpockSample: Another app is starting
+10-02 14:03:05.200  9999  9999 I flutter : Another exception was thrown: from a different app
+10-02 14:03:07.412  4242  4242 I flutter : ══╡ EXCEPTION CAUGHT BY RENDERING LIBRARY ╞═════════════════════════════════════════════════════════
+10-02 14:03:07.412  4242  4242 I flutter : The following assertion was thrown during layout:
+10-02 14:03:07.412  4242  4242 I flutter : A RenderFlex overflowed by 219 pixels on the right.
+10-02 14:03:07.412  4242  4242 I flutter :
+10-02 14:03:07.412  4242  4242 I flutter : The relevant error-causing widget was:
+10-02 14:03:07.412  4242  4242 I flutter :   Row
+10-02 14:03:07.412  4242  4242 I flutter :   Row:file:///home/dev/spockAdb/sample/flutter_app/lib/fixtures/layout.dart:30:17
+10-02 14:03:07.412  4242  4242 I flutter :
+10-02 14:03:07.412  4242  4242 I flutter : To inspect this widget in Flutter DevTools, visit:
+10-02 14:03:07.412  4242  4242 I flutter : http://127.0.0.1:9102/#/inspector?uri=http%3A%2F%2F127.0.0.1%3A52511%2FAbCdEfGh123%3D%2F&inspectorRef=inspector-0
+10-02 14:03:07.412  4242  4242 I flutter :
+10-02 14:03:07.412  4242  4242 I flutter : The overflowing RenderFlex has an orientation of Axis.horizontal.
+10-02 14:03:07.412  4242  4242 I flutter : The edge of the RenderFlex that is overflowing has been marked in the rendering with a yellow and
+10-02 14:03:07.412  4242  4242 I flutter : black striped pattern. This is usually caused by the contents being too big for the RenderFlex.
+10-02 14:03:07.412  4242  4242 I flutter : Consider applying a flex factor (e.g. using an Expanded widget) to force the children of the
+10-02 14:03:07.412  4242  4242 I flutter : RenderFlex to fit within the available space instead of being sized to their natural size.
+10-02 14:03:07.412  4242  4242 I flutter : This is considered an error condition because it indicates that there is content that cannot be
+10-02 14:03:07.412  4242  4242 I flutter : seen. If the content is legitimately bigger than the available space, consider clipping it with a
+10-02 14:03:07.412  4242  4242 I flutter : ClipRect widget before putting it in the flex, or using a scrollable container rather than a Flex,
+10-02 14:03:07.412  4242  4242 I flutter : like a ListView.
+10-02 14:03:07.412  4242  4242 I flutter : The specific RenderFlex in question is: RenderFlex#8de67 relayoutBoundary=up5 OVERFLOWING:
+10-02 14:03:07.412  4242  4242 I flutter :   creator: Row ← RepaintBoundary ← IndexedSemantics ← _SelectionKeepAlive ←
+10-02 14:03:07.412  4242  4242 I flutter :     NotificationListener<KeepAliveNotification> ← KeepAlive ← AutomaticKeepAlive ← KeyedSubtree ←
+10-02 14:03:07.412  4242  4242 I flutter :     SliverList ← SliverPadding ← Viewport ← IgnorePointer-[GlobalKey#20800] ← ⋯
+10-02 14:03:07.412  4242  4242 I flutter :   parentData: <none> (can use size)
+10-02 14:03:07.412  4242  4242 I flutter :   constraints: BoxConstraints(w=328.0, 0.0<=h<=Infinity)
+10-02 14:03:07.412  4242  4242 I flutter :   size: Size(328.0, 48.0)
+10-02 14:03:07.412  4242  4242 I flutter :   direction: horizontal
+10-02 14:03:07.412  4242  4242 I flutter :   mainAxisAlignment: start
+10-02 14:03:07.412  4242  4242 I flutter :   mainAxisSize: max
+10-02 14:03:07.412  4242  4242 I flutter :   crossAxisAlignment: center
+10-02 14:03:07.412  4242  4242 I flutter :   textDirection: ltr
+10-02 14:03:07.412  4242  4242 I flutter :   verticalDirection: down
+10-02 14:03:07.412  4242  4242 I flutter : ◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤
+10-02 14:03:07.412  4242  4242 I flutter : ════════════════════════════════════════════════════════════════════════════════════════════════════
+10-02 14:03:08.001  4242  4242 I flutter : Another exception was thrown: Bad state: Sample error thrown in a tap handler
+10-02 14:03:08.002  4242  4242 I flutter : Another exception was thrown: Invalid argument(s): Sample error thrown in build()
+10-02 14:03:09.500  4242  4242 I flutter : Another exception was thrown: Bad state: Sample error thrown in a tap handler
+10-02 14:03:09.600  4242  4242 I flutter : some ordinary print from the app

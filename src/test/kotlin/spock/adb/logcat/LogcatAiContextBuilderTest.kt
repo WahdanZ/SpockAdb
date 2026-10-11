@@ -21,6 +21,20 @@ class LogcatAiContextBuilderTest {
         (1..count).map { entry("$prefix $it") }
 
     @Test
+    fun `copy for AI takes the token out of a VM Service address`() {
+        val logcat = javaClass.getResource("/vmservice/logcat-vm-service.txt")!!.readText()
+        val entries = logcat.lines().filter { it.isNotBlank() }.mapNotNull(LogcatParser::parse)
+
+        val context = LogcatAiContextBuilder.build(LogcatAiRequest(visible = entries))
+
+        listOf("oLdToKeN1Ab", "AbCdEfGh123", "OtHeRaPp99x", "NeWeRpRoC4s").forEach { token ->
+            assertFalse(context.text.contains(token), "$token must not reach the clipboard: ${context.text}")
+        }
+        assertTrue(context.text.contains("hello from main()"))
+        assertTrue(context.redactions >= 4, "the header must say what was redacted: ${context.redactions}")
+    }
+
+    @Test
     fun `a selection is used in preference to the visible log`() {
         val context = LogcatAiContextBuilder.build(
             LogcatAiRequest(

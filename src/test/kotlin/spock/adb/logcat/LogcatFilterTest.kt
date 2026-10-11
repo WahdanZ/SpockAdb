@@ -268,4 +268,15 @@ class LogcatFilterTest {
             LogcatHighlighter.classify(entry(level = LogLevel.DEBUG)),
         )
     }
+
+    @Test
+    fun `the Flutter intent shows Dart output, the engine and channel failures`() {
+        val filter = LogcatFilter(scope = LogcatScope.APP, intent = LogcatIntent.FLUTTER, app = running(100))
+
+        assertTrue(filter.matches(entry(pid = 100, tag = "flutter", message = "Sample debugPrint line")))
+        assertTrue(filter.matches(entry(pid = 100, level = LogLevel.ERROR, tag = "MethodChannel#spock.sample/native")))
+        assertTrue(filter.matches(entry(pid = 100, tag = "FlutterJNI", message = "Beginning load of flutter...")))
+        assertFalse(filter.matches(entry(pid = 100, tag = "OkHttp", message = "GET /offers")))
+        assertFalse(filter.matches(entry(pid = 999, tag = "flutter", message = "another app's Dart")))
+    }
 }

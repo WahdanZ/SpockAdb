@@ -79,6 +79,8 @@ class SpockAdbConfigurable : Configurable {
     /** Mirrors the widget's toggle; see [spock.adb.context.SpockSelection.followsStudio]. */
     private val followStudioBox = JBCheckBox("Follow the device selected in Android Studio's run-target selector")
 
+    private val flutterSettings = FlutterSettings()
+
     /** One checkbox per registered tool, in registry order within its safety group. */
     private val toolChecks = LinkedHashMap<String, JCheckBox>()
 
@@ -108,6 +110,7 @@ class SpockAdbConfigurable : Configurable {
             ),
             constraints,
         )
+        content.add(section("Flutter", flutterSettings.component), constraints)
         content.add(mcpSection(), constraints)
         // The AI Assistant section is not added while the tab is hidden: a settings page for a
         // feature with no way in is worse than no settings page — it reads as something broken.
@@ -431,7 +434,7 @@ class SpockAdbConfigurable : Configurable {
         val historyChanged = (historySpinner?.value as? Int)?.let { it != service.historySize } ?: false
         val toolsChanged = toolChecks.isNotEmpty() && uncheckedTools() != service.disabledTools
         val followChanged = followStudioBox.isSelected != AppSettingService.getInstance().state.followStudioDevice
-        return historyChanged || toolsChanged || followChanged || assistantModified()
+        return historyChanged || toolsChanged || followChanged || flutterSettings.isModified || assistantModified()
     }
 
     /**
@@ -451,6 +454,7 @@ class SpockAdbConfigurable : Configurable {
 
     override fun apply() {
         spock.adb.context.SpockSelection.followStudioEverywhere(followStudioBox.isSelected)
+        flutterSettings.apply()
         (historySpinner?.value as? Int)?.let { service.historySize = it }
         if (toolChecks.isNotEmpty()) service.setDisabledTools(uncheckedTools())
 
@@ -476,6 +480,7 @@ class SpockAdbConfigurable : Configurable {
 
     override fun reset() {
         followStudioBox.isSelected = AppSettingService.getInstance().state.followStudioDevice
+        flutterSettings.reset()
         historySpinner?.value = service.historySize
         toolChecks.forEach { (name, box) -> box.isSelected = service.isToolEnabled(name) }
 
@@ -528,5 +533,41 @@ class SpockAdbConfigurable : Configurable {
             "spock.adb.actions.OpenMcpPanelAction",
             "spock.adb.mcp.ToggleMcpServerAction",
         )
+    }
+}
+
+/**
+ * What Spock may change in a Flutter app it attaches to by itself: HTTP recording is the one
+ * write, undone on disconnect, and this switch is for whoever wants none at all. Its own
+ * component, so the page stays within its size.
+ */
+private class FlutterSettings {
+
+    /** [spock.adb.AppSetting.recordFlutterHttp]. */
+    private val recordHttpBox = JBCheckBox("Record Flutter HTTP traffic automatically")
+
+    val component: JComponent = JPanel(BorderLayout()).apply {
+        add(recordHttpBox, BorderLayout.NORTH)
+        add(
+            JBLabel(
+                "<html>When Spock connects to a debug or profile build through flutter run's debugger " +
+                    "service, it switches dart:io's HTTP recording on, so Diagnose and the Timeline show " +
+                    "failed requests; it switches it back off when it disconnects, and leaves recording " +
+                    "someone else switched on alone. Applies from the next connection.</html>",
+            ).apply { foreground = com.intellij.util.ui.UIUtil.getContextHelpForeground() },
+            BorderLayout.CENTER,
+        )
+    }
+
+    val isModified: Boolean
+        get() = recordHttpBox.isSelected != AppSettingService.getInstance().state.recordFlutterHttp
+
+    fun apply() {
+        val settings = AppSettingService.getInstance()
+        settings.loadState(settings.state.copy(recordFlutterHttp = recordHttpBox.isSelected))
+    }
+
+    fun reset() {
+        recordHttpBox.isSelected = AppSettingService.getInstance().state.recordFlutterHttp
     }
 }

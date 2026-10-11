@@ -1,0 +1,7 @@
+--------- beginning of main
+10-01 09:58:01.120  4100  4100 I flutter : Observatory listening on http://127.0.0.1:38211/oLdToKeN1Ab=/
+10-01 10:00:01.500  5021  5045 I flutter : The Dart VM service is listening on http://127.0.0.1:43181/AbCdEfGh123=/
+10-01 10:00:02.010  5021  5045 I flutter : hello from main()
+10-01 10:00:03.000  6100  6120 I flutter : The Dart VM service is listening on http://127.0.0.1:40001/OtHeRaPp99x=/
+10-01 10:02:10.774  5022  5050 I flutter : The Dart VM service is listening on http://127.0.0.1:45555/NeWeRpRoC4s=/
+10-01 10:02:11.000  5022  5050 I flutter : The Dart VM service is listening on http://10.0.2.15:46666/NoTlOoPbAcK=/

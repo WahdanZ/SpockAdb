@@ -1,0 +1,75 @@
+10-01 05:31:21.240 14683 14703 D EGL_emulation: app_time_stats: avg=203415.67ms min=203415.67ms max=203415.67ms count=1
+10-01 05:31:21.273 14683 14710 D EGL_emulation: app_time_stats: avg=1097.46ms min=52.29ms max=2142.63ms count=2
+10-01 05:31:22.564 14683 14710 D EGL_emulation: app_time_stats: avg=1270.06ms min=1270.06ms max=1270.06ms count=1
+10-01 05:31:22.627 14683 14703 D EGL_emulation: app_time_stats: avg=1386.73ms min=1386.73ms max=1386.73ms count=1
+10-01 05:31:23.431 14683 14709 E flutter : [ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: FormatException: Sample unhandled async error
+10-01 05:31:23.431 14683 14709 E flutter : #0      _ErrorsScreenState.build.<anonymous closure>.<anonymous closure> (package:spock_flutter_sample/fixtures/errors.dart:38:47)
+10-01 05:31:23.431 14683 14709 E flutter : #1      new Future.<anonymous closure> (dart:async/future.dart:257:37)
+10-01 05:31:23.431 14683 14709 E flutter : #2      Timer._createTimer.<anonymous closure> (dart:async-patch/timer_patch.dart:18:15)
+10-01 05:31:23.431 14683 14709 E flutter : #3      _Timer._runTimers (dart:isolate-patch/timer_impl.dart:398:19)
+10-01 05:31:23.431 14683 14709 E flutter : #4      _Timer._handleMessage (dart:isolate-patch/timer_impl.dart:429:5)
+10-01 05:31:23.431 14683 14709 E flutter : #5      _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:184:12)
+10-01 05:31:23.431 14683 14709 E flutter : 
+10-01 05:31:23.615 14683 14710 D EGL_emulation: app_time_stats: avg=343.04ms min=65.97ms max=805.55ms count=3
+10-01 05:31:26.235 14683 14703 D EGL_emulation: app_time_stats: avg=3607.41ms min=3607.41ms max=3607.41ms count=1
+10-01 05:31:26.237 14683 14710 D EGL_emulation: app_time_stats: avg=510.02ms min=71.40ms max=2001.72ms count=5
+10-01 05:31:27.410 14683 14710 D EGL_emulation: app_time_stats: avg=1172.96ms min=1172.96ms max=1172.96ms count=1
+10-01 05:31:27.442 14683 14703 D EGL_emulation: app_time_stats: avg=1206.88ms min=1206.88ms max=1206.88ms count=1
+10-01 05:31:28.242 14683 14709 E flutter : [ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: MissingPluginException(No implementation found for method ping on channel spock.sample/not_registered)
+10-01 05:31:28.242 14683 14709 E flutter : #0      MethodChannel._invokeMethod (package:flutter/src/services/platform_channel.dart:332:7)
+10-01 05:31:28.242 14683 14709 E flutter : <asynchronous suspension>
+10-01 05:31:28.242 14683 14709 E flutter : 
+10-01 05:31:28.525 14683 14710 D EGL_emulation: app_time_stats: avg=196.33ms min=19.17ms max=733.37ms count=5
+10-01 05:31:30.665 14683 14703 D EGL_emulation: app_time_stats: avg=3223.53ms min=3223.53ms max=3223.53ms count=1
+10-01 05:31:30.757 14683 14710 D EGL_emulation: app_time_stats: avg=263.39ms min=10.11ms max=1662.83ms count=7
+10-01 05:31:31.854 14683 14703 D EGL_emulation: app_time_stats: avg=1188.33ms min=1188.33ms max=1188.33ms count=1
+10-01 05:31:31.913 14683 14710 D EGL_emulation: app_time_stats: avg=1155.93ms min=1155.93ms max=1155.93ms count=1
+10-01 05:31:32.795 14683 14709 E flutter : [ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: PlatformException(SAMPLE_ERROR, Sample PlatformException from Android, null, null)
+10-01 05:31:32.795 14683 14709 E flutter : #0      StandardMethodCodec.decodeEnvelope (package:flutter/src/services/message_codecs.dart:648:7)
+10-01 05:31:32.795 14683 14709 E flutter : #1      MethodChannel._invokeMethod (package:flutter/src/services/platform_channel.dart:334:18)
+10-01 05:31:32.795 14683 14709 E flutter : <asynchronous suspension>
+10-01 05:31:32.795 14683 14709 E flutter : 
+10-01 05:31:32.992 14683 14710 D EGL_emulation: app_time_stats: avg=256.87ms min=18.40ms max=800.91ms count=4
+10-01 05:31:36.900 14683 14703 D EGL_emulation: app_time_stats: avg=5046.72ms min=5046.72ms max=5046.72ms count=1
+10-01 05:31:37.186 14683 14710 D EGL_emulation: app_time_stats: avg=574.59ms min=2.16ms max=3582.66ms count=7
+10-01 05:31:38.228 14683 14703 D EGL_emulation: app_time_stats: avg=1327.00ms min=1327.00ms max=1327.00ms count=1
+10-01 05:31:38.647 14683 14710 D EGL_emulation: app_time_stats: avg=730.05ms min=597.82ms max=862.27ms count=2
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: Failed to handle method call
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: java.lang.IllegalStateException: Sample native crash from the Flutter fixture app
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at spock.adb.spock_flutter_sample.MainActivity.configureFlutterEngine$lambda-0(MainActivity.kt:15)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at spock.adb.spock_flutter_sample.MainActivity.$r8$lambda$qYBK3CZBQ3wiR22fQZbTcUS2Khw(Unknown Source:0)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at spock.adb.spock_flutter_sample.MainActivity$$ExternalSyntheticLambda0.onMethodCall(Unknown Source:0)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at io.flutter.plugin.common.MethodChannel$IncomingMethodCallHandler.onMessage(MethodChannel.java:267)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at io.flutter.embedding.engine.dart.DartMessenger.invokeHandler(DartMessenger.java:292)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at io.flutter.embedding.engine.dart.DartMessenger.lambda$dispatchMessageToQueue$0$io-flutter-embedding-engine-dart-DartMessenger(DartMessenger.java:319)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at io.flutter.embedding.engine.dart.DartMessenger$$ExternalSyntheticLambda0.run(Unknown Source:12)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at android.os.Handler.handleCallback(Handler.java:958)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at android.os.Handler.dispatchMessage(Handler.java:99)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at android.os.Looper.loopOnce(Looper.java:205)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at android.os.Looper.loop(Looper.java:294)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at java.lang.reflect.Method.invoke(Native Method)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+10-01 05:31:39.466 14683 14683 E MethodChannel#spock.sample/native: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+10-01 05:31:39.533 14683 14709 E flutter : [ERROR:flutter/runtime/dart_vm_initializer.cc(41)] Unhandled Exception: PlatformException(error, Sample native crash from the Flutter fixture app, null, java.lang.IllegalStateException: Sample native crash from the Flutter fixture app
+10-01 05:31:39.533 14683 14709 E flutter : 	at spock.adb.spock_flutter_sample.MainActivity.configureFlutterEngine$lambda-0(MainActivity.kt:15)
+10-01 05:31:39.533 14683 14709 E flutter : 	at spock.adb.spock_flutter_sample.MainActivity.$r8$lambda$qYBK3CZBQ3wiR22fQZbTcUS2Khw(Unknown Source:0)
+10-01 05:31:39.533 14683 14709 E flutter : 	at spock.adb.spock_flutter_sample.MainActivity$$ExternalSyntheticLambda0.onMethodCall(Unknown Source:0)
+10-01 05:31:39.533 14683 14709 E flutter : 	at io.flutter.plugin.common.MethodChannel$IncomingMethodCallHandler.onMessage(MethodChannel.java:267)
+10-01 05:31:39.533 14683 14709 E flutter : 	at io.flutter.embedding.engine.dart.DartMessenger.invokeHandler(DartMessenger.java:292)
+10-01 05:31:39.533 14683 14709 E flutter : 	at io.flutter.embedding.engine.dart.DartMessenger.lambda$dispatchMessageToQueue$0$io-flutter-embedding-engine-dart-DartMessenger(DartMessenger.java:319)
+10-01 05:31:39.533 14683 14709 E flutter : 	at io.flutter.embedding.engine.dart.DartMessenger$$ExternalSyntheticLambda0.run(Unknown Source:12)
+10-01 05:31:39.533 14683 14709 E flutter : 	at android.os.Handler.handleCallback(Handler.java:958)
+10-01 05:31:39.533 14683 14709 E flutter : 	at android.os.Handler.dispatchMessage(Handler.java:99)
+10-01 05:31:39.533 14683 14709 E flutter : 	at android.os.Looper.loopOnce(Looper.java:205)
+10-01 05:31:39.533 14683 14709 E flutter : 	at android.os.Looper.loop(Looper.java:294)
+10-01 05:31:39.533 14683 14709 E flutter : 	at android.app.ActivityThread.main(ActivityThread.java:8177)
+10-01 05:31:39.533 14683 14709 E flutter : 	at java.lang.reflect.Method.invoke(Native Method)
+10-01 05:31:39.533 14683 14709 E flutter : 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:552)
+10-01 05:31:39.533 14683 14709 E flutter : 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:971)
+10-01 05:31:39.533 14683 14709 E flutter : )
+10-01 05:31:39.533 14683 14709 E flutter : #0      StandardMethodCodec.decodeEnvelope (package:flutter/src/services/message_codecs.dart:648:7)
+10-01 05:31:39.533 14683 14709 E flutter : #1      MethodChannel._invokeMethod (package:flutter/src/services/platform_channel.dart:334:18)
+10-01 05:31:39.533 14683 14709 E flutter : <asynchronous suspension>
+10-01 05:31:39.533 14683 14709 E flutter : 
+10-01 05:31:39.850 14683 14710 D EGL_emulation: app_time_stats: avg=264.56ms min=20.34ms max=885.42ms count=4
