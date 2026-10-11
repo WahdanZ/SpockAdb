@@ -132,6 +132,11 @@
   and the popup says what failed. Unnamed routes show their class, and ambiguous or transitional
   navigation is unavailable, never guessed. The check briefly pauses the app; Home never attaches
   a session, and for any other app App back stack is unchanged.
+  Apps with several navigators — go_router's `ShellRoute` and `StatefulShellRoute`, auto_route's
+  tabs and nested routers, a keyed `Navigator` in a page — are read as a tree: each navigator
+  listed under the route that holds it and marked hidden or showing by Flutter's own flags, and
+  the current route followed down to the navigator on screen. Where a route holds several
+  navigators none of which is hidden, current stops at that route and says why.
 - **A guide for Flutter apps, and a Flutter section in the agent skill.** What Spock does for a
   Flutter app was spread across the MCP reference and release notes, so it was hard to tell what
   needs `flutter run`, what works in a profile or release build, and what is still unchecked.
@@ -189,6 +194,9 @@
 - **The grant and revoke balloons name the permission.** Granting or revoking one permission from
   **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
   revoked` instead of the permission's name.
+- **The Timeline's Flutter filter is called "Flutter error".** It lists Flutter framework errors only;
+  "Flutter" read as if it held every Flutter row, so an empty list looked broken. Routes, slow
+  frames and failed requests keep their own filters: Navigation, Frame and HTTP.
 - **Choosing a device or app says so.** Picking one in the device and app chooser changed only the
   line's text, so it was easy to wonder whether the click had landed. The tool window now shows a
   short balloon under the line — "Spock now acts on `<app>` on `<device>`" — and the status bar

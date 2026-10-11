@@ -32,6 +32,13 @@ internal data class NavigatorLimits(
     val maxElements: Int = 80,
     /** `NavigatorState` instances counted by the heap walk. */
     val maxInstances: Int = 20,
+    /**
+     * Keyed navigators placed in one read. Each costs its stack and about 45 calls to place it
+     * (spike S26: 300–380 ms on an emulator), so a router app's root, shells and tabs fit.
+     */
+    val maxNavigators: Int = 8,
+    /** Nodes of one element's inherited-widget map opened to place a navigator: 20–40 in S26. */
+    val maxInheritedNodes: Int = 96,
 )
 
 /**
@@ -49,6 +56,14 @@ internal data class NavigatorLimits(
  * - the stack: `NavigatorState._history` (a `_History`, or a plain list) → `_value`, bottom to top
  *   → each `_RouteEntry`'s `currentState` (`_RouteLifecycle`, by `_name`) and `route` → `_settings`
  *   (a `RouteSettings`, or the `Page` for `Navigator.pages`) → `name`.
+ * - where a navigator sits (spike S26): its element's `_inheritedElements`, a `PersistentHashMap`
+ *   (`_root` → `_FullNode.descendants` / `_CompressedNode.keyValuePairs` /
+ *   `_HashCollisionNode.keyValuePairs`) of the nearest inherited widget of each type above it.
+ *   `_ModalScopeStatus.route` is the route it is inside — none for the root navigator; whether it
+ *   is hidden is `_EffectiveTickerMode.enabled` (off for a covered route and for a go_router
+ *   branch not showing) and `_VisibilityScope.isVisible` (`IndexedStack`'s, for any tab container
+ *   built on it, auto_route's included). Walking `Element._parent` up to the route instead took
+ *   70–94 hops.
  *
  * Exact only when every entry is `idle`. Any other lifecycle is a navigation under way — `pushing`
  * and `popping` last the transition — and the answer is unavailable, not a stack with an entry
@@ -64,8 +79,8 @@ internal class NavigatorReader(
     private val notNavigators: NonNavigatorElements = NonNavigatorElements(),
 ) {
 
-    /** Where Flutter declares a field Spock reads. */
-    private class Owner(val className: String, val library: String)
+    /** Where Flutter declares a field Spock reads: one library, or another a later Flutter moved it to. */
+    private class Owner(val className: String, vararg val libraries: String)
 
     /** A `StatefulElement` in the key registry, and the identities that let a later read skip it. */
     private class KeyedElement(val element: JsonObject, val key: Long?, val identity: Long?) {
@@ -79,8 +94,21 @@ internal class NavigatorReader(
     /** A mounted `NavigatorState`, opened, and its class for the heap walk. */
     private class Navigator(val state: JsonObject, val classId: String)
 
-    /** A stack as read, with each `_RouteEntry`'s identity, bottom to top, to tell it was not changed. */
-    private class Stack(val state: FlutterNavigationState, val entries: List<Long?>)
+    /**
+     * A stack as read, with each `_RouteEntry`'s identity, bottom to top, to tell it was not changed,
+     * and each route's, which a nested navigator's [Placement.route] names.
+     */
+    private class Stack(
+        val state: FlutterNavigationState,
+        val entries: List<Long?>,
+        val routes: List<Long?> = emptyList(),
+    )
+
+    /** The route a navigator is inside (its identity; null for the root) and whether it is hidden. */
+    private data class Placement(val route: Long?, val hidden: Boolean)
+
+    /** One keyed navigator, read: its stack and where it sits. */
+    private class Read(val navigator: Navigator, val stack: Stack, val placement: Placement)
 
     /** Why a read stopped, in words fit to show. */
     private class Unreadable(val reason: String, val transient: Boolean = false) : Exception(reason)
@@ -108,6 +136,7 @@ internal class NavigatorReader(
      */
     fun readChecked(): FlutterNavigationState = guarded {
         val keyed = keyedNavigators()
+        if (keyed.size > 1) return@guarded checkedTree(keyed)
         if (keyed.size != 1) return@guarded keyedState(keyed)
         val navigator = keyed.single()
         val stack = stackOf(navigator.state)
@@ -125,8 +154,165 @@ internal class NavigatorReader(
     private fun keyedState(navigators: List<Navigator>): FlutterNavigationState = when (navigators.size) {
         0 -> FlutterNavigationState.unavailable(NO_KEYED_NAVIGATOR)
         1 -> stackOf(navigators.single().state).state
-        else -> FlutterNavigationState.unavailable(severalKeyed(navigators.size))
+        else -> tree(read(navigators))
     }
+
+    /**
+     * [readChecked] for several keyed navigators: exact when the heap holds exactly those, mounted,
+     * and each one's stack and placement read again after the walk are what the tree was built from.
+     */
+    private fun checkedTree(navigators: List<Navigator>): FlutterNavigationState {
+        val reads = read(navigators)
+        val tree = tree(reads)
+        val started = clock()
+        val found = objects.instances(reads.first().navigator.classId, limits.maxInstances)
+        val heapWalkMs = clock() - started
+        val mounted = mountedAmong(found)
+        val keyed = navigators.map { identity(it.state) }.toSet()
+        val same = mounted != null && mounted.map(::identity).toSet() == keyed && unchanged(reads)
+        return NavigationConfidence.checked(tree, mounted?.size, heapWalkMs, limits.maxInstances, same)
+    }
+
+    /** Whether every navigator in [reads], opened afresh, is mounted, holds the same entries and is where it was. */
+    private fun unchanged(reads: List<Read>): Boolean {
+        opened.clear()
+        return reads.all { before ->
+            val state = open(before.navigator.state)
+            if (!isMounted(state)) return@all false
+            val after = stackOf(state)
+            after.state.stack == before.stack.state.stack && after.entries == before.stack.entries &&
+                before.stack.entries.none { it == null } && placementOf(state) == before.placement
+        }
+    }
+
+    // ---------------------------------------------------------------- the tree
+
+    private fun read(navigators: List<Navigator>): List<Read> {
+        if (navigators.size > limits.maxNavigators) fail(tooManyNavigators(navigators.size, limits.maxNavigators))
+        return navigators.map { navigator ->
+            val stack = stackOf(navigator.state)
+            // An empty navigator — one an app has not filled yet — has nothing to place.
+            stack.state.unavailable?.let { fail(it) }
+            Read(navigator, stack, placementOf(navigator.state))
+        }
+    }
+
+    /**
+     * The navigators as a tree: the one inside no route is the root, and every other one hangs off
+     * the route its placement names, found by identity in another one's stack. Anything else — two
+     * outside every route, a route no keyed navigator holds — is unavailable, not a guess.
+     */
+    private fun tree(reads: List<Read>): FlutterNavigationState {
+        val roots = reads.filter { it.placement.route == null }
+        if (roots.size != 1) fail(rootsNotOne(roots.size))
+        val holder = HashMap<Long, Pair<Read, Int>>()
+        reads.forEach { read ->
+            read.stack.routes.forEachIndexed { index, route ->
+                holder[route ?: fail(NO_ROUTE_IDENTITY)] = read to index
+            }
+        }
+        val parents = reads.filter { it !== roots.single() }.associateWith { read ->
+            holder[read.placement.route] ?: fail(OUTSIDE_KEYED)
+        }
+        // Outermost first, so a navigator's parent is always listed before it.
+        val order = mutableListOf<Read>()
+        val index = HashMap<Read, Int>()
+        var level = listOf(roots.single())
+        while (level.isNotEmpty()) {
+            level = parents.filter { (_, parent) -> parent.first in level }.keys.toList()
+            level.forEach { index[it] = order.size }
+            order += level
+        }
+        if (order.size != parents.size) fail(OUTSIDE_KEYED)
+        val nested = order.map { read ->
+            val (parent, route) = parents.getValue(read)
+            NestedNavigator(
+                read.stack.state.stack,
+                index[parent] ?: FlutterNavigationState.ROOT,
+                route,
+                read.placement.hidden,
+            )
+        }
+        return roots.single().stack.state.copy(nested = nested)
+    }
+
+    // ---------------------------------------------------------------- where a navigator sits
+
+    /** From [state]'s element's inherited widgets: the route it is inside, and whether it is hidden. */
+    private fun placementOf(state: JsonObject): Placement {
+        val element = open(state.field("_element", STATE, NAVIGATOR_STATE))
+        val map = element.field("_inheritedElements", ANY_ELEMENT)
+        if (map.isNull) return Placement(route = null, hidden = false)
+        val scopes = InheritedScopes().of(open(map))
+        val route = scopes[MODAL_SCOPE_STATUS.className]?.let { status ->
+            val ref = widgetOf(status).field("route", MODAL_SCOPE_STATUS)
+            if (!isInstance(ref)) fail(missing(MODAL_SCOPE_STATUS.className, "route"))
+            identityOrNull(ref) ?: fail(NO_ROUTE_IDENTITY)
+        }
+        val ticking = scopes[TICKER_MODE.className]?.let { boolOf(widgetOf(it).field("enabled", TICKER_MODE)) }
+        val visible = scopes[VISIBILITY_SCOPE.className]?.let {
+            boolOf(widgetOf(it).field("isVisible", VISIBILITY_SCOPE))
+        }
+        return Placement(route, hidden = ticking == false || visible == false)
+    }
+
+    /**
+     * The `InheritedElement`s of the scopes Spock reads, by class name, from one element's
+     * `PersistentHashMap<Type, InheritedElement>`. Every node is opened, so a scope that is absent
+     * is known to be absent.
+     */
+    private inner class InheritedScopes {
+        private val found = HashMap<String, JsonObject>()
+        private val pending = ArrayDeque<JsonObject>()
+
+        fun of(map: JsonObject): Map<String, JsonObject> {
+            map.field("_root", PERSISTENT_MAP).takeUnless { it.isNull }?.let(pending::add)
+            var nodes = 0
+            while (pending.isNotEmpty()) {
+                if (++nodes > limits.maxInheritedNodes) fail(tooManyInherited(limits.maxInheritedNodes))
+                visit(open(pending.removeFirst()))
+            }
+            return found
+        }
+
+        private fun visit(node: JsonObject) = when (node.className) {
+            FULL_NODE.className ->
+                items(node.field("descendants", FULL_NODE)).filterNot { it.isNull }.forEach(pending::add)
+            COMPRESSED_NODE.className -> pairs(node.field("keyValuePairs", COMPRESSED_NODE))
+            COLLISION_NODE.className -> pairs(node.field("keyValuePairs", COLLISION_NODE))
+            else -> fail(missing("PersistentHashMap", "a node of class ${node.className}"))
+        }
+
+        /** Key, value, key, value…; a null key marks a sub-node in the value's place. */
+        private fun pairs(list: JsonObject) = items(list).chunked(2).forEach { pair ->
+            if (pair.size != 2) fail("A PersistentHashMap node has a key without a value.")
+            val (key, value) = pair
+            if (key.isNull) {
+                if (!value.isNull) pending += value
+            } else {
+                scopeOf(key)?.let { found[it] = value }
+            }
+        }
+
+        /** The class name of the scope a `Type` key stands for, when it is one Spock reads; else null. */
+        private fun scopeOf(key: JsonObject): String? {
+            if (key.string("kind") != TYPE) fail("Expected a Type as an inherited widget's key.")
+            val type = key.obj("typeClass") ?: fail(missing("Type", "typeClass"))
+            val owner = SCOPES.firstOrNull { it.className == type.string("name") } ?: return null
+            return owner.className.takeIf { libraryOf(type) in owner.libraries }
+        }
+
+        /** The items of a list reference, all of them. */
+        private fun items(ref: JsonObject): List<JsonObject> {
+            val list = open(ref)
+            val items = list.array("elements") ?: fail(missing("List", "elements"))
+            checkWhole(list, items, "an inherited-widget map")
+            return items.objects()
+        }
+    }
+
+    /** An element reference's widget, opened. */
+    private fun widgetOf(element: JsonObject): JsonObject = open(open(element).field("_widget", ANY_ELEMENT))
 
     /** Whether [navigator], opened afresh, is still mounted and holds the same entries as [before]. */
     private fun unchanged(navigator: Navigator, before: Stack): Boolean {
@@ -233,15 +419,19 @@ internal class NavigatorReader(
         val entries = list.array("elements") ?: fail(missing("_History._value", "elements"))
         checkWhole(list, entries, "the navigator's history")
         if (entries.size() == 0) return Stack(FlutterNavigationState.unavailable(NO_ROUTES), emptyList())
-        val routes = entries.objects().map { ref ->
+        val read = entries.objects().map { ref ->
             val entry = open(ref)
             val routeRef = entry.field("route", ENTRY)
             val routeClass = routeRef.className ?: fail(missing(ROUTE_ENTRY, "route class"))
             val lifecycle = lifecycleOf(entry.field("currentState", ENTRY))
             if (lifecycle != IDLE) fail(inProgress(routeClass, lifecycle), transient = true)
-            FlutterRoute(nameOf(open(routeRef), routeClass), routeClass)
+            FlutterRoute(nameOf(open(routeRef), routeClass), routeClass) to identityOrNull(routeRef)
         }
-        return Stack(FlutterNavigationState(routes, Confidence.KEYED), entries.objects().map(::identityOrNull))
+        return Stack(
+            FlutterNavigationState(read.map { it.first }, Confidence.KEYED),
+            entries.objects().map(::identityOrNull),
+            read.map { it.second },
+        )
     }
 
     /** `_RouteLifecycle`'s value by name: `idle`, `pushing`… */
@@ -315,6 +505,10 @@ internal class NavigatorReader(
         private const val LIST = "List"
         private const val STRING = "String"
         private const val SENTINEL = "Sentinel"
+        private const val TYPE = "Type"
+        private const val BOOL = "Bool"
+        private const val ROUTES_LIBRARY = "package:flutter/src/widgets/routes.dart"
+        private const val PERSISTENT_MAP_LIBRARY = "package:flutter/src/foundation/persistent_hash_map.dart"
 
         private val BINDING = Owner(WIDGETS_BINDING, BINDING_LIBRARY)
         private val BUILD_OWNER = Owner("BuildOwner", FRAMEWORK_LIBRARY)
@@ -325,6 +519,21 @@ internal class NavigatorReader(
         private val ENTRY = Owner(ROUTE_ENTRY, NAVIGATOR_LIBRARY)
         private val ROUTE = Owner("Route", NAVIGATOR_LIBRARY)
         private val ROUTE_SETTINGS = Owner("RouteSettings", NAVIGATOR_LIBRARY)
+        private val ANY_ELEMENT = Owner("Element", FRAMEWORK_LIBRARY)
+        private val PERSISTENT_MAP = Owner("PersistentHashMap", PERSISTENT_MAP_LIBRARY)
+        private val FULL_NODE = Owner("_FullNode", PERSISTENT_MAP_LIBRARY)
+        private val COMPRESSED_NODE = Owner("_CompressedNode", PERSISTENT_MAP_LIBRARY)
+        private val COLLISION_NODE = Owner("_HashCollisionNode", PERSISTENT_MAP_LIBRARY)
+        private val MODAL_SCOPE_STATUS = Owner("_ModalScopeStatus", ROUTES_LIBRARY)
+        private val TICKER_MODE = Owner("_EffectiveTickerMode", "package:flutter/src/widgets/ticker_provider.dart")
+
+        /** In `visibility.dart` on 3.22; `indexed_stack.dart` by 3.47. */
+        private val VISIBILITY_SCOPE = Owner(
+            "_VisibilityScope",
+            "package:flutter/src/widgets/visibility.dart",
+            "package:flutter/src/widgets/indexed_stack.dart",
+        )
+        private val SCOPES = listOf(MODAL_SCOPE_STATUS, TICKER_MODE, VISIBILITY_SCOPE)
 
         /** Every enum's `_name` is `_Enum`'s, in `dart:core`. */
         private val ENUM = Owner("_Enum", "dart:core")
@@ -337,8 +546,23 @@ internal class NavigatorReader(
         const val NO_KEYED_NAVIGATOR = "No navigator with a GlobalKey is mounted. MaterialApp and WidgetsApp key " +
             "their own; a Navigator an app builds without a key cannot be found."
 
-        fun severalKeyed(count: Int) = "$count navigators have a GlobalKey — a nested Navigator, or a router's " +
-            "shell — and Spock can't tell yet which one is showing."
+        const val NO_ROUTE_IDENTITY = "The VM sent no identityHashCode for a route, so Spock cannot tell which " +
+            "route a nested navigator is inside."
+
+        const val OUTSIDE_KEYED = "A navigator sits inside a route of a navigator without a GlobalKey, which Spock " +
+            "cannot see, so it cannot place it."
+
+        fun rootsNotOne(count: Int) = if (count == 0) {
+            "Every keyed navigator is inside a route, so Spock can't tell which one is the app's root."
+        } else {
+            "$count navigators with a GlobalKey sit outside any route, so Spock can't tell which one is the app's root."
+        }
+
+        fun tooManyNavigators(count: Int, limit: Int) =
+            "$count navigators have a GlobalKey; Spock reads at most $limit."
+
+        fun tooManyInherited(limit: Int) = "A navigator has more than $limit inherited-widget map nodes above it; " +
+            "Spock stops there rather than read on."
 
         fun tooManyElements(count: Int) = "Too many keyed widgets to check ($count) in one read; Spock goes on " +
             "with the rest when it reads again."
@@ -363,11 +587,16 @@ internal class NavigatorReader(
             val name = declared.string("name")
             if (name != null && name.endsWith("&${owner.className}")) return true
             val library = declared.obj("library")?.string("uri")
-            return (name == null || name == owner.className) && (library == null || library == owner.library)
+            return (name == null || name == owner.className) && (library == null || library in owner.libraries)
         }
 
         private fun identityOrNull(instance: JsonObject): Long? = (instance.get("identityHashCode") as? JsonPrimitive)
             ?.takeIf { it.isNumber }?.asLong?.takeIf { it > 0 }
+
+        private fun boolOf(ref: JsonObject): Boolean {
+            if (ref.string("kind") != BOOL) throw Unreadable("Expected a bool for a visibility flag.")
+            return ref.string("valueAsString") == "true"
+        }
 
         private fun isInstance(ref: JsonObject): Boolean =
             ref.string("type")?.removePrefix("@") == "Instance" && ref.string("id") != null
@@ -377,8 +606,8 @@ internal class NavigatorReader(
 /** What a read's [Confidence] is, apart from the reads, so it can be tested on its own. */
 internal object NavigationConfidence {
 
-    const val NESTED_UNKEYED = "A navigator without a GlobalKey is mounted besides the keyed one — a nested " +
-        "Navigator — and Spock can't tell which one is showing."
+    const val NESTED_UNKEYED = "A navigator without a GlobalKey is mounted besides those with one — a nested " +
+        "Navigator — and Spock can't tell where it is or whether it is showing."
 
     const val NESTED_SEEN = "The last App back stack check found a nested navigator without a key, so " +
         "Spock can't tell which one is showing. Open App back stack to check again."
@@ -390,8 +619,9 @@ internal object NavigationConfidence {
 
     /**
      * The keyed read [keyed], with the heap walk's count of mounted navigators: exact when the keyed
-     * one is the only one. [mounted] is null when the walk found more than it returned; [same] is
-     * whether the one it found is the keyed navigator, its stack unchanged since [keyed] was read.
+     * ones — the root and those [FlutterNavigationState.nested] in it — are the only ones. [mounted]
+     * is null when the walk found more than it returned; [same] is whether the ones it found are the
+     * keyed navigators, their stacks and places unchanged since [keyed] was read.
      */
     fun checked(
         keyed: FlutterNavigationState,
@@ -402,8 +632,8 @@ internal object NavigationConfidence {
     ): FlutterNavigationState = when {
         keyed.confidence != Confidence.KEYED -> keyed
         mounted == null -> FlutterNavigationState.unavailable(tooManyInstances(limit), heapWalkMs = heapWalkMs)
-        mounted == 1 && same -> keyed.copy(confidence = Confidence.EXACT, heapWalkMs = heapWalkMs)
-        mounted > 1 -> FlutterNavigationState.unavailable(NESTED_UNKEYED, heapWalkMs = heapWalkMs)
+        mounted == keyed.navigatorCount && same -> keyed.copy(confidence = Confidence.EXACT, heapWalkMs = heapWalkMs)
+        mounted > keyed.navigatorCount -> FlutterNavigationState.unavailable(NESTED_UNKEYED, heapWalkMs = heapWalkMs)
         // Another navigator, a changed stack, or none mounted where the keyed one was: the app moved on.
         else -> FlutterNavigationState.unavailable(CHANGED, transient = true, heapWalkMs = heapWalkMs)
     }

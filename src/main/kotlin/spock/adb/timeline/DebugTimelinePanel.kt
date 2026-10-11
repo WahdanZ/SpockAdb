@@ -361,7 +361,7 @@ class DebugTimelinePanel(
         const val PREVIEW_LIMIT = 300
         const val TIME_WIDTH = 90
         const val SEVERITY_WIDTH = 60
-        const val CATEGORY_WIDTH = 75
+        const val CATEGORY_WIDTH = 90
         const val HTML_DISABLE = "html.disable"
         const val ALL_CATEGORIES = "All categories"
 
