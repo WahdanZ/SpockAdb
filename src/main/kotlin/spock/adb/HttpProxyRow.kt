@@ -13,8 +13,11 @@ import spock.adb.notification.CommonNotifier
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.GridLayout
+import javax.swing.Box
+import javax.swing.BoxLayout
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
+import javax.swing.JComponent
 import javax.swing.JMenuItem
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
@@ -79,18 +82,16 @@ class HttpProxyRow(
 
     init {
         alignmentX = LEFT_ALIGNMENT
-        maximumSize = Dimension(
-            Int.MAX_VALUE,
-            input.preferredSize.height + status.preferredSize.height + JBUI.scale(gap),
-        )
         border = JBUI.Borders.emptyTop(2)
-        // A remembered proxy must not widen the tool window; the editor elides instead.
+        // Wide enough for a whole LAN address; a remembered proxy longer than that elides rather
+        // than widening the tool window.
+        input.prototypeDisplayValue = PROTOTYPE
         input.minimumSize = Dimension(0, input.preferredSize.height)
-        input.prototypeDisplayValue = ""
 
         // localhost on the device is the device itself, which is the mistake this tooltip is for.
         input.toolTipText = "host:port of a proxy on this computer, by its LAN IP, for example " +
-            "192.168.1.10:8888. An emulator reaches this computer at 10.0.2.2."
+            "192.168.1.10:8888. An emulator reaches this computer at 10.0.2.2. " +
+            "The arrow lists every proxy set before."
         // The format is the thing people get wrong, so the empty field shows it rather than
         // leaving it in a tooltip nobody hovers before typing.
         (editor as? JBTextField)?.emptyText?.text = "192.168.1.10:8888"
@@ -98,18 +99,41 @@ class HttpProxyRow(
         setButton.toolTipText = "Route the device's traffic through the proxy in this field"
         clearButton.toolTipText = "Remove the proxy from the device, so it connects directly"
 
-        add(JBLabel("HTTP proxy"), BorderLayout.WEST)
-        add(input, BorderLayout.CENTER)
-        add(
-            // Clearing the proxy matters as much as setting it: a device left pointing at a
-            // proxy that stopped listening fails every request with nothing to explain why.
-            JPanel(GridLayout(1, 2, JBUI.scale(gap), 0)).apply {
-                add(setButton)
-                add(clearButton)
-            },
-            BorderLayout.EAST,
-        )
-        add(status, BorderLayout.SOUTH)
+        // The field has the label's line to itself and the buttons go beneath it. On one line
+        // with both buttons, a docked tool window left the field about 90 px: too narrow for an
+        // address, and its dropdown arrow, the way to the remembered proxies, barely showed.
+        val field = JPanel(BorderLayout(JBUI.scale(gap), 0)).apply {
+            isOpaque = false
+            add(JBLabel("HTTP proxy"), BorderLayout.WEST)
+            add(input, BorderLayout.CENTER)
+        }
+        // Clearing the proxy matters as much as setting it: a device left pointing at a
+        // proxy that stopped listening fails every request with nothing to explain why.
+        val buttons = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(
+                JPanel(GridLayout(1, 2, JBUI.scale(gap), 0)).apply {
+                    isOpaque = false
+                    add(setButton)
+                    add(clearButton)
+                },
+                BorderLayout.WEST,
+            )
+        }
+        val lines = JPanel().apply {
+            isOpaque = false
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            listOf<JComponent>(field, buttons, status).forEachIndexed { index, line ->
+                if (index > 0) add(Box.createVerticalStrut(JBUI.scale(gap)))
+                line.alignmentX = LEFT_ALIGNMENT
+                add(line)
+            }
+        }
+        // Lines stretch across, never down: BoxLayout would hand the field any spare height.
+        field.maximumSize = Dimension(Int.MAX_VALUE, field.preferredSize.height)
+        buttons.maximumSize = Dimension(Int.MAX_VALUE, buttons.preferredSize.height)
+        add(lines, BorderLayout.CENTER)
+        maximumSize = Dimension(Int.MAX_VALUE, lines.preferredSize.height + JBUI.scale(2))
     }
 
     /**
@@ -213,6 +237,9 @@ class HttpProxyRow(
     }
 
     private companion object {
+        /** The longest common LAN proxy, so the field's natural width fits one. */
+        const val PROTOTYPE = "192.168.100.100:8888"
+
         /** Before the first read, or with no device selected, the honest state is unknown. */
         val NOT_READ = HttpProxy.describeDevice(Result.failure(IllegalStateException("No device has been read")))
     }

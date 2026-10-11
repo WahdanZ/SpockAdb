@@ -189,6 +189,10 @@
 - **The grant and revoke balloons name the permission.** Granting or revoking one permission from
   **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
   revoked` instead of the permission's name.
+- **The HTTP proxy field is wide enough for an address, and its history is in reach.** In a docked
+  tool window the field shared one line with its label and both buttons, which left it about 90 px:
+  an address did not fit, and the dropdown arrow that lists every proxy set before barely showed.
+  The field now has its own line across the panel, with **Set** and **Remove proxy** beneath it.
 
 ## [4.0.7] - 2026-09-29
 
