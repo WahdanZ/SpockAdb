@@ -6,15 +6,20 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import spock.adb.AdbController
+import spock.adb.ApplicationBackStack
 import spock.adb.LatestRequest
 import spock.adb.ScreenInfo
 import spock.adb.device.ConnectedDevice
+import spock.adb.flutter.FlutterSession
+import spock.adb.flutter.navigation.FlutterNavigationState
 import java.awt.FlowLayout
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
+import java.awt.event.HierarchyEvent
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JPanel
+import javax.swing.Timer
 
 /**
  * What is on screen now: the activity and fragment, as links to their source.
@@ -23,6 +28,10 @@ import javax.swing.JPanel
  * file, so "which screen am I on?" cost a click and an editor tab every time. The answer is
  * cheap to read, so it is shown, and the click is kept for what it is actually for: going to
  * the code.
+ *
+ * For a Flutter app with a live session, the route on top of its Navigator too, and its routes in
+ * App back stack beside the activities: an Android activity alone says only "MainActivity" for
+ * every Flutter screen.
  */
 internal class ScreenCard : JPanel() {
 
@@ -31,12 +40,13 @@ internal class ScreenCard : JPanel() {
     private val activityLabel = rowLabel("Activity")
     private val fragmentLabel = rowLabel("Fragment")
 
-    private val appStackLink = ActionLink("App back stack") {
-        open { controller, device -> controller.currentApplicationBackStack(device) }
-    }
+    private val appStackLink = ActionLink("App back stack") { appBackStack() }
     private val allStackLink = ActionLink("All activities") {
         open { controller, device -> controller.currentBackStack(device) }
     }
+
+    private val flutterRouteLabel = rowLabel("Flutter route")
+    private val flutterRouteValue = JBLabel(UNKNOWN)
 
     /** Diagnoses, then copies the report: one click for what the AI needs about this screen. */
     val copyForAiButton = JButton("Copy screen for AI", AllIcons.Actions.Copy).apply {
@@ -53,11 +63,26 @@ internal class ScreenCard : JPanel() {
     /** Started and answered on the EDT, so a slow read cannot label a later screen. */
     private val reads = LatestRequest()
 
+    private var flutter: FlutterRouteSource? = null
+    private var app: () -> String? = { null }
+    private val flutterReads = FlutterReadRequests()
+
+    /** What the settings dialog shows, and whether a Flutter session gave the rows something to say. */
+    private var screenRowsOn = true
+    private var flutterLive = false
+
+    /** A burst of navigation costs one read; a read that met a transition tries again, a few times. */
+    private val flutterSoon = Timer(SETTLE_MS) { refreshFlutter() }.apply { isRepeats = false }
+
+    /** A read skipped while Home was out of sight — another tab, a collapsed section, the window closed. */
+    private var flutterMissed = false
+
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
         border = JBUI.Borders.empty(GAP, 0)
         activityLink.putClientProperty(HTML_DISABLE, true)
         fragmentLink.putClientProperty(HTML_DISABLE, true)
+        flutterRouteValue.putClientProperty(HTML_DISABLE, true)
         add(
             JPanel(GridBagLayout()).apply {
                 alignmentX = LEFT_ALIGNMENT
@@ -65,12 +90,19 @@ internal class ScreenCard : JPanel() {
                 add(activityLink, valueAt(0))
                 add(fragmentLabel, labelAt(1))
                 add(fragmentLink, valueAt(1))
+                add(flutterRouteLabel, labelAt(2))
+                add(flutterRouteValue, valueAt(2))
             },
         )
         add(flow(appStackLink, allStackLink))
         // Diagnose first: it is where a debugging session starts, and the copy is Diagnose too.
         add(flow(diagnoseButton, copyForAiButton))
         show(null)
+        showFlutter(null)
+        addHierarchyListener { event ->
+            val showingChanged = (event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L
+            if (showingChanged && isShowing && flutterMissed) refreshFlutter()
+        }
     }
 
     fun attach(controller: AdbController, device: () -> ConnectedDevice?) {
@@ -78,16 +110,108 @@ internal class ScreenCard : JPanel() {
         this.device = device
     }
 
+    /** Reads the Flutter route from [source], for the app [app] names. */
+    fun attachFlutter(source: FlutterRouteSource, app: () -> String?) {
+        flutter = source
+        this.app = app
+        source.onChange = {
+            flutterReads.retireKeyed()
+            flutterReads.newBurst()
+            flutterSoon.restart()
+        }
+    }
+
     /** Reads what is on screen. Reads nothing while hidden, or before [attach]. */
     fun refresh() {
         val request = reads.begin()
         val controller = controller
         val target = device()
+        flutterReads.newBurst()
+        refreshFlutter()
         if (controller == null || target == null || !isVisible) return show(null)
         activityLink.text = READING
         controller.screen(target.device) { result ->
             if (reads.isLatest(request)) show(result.getOrNull())
         }
+    }
+
+    /** Reads the Flutter route, from a session already connected to the app; hides it without one. */
+    private fun refreshFlutter() {
+        val source = flutter
+        val session = source?.liveSession(device(), app())
+        // Not read while out of sight: each Flutter.Navigation would cost a read nobody sees.
+        flutterMissed = session != null && !isShowing
+        if (source == null || session == null || !isShowing) {
+            flutterReads.retireKeyed()
+            return showFlutter(null)
+        }
+        if (!flutterLive) flutterRouteValue.text = READING
+        val request = flutterReads.keyed(session, session.snapshot.uiIsolateId)
+        source.read(session, check = false) { state -> landed(source, request, state) }
+    }
+
+    /**
+     * The app's activities; for an app with a Flutter session, its routes too, in one popup. Without
+     * a session it is App Back Stack as it always was: no VM reads, no pause.
+     */
+    private fun appBackStack() {
+        val controller = controller ?: return
+        val target = device() ?: return
+        val source = flutter
+        val session = source?.liveSession(target, app())
+        if (source == null || session == null) return controller.currentApplicationBackStack(target.device)
+        appStackLink.isEnabled = false
+        var activities: Result<ApplicationBackStack>? = null
+        var routes: FlutterNavigationState? = null
+        checkFlutterStack(source, session) { state ->
+            routes = state
+            activities?.let { showBackStack(it, state) }
+        }
+        controller.applicationBackStack(target.device) { stack ->
+            activities = stack
+            routes?.let { showBackStack(stack, it) }
+        }
+    }
+
+    /**
+     * Counts the app's navigators, and hands [answer] the stack — and Home shows the same read. Its
+     * own request: a refresh while the heap walk runs does not swallow the popup the user asked for.
+     */
+    private fun checkFlutterStack(
+        source: FlutterRouteSource,
+        session: FlutterSession,
+        answer: (FlutterNavigationState) -> Unit,
+    ) {
+        val request = flutterReads.check(session, session.snapshot.uiIsolateId)
+        flutterReads.newBurst()
+        source.read(session, check = true) { state ->
+            val current = landed(source, request, state)
+            answer(if (current) state else FlutterNavigationState.unavailable(FlutterRouteText.SESSION_CHANGED))
+        }
+    }
+
+    private fun showBackStack(activities: Result<ApplicationBackStack>, routes: FlutterNavigationState) {
+        appStackLink.isEnabled = true
+        if (!appStackLink.isShowing) return
+        val title = FlutterRouteText.title(activities, app())
+        AppBackStackPopup.show(activities, routes, title, appStackLink) { controller?.openClass(it) }
+    }
+
+    /**
+     * Shows [state] on Home if [request] is still worth it, and reads again shortly if it met a
+     * navigation under way. False when [request] no longer describes the selected app's session.
+     */
+    private fun landed(
+        source: FlutterRouteSource,
+        request: FlutterReadRequests.Request,
+        state: FlutterNavigationState,
+    ): Boolean {
+        val session = source.liveSession(device(), app())
+        val isolate = session?.snapshot?.uiIsolateId
+        if (!flutterReads.current(request, session, isolate)) return false
+        if (flutterReads.showOnHome(request, session, isolate)) showFlutter(state)
+        if (flutterReads.retryAfter(state)) flutterSoon.restart()
+        return true
     }
 
     /** Shows or hides a row, for the actions switched off in the settings dialog. */
@@ -98,6 +222,8 @@ internal class ScreenCard : JPanel() {
         fragmentLink.isVisible = fragment
         appStackLink.isVisible = stacks
         allStackLink.isVisible = stacks
+        screenRowsOn = activity || fragment
+        applyFlutterVisibility()
     }
 
     private fun show(screen: ScreenInfo?) {
@@ -108,6 +234,19 @@ internal class ScreenCard : JPanel() {
         fragmentLink.text = ScreenText.fragments(screen?.fragments.orEmpty())
         fragmentLink.toolTipText = screen?.fragments?.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = "Open ")
         fragmentLink.isEnabled = !screen?.fragments.isNullOrEmpty()
+    }
+
+    /** Null: no Flutter session for the selected app, so no Flutter row and no link. */
+    private fun showFlutter(state: FlutterNavigationState?) {
+        flutterLive = state != null
+        flutterRouteValue.text = state?.let(FlutterRouteText::home) ?: UNKNOWN
+        flutterRouteValue.toolTipText = state?.let(FlutterRouteText::homeTooltip)
+        applyFlutterVisibility()
+    }
+
+    private fun applyFlutterVisibility() {
+        flutterRouteLabel.isVisible = flutterLive && screenRowsOn
+        flutterRouteValue.isVisible = flutterLive && screenRowsOn
     }
 
     private fun open(run: (AdbController, com.android.ddmlib.IDevice) -> Unit) {
@@ -143,6 +282,9 @@ internal class ScreenCard : JPanel() {
         const val UNKNOWN = "—"
         const val READING = "…"
         const val HTML_DISABLE = "html.disable"
+
+        /** About a page transition: a read that met one sees it settled next time. */
+        const val SETTLE_MS = 300
 
         fun simpleName(className: String) = className.substringAfterLast('.')
     }

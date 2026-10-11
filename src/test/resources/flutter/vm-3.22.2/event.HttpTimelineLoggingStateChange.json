@@ -1,0 +1,18 @@
+[
+  {
+    "timestamp": 1790888204433,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "isolateId": "isolates/4273892695459887",
+      "enabled": true
+    }
+  },
+  {
+    "timestamp": 1790888287447,
+    "isolate": "isolates/4273892695459887",
+    "data": {
+      "isolateId": "isolates/4273892695459887",
+      "enabled": false
+    }
+  }
+]

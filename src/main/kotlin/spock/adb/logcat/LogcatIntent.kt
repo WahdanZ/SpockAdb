@@ -14,6 +14,7 @@ enum class LogcatIntent(val label: String, val description: String) {
     CRASHES("Crashes", "Fatal exceptions, native crashes, and the frames beneath them"),
     ANRS("ANRs", "Application Not Responding reports"),
     NETWORK("Network", "HTTP clients, connectivity and socket activity"),
+    FLUTTER("Flutter", "Dart output (print, debugPrint), the Flutter engine, and platform channel errors"),
     ;
 
     fun matches(entry: LogcatEntry): Boolean = when (this) {
@@ -22,5 +23,6 @@ enum class LogcatIntent(val label: String, val description: String) {
         CRASHES -> LogcatSignals.isCrash(entry)
         ANRS -> LogcatSignals.isAnr(entry)
         NETWORK -> LogcatSignals.isNetwork(entry)
+        FLUTTER -> LogcatSignals.isFlutter(entry)
     }
 }

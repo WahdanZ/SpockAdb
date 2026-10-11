@@ -161,6 +161,112 @@ class ComposeUiObservationToolsTest {
     }
 
     @Test
+    fun `an interactive node carries the point a tap would use`() {
+        val lines = Screen().run(GetUiTreeTool()).lines()
+
+        assertTrue(lines.single { "Save" in it }.contains("[0,0][300,200] center=[150,100]"), lines.toString())
+        assertTrue(lines.single { "Close" in it }.contains("center=[430,30]"), lines.toString())
+        assertFalse(lines.single { "FrameLayout" in it }.contains("center="), lines.toString())
+        assertFalse(lines.single { "AndroidComposeView" in it }.contains("center="), lines.toString())
+    }
+
+    @Test
+    fun `a partly scrolled-out control's centre is inside the part in view`() {
+        val text = Screen(xml = CLICKABLE_LIST).run(GetUiTreeTool())
+        val row = text.lines().single { "Row 5" in it }
+
+        // The row's bounds centre, y=1000, is on the list's bottom edge; the part in view ends there.
+        assertTrue(row.contains("[0,900][1080,1100] center=[540,950]"), text)
+        assertTrue(row.endsWith("[partly in viewport, clipped by scroll container]"), text)
+    }
+
+    @Test
+    fun `a control outside the viewport gets no centre`() {
+        val text = Screen(xml = CLICKABLE_LIST).run(GetUiTreeTool())
+        val row = text.lines().single { "Row 9" in it }
+
+        assertFalse(row.contains("center="), text)
+        assertTrue(row.endsWith("[outside viewport]"), text)
+    }
+
+    @Test
+    fun `meaningfulOnly keeps the label beside its switch`() {
+        assertKeepsLabels(Screen(xml = SWITCH_WITH_LABEL).run(GetUiTreeTool(), args("meaningfulOnly" to true)))
+    }
+
+    @Test
+    fun `meaningfulOnly wins over interactiveOnly`() {
+        val arguments = args("meaningfulOnly" to true, "interactiveOnly" to true)
+
+        assertKeepsLabels(Screen(xml = SWITCH_WITH_LABEL).run(GetUiTreeTool(), arguments))
+    }
+
+    @Test
+    fun `interactiveOnly still drops labels`() {
+        val text = Screen(xml = SWITCH_WITH_LABEL).run(GetUiTreeTool(), args("interactiveOnly" to true))
+
+        assertTrue(text.contains("\nInteractive elements:\n"), text)
+        assertFalse(text.contains("Ticking"), text)
+        assertTrue(text.lines().single { "recomp_ticking" in it }.contains("center="), text)
+    }
+
+    @Test
+    fun `only what a tap would land on gets a centre`() {
+        val lines = Screen(xml = CONTROLS).run(GetUiTreeTool()).lines()
+
+        // A scroll container or a checkable that is not clickable is not where android_tap_element taps.
+        assertFalse(lines.single { "ScrollView" in it }.contains("center="), lines.toString())
+        assertFalse(lines.single { "CheckBox" in it }.contains("center="), lines.toString())
+        assertFalse(lines.single { "testTag=hold" in it }.contains("center="), "long-clickable only: $lines")
+        assertFalse(lines.single { "Pay" in it }.contains("center="), "disabled: $lines")
+        assertTrue(lines.single { "testTag=card" in it }.contains("center=[540,500]"), lines.toString())
+    }
+
+    @Test
+    fun `interactiveOnly lists each row once, not again under its list`() {
+        val text = Screen(xml = CLICKABLE_LIST).run(GetUiTreeTool(), args("interactiveOnly" to true))
+
+        listOf("Row 1", "Row 5", "Row 9").forEach { row ->
+            assertEquals(1, text.lines().count { row in it }, text)
+        }
+    }
+
+    @Test
+    fun `meaningfulOnly lists a label inside a control once`() {
+        val text = Screen(xml = CONTROLS).run(GetUiTreeTool(), args("meaningfulOnly" to true))
+
+        assertEquals(1, text.lines().count { "Open card" in it }, text)
+        assertTrue(text.lines().any { it.startsWith("  View testTag=card clickable") }, text)
+    }
+
+    @Test
+    fun `finding an element does not add tap points`() {
+        val text = Screen().run(FindUiElementTool(), byTag("save"))
+
+        assertTrue(text.contains("[0,0][300,200]"), text)
+        assertFalse(text.contains("center="), text)
+    }
+
+    private fun assertKeepsLabels(text: String) {
+        val lines = text.lines()
+        val heading = lines.indexOf("Interactive and labelled elements:")
+        assertTrue(heading >= 0, text)
+        val listed = lines.drop(heading + 1)
+        val switch = listed.indexOfFirst { "recomp_ticking" in it }
+
+        assertEquals(
+            "  Switch testTag=recomp_ticking clickable checked=true [100,300][300,400] center=[200,350]",
+            listed[switch],
+        )
+        assertEquals("  TextView text=\"Ticking\" [320,320][600,380]", listed[switch + 1], text)
+        assertTrue(listed.any { "Recomposition fixture" in it }, text)
+        assertFalse(listed.any { "FrameLayout" in it || it.trim().startsWith("View ") }, text)
+    }
+
+    private fun args(vararg flags: Pair<String, Boolean>) =
+        JsonObject().apply { flags.forEach { (name, value) -> addProperty(name, value) } }
+
+    @Test
     fun `a lost device points an agent at android_list_devices`() {
         val screen = Screen(failure = AdbCommandRejectedException("device offline"))
 
@@ -198,6 +304,64 @@ class ComposeUiObservationToolsTest {
                   <node class="android.widget.TextView" text="Row 1" package="p" bounds="[0,100][1080,300]" />
                   <node class="android.widget.TextView" text="Row 5" package="p" bounds="[0,900][1080,1100]" />
                   <node class="android.widget.TextView" text="Row 9" package="p" bounds="[0,1700][1080,1900]" />
+                </node>
+              </node>
+            </hierarchy>
+        """.trimIndent()
+
+        /** As [LIST], with rows that can be tapped. */
+        val CLICKABLE_LIST = """
+            <hierarchy rotation="0">
+              <node class="android.widget.FrameLayout" package="p" bounds="[0,0][1080,2400]">
+                <node class="android.widget.ScrollView" resource-id="list" package="p"
+                      scrollable="true" enabled="true" bounds="[0,0][1080,1000]">
+                  <node class="android.widget.TextView" text="Row 1" package="p"
+                        clickable="true" enabled="true" bounds="[0,100][1080,300]" />
+                  <node class="android.widget.TextView" text="Row 5" package="p"
+                        clickable="true" enabled="true" bounds="[0,900][1080,1100]" />
+                  <node class="android.widget.TextView" text="Row 9" package="p"
+                        clickable="true" enabled="true" bounds="[0,1700][1080,1900]" />
+                </node>
+              </node>
+            </hierarchy>
+        """.trimIndent()
+
+        /** The sample app's Recomposition screen: a switch, and the label beside it that says what it is for. */
+        val SWITCH_WITH_LABEL = """
+            <hierarchy rotation="0">
+              <node class="android.widget.FrameLayout" package="p" bounds="[0,0][1080,2400]">
+                <node class="androidx.compose.ui.platform.AndroidComposeView" package="p" bounds="[0,0][1080,2400]">
+                  <node class="android.widget.TextView" text="Recomposition fixture" package="p" enabled="true"
+                        bounds="[0,100][1080,200]" />
+                  <node class="android.view.View" package="p" bounds="[0,300][1080,400]">
+                    <node class="android.widget.Switch" resource-id="recomp_ticking" package="p"
+                          checkable="true" checked="true" clickable="true" enabled="true"
+                          bounds="[100,300][300,400]" />
+                    <node class="android.widget.TextView" text="Ticking" package="p" enabled="true"
+                          bounds="[320,320][600,380]" />
+                  </node>
+                </node>
+              </node>
+            </hierarchy>
+        """.trimIndent()
+
+        /** A labelled clickable card, a list, a bare checkable, a long-press-only view and a disabled button. */
+        val CONTROLS = """
+            <hierarchy rotation="0">
+              <node class="android.widget.FrameLayout" package="p" bounds="[0,0][1080,2400]">
+                <node class="android.widget.ScrollView" resource-id="list" package="p"
+                      scrollable="true" enabled="true" bounds="[0,0][1080,1500]">
+                  <node class="android.view.View" resource-id="card" package="p"
+                        clickable="true" enabled="true" bounds="[0,400][1080,600]">
+                    <node class="android.widget.TextView" text="Open card" package="p"
+                          enabled="true" bounds="[40,450][600,550]" />
+                  </node>
+                  <node class="android.widget.CheckBox" resource-id="agree" package="p"
+                        checkable="true" enabled="true" bounds="[0,700][200,800]" />
+                  <node class="android.view.View" resource-id="hold" package="p"
+                        long-clickable="true" enabled="true" bounds="[400,700][600,800]" />
+                  <node class="android.widget.Button" text="Pay" package="p"
+                        clickable="true" enabled="false" bounds="[0,900][300,1000]" />
                 </node>
               </node>
             </hierarchy>

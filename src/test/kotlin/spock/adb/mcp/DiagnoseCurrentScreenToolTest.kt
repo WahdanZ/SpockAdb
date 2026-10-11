@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.device.ConnectedDevice
 import spock.adb.diagnostics.DiagnosticSections
+import spock.adb.diagnostics.FlutterSection
 import spock.adb.mcp.tools.DiagnoseCurrentScreenTool
 import spock.adb.mcp.tools.ToolContent
 import spock.adb.mcp.tools.ToolRegistry
@@ -92,9 +93,11 @@ class DiagnoseCurrentScreenToolTest {
     fun `every section of the shared report comes back, permissions included`() {
         val report = reportOf(run())
 
-        DiagnosticSections.ALL.forEach { section ->
+        // `flutter` is there only for a Flutter app, which this one is not: it is left out, not empty.
+        DiagnosticSections.ALL.filter { it != FlutterSection }.forEach { section ->
             assertTrue(report.has(section.id), "missing section ${section.id}: $report")
         }
+        assertFalse(report.has(FlutterSection.id), "a flutter section for a non-Flutter app: $report")
         assertEquals("CheckoutActivity", report["screen"].asJsonObject["activity"].asString)
         val permissions = report["permissions"].asJsonObject
         assertEquals(1, permissions["granted"].asInt)

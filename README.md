@@ -6,6 +6,7 @@
   <a href="https://github.com/WahdanZ/SpockAdb/actions"><img src="https://github.com/WahdanZ/SpockAdb/workflows/Build/badge.svg" alt="Build status"></a>
   <a href="https://plugins.jetbrains.com/plugin/11591-spock-adb"><img src="https://img.shields.io/jetbrains/plugin/v/11591-spock-adb" alt="JetBrains Marketplace version"></a>
   <a href="https://plugins.jetbrains.com/plugin/11591-spock-adb"><img src="https://img.shields.io/jetbrains/plugin/d/11591-spock-adb" alt="Downloads"></a>
+  <a href="https://androidweekly.net/issues/issue-747"><img src="https://androidweekly.net/issues/issue-747/badge" alt="Featured in Android Weekly Issue #747"></a>
 </p>
 
 # Spock ADB
@@ -15,7 +16,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 70 strongly typed Android tools for Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 71 strongly typed tools for Android and Flutter apps to Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -45,6 +46,7 @@ Spock ADB brings ADB workflows into the IDE and keeps one selected device and ap
   - [🔍 UI Tree](#ui-inspector)
   - [⏱ Scheduler](#background-work)
   - [⚡ Spock Actions](#spock-actions)
+  - [🐦 Flutter apps](#flutter-apps)
   - [🤖 Android debugging for AI agents](#ai-agents)
 - [Why use Spock ADB?](#why-use-spock-adb)
 - [Built for real debugging workflows](#built-for-real-debugging-workflows)
@@ -293,12 +295,21 @@ Every Spock ADB action in one searchable popup, from the main toolbar or a short
 
 ---
 
+<a id="flutter-apps"></a>
+### 🐦 Flutter apps
+
+Spock covers the device half of a Flutter app on Android, beside the Flutter plugin and the Dart MCP server, which cover the widgets. Home shows *Flutter debug*, *profile* or *release*; Storage reads `flutter.` preferences with their real types, Hive boxes and SQLite databases; Logcat has a *Flutter* view. Run the app with `flutter run` and Spock connects to it by itself — nothing to paste — so Diagnose lists Flutter's own errors beside the logcat lines and native crashes around them, the Timeline records errors, routes and failed requests, and Home shows the current Flutter route. Agents check the connection with `flutter_app_status`.
+
+See [Flutter apps](docs/FLUTTER.md) for what works in which build, the limits, and how to run Spock's MCP server next to Dart's.
+
+---
+
 <a id="ai-agents"></a>
 ### 🤖 Android debugging for AI agents
 
 Spock ADB includes a built-in **MCP server** for tools such as Claude Code, Claude Desktop, Cursor, and other MCP clients.
 
-Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **70 structured Android debugging tools**.
+Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **71 structured debugging tools for Android and Flutter apps**.
 
 Agents can inspect things such as:
 
@@ -376,7 +387,7 @@ That means less setup, fewer targeting mistakes, and less time spent fighting yo
 
 ## Documentation
 
-[MCP setup & tools](docs/MCP.md) · [IDE compatibility](docs/COMPATIBILITY.md) · [Release history](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+[MCP setup & tools](docs/MCP.md) · [Flutter apps](docs/FLUTTER.md) · [IDE compatibility](docs/COMPATIBILITY.md) · [Release history](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 ## License
 

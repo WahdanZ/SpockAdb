@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
+import spock.adb.timeline.TimelineCategory
 import java.io.File
 
 /**
@@ -19,12 +20,25 @@ class SkillToolNamesTest {
 
     private val registered = ToolRegistry.all().map { it.name }.toSet()
 
+    /**
+     * `android_get_debug_timeline`'s category values that share the `flutter_` prefix, documented
+     * next to it: argument values, not tools. Named one by one, so a future `flutter_` *tool*
+     * missing from the registry is still caught.
+     */
+    private val categoryValues = setOf("flutter_error", "flutter_frame")
+
+    @Test
+    fun `the allowed category values are timeline categories`() {
+        val names = TimelineCategory.entries.map { it.name.lowercase() }
+        assertTrue(names.containsAll(categoryValues), "$categoryValues are not all in $names")
+    }
+
     @Test
     fun `every documented tool name is a registered tool`() {
         val stale = DOCUMENTS.flatMap { file ->
             TOOL_NAME.findAll(file.readText())
                 .map { it.value }
-                .filter { it !in registered }
+                .filter { it !in registered && it !in categoryValues }
                 .distinct()
                 .map { "${file.path}: $it" }
                 .toList()
@@ -74,8 +88,11 @@ class SkillToolNamesTest {
             File("docs/MCP.md"),
         )
 
-        /** Ends on a letter so `android_get_` in prose about a prefix is not taken for a name. */
-        val TOOL_NAME = Regex("""\bandroid_[a-z_]*[a-z]\b""")
+        /**
+         * Ends on a letter so `android_get_` in prose about a prefix is not taken for a name. Takes
+         * the `ios_` and `flutter_` prefixes too, so those tools are checked the day they are named.
+         */
+        val TOOL_NAME = Regex("""\b(?:android|ios|flutter)_[a-z_]*[a-z]\b""")
 
         const val MIN_TOOLS_IN_SKILL = 20
         const val DESTRUCTIVE_START = "<!-- destructive-tools -->"

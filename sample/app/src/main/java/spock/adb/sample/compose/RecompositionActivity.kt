@@ -36,6 +36,10 @@ import kotlinx.coroutines.delay
  * during a capture and it should report five.
  *
  * Counts need `androidx.compose.runtime:runtime-tracing` in the app, which this sample has.
+ *
+ * Also the fixture for `android_get_ui_tree {meaningfulOnly: true}`: the `recomp_ticking` switch,
+ * with its `center=[x,y]`, is immediately followed by `TextView text="Ticking"` with no centre,
+ * the label `interactiveOnly: true` drops.
  */
 class RecompositionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

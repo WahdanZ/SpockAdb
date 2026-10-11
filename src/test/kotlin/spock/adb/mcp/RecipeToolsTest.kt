@@ -14,6 +14,7 @@ import spock.adb.mcp.tools.ToolContent
 import spock.adb.mcp.tools.ToolContext
 import spock.adb.mcp.tools.ToolResult
 import spock.adb.mcp.tools.ToolSafety
+import spock.adb.mcp.tools.confirmDestructive
 import spock.adb.recipe.BuiltInRecipes
 import spock.adb.recipe.Recipe
 import spock.adb.recipe.RecipeParam

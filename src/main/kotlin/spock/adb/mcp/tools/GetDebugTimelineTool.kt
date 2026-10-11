@@ -27,7 +27,9 @@ class GetDebugTimelineTool : AdbTool {
             "added, and MCP tool calls. All times are on one clock. Use it to answer what happened " +
             "immediately before a bug, or to see what a sequence of your own calls did to the app. Reads what " +
             "the IDE already recorded and asks the device nothing; device events are recorded only while the " +
-            "Spock ADB tool window has a device and app selected, which the result reports."
+            "Spock ADB tool window has a device and app selected, which the result reports. The Flutter " +
+            "categories (flutter_error, flutter_frame, navigation, http) are recorded only while a Flutter " +
+            "VM Service session is live, which this version does not open yet, so they are empty for now."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         integer("sinceSeconds", "Only events from the last this many seconds. Defaults to 300.")
