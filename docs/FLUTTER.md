@@ -152,18 +152,29 @@ row, and **App back stack** lists the app's **Flutter routes** in their own sect
 **Activities**. Spock reads them from the app's own `Navigator` with VM Service object reads — no
 code is run in the app — and never attaches a session for them.
 
-- **Keyed** (Home's row): the current route of the app's root navigator, found through its
-  `GlobalKey`. A nested navigator without a key cannot be seen this way; the tooltip says so.
-- **Exact** (App back stack): clicking it also counts every mounted navigator in the heap. Exactly
-  one, the keyed one, with the same stack before and after the count → the stack is exact, bottom
-  to top, root and current marked.
-- **Unavailable**, with the reason, otherwise: several keyed navigators, an unkeyed one beside the
-  keyed one, a transition in progress, or a stack that changed during the check. Spock does not
-  guess which navigator is showing.
+- **Keyed** (Home's row): the current route, read from every navigator with a `GlobalKey` —
+  `MaterialApp`'s root one, a router's shells and tabs. A navigator without a key cannot be seen
+  this way; the tooltip says so.
+- **Exact** (App back stack): clicking it also counts every mounted navigator in the heap. The same
+  navigators as the keyed read, with the same stacks and places before and after the count → exact,
+  bottom to top, root and current marked.
+- **Nested navigators** — go_router's `ShellRoute` and `StatefulShellRoute` branches, auto_route's
+  tabs and nested routers, a keyed `Navigator` in a page — are listed under the route that holds
+  them, each marked **hidden** or **showing**. Spock places each one by the route above it and
+  tells a hidden one by Flutter's own flags: `TickerMode` off (a covered route, a go_router branch
+  not showing) or `IndexedStack`'s `Visibility` off (any tab not showing). **Current** follows the
+  screen down: the top route, then the one navigator inside it that is not hidden, and so on. When
+  a route holds several that are not hidden — a split view, a tab container built without those
+  flags — current stops at that route and says why.
+- **Unavailable**, with the reason, otherwise: an unkeyed navigator besides the keyed ones, two
+  navigators outside every route, a navigator inside an unkeyed one's route, a transition in
+  progress, or something that changed during the check. Spock does not guess which navigator is
+  showing.
 
 A route with no name shows its class (`DialogRoute (unnamed)`), never an invented path. The heap
-check pauses the app briefly — **174–699 ms** measured on an Android 14 emulator — and the popup
-reports how long it took. Without a session, App back stack is the plain activity list and nothing
+check pauses the app briefly — **146–699 ms** measured on an Android 14 emulator — and the popup
+reports how long it took. Placing nested navigators costs about 50 reads each: with a router's
+three or four, Home's read takes 1–2 s and the check 2–3 s on an emulator. Without a session, App back stack is the plain activity list and nothing
 is read from the VM.
 
 ## Limits

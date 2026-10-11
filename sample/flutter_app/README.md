@@ -298,7 +298,7 @@ Open **Navigation** from the hub. Let transitions settle before checking Home �
 |---|---|
 | Push /nav/a, then /nav/a/b | Home KEYED current `/nav/a/b`; App back stack → Flutter routes EXACT: `/`, `/navigation`, `/nav/a`, `/nav/a/b`, root/current marked, under the Activities section. Back removes the top route. |
 | Show dialog | Current `DialogRoute (unnamed)`; no path invented, exact check includes it. Dismiss restores `/navigation`. |
-| Nested Navigator WITH key | Unavailable: several keyed navigators; no guessed visible child. |
+| Nested Navigator WITH key | EXACT tree: `/`, `/navigation`, `/nav/keyed`, then a nested navigator marked showing with `/nested`, current. Checked on 3.22.2 and 3.47.5 (#180). |
 | Nested Navigator WITHOUT key | Initially Home KEYED `/nav/unkeyed`; click check unavailable for an unkeyed nested navigator. Home remains unavailable until a successful check or new isolate. Leave the nested screen and check again. |
 | Navigator.pages | Replaces the sample root with one keyed Navigator: `/pages/list`, `/pages/detail`; exact check, names read from Page.name in route settings. Remove/add detail and refresh Home (declarative changes need not emit Flutter.Navigation). Restart sample to return to hub. |
 
@@ -312,23 +312,24 @@ activity list, with no Flutter section and no pause.
 
 ## Routing package checks (#180)
 
-**Not yet checked on a device.** `test/routing_test.dart` pins what each app mounts, on Flutter
-3.22.2 and 3.47.5. The packages are pinned to versions both SDKs compile: go_router 14.2.0 and
-auto_route 8.3.0, which needs `web` 0.5.1. auto_route 10 needs Flutter 3.24+. Routes are declared
-by hand, so the sample needs no code generation; the names are what generated code would use.
+**Checked on device** (Android 14 emulator) on Flutter 3.22.2 and 3.47.5, every row below, through
+`NavigatorLiveCheck` (the reader and the popup's text; the popup itself is not yet seen on screen).
+`test/routing_test.dart` pins what each app mounts. The packages are pinned to versions both SDKs
+compile: go_router 14.2.0 and auto_route 8.3.0, which needs `web` 0.5.1. auto_route 10 needs
+Flutter 3.24+. Routes are declared by hand, so the sample needs no code generation; the names are
+what generated code would use.
 
 Open **Routing packages** from the hub. Each button replaces the sample with that package's app;
 restart the sample to return to the hub.
 
-| Action | Navigators mounted (page names, outermost first) | Expected Spock result today |
+| Action | Navigators mounted (page names, outermost first) | Expected Spock result |
 |---|---|---|
-| go_router: start (`/feed`) | root `[null]` (the shell's page has no name), feed branch `[feed]` | Unavailable: several keyed navigators |
-| Push /feed/post, Profile tab, Push /profile/settings | root `[null]`, `[feed, feed-post]` (offstage), `[profile, profile-settings]` | Unavailable: several keyed navigators |
-| Feed tab, Back, Go to ShellRoute, Push /shell/detail | root `[null]`, `[shell, shell-detail]`; the branches are unmounted | Unavailable: several keyed navigators |
-| auto_route: start | `[HomeTabsRoute]`, feed tab `[FeedListRoute]` | Unavailable: several keyed navigators |
-| Push FeedPostRoute, Profile tab, Push ProfileSettingsRoute | `[HomeTabsRoute]`, `[FeedListRoute, FeedPostRoute]`, `[ProfileHomeRoute, ProfileSettingsRoute]` | Unavailable: several keyed navigators |
-| Feed tab, Back, Push NestedRoute (root), Push NestedBRoute | `[HomeTabsRoute, NestedRoute]`, `[FeedListRoute]`, `[ProfileHomeRoute, ProfileSettingsRoute]`, `[NestedARoute, NestedBRoute]` | Unavailable: several keyed navigators |
+| go_router: Push /feed/post, Profile tab, Push /profile/settings | root `[null]` (the shell's page has no name), `[feed, feed-post]`, `[profile, profile-settings]` | Home `profile-settings`. App back stack EXACT: the shell page (unnamed, root), then two nested navigators, feed **hidden**, profile **showing** with `profile-settings` current. |
+| Feed tab | the same | Current `feed-post`; feed **showing**, profile **hidden**. |
+| Back, Go to ShellRoute, Push /shell/detail | root `[null]`, `[shell, shell-detail]`; the branches are unmounted | EXACT: one nested navigator, showing, `shell-detail` current. |
+| auto_route: Push FeedPostRoute, Profile tab, Push ProfileSettingsRoute | `[HomeTabsRoute]`, `[FeedListRoute, FeedPostRoute]`, `[ProfileHomeRoute, ProfileSettingsRoute]` | EXACT; feed tab **hidden** (by `IndexedStack`'s `Visibility` alone), profile **showing**, `ProfileSettingsRoute` current. |
+| Feed tab, Back, Push NestedRoute (root), Push NestedBRoute | `[HomeTabsRoute, NestedRoute]`, `[FeedListRoute]`, `[ProfileHomeRoute, ProfileSettingsRoute]`, `[NestedARoute, NestedBRoute]` | EXACT, 4 navigators: both tabs **hidden** under `HomeTabsRoute` (covered), the nested router **showing** under `NestedRoute`, `NestedBRoute` current. |
 
-The target (#180) is a tree: each navigator's stack under the route that holds it, the on-screen
-branch marked current, and each part exact only where Spock can prove it. Record the actual result
-of each row on both Flutter versions before that work starts.
+Home's read takes 0.9–2.1 s here (3 s budget) and the check 1.0–2.9 s (5 s budget); the popup
+reports the heap pause, 146–579 ms. Still unchecked: the popup on screen, AS 232's layout of the
+indented rows, a split view (two navigators showing in one route).
