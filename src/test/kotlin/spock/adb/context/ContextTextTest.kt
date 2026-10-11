@@ -89,4 +89,21 @@ class ContextTextTest {
         val entry = ContextActions.choice("spock.adb.spock_flutter_sample", selected = false) {}
         assertEquals("spock.adb.spock_flutter_sample", entry.templatePresentation.text)
     }
+
+    @Test
+    fun `a choice is acknowledged with the app and the device it now acts on`() {
+        val snapshot = SpockSelection.Snapshot(devices = listOf(pixel), device = pixel, app = "spock.adb.sample")
+        assertEquals("Spock now acts on spock.adb.sample on Pixel 8 · API 35", ContextText.chosen(snapshot))
+    }
+
+    @Test
+    fun `a device chosen before any app asks for one`() {
+        val snapshot = SpockSelection.Snapshot(devices = listOf(pixel), device = pixel)
+        assertEquals("Spock now acts on Pixel 8 · API 35. Choose an app.", ContextText.chosen(snapshot))
+    }
+
+    @Test
+    fun `no device is said plainly`() {
+        assertEquals("No device selected", ContextText.chosen(SpockSelection.Snapshot()))
+    }
 }
