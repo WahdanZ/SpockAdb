@@ -189,6 +189,10 @@
 - **The grant and revoke balloons name the permission.** Granting or revoking one permission from
   **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
   revoked` instead of the permission's name.
+- **Choosing a device or app says so.** Picking one in the device and app chooser changed only the
+  line's text, so it was easy to wonder whether the click had landed. The tool window now shows a
+  short balloon under the line — "Spock now acts on `<app>` on `<device>`" — and the status bar
+  widget says the same in the status bar.
 - **The HTTP proxy field is wide enough for an address, and its history is in reach.** In a docked
   tool window the field shared one line with its label and both buttons, which left it about 90 px:
   an address did not fit, and the dropdown arrow that lists every proxy set before barely showed.

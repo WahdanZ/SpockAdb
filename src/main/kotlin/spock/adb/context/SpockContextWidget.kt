@@ -80,7 +80,7 @@ internal class SpockContextWidget(private val project: Project) :
 
     private fun popup(): ListPopup = JBPopupFactory.getInstance().createActionGroupPopup(
         "Spock ADB: Device and App",
-        ContextActions.group(project, selection),
+        ContextActions.group(project, selection) { text -> StatusBar.Info.set(text, project) },
         SimpleDataContext.getProjectContext(project),
         JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
         true,
@@ -103,6 +103,13 @@ internal object ContextText {
         return "Spock ADB acts on $device, app $app. $follow Click to change."
     }
 
+    /** The acknowledgement of a choice: what every Spock action now acts on. */
+    fun chosen(snapshot: SpockSelection.Snapshot): String {
+        val device = snapshot.device?.info?.compactLabel() ?: return "No device selected"
+        val app = snapshot.app ?: return "Spock now acts on $device. Choose an app."
+        return "Spock now acts on $app on $device"
+    }
+
     /**
      * One popup line per device, in order. Two emulators booted from the same system image read
      * the same, so a line shared with another device gets the serial, which tells them apart.
@@ -122,7 +129,16 @@ internal object ContextText {
 /** The popup's entries: every device, the apps on the selected one, and how the choice is made. */
 internal object ContextActions {
 
-    fun group(project: Project, selection: SpockSelection): DefaultActionGroup = DefaultActionGroup().apply {
+    /**
+     * @param confirm told what is selected after a device or app is chosen here, so the choice is
+     *   acknowledged where it was made; otherwise only the line's text changed, which was easy to miss.
+     */
+    fun group(
+        project: Project,
+        selection: SpockSelection,
+        confirm: (String) -> Unit = {},
+    ): DefaultActionGroup = DefaultActionGroup().apply {
+        val chosen = { confirm(ContextText.chosen(selection.snapshot)) }
         val snapshot = selection.snapshot
         add(Separator.create("Device"))
         if (snapshot.devices.isEmpty()) add(disabled(ContextText.NO_DEVICE))
@@ -131,13 +147,19 @@ internal object ContextActions {
             add(
                 choice(label, selected = device.serialNumber == snapshot.device?.serialNumber) {
                     selection.selectDevice(device.serialNumber)
+                    chosen()
                 },
             )
         }
         add(Separator.create("App"))
         snapshot.apps.forEach { app ->
             val label = if (app == snapshot.projectApp) "$app  (this project)" else app
-            add(choice(label, selected = app == snapshot.app) { selection.selectApp(app) })
+            add(
+                choice(label, selected = app == snapshot.app) {
+                    selection.selectApp(app)
+                    chosen()
+                },
+            )
         }
         add(
             DumbAwareAction.create("Other App…") {
@@ -148,7 +170,10 @@ internal object ContextActions {
                     null,
                     snapshot.app.orEmpty(),
                     null,
-                )?.let(selection::selectApp)
+                )?.let { app ->
+                    selection.selectApp(app)
+                    chosen()
+                }
             },
         )
         add(Separator.create())

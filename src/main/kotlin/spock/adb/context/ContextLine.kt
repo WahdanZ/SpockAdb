@@ -2,8 +2,13 @@ package spock.adb.context
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.MessageType
+import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.util.text.StringUtil
+import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.ActionLink
 import com.intellij.util.ui.JBUI
 import java.awt.FlowLayout
@@ -41,14 +46,32 @@ internal class ContextLine(private val project: Project, parent: Disposable) :
     private fun choose() {
         JBPopupFactory.getInstance().createActionGroupPopup(
             null,
-            ContextActions.group(project, selection),
+            ContextActions.group(project, selection, ::acknowledge),
             SimpleDataContext.getProjectContext(project),
             JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
             true,
         ).showUnderneathOf(link)
     }
 
+    /**
+     * A short balloon under the line saying what was chosen. The line's text changing was the only
+     * sign a choice had been made, and in a busy panel that went unnoticed. Shown after the popup
+     * has closed, which would otherwise take the balloon with it.
+     */
+    private fun acknowledge(text: String) {
+        ApplicationManager.getApplication().invokeLater({
+            if (!link.isShowing) return@invokeLater
+            JBPopupFactory.getInstance()
+                .createHtmlTextBalloonBuilder(StringUtil.escapeXmlEntities(text), MessageType.INFO, null)
+                .setFadeoutTime(FADE_MS)
+                .setHideOnClickOutside(true)
+                .createBalloon()
+                .show(RelativePoint.getSouthOf(link), Balloon.Position.below)
+        }) { project.isDisposed }
+    }
+
     private companion object {
         const val GAP = 4
+        const val FADE_MS = 3_000L
     }
 }
