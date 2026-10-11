@@ -30,6 +30,7 @@ import spock.adb.ui.AppBackStackRow
 import spock.adb.ui.className
 import spock.adb.ui.toActivityStackRows
 import spock.adb.ui.toAppBackStackRows
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 class AdbControllerImp(
@@ -423,7 +424,7 @@ class AdbControllerImp(
 
     override fun getApplicationPermissions(
         device: IDevice,
-        block: (devices: List<ListItem>) -> Unit,
+        block: (permissions: List<RuntimePermission>) -> Unit,
     ) {
         execute {
             val applicationID = getApplicationID(device)
@@ -451,6 +452,7 @@ class AdbControllerImp(
         execute(onDone) {
             val applicationID = getApplicationID(device)
             val permissions = GetApplicationPermission().execute(applicationID, project, device)
+                .map { ListItem(it.name, it.granted) }
             if (permissions.isEmpty()) {
                 error("This application does not declare any runtime permissions.")
             }
@@ -492,7 +494,7 @@ class AdbControllerImp(
         execute(onDone) {
             val applicationID = getApplicationID(device)
             RevokePermissionCommand().execute(applicationID, listItem, project, device)
-            showSuccess("permission $listItem revoked")
+            showSuccess("permission ${listItem.name} revoked")
         }
     }
 
@@ -504,7 +506,20 @@ class AdbControllerImp(
         execute(onDone) {
             val applicationID = getApplicationID(device)
             GrantPermissionCommand().execute(applicationID, listItem, project, device)
-            showSuccess("permission $listItem granted")
+            showSuccess("permission ${listItem.name} granted")
+        }
+    }
+
+    override fun resetPermissionPrompt(
+        device: IDevice,
+        permission: String,
+        onDone: (reset: Boolean) -> Unit,
+    ) {
+        // Written on the pooled thread, read in onDone once execute has handed it to the EDT.
+        val reset = AtomicBoolean(false)
+        execute({ onDone(reset.get()) }) {
+            showSuccess(ResetPermissionPromptCommand().execute(getApplicationID(device) to permission, project, device))
+            reset.set(true)
         }
     }
 
@@ -547,36 +562,53 @@ class AdbControllerImp(
 
     override fun setWindowAnimatorScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
-            val result = WindowAnimatorScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+        execute(onDone) {
+            showAnimationScaleWrite(WindowAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
     override fun setTransitionAnimatorScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
-            val result = TransitionAnimatorScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+        execute(onDone) {
+            showAnimationScaleWrite(TransitionAnimatorScaleCommand().execute(scale, project, device))
         }
     }
 
     override fun setAnimatorDurationScale(
         scale: String,
-        device: IDevice
-
+        device: IDevice,
+        onDone: () -> Unit,
     ) {
-        execute {
-            val result = AnimatorDurationScaleCommand().execute(scale, project, device)
-            showSuccess(result)
+        execute(onDone) {
+            showAnimationScaleWrite(AnimatorDurationScaleCommand().execute(scale, project, device))
         }
     }
+
+    override fun resetAnimationScales(device: IDevice, onDone: () -> Unit) {
+        execute(onDone) {
+            val result = SetAllAnimationScalesCommand().execute(DEFAULT_SCALE, project, device)
+            if (result.tookAll) {
+                showSuccess("Animation scales reset to 1\u00d7")
+            } else {
+                val problems = result.writes.filterNot { it.took }.map { it.message } +
+                    listOfNotNull(result.failureMessage)
+                showError(problems.joinToString("\n"))
+            }
+        }
+    }
+
+    /**
+     * Reports what the device holds after the write, not what was sent — `settings put` exits 0
+     * either way. A value the device did not keep is an error.
+     */
+    private fun showAnimationScaleWrite(write: AnimationScaleWrite) =
+        if (write.took) showSuccess(write.message) else showError(write.message)
 
     override fun toggleNetwork(
         device: IDevice,
@@ -608,8 +640,9 @@ class AdbControllerImp(
         read(block) {
             val permissions = GetApplicationPermission().execute(getApplicationID(device), project, device)
             PermissionSummary(
-                granted = permissions.count { it.isSelected },
-                denied = permissions.count { !it.isSelected },
+                granted = permissions.count { it.granted },
+                denied = permissions.count { !it.granted },
+                wontAskAgain = permissions.count { it.wontAskAgain },
             )
         }
 

@@ -142,6 +142,21 @@
   side by side. The `spock-adb` skill now tells an agent to call `flutter_app_status` first, to read
   silence in the *flutter* section as unknown rather than healthy, and to handle a permission dialog
   over a Flutter app with Spock's element tools, since it is native and the widget tools cannot see it.
+- **`android_set_animations`: animations off for agents, without a confirmation.** It sets the
+  window, transition and animator-duration scales together, reads them back, and reports the
+  previous values so they can be restored. Before this, agents had to ask for `settings put`
+  through `android_run_adb_command`, which needs approval every call. It is the same as the
+  Developer options dropdowns. The sample app's **Animations** screen shows what the app sees.
+  (Part of [#149](https://github.com/WahdanZ/SpockAdb/issues/149).)
+- **See when a permission won't be asked again, and reset it without clearing data.** Home ›
+  Permissions › **Manage…** now shows each runtime permission as granted, *denied — will ask*, or
+  *denied — won't ask again* (the `USER_FIXED` flag Android sets after two denials, or "Don't ask
+  again" before Android 11). Right-click a denied permission and choose **Ask again** to clear the
+  flag with `pm clear-permission-flags`; Spock reads the package back and reports success only
+  when the flag is actually gone, and the app's data is left alone. The summary line counts the
+  ones that won't be asked again, and `android_diagnose_current_screen` lists them in its
+  `permissions` section. The sample app's **Permissions** screen has a CAMERA-only request for
+  trying the whole cycle ([#146](https://github.com/WahdanZ/SpockAdb/issues/146)).
 
 ### Changed
 
@@ -166,6 +181,14 @@
   read the same — two emulators booted from one system image — now show their serial
   (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
   `spock.adb.spock_flutter_sample` no longer lose an underscore to a menu mnemonic.
+- **Animation scale changes report what the device holds.** Choosing a scale in Developer options
+  used to announce it as set without checking; it is now read back, a device that did not take
+  it is reported as an error, and the dropdown re-reads so a refused value does not stay on show.
+  **Reset animation scales** now re-reads after its writes finish, so
+  the dropdowns no longer show the values from before the reset.
+- **The grant and revoke balloons name the permission.** Granting or revoking one permission from
+  **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
+  revoked` instead of the permission's name.
 - **The HTTP proxy field is wide enough for an address, and its history is in reach.** In a docked
   tool window the field shared one line with its label and both buttons, which left it about 90 px:
   an address did not fit, and the dropdown arrow that lists every proxy set before barely showed.

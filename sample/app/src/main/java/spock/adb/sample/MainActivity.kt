@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
             open("Permissions — Grant / Revoke", PermissionsActivity::class.java)
             open("Process death, Don't keep activities, Restart", ProcessDeathActivity::class.java)
             open("Network — HTTP proxy, Wi-Fi, mobile data", NetworkActivity::class.java)
+            open("Animations — android_set_animations, animation scales", AnimationsActivity::class.java)
 
             heading("Other Spock windows and tabs")
             open("Spock Logcat › Timeline — lifecycle, warnings, a crash", TimelineActivity::class.java)

@@ -16,7 +16,7 @@
 <!-- Plugin description -->
 **Inspect, control, and debug your Android app and device directly from Android Studio or IntelliJ IDEA — without constantly switching to the terminal, Device Manager, Settings, or external tools.**
 
-Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 70 strongly typed tools for Android and Flutter apps to Claude Code, Claude Desktop, Cursor, and other AI clients.
+Spock ADB brings ADB workflows into the IDE and keeps one selected device and app as the active target across Home, Storage, Work, Shell, Logcat, the Debug Timeline, Diagnose and the UI Inspector — plus a built-in MCP server exposing 71 strongly typed tools for Android and Flutter apps to Claude Code, Claude Desktop, Cursor, and other AI clients.
 <!-- Plugin description end -->
 
 **One IDE · One device target · Fewer ADB commands**
@@ -116,7 +116,7 @@ The first tab of the **Spock ADB** window answers the questions you would otherw
 
 - **This screen** — the resumed activity and the app's fragments, read live, as links to their source; **Diagnose**, and **Copy screen for AI**, which diagnoses and copies the redacted report in one click. **App back stack** lists the app's activities top first, each with its state and the fragments it holds; **All activities** shows every task on the device.
 - **App** — version, process and UID, with **Restart**, **Attach debugger**, **Force stop** and **Process death** in a toolbar. **Clear cache**, **Clear data** and **Uninstall** sit behind **⋯**, never one click from Restart. Links jump to the **Debug timeline** and **Background work**.
-- **Permissions** — how many are granted, with **Manage…**, **Grant all** and **Revoke all…**.
+- **Permissions** — how many are granted and which won't be asked again, with **Manage…**, **Grant all** and **Revoke all…**.
 - **Send to app** — text input, deep links and push messages.
 - **Device** — Wi-Fi and mobile data, HTTP proxy, and developer options (Don't keep activities, Show taps, layout bounds, animation scales), which start hidden on a fresh install. Folded until you need it.
 
@@ -309,7 +309,7 @@ See [Flutter apps](docs/FLUTTER.md) for what works in which build, the limits, a
 
 Spock ADB includes a built-in **MCP server** for tools such as Claude Code, Claude Desktop, Cursor, and other MCP clients.
 
-Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **70 structured debugging tools for Android and Flutter apps**.
+Instead of giving an AI agent unrestricted shell access, Spock ADB exposes **71 structured debugging tools for Android and Flutter apps**.
 
 Agents can inspect things such as:
 

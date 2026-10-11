@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import spock.adb.premission.ListItem
+import spock.adb.command.RuntimePermission
 
 /**
  * What the Diagnose tab shows is read back from the report, so these pin the reading: a person
@@ -94,7 +94,10 @@ class ScreenDiagnosisTest {
     @Test
     fun `denied permissions are information, not faults`() {
         val section = PermissionsSection.summarise(
-            listOf(ListItem("android.permission.CAMERA", false), ListItem("android.permission.RECORD_AUDIO", true)),
+            listOf(
+                RuntimePermission("android.permission.CAMERA", false),
+                RuntimePermission("android.permission.RECORD_AUDIO", true),
+            ),
         )
 
         assertEquals(1, section.data["granted"].asInt)
@@ -104,8 +107,46 @@ class ScreenDiagnosisTest {
 
     @Test
     fun `all permissions granted is no problem at all`() {
-        val section = PermissionsSection.summarise(listOf(ListItem("android.permission.CAMERA", true)))
+        val section = PermissionsSection.summarise(listOf(RuntimePermission("android.permission.CAMERA", true)))
 
         assertTrue(section.problems.isEmpty())
+    }
+
+    @Test
+    fun `a permission that will not be asked for again is named as such`() {
+        val section = PermissionsSection.summarise(
+            listOf(
+                RuntimePermission("android.permission.CAMERA", granted = false, userSet = true, userFixed = true),
+                RuntimePermission("android.permission.RECORD_AUDIO", granted = false, userSet = true),
+            ),
+        )
+
+        assertEquals(listOf("CAMERA"), section.data["wontAskAgain"].asJsonArray.map { it.asString })
+        assertTrue(section.problems.single().summary.contains("1 won't ask again: CAMERA"), section.problems.toString())
+
+        val report = JsonParser.parseString("""{"schemaVersion": 2}""").asJsonObject
+            .apply { add(PermissionsSection.id, section.data) }
+        val line = ScreenDiagnosis(report).facts.toMap().getValue("Permissions")
+        assertTrue(line.contains("(won't ask again: CAMERA)"), line)
+    }
+
+    @Test
+    fun `no permission held back by the system means no wontAskAgain at all`() {
+        val section = PermissionsSection.summarise(
+            listOf(RuntimePermission("android.permission.CAMERA", granted = false, userSet = true)),
+        )
+
+        assertFalse(section.data.has("wontAskAgain"), section.data.toString())
+        assertFalse(section.problems.single().summary.contains("won't ask again"))
+    }
+
+    @Test
+    fun `a long won't-ask-again list is capped and counts the rest`() {
+        val section = PermissionsSection.summarise(
+            (1..15).map { RuntimePermission("android.permission.P$it", granted = false, userFixed = true) },
+        )
+
+        assertEquals(12, section.data["wontAskAgain"].asJsonArray.size())
+        assertEquals(3, section.data["moreWontAskAgain"].asInt)
     }
 }
