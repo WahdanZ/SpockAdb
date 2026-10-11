@@ -309,3 +309,26 @@ heap check briefly pauses the app; the popup reports its round-trip duration, no
 measured pause. Also check hot restart, switch selected apps/devices during a slow read, hide
 stack actions in settings, and select a non-Flutter app: App back stack must be the plain
 activity list, with no Flutter section and no pause.
+
+## Routing package checks (#180)
+
+**Not yet checked on a device.** `test/routing_test.dart` pins what each app mounts, on Flutter
+3.22.2 and 3.47.5. The packages are pinned to versions both SDKs compile: go_router 14.2.0 and
+auto_route 8.3.0, which needs `web` 0.5.1. auto_route 10 needs Flutter 3.24+. Routes are declared
+by hand, so the sample needs no code generation; the names are what generated code would use.
+
+Open **Routing packages** from the hub. Each button replaces the sample with that package's app;
+restart the sample to return to the hub.
+
+| Action | Navigators mounted (page names, outermost first) | Expected Spock result today |
+|---|---|---|
+| go_router: start (`/feed`) | root `[null]` (the shell's page has no name), feed branch `[feed]` | Unavailable: several keyed navigators |
+| Push /feed/post, Profile tab, Push /profile/settings | root `[null]`, `[feed, feed-post]` (offstage), `[profile, profile-settings]` | Unavailable: several keyed navigators |
+| Feed tab, Back, Go to ShellRoute, Push /shell/detail | root `[null]`, `[shell, shell-detail]`; the branches are unmounted | Unavailable: several keyed navigators |
+| auto_route: start | `[HomeTabsRoute]`, feed tab `[FeedListRoute]` | Unavailable: several keyed navigators |
+| Push FeedPostRoute, Profile tab, Push ProfileSettingsRoute | `[HomeTabsRoute]`, `[FeedListRoute, FeedPostRoute]`, `[ProfileHomeRoute, ProfileSettingsRoute]` | Unavailable: several keyed navigators |
+| Feed tab, Back, Push NestedRoute (root), Push NestedBRoute | `[HomeTabsRoute, NestedRoute]`, `[FeedListRoute]`, `[ProfileHomeRoute, ProfileSettingsRoute]`, `[NestedARoute, NestedBRoute]` | Unavailable: several keyed navigators |
+
+The target (#180) is a tree: each navigator's stack under the route that holds it, the on-screen
+branch marked current, and each part exact only where Spock can prove it. Record the actual result
+of each row on both Flutter versions before that work starts.

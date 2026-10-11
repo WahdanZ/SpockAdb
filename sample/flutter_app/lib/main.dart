@@ -7,6 +7,7 @@ import 'fixtures/login.dart';
 import 'fixtures/logs.dart';
 import 'fixtures/network.dart';
 import 'fixtures/navigation.dart';
+import 'fixtures/routing.dart';
 import 'fixtures/permissions.dart';
 import 'fixtures/push.dart';
 import 'fixtures/routes.dart';
@@ -27,6 +28,7 @@ class Fixture {
 
 final fixtures = <Fixture>[
   Fixture('/navigation', 'Navigation', 'Current Flutter route and exact back stack checks', (_) => const NavigationScreen()),
+  Fixture('/routing', 'Routing packages', 'go_router shells and auto_route nested routers (#180)', (_) => const RoutingPackagesScreen()),
   Fixture('/login', 'Login', 'UI tree + android_* element tools via Semantics(identifier:)', (_) => const LoginScreen()),
   Fixture('/items', 'List → detail routes', 'Deep links, route stack, back navigation', (_) => const ItemListScreen()),
   Fixture('/layout', 'Layout overflow', 'Flutter errors in Diagnose / Timeline', (_) => const LayoutScreen()),
