@@ -148,6 +148,15 @@
   through `android_run_adb_command`, which needs approval every call. It is the same as the
   Developer options dropdowns. The sample app's **Animations** screen shows what the app sees.
   (Part of [#149](https://github.com/WahdanZ/SpockAdb/issues/149).)
+- **See when a permission won't be asked again, and reset it without clearing data.** Home ›
+  Permissions › **Manage…** now shows each runtime permission as granted, *denied — will ask*, or
+  *denied — won't ask again* (the `USER_FIXED` flag Android sets after two denials, or "Don't ask
+  again" before Android 11). Right-click a denied permission and choose **Ask again** to clear the
+  flag with `pm clear-permission-flags`; Spock reads the package back and reports success only
+  when the flag is actually gone, and the app's data is left alone. The summary line counts the
+  ones that won't be asked again, and `android_diagnose_current_screen` lists them in its
+  `permissions` section. The sample app's **Permissions** screen has a CAMERA-only request for
+  trying the whole cycle ([#146](https://github.com/WahdanZ/SpockAdb/issues/146)).
 
 ### Changed
 
@@ -177,6 +186,9 @@
   it is reported as an error, and the dropdown re-reads so a refused value does not stay on show.
   **Reset animation scales** now re-reads after its writes finish, so
   the dropdowns no longer show the values from before the reset.
+- **The grant and revoke balloons name the permission.** Granting or revoking one permission from
+  **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
+  revoked` instead of the permission's name.
 
 ## [4.0.7] - 2026-09-29
 
