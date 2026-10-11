@@ -166,6 +166,10 @@
   read the same — two emulators booted from one system image — now show their serial
   (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
   `spock.adb.spock_flutter_sample` no longer lose an underscore to a menu mnemonic.
+- **The HTTP proxy field is wide enough for an address, and its history is in reach.** In a docked
+  tool window the field shared one line with its label and both buttons, which left it about 90 px:
+  an address did not fit, and the dropdown arrow that lists every proxy set before barely showed.
+  The field now has its own line across the panel, with **Set** and **Remove proxy** beneath it.
 
 ## [4.0.7] - 2026-09-29
 
