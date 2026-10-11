@@ -51,6 +51,8 @@ object TimelineExport {
     }
 
     private const val SEVERITY_WIDTH = 7
-    private const val CATEGORY_WIDTH = 10
+
+    /** The longest label, so the titles line up whatever the category. */
+    private val CATEGORY_WIDTH = TimelineCategory.entries.maxOf { it.label.length }
     private const val DETAIL_INDENT = "        "
 }

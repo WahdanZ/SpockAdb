@@ -194,6 +194,9 @@
 - **The grant and revoke balloons name the permission.** Granting or revoking one permission from
   **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
   revoked` instead of the permission's name.
+- **The Timeline's Flutter filter is called "Flutter error".** It lists Flutter framework errors only;
+  "Flutter" read as if it held every Flutter row, so an empty list looked broken. Routes, slow
+  frames and failed requests keep their own filters: Navigation, Frame and HTTP.
 - **Choosing a device or app says so.** Picking one in the device and app chooser changed only the
   line's text, so it was easy to wonder whether the click had landed. The tool window now shows a
   short balloon under the line — "Spock now acts on `<app>` on `<device>`" — and the status bar
