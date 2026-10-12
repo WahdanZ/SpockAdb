@@ -28,11 +28,44 @@ class McpHttpServerTest {
     @AfterEach
     fun stop() = server.stop()
 
-    private fun post(body: String, bearer: String? = token, method: String = "POST"): HttpResponse<String> {
+    private fun post(
+        body: String,
+        bearer: String? = token,
+        method: String = "POST",
+        protocolVersion: String? = null,
+    ): HttpResponse<String> {
         val builder = HttpRequest.newBuilder(URI("http://127.0.0.1:$port${McpHttpServer.ENDPOINT}"))
             .method(method, HttpRequest.BodyPublishers.ofString(body))
         bearer?.let { builder.header("Authorization", "Bearer $it") }
+        protocolVersion?.let { builder.header(McpHttpServer.PROTOCOL_VERSION_HEADER, it) }
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString())
+    }
+
+    private fun firstTool(response: HttpResponse<String>) =
+        JsonParser.parseString(response.body()).asJsonObject.getAsJsonObject("result")
+            .getAsJsonArray("tools").map { it.asJsonObject }
+            .first { it.get("name").asString == "android_get_debug_context" }
+
+    @Test
+    fun `each request's protocol version header decides the shape it gets`() {
+        // HTTP is stateless: the version negotiated at initialize comes back on every request.
+        val list = """{"jsonrpc":"2.0","id":1,"method":"tools/list"}"""
+
+        val current = firstTool(post(list, protocolVersion = "2025-06-18"))
+        assertTrue(current.has("outputSchema"), current.toString())
+        assertEquals("Debug context", current.get("title").asString)
+
+        // No header means 2025-03-26, as the Streamable HTTP spec says: a title, but no output schema.
+        val unversioned = firstTool(post(list))
+        assertTrue(!unversioned.has("outputSchema"), unversioned.toString())
+        assertEquals("Debug context", unversioned.getAsJsonObject("annotations").get("title").asString)
+    }
+
+    @Test
+    fun `a protocol version the server does not speak is a bad request`() {
+        val response = post("""{"jsonrpc":"2.0","id":1,"method":"ping"}""", protocolVersion = "1999-01-01")
+
+        assertEquals(400, response.statusCode())
     }
 
     @Test
@@ -41,7 +74,7 @@ class McpHttpServerTest {
 
         assertEquals(200, response.statusCode())
         val result = JsonParser.parseString(response.body()).asJsonObject.getAsJsonObject("result")
-        assertEquals(McpProtocol.PROTOCOL_VERSION, result.get("protocolVersion").asString)
+        assertEquals(McpSession.LATEST_VERSION, result.get("protocolVersion").asString)
     }
 
     @Test

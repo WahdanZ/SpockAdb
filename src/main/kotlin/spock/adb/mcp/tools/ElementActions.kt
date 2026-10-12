@@ -142,7 +142,7 @@ internal object ElementActions {
                     ?: throw IllegalArgumentException(
                         "Unknown $UNTIL '$word'. Use one of: ${UntilArgument.WORDS.joinToString()}.",
                     )
-                val requested = arguments.optionalInt(TIMEOUT, DEFAULT_TIMEOUT_MS).coerceIn(0, MAX_TIMEOUT_MS)
+                val requested = arguments.optionalInt(TIMEOUT, DEFAULT_TIMEOUT_MS, TIMEOUTS)
                 return Expectation(condition, WaitForElementTool.timeoutFor(requested, canCancel), requested)
             }
         }
@@ -152,27 +152,19 @@ internal object ElementActions {
     fun Schema.ObjectBuilder.expectation() {
         string(
             TEST_TAG,
-            "Optional check after the action: the test tag, resource id or Flutter Semantics(identifier:) of an " +
-                "element that should then be in the state $UNTIL names. Any $TEST_TAG, $TEXT or $DESCRIPTION " +
-                "turns the check on. It is matched " +
-                "over the whole screen: packageName and containerTag scope only the element acted on.",
+            "Optional check after the action: any expect* selector names an element expected in the $UNTIL " +
+                "state. Result: VERIFIED, NOT OBSERVED or INCONCLUSIVE. Input is never repeated.",
         )
-        string(TEXT, "Optional check after the action: text or content description of the element expected.")
-        string(DESCRIPTION, "Optional check after the action: content description of the element expected.")
-        boolean(EXACT, "Whole-value match for $TEXT and $DESCRIPTION. Defaults to false.")
-        boolean(EXACT_TAG, "Case-sensitive whole match for $TEST_TAG. Defaults to false.")
-        enumeration(
-            UNTIL,
-            "What the expected element should be after the action, in android_wait_for_element's words. " +
-                "Defaults to $DEFAULT_UNTIL. 'gone' and 'hidden' wait for every match, and $TEXT matches content " +
-                "descriptions too, so give them $EXACT: true or $TEST_TAG.",
-            UntilArgument.WORDS,
-        )
+        string(TEXT, "Expected element's text or content description.")
+        string(DESCRIPTION, "Expected element's content description.")
+        boolean(EXACT, "Whole-value match for $TEXT, $DESCRIPTION.")
+        boolean(EXACT_TAG, "Case-sensitive whole $TEST_TAG match.")
+        enumeration(UNTIL, "Expected state. Default $DEFAULT_UNTIL.", UntilArgument.WORDS)
         integer(
             TIMEOUT,
-            "How long to look for the expected result, in milliseconds, 0 to $MAX_TIMEOUT_MS. Defaults to " +
-                "$DEFAULT_TIMEOUT_MS; over HTTP at most ${WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS}. The " +
-                "first look always completes, even past this limit.",
+            "ms to look. Default $DEFAULT_TIMEOUT_MS; over HTTP at most " +
+                "${WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS}.",
+            TIMEOUTS,
         )
     }
 
@@ -325,6 +317,7 @@ internal object ElementActions {
     private const val DEFAULT_UNTIL = "visible"
     private const val DEFAULT_TIMEOUT_MS = 5_000
     private const val MAX_TIMEOUT_MS = 60_000
+    private val TIMEOUTS = 0..MAX_TIMEOUT_MS
     private const val POLL_INTERVAL_MS = 500L
 }
 

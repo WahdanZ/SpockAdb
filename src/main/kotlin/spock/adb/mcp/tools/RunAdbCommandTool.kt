@@ -17,18 +17,19 @@ import spock.adb.flutter.vmservice.Redaction
 class RunAdbCommandTool : AdbTool {
 
     override val name = "android_run_adb_command"
+    override val title = "Run adb shell command"
     override val description =
-        "DANGEROUS ESCAPE HATCH. Run an arbitrary `adb shell` command on the device. " +
-            "Every call requires the developer to read the command and approve it, so it is " +
-            "slow and interrupts them. Prefer a specific tool — android_launch_app, " +
-            "android_get_logcat, android_open_deep_link and the rest — and only use this " +
-            "when no typed tool can express what you need. Say why you need it."
+        "DANGEROUS ESCAPE HATCH: run any `adb shell` command. The developer approves every call; use it " +
+            "only when no typed tool can."
     override val safety = ToolSafety.DESTRUCTIVE
 
+    /** An arbitrary shell can reach anything the device can, the network included. */
+    override val openWorld = true
+
     override val inputSchema: JsonObject = Schema.obj {
-        string("command", "The shell command to run on the device, without the 'adb shell' prefix.", required = true)
-        string("reason", "Why a typed tool cannot do this. Shown to the developer when approving.", required = true)
-        integer("timeoutSeconds", "Timeout in seconds. Defaults to 20, maximum 120.")
+        string("command", "Shell command, without 'adb shell'.", required = true)
+        string("reason", "Why no typed tool can do this. Shown to the developer.", required = true)
+        integer("timeoutSeconds", "Timeout in seconds. Defaults to $DEFAULT_TIMEOUT_SECONDS.", TIMEOUTS)
         deviceSerial()
     }
 
@@ -39,10 +40,7 @@ class RunAdbCommandTool : AdbTool {
 
         validate(command)?.let { return ToolResult.error(it) }
 
-        val timeout = arguments
-            .optionalInt("timeoutSeconds", DEFAULT_TIMEOUT_SECONDS)
-            .coerceIn(1, MAX_TIMEOUT_SECONDS)
-            .toLong()
+        val timeout = arguments.optionalInt("timeoutSeconds", DEFAULT_TIMEOUT_SECONDS, TIMEOUTS).toLong()
 
         val approved = context.confirmDestructive(
             name,
@@ -82,6 +80,7 @@ class RunAdbCommandTool : AdbTool {
     private companion object {
         const val DEFAULT_TIMEOUT_SECONDS = 20
         const val MAX_TIMEOUT_SECONDS = 120
+        val TIMEOUTS = 1..MAX_TIMEOUT_SECONDS
 
         /** Commands that wipe the device or the developer's data rather than the app's. */
         val BLOCKED = listOf(

@@ -1,7 +1,6 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonArray
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 
 /**
@@ -32,18 +31,43 @@ object Schema {
                 if (mayBeEmpty) addProperty("minLength", 0)
             }
 
-        /** `packageName` for a tool about one app: [what] it is, then what it defaults to. */
-        fun packageName(what: String) = string("packageName", "$what $PACKAGE_DEFAULT")
+        /**
+         * `packageName` for a tool about one app. Like [deviceSerial] it carries no description: it
+         * repeats in some thirty tools, and what it defaults to ([PACKAGE_DEFAULT]) is said once, in
+         * the server's `initialize` instructions, and again in each result that used the default.
+         */
+        fun packageName() {
+            properties.add("packageName", JsonObject().apply { addProperty("type", "string") })
+        }
 
-        fun integer(name: String, description: String, required: Boolean = false) =
-            property(name, "integer", description, required)
+        /**
+         * A whole number. [bounds] becomes the schema's `minimum` and `maximum`; pass the same
+         * range to [requiredInt] or [optionalInt], which refuse a value outside it, so the limit
+         * a client is shown and the one the tool enforces are one value.
+         */
+        fun integer(name: String, description: String, bounds: IntRange? = null, required: Boolean = false) =
+            property(name, "integer", description, required) {
+                bounds?.let {
+                    addProperty("minimum", it.first)
+                    addProperty("maximum", it.last)
+                }
+            }
 
         fun boolean(name: String, description: String, required: Boolean = false) =
             property(name, "boolean", description, required)
 
-        /** A number that may have a fraction, such as a scale factor. */
-        fun number(name: String, description: String, required: Boolean = false) =
-            property(name, "number", description, required)
+        /** A number that may have a fraction, such as a scale factor. Bounded as [integer] is. */
+        fun number(
+            name: String,
+            description: String,
+            bounds: ClosedFloatingPointRange<Double>? = null,
+            required: Boolean = false,
+        ) = property(name, "number", description, required) {
+            bounds?.let {
+                addProperty("minimum", it.start)
+                addProperty("maximum", it.endInclusive)
+            }
+        }
 
         /**
      * An array of strings, optionally constrained to a fixed set.
@@ -70,6 +94,22 @@ object Schema {
             if (required) this.required.add(name)
         }
 
+        /**
+         * An object whose shape is described in words rather than declared, for an output schema
+         * whose detail is versioned and documented elsewhere.
+         */
+        fun objectValue(name: String, description: String) = property(name, "object", description, false)
+
+        /** An array of objects, described as [objectValue] is. */
+        fun objectArray(name: String, description: String) {
+            val node = JsonObject().apply {
+                addProperty("type", "array")
+                addProperty("description", description)
+                add("items", JsonObject().apply { addProperty("type", "object") })
+            }
+            properties.add(name, node)
+        }
+
         /** An object of string values under any keys, such as a push message's data payload. */
         fun stringMap(name: String, description: String, required: Boolean = false) {
             val node = JsonObject().apply {
@@ -91,12 +131,14 @@ object Schema {
             if (required) this.required.add(name)
         }
 
-        /** Every device-targeting tool accepts this, so it is declared in one place. */
-        fun deviceSerial() = string(
-            "deviceSerial",
-            "Serial of the target device. Defaults to the device selected with " +
-                "android_select_device, or the only attached device.",
-        )
+        /**
+         * Every device-targeting tool accepts this, so it is declared in one place — with no
+         * description, since it is repeated in nearly every tool `tools/list` returns and its
+         * name says what it is. Which device it defaults to is said once, in android_list_devices.
+         */
+        fun deviceSerial() {
+            properties.add("deviceSerial", JsonObject().apply { addProperty("type", "string") })
+        }
 
         private fun property(
             name: String,
@@ -116,10 +158,11 @@ object Schema {
             if (isRequired) required.add(name)
         }
 
+        /** `required` is left out when empty, which JSON Schema reads the same, to keep `tools/list` small. */
         fun build(): JsonObject = JsonObject().apply {
             addProperty("type", "object")
             add("properties", properties)
-            add("required", required)
+            if (!required.isEmpty) add("required", required)
         }
     }
 }
@@ -139,59 +182,6 @@ fun JsonObject.requiredText(name: String): String {
     val element = get(name)?.takeIf { !it.isJsonNull && it.isJsonPrimitive }
         ?: throw IllegalArgumentException("Missing required argument '$name'")
     return element.asString
-}
-
-/**
- * A required whole-number argument.
- *
- * Lived in InteractionTools while tap and swipe were the only tools taking coordinates;
- * moved here next to the other accessors once the proxy tools needed a port.
- *
- * @throws IllegalArgumentException when absent, or when the value is not a whole number; see
- *   [asStrictInt].
- */
-fun JsonObject.requiredInt(name: String): Int {
-    val element = get(name)?.takeIf { !it.isJsonNull }
-        ?: throw IllegalArgumentException("Missing required argument '$name'")
-    return element.asStrictInt(name)
-}
-
-/**
- * An optional whole-number argument with a default. A value that is present is held to the
- * same rules as [requiredInt] — sending one that is wrong is not the same as leaving it out.
- */
-fun JsonObject.optionalInt(name: String, default: Int): Int = optionalInt(name) ?: default
-
-/** As [optionalInt], but null when omitted, for a tool whose fallback is not a constant. */
-fun JsonObject.optionalInt(name: String): Int? =
-    get(name)?.takeIf { !it.isJsonNull }?.asStrictInt(name)
-
-/**
- * The value as an Int, or an error naming [name] and what is wrong with it.
- *
- * Gson's `asInt` truncates, so a port of `8888.9` quietly became 8888 and `"8888"` was parsed
- * out of a string, neither of which an agent that sent them would have meant. A number with a
- * zero fractional part such as `8888.0` is accepted, because JSON Schema's `integer` accepts
- * it too; one with a real fraction, or outside Int's range, is refused. Read as a BigDecimal
- * rather than a Double so a large value is not rounded or clamped into something that looks
- * valid before it is checked.
- */
-private fun JsonElement.asStrictInt(name: String): Int {
-    require(isJsonPrimitive) {
-        "Argument '$name' must be a whole number, not ${if (isJsonArray) "an array" else "an object"}."
-    }
-    val primitive = asJsonPrimitive
-    require(primitive.isNumber) { "Argument '$name' must be a whole number, got $primitive." }
-
-    val number = primitive.asBigDecimal.stripTrailingZeros()
-    require(number.scale() <= 0) {
-        "Argument '$name' must be a whole number, got ${primitive.asString}."
-    }
-    return try {
-        number.intValueExact()
-    } catch (e: ArithmeticException) {
-        throw IllegalArgumentException("Argument '$name' is out of range: ${primitive.asString}.", e)
-    }
 }
 
 /**

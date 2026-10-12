@@ -83,10 +83,20 @@ class RecompositionToolsTest {
     }
 
     @Test
-    fun `the recording asks perfetto for the requested window, capped at thirty seconds`() {
-        run(healthy(), JsonObject().apply { addProperty("durationSeconds", 90) })
+    fun `the recording asks perfetto for the requested window, up to thirty seconds`() {
+        run(healthy(), JsonObject().apply { addProperty("durationSeconds", 30) })
 
         assertTrue(commands.single { it.startsWith("echo") }.contains("duration_ms: 30000"), "$commands")
+    }
+
+    @Test
+    fun `a window longer than thirty seconds is refused rather than shortened`() {
+        val result = run(healthy(), JsonObject().apply { addProperty("durationSeconds", 90) })
+
+        assertTrue(result.isError)
+        val expected = "Argument 'durationSeconds' must be between 1 and 30, got 90."
+        assertTrue(result.text().contains(expected), result.text())
+        assertTrue(commands.none { it.startsWith("echo") }, "nothing recorded: $commands")
     }
 
     @Test

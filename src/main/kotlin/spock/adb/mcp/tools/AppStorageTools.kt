@@ -22,13 +22,12 @@ import spock.adb.storage.isEncryptedPreferences
 /** `android_list_app_storage` — which preference files an app has. */
 class ListAppStorageTool : AdbTool {
     override val name = "android_list_app_storage"
+    override val title = "List app storage"
     override val description =
-        "List an app's SharedPreferences files (shared_prefs/*.xml) and Preferences DataStore files " +
-            "(files/datastore/*.preferences_pb). Goes through run-as, so the app must be a debuggable " +
-            "build. Read one with android_read_app_storage."
+        "List an app's SharedPreferences and Preferences DataStore files. Needs a debuggable build."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package whose storage to list.")
+        packageName()
         deviceSerial()
     }
 
@@ -58,29 +57,21 @@ class ListAppStorageTool : AdbTool {
  */
 class ReadAppStorageTool : AdbTool {
     override val name = "android_read_app_storage"
+    override val title = "Read app storage"
     override val description =
-        "Read one SharedPreferences or Preferences DataStore file as typed entries: key, type, value. " +
-            "Use it to check an app's stored state — onboarding flags, feature toggles, a cached user — " +
-            "before or after reproducing a bug. Requires a debuggable build. Each value is cut at " +
-            "maxValueChars (default ${StorageView.DEFAULT_MAX_VALUE_CHARS}); use key to read only the " +
-            "entries you need. Values that look secret are redacted — best-effort, by key name (token, " +
-            "secret, auth, password, session, api key, jwt, bearer, cookie, credential, private key) and " +
-            "value shape (a JWT, or JSON holding such a key); showSecrets asks the developer to reveal them."
+        "Read a SharedPreferences or DataStore file as typed entries. Needs a debuggable build. " +
+            "Secret-looking values are redacted, best-effort."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
-        string("key", "Only the entries whose key contains this text, ignoring case.")
+        string("key", "Only keys containing this, ignoring case.")
         integer(
             "maxValueChars",
-            "Longest value shown before it is cut, ${StorageView.MIN_VALUE_CHARS}-${StorageView.MAX_VALUE_CHARS}. " +
-                "Defaults to ${StorageView.DEFAULT_MAX_VALUE_CHARS}.",
+            "Cut each value at this length. Default ${StorageView.DEFAULT_MAX_VALUE_CHARS}.",
+            StorageView.VALUE_CHARS,
         )
-        boolean(
-            "showSecrets",
-            "Show the values that are redacted because they look secret. The developer is asked " +
-                "first; if they decline, the values stay redacted. Defaults to false.",
-        )
-        packageName("Package that owns the file.")
+        boolean("showSecrets", "Reveal redacted values if the developer agrees.")
+        packageName()
         deviceSerial()
     }
 
@@ -234,29 +225,28 @@ abstract class AppPreferenceEditTool : AdbTool {
 
 class SetAppPreferenceTool : AppPreferenceEditTool() {
     override val name = "android_set_app_preference"
+    override val title = "Set app preference"
     override val description =
-        "Set one key in an app's SharedPreferences or Preferences DataStore file, adding it if it is not " +
-            "there. Stops the app first so the value is not overwritten from memory. Requires a debuggable " +
-            "build and the developer's confirmation. Read the file with android_read_app_storage first."
+        "Set or add one key in a SharedPreferences or DataStore file, stopping the app first. Needs a " +
+            "debuggable build; the developer confirms."
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
         // An empty key is a key both formats can hold, so it is a value here, not an omission.
         string("key", "Preference key. May be empty.", required = true, mayBeEmpty = true)
         enumeration(
             "type",
-            "Value type. SharedPreferences cannot hold double or bytes; string_list is for Flutter's " +
-                "FlutterSharedPreferences.xml only.",
+            "Value type. Not double or bytes in SharedPreferences; string_list only in FlutterSharedPreferences.xml.",
             PrefType.entries.map { it.argument },
             required = true,
         )
         string(
             "value",
-            "The value as text: true/false, a number, the string itself, a JSON array of strings for " +
-                "string_set and string_list, or base64 for bytes.",
+            "As text: true/false, a number, the string, a JSON string array for string_set/string_list, " +
+                "base64 for bytes.",
             required = true,
         )
         restartArgument()
-        packageName("Package that owns the file.")
+        packageName()
         deviceSerial()
     }
 
@@ -289,15 +279,15 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
 
 class DeleteAppPreferenceTool : AppPreferenceEditTool() {
     override val name = "android_delete_app_preference"
+    override val title = "Delete app preference"
     override val description =
-        "Remove one key from an app's SharedPreferences or Preferences DataStore file, so the app falls " +
-            "back to its default. Stops the app first. Requires a debuggable build and the developer's " +
-            "confirmation."
+        "Remove one key from a SharedPreferences or DataStore file, stopping the app first. Needs a " +
+            "debuggable build; the developer confirms."
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
         string("key", "Preference key to remove. May be empty.", required = true, mayBeEmpty = true)
         restartArgument()
-        packageName("Package that owns the file.")
+        packageName()
         deviceSerial()
     }
 
@@ -355,10 +345,9 @@ private const val MAX_SHOWN_CHARS = 120
 
 private fun Schema.ObjectBuilder.fileArgument() = string(
     "file",
-    "The file as android_list_app_storage lists it, for example shared_prefs/settings.xml or " +
-        "files/datastore/settings.preferences_pb.",
+    "As android_list_app_storage lists it, e.g. shared_prefs/settings.xml.",
     required = true,
 )
 
 private fun Schema.ObjectBuilder.restartArgument() =
-    boolean("restart", "Launch the app again after the change. Defaults to false.")
+    boolean("restart", "Launch the app again after the change.")

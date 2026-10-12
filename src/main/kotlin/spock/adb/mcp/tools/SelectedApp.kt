@@ -108,12 +108,11 @@ internal fun ToolResult.noting(note: String?): ToolResult {
 }
 
 /** How a `packageName` parameter says what it defaults to; see [packageOrNull]. */
-internal const val PACKAGE_DEFAULT = "Defaults to the app selected in Spock, else the open project's."
+internal const val PACKAGE_DEFAULT = "Default: Spock's selected app, else the project's."
 
 /** As [PACKAGE_DEFAULT], for a tool that can also look at the whole device. */
 internal const val PACKAGE_DEFAULT_OR_DEVICE =
-    "Defaults to the app selected in Spock, else the open project's, else the whole device. " +
-        "Pass an empty string for the whole device."
+    "Default: Spock's selected app, else the project's, else the whole device (\"\" asks for it)."
 
 internal const val NO_PACKAGE =
     "No packageName was given, no app is selected in Spock's tool window, and no application ID " +

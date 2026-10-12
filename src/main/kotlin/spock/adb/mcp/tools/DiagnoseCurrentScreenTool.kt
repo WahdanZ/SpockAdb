@@ -18,26 +18,21 @@ import spock.adb.diagnostics.DiagnosticSections
 class DiagnoseCurrentScreenTool : AdbTool {
 
     override val name = "android_diagnose_current_screen"
+    override val title = "Diagnose current screen"
 
     override val description =
-        "Diagnose the screen currently shown on the device for the selected app, in one call. " +
-            "Returns the same bounded JSON report as android_get_debug_context with every " +
-            "section — likelyProblems ranked first, then the current activity, the app's " +
-            "activity stack and fragments, process state, log problem counts, for a Flutter app " +
-            "its Dart VM Service session (framework errors beside their logcat context), a UI and " +
-            "accessibility summary, runtime permissions, scheduled jobs and alarms, and device " +
-            "conditions (Doze, standby bucket, battery, charger) — plus a screenshot of the same " +
-            "moment. A failing section is reported under sectionErrors and never fails the call. " +
-            "Each section names the tool that returns its raw data under 'more'."
+        "Diagnose the screen shown now: android_get_debug_context's report with every section, plus a " +
+            "screenshot of the same moment."
 
     override val safety = ToolSafety.READ_ONLY
+
+    override val outputSchema: JsonObject = DIAGNOSTIC_REPORT_SCHEMA
 
     override val inputSchema: JsonObject = Schema.obj {
         string("packageName", "The app the screen belongs to. $PACKAGE_DEFAULT_OR_DEVICE")
         boolean(
             "screenshot",
-            "Attach a screenshot of the screen. Defaults to true; pass false when you only need " +
-                "the text, since the image is by far the most expensive part.",
+            "Attach a screenshot. Default true; false when text is enough, as the image costs most.",
         )
         deviceSerial()
     }

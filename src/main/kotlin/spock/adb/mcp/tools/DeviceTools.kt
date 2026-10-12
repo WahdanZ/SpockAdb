@@ -6,11 +6,10 @@ import spock.adb.device.ConnectedDevice
 /** `android_list_devices` — every device ADB currently reports, usable or not. */
 class ListDevicesTool : AdbTool {
     override val name = "android_list_devices"
+    override val title = "List devices"
     override val description =
-        "List every Android device and emulator currently connected, with model, Android " +
-            "version, API level, architecture and connection state. Call this first to find " +
-            "a device serial. Devices that are offline or unauthorized are listed too, " +
-            "with their state, so you can tell the user why they cannot be used."
+        "List connected devices with model, version and state. Call this first; tools target the " +
+            "selected or only device."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.empty()
 
@@ -28,9 +27,9 @@ class ListDevicesTool : AdbTool {
 /** `android_get_device_info` — full detail for one device. */
 class GetDeviceInfoTool : AdbTool {
     override val name = "android_get_device_info"
+    override val title = "Device info"
     override val description =
-        "Detailed information about one device: model, manufacturer, Android version, API " +
-            "level, ABI, serial, whether it is an emulator, and its connection state."
+        "One device in detail: model, manufacturer, Android version, ABI, emulator or not, and state."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
@@ -54,10 +53,11 @@ class GetDeviceInfoTool : AdbTool {
 /** `android_select_device` — pins the device later calls target. */
 class SelectDeviceTool : AdbTool {
     override val name = "android_select_device"
+    override val title = "Select device"
     override val description =
-        "Select the device that later tool calls target by default, so you do not have to " +
-            "pass deviceSerial every time. Use android_list_devices first to get a serial."
+        "Select the device later calls target by default. Get a serial from android_list_devices."
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
         string("deviceSerial", "Serial of the device to select.", required = true)
     }

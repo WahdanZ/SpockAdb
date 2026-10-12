@@ -206,20 +206,13 @@ internal object UiTreeReader {
     )
 
     fun Schema.ObjectBuilder.elementSelector() {
-        string(
-            "testTag",
-            "Compose Modifier.testTag, a View resource id, or Flutter Semantics(identifier:). The most reliable match.",
-        )
-        string(
-            "text",
-            "Words on the element: its text or, where Flutter and icon-only controls put them, its content " +
-                "description.",
-        )
-        string("contentDescription", "Accessibility content description only.")
-        boolean("exact", "Match the whole value rather than a substring. Defaults to false.")
-        string("packageName", "Restrict matches to this application package.")
-        string("containerTag", "Exact tag or resource ID of one container to search within.")
-        boolean("exactTag", "Case-sensitive whole tag or resource ID match. Defaults to false for compatibility.")
+        string("testTag", "testTag, resource id or Flutter Semantics identifier; most reliable.")
+        string("text", "Text or content description.")
+        string("contentDescription", "Content description only.")
+        boolean("exact", "Whole-value match.")
+        string("packageName", "Only this app's elements.")
+        string("containerTag", "Only inside this container's tag or id.")
+        boolean("exactTag", "Case-sensitive whole tag match.")
         deviceSerial()
     }
 }
@@ -227,24 +220,14 @@ internal object UiTreeReader {
 /** `android_get_ui_tree` — the semantics tree, with the framework identified. */
 class GetUiTreeTool : AdbTool {
     override val name = "android_get_ui_tree"
+    override val title = "UI tree"
     override val description =
-        "The UI currently on screen as a structured semantics tree, and whether it is built " +
-            "with Views, Jetpack Compose, or both. Each node reports test tag, text, content " +
-            "description, bounds and whether it is clickable, enabled, scrollable, checked or " +
-            "selected. Use this before interacting: match elements semantically rather than " +
-            "guessing coordinates from a screenshot. On a Compose screen this is the composable " +
-            "tree as Compose publishes it: merged semantics, with Modifier.testTag values as testTag. " +
-            "Enabled clickable nodes carry center=[x,y], the point android_tap_element taps (the centre of " +
-            "the part in view); prefer the element tools over tapping coordinates."
+        "The screen's semantics tree and framework: each node's tag, text, bounds, state and tap center. " +
+            "Use it before interacting."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        boolean("interactiveOnly", "List only elements that can be acted on. Defaults to false.")
-        boolean(
-            "meaningfulOnly",
-            "List elements that can be acted on, plus elements with text or a content description, in " +
-                "screen order, so each control keeps the label next to it. Takes precedence over " +
-                "interactiveOnly. Defaults to false.",
-        )
+        boolean("interactiveOnly", "Only actionable elements.")
+        boolean("meaningfulOnly", "Actionable plus labelled elements, in screen order.")
         deviceSerial()
     }
 
@@ -289,11 +272,9 @@ class GetUiTreeTool : AdbTool {
 /** `android_find_ui_element` — locate without acting. */
 class FindUiElementTool : AdbTool {
     override val name = "android_find_ui_element"
+    override val title = "Find UI element"
     override val description =
-        "Find elements on screen by test tag, text or content description, and report what " +
-            "was matched including bounds, whether it is enabled, and whether it is in the viewport. " +
-            "Use it to check an element exists before acting, or to disambiguate when several match. " +
-            "To find a composable by its Modifier.testTag, pass testTag with exactTag=true."
+        "Find elements by test tag, text or content description, with bounds, state and viewport."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { with(UiTreeReader) { elementSelector() } }
 

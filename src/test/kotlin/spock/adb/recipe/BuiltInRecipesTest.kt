@@ -31,7 +31,7 @@ class BuiltInRecipesTest {
                 val undeclared = step.arguments.keys - declared
                 assertTrue(undeclared.isEmpty(), "${recipe.id}: ${step.tool} does not take $undeclared")
 
-                val required = tool.inputSchema.getAsJsonArray("required").map { it.asString }
+                val required = tool.inputSchema.getAsJsonArray("required")?.map { it.asString }.orEmpty()
                 val missing = required - step.arguments.keys
                 assertTrue(missing.isEmpty(), "${recipe.id}: ${step.tool} needs $missing")
             }

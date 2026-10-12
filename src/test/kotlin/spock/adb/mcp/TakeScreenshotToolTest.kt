@@ -142,8 +142,8 @@ class TakeScreenshotToolTest {
     @Test
     fun `a scale or format it cannot use is refused before anything is captured`() {
         listOf(
-            Triple("scale", 0.05, "A screenshot scale is 0.1-1.0, not 0.05."),
-            Triple("scale", 1.5, "A screenshot scale is 0.1-1.0, not 1.5."),
+            Triple("scale", 0.05, "Argument 'scale' must be between 0.1 and 1.0, got 0.05."),
+            Triple("scale", 1.5, "Argument 'scale' must be between 0.1 and 1.0, got 1.5."),
             Triple("format", "gif", "Unknown format 'gif'. Use one of: png, jpeg."),
         ).forEach { (name, value, expected) ->
             val device = mockk<IDevice>(relaxed = true)

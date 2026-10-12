@@ -47,33 +47,23 @@ class GetRecompositionCountsTool(
     )
 
     override val name = "android_get_recomposition_counts"
+    override val title = "Recomposition counts"
     override val description =
-        "Record a running Jetpack Compose app for a few seconds and report how many times each " +
-            "composable composed or recomposed, with its source file and line, most frequent first. " +
-            "Use it to find composables that recompose more than the screen's changes explain. " +
-            "Reproduce the interaction while it records, or record an idle screen to find recompositions " +
-            "that should not happen at all. The app must include androidx.compose.runtime:runtime-tracing " +
-            "and androidx.tracing:tracing-perfetto-binary (debug builds are enough); if it does not, the " +
-            "result says what to add. Counts are Compose's own trace slices, not estimates. They cannot " +
-            "be matched to nodes of android_get_ui_tree, which carries no composable names. A high count " +
-            "is a lead, not proof of a performance problem. For a Flutter app in a debug build run with " +
-            "flutter run (a DDS session), it records Flutter widget rebuilds instead, in the same shape: " +
-            "Spock switches the inspector's rebuild tracking on for the window only if it was off, and " +
-            "off again afterwards, and lists widgets built in every frame for a second or more. Switching " +
-            "it on makes Flutter rebuild the whole widget tree once, keeping state; that frame is not counted."
+        "Count each composable's recompositions by source line over a few seconds, while you reproduce " +
+            "the interaction. Widget rebuilds for a Flutter app."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("App to record.")
+        packageName()
         integer(
             "durationSeconds",
-            "How long to record, 1 to 30 seconds. Defaults to 5. The call blocks for this long.",
+            "How long to record; the call blocks this long. Defaults to $DEFAULT_SECONDS.",
+            SECONDS,
         )
         boolean(
             "includeLibraries",
-            "Also list composables from androidx and Kotlin libraries, such as Text and Box. Defaults " +
-                "to false: the app's own composables are what it can change.",
+            "Also list androidx and Kotlin library composables such as Text.",
         )
-        integer("limit", "At most this many composables. Defaults to 30.")
+        integer("limit", "At most this many composables. Defaults to $DEFAULT_LIMIT.", LIMITS)
         deviceSerial()
     }
 
@@ -88,9 +78,9 @@ class GetRecompositionCountsTool(
         device: ConnectedDevice,
         packageName: String,
     ): ToolResult {
-        val seconds = arguments.optionalInt("durationSeconds", DEFAULT_SECONDS).coerceIn(1, MAX_SECONDS)
+        val seconds = arguments.optionalInt("durationSeconds", DEFAULT_SECONDS, SECONDS)
         val includeLibraries = arguments.optionalBoolean("includeLibraries", false)
-        val limit = arguments.optionalInt("limit", DEFAULT_LIMIT).coerceIn(1, MAX_LIMIT)
+        val limit = arguments.optionalInt("limit", DEFAULT_LIMIT, LIMITS)
         val cancelled = context.cancellationSignal()
 
         val request = FlutterRebuildRequest(context, device, packageName, seconds * MILLIS_PER_SECOND, cancelled, limit)
@@ -226,6 +216,8 @@ class GetRecompositionCountsTool(
         const val MAX_SECONDS = 30
         const val DEFAULT_LIMIT = 30
         const val MAX_LIMIT = 500
+        val SECONDS = 1..MAX_SECONDS
+        val LIMITS = 1..MAX_LIMIT
         const val COUNT_WIDTH = 6
         const val MILLIS_PER_SECOND = 1_000L
     }

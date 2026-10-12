@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -117,12 +118,13 @@ class ScreenRecordToolsTest {
     }
 
     @Test
-    fun `a time limit beyond the platform's three-minute cap is clamped`() {
-        start(JsonObject().apply { addProperty("timeLimitSeconds", 9_999) })
-        awaitCommand("screenrecord")
+    fun `a time limit beyond the platform's three-minute cap is refused before recording`() {
+        val failure = assertThrows<IllegalArgumentException> {
+            start(JsonObject().apply { addProperty("timeLimitSeconds", 9_999) })
+        }
 
-        val command = issued.toList().first { it.startsWith("screenrecord") }
-        assertTrue(command.contains("--time-limit 180"), command)
+        assertEquals("Argument 'timeLimitSeconds' must be between 1 and 180, got 9999.", failure.message)
+        assertTrue(issued.none { it.startsWith("screenrecord") }, issued.toString())
     }
 
     @Test

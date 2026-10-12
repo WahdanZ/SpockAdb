@@ -50,7 +50,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * of the slots real clients need — reachable by any local process in the TCP fallback.
  */
 class McpBridgeServer(
-    private val handle: (String) -> String?,
+    /**
+     * A message handler for one new connection. Each connection is its own MCP session, so the
+     * protocol version one client negotiates is not the one the next client gets.
+     */
+    private val openSession: () -> (String) -> String?,
     private val token: String,
     private val diagnostics: (String, Throwable?) -> Unit = { _, _ -> },
     /** How long a connection has to present its token before it is closed. */
@@ -297,7 +301,7 @@ class McpBridgeServer(
             return
         }
 
-        val session = Session(connection, McpStdioServer(handle, diagnostics))
+        val session = Session(connection, McpStdioServer(openSession(), diagnostics))
         sessions += session
         // stop() clears `running` before it drains the list, so a session published after that
         // drain would otherwise be missed and outlive the server that accepted it. Publishing

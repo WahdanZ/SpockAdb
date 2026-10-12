@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import spock.adb.mcp.FakeToolContext
 import spock.adb.mcp.McpProtocol
+import spock.adb.mcp.McpSession
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
 import java.nio.channels.Channels
@@ -38,7 +39,7 @@ class McpBridgeServerTest {
     private var bridge: McpBridgeServer? = null
 
     private fun start(directory: Path): McpBridgeServer.Endpoint {
-        val server = McpBridgeServer(protocol::handle, token)
+        val server = McpBridgeServer(protocol::openSession, token)
         bridge = server
         return server.start(directory)
     }
@@ -92,7 +93,7 @@ class McpBridgeServerTest {
             out.flush()
 
             val result = JsonParser.parseString(responses.readLine()).asJsonObject.getAsJsonObject("result")
-            assertEquals(McpProtocol.PROTOCOL_VERSION, result.get("protocolVersion").asString)
+            assertEquals(McpSession.LATEST_VERSION, result.get("protocolVersion").asString)
         }
     }
 
@@ -117,7 +118,7 @@ class McpBridgeServerTest {
         // A connection that opens and then says nothing would otherwise hold a thread for as
         // long as it liked, and enough of them would starve real clients of the pool — which
         // any local process can attempt in the TCP fallback.
-        val server = McpBridgeServer(protocol::handle, token, handshakeTimeoutSeconds = 1)
+        val server = McpBridgeServer(protocol::openSession, token, handshakeTimeoutSeconds = 1)
         bridge = server
         val endpoint = server.start(directory)
 

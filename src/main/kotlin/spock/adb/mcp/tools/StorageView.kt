@@ -159,6 +159,9 @@ internal class StorageView(
         /** The cap on the whole result, so a larger value could never be shown anyway. */
         const val MAX_VALUE_CHARS = McpShell.DEFAULT_MAX_CHARS
 
+        /** What `maxValueChars` may be: declared in the schema and enforced when it is read. */
+        val VALUE_CHARS = MIN_VALUE_CHARS..MAX_VALUE_CHARS
+
         /**
          * Key names that say "secret". `auth` is not followed by `or`, so `author` and `authority`
          * stay readable: they are common in cached JSON, where one match redacts the whole value.
@@ -193,10 +196,7 @@ internal class StorageView(
 
         /** The view the arguments ask for, or why they ask for an impossible one. */
         fun from(arguments: JsonObject): Result<StorageView> = runCatching {
-            val maxValueChars = arguments.optionalInt("maxValueChars", DEFAULT_MAX_VALUE_CHARS)
-            require(maxValueChars in MIN_VALUE_CHARS..MAX_VALUE_CHARS) {
-                "maxValueChars is $MIN_VALUE_CHARS-$MAX_VALUE_CHARS, not $maxValueChars."
-            }
+            val maxValueChars = arguments.optionalInt("maxValueChars", DEFAULT_MAX_VALUE_CHARS, VALUE_CHARS)
             StorageView(
                 maxValueChars = maxValueChars,
                 keyFilter = arguments.optionalString("key"),

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import spock.adb.backgroundwork.DeviceConditionsCloseListener
 import spock.adb.command.DeviceCondition
 import spock.adb.command.DeviceConditionTracker
@@ -240,9 +241,11 @@ class DeviceConditionToolsTest {
     fun `a level outside 0-100 never reaches the device`() {
         val device = FakeDevice()
 
-        val result = SetBatteryLevelTool().execute(JsonObject().apply { addProperty("level", 140) }, device.context)
+        val failure = assertThrows<IllegalArgumentException> {
+            SetBatteryLevelTool().execute(JsonObject().apply { addProperty("level", 140) }, device.context)
+        }
 
-        assertTrue(result.isError)
+        assertEquals("Argument 'level' must be between 0 and 100, got 140.", failure.message)
         assertTrue(device.sent.none { it.startsWith("dumpsys battery") }, device.sent.toString())
         assertTrue(DeviceConditionTracker.conditions(SERIAL).isEmpty())
     }

@@ -23,33 +23,25 @@ import java.util.Locale
  */
 class WaitForElementTool : AdbTool {
     override val name = "android_wait_for_element"
+    override val title = "Wait for element"
     override val description =
-        "Wait, up to a limit, until an element is visible (in the viewport), present (in the tree), gone " +
-            "(not in the tree), hidden (not in the viewport), or in a state: enabled, disabled, checked, " +
-            "unchecked, selected, unselected, focused. States need exactly one match. Reads the screen " +
-            "every pollIntervalMs and changes nothing on the device. 'gone' is met at once by an element " +
-            "that was never there, so wait for it to appear first when that matters. On a real device an " +
-            "element scrolled out of a Compose list usually drops out of the tree, so 'gone' and 'hidden' " +
-            "cannot tell removed from scrolled away."
+        "Wait until an element is visible, present, gone, hidden, or enabled and so on. 'gone' holds " +
+            "at once if it was never there."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         elementSelector()
         enumeration(
             "until",
-            "What to wait for. Defaults to visible. 'gone' and 'hidden' wait for every match, and text matches " +
-                "content descriptions too, so give them exact: true or a testTag.",
+            "Default visible. 'gone' and 'hidden' wait for every match: use exact or a testTag.",
             UntilArgument.WORDS,
         )
         integer(
             "timeoutMs",
-            "How long to wait, in milliseconds, 0 to $MAX_TIMEOUT_MS. Defaults to $DEFAULT_TIMEOUT_MS. Over " +
-                "HTTP, which cannot cancel a call, at most $UNCANCELLABLE_MAX_TIMEOUT_MS. The first look at the " +
-                "screen always completes, even past this limit, so 0 looks exactly once.",
+            "How long to wait, in ms. Defaults to $DEFAULT_TIMEOUT_MS; over HTTP at most " +
+                "$UNCANCELLABLE_MAX_TIMEOUT_MS. 0 looks exactly once.",
+            TIMEOUTS,
         )
-        integer(
-            "pollIntervalMs",
-            "Pause between captures, in milliseconds, $MIN_POLL_MS to $MAX_POLL_MS. Defaults to $DEFAULT_POLL_MS.",
-        )
+        integer("pollIntervalMs", "Pause between captures, in ms. Defaults to $DEFAULT_POLL_MS.", POLL_INTERVALS)
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -62,9 +54,9 @@ class WaitForElementTool : AdbTool {
             ?: throw IllegalArgumentException(
                 "Unknown until '$until'. Use one of: ${UntilArgument.WORDS.joinToString()}.",
             )
-        val requestedMs = arguments.optionalInt("timeoutMs", DEFAULT_TIMEOUT_MS).coerceIn(0, MAX_TIMEOUT_MS)
+        val requestedMs = arguments.optionalInt("timeoutMs", DEFAULT_TIMEOUT_MS, TIMEOUTS)
         val timeoutMs = timeoutFor(requestedMs, context.canCancel)
-        val pollMs = arguments.optionalInt("pollIntervalMs", DEFAULT_POLL_MS).coerceIn(MIN_POLL_MS, MAX_POLL_MS)
+        val pollMs = arguments.optionalInt("pollIntervalMs", DEFAULT_POLL_MS, POLL_INTERVALS)
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
 
         // Measured by the first capture that works and reused: the display does not change while we wait.
@@ -99,6 +91,8 @@ class WaitForElementTool : AdbTool {
         private const val DEFAULT_POLL_MS = 500
         private const val MIN_POLL_MS = 100
         private const val MAX_POLL_MS = 5_000
+        private val TIMEOUTS = 0..MAX_TIMEOUT_MS
+        private val POLL_INTERVALS = MIN_POLL_MS..MAX_POLL_MS
     }
 }
 

@@ -31,48 +31,40 @@ import spock.adb.flutter.FlutterFollowerService
 class DebugContextTool : AdbTool {
 
     override val name = "android_get_debug_context"
+    override val title = "Debug context"
 
     override val description =
-        "Start here when asked why a screen looks wrong, why an app crashed, or what state the " +
-            "app is in. Returns a bounded JSON summary of the same moment: likelyProblems ranked " +
-            "(crashes, ANRs, failed HTTP requests, exceptions, repeated errors), then the current " +
-            "screen, whether the app is running, log counts, for a Flutter app its Dart VM Service " +
-            "session (framework errors with the log problems near them, frames, failed dart:io " +
-            "requests, routes), a UI and accessibility summary, " +
-            "background work and device conditions. Raw logcat and the UI tree are not included; " +
-            "each section names the tool that returns its detail under 'more'. Pass format=full " +
-            "for the older text bundle with raw logcat and the UI tree."
+        "Start here when asked why a screen looks wrong or an app crashed: a bounded JSON summary of " +
+            "one moment, likelyProblems first. 'more' names the tool for each section's raw detail."
 
     override val safety = ToolSafety.READ_ONLY
+
+    override val outputSchema: JsonObject = DIAGNOSTIC_REPORT_SCHEMA
 
     override val inputSchema: JsonObject = Schema.obj {
         enumeration(
             "format",
-            "summary (default): bounded JSON, problems first, no raw data. full: the older text " +
-                "bundle with raw logcat and the UI tree, for when you need the raw data in one call.",
+            "summary (default): bounded JSON, problems first. full: the text bundle with raw data.",
             listOf(FORMAT_SUMMARY, FORMAT_FULL),
         )
         stringArray(
             "include",
-            "Which sections to capture. Summary sections: " +
-                DiagnosticSections.ALL.joinToString { it.id } + ", all by default. Full-format " +
-                "sections: activity, ui and logcat by default. Either format accepts \"screenshot\", " +
-                "attached as an image; add it only when you need to see the screen rather than read " +
-                "about it — it is by far the most expensive section.",
+            "Default: all for summary; activity, ui, logcat for full. \"screenshot\" adds an image, the costliest.",
             values = (DiagnosticSections.ALL.map { it.id } + Section.ALL.map { it.id }).distinct(),
         )
         string("packageName", "The app the question is about. $PACKAGE_DEFAULT_OR_DEVICE")
         enumeration(
             "minLevel",
-            "full format only: minimum logcat level. Defaults to V; use E when hunting a crash.",
+            "full only: minimum logcat level. Defaults to V; E for crashes.",
             listOf("V", "D", "I", "W", "E", "F"),
         )
         integer(
             "maxLogcatLines",
-            "summary: log lines scanned for problems, default 1500. full: lines included, default " +
-                "200. Capped at 2000.",
+            "summary: log lines scanned, default ${AndroidProbe.DEFAULT_LOG_WINDOW_LINES}. full: lines " +
+                "included, default $DEFAULT_LOGCAT_LINES.",
+            LOGCAT_LINES,
         )
-        integer("maxUiDepth", "full format only: how deep to render the UI tree. Defaults to 25.")
+        integer("maxUiDepth", "full only: UI tree depth. Defaults to $DEFAULT_UI_DEPTH.", UI_DEPTHS)
         deviceSerial()
     }
 
@@ -107,8 +99,11 @@ class DebugContextTool : AdbTool {
             device = device.device,
             serialNumber = device.serialNumber,
             packageName = packageName,
-            logWindowLines = arguments.optionalInt("maxLogcatLines", AndroidProbe.DEFAULT_LOG_WINDOW_LINES)
-                .coerceIn(1, MAX_LOGCAT_LINES),
+            logWindowLines = arguments.optionalInt(
+                "maxLogcatLines",
+                AndroidProbe.DEFAULT_LOG_WINDOW_LINES,
+                LOGCAT_LINES,
+            ),
             flutter = flutterSource(sections, context, device, packageName),
         )
         val preamble = JsonObject().apply {
@@ -232,8 +227,7 @@ class DebugContextTool : AdbTool {
                     // Deliberately not LogcatReader.logcatMaxLines: that helper reads the
                     // `maxLines` argument android_get_logcat declares, and this tool's
                     // argument is `maxLogcatLines` — sharing it would silently ignore the cap.
-                    maxLines = arguments.optionalInt("maxLogcatLines", DEFAULT_LOGCAT_LINES)
-                        .coerceIn(1, MAX_LOGCAT_LINES),
+                    maxLines = arguments.optionalInt("maxLogcatLines", DEFAULT_LOGCAT_LINES, LOGCAT_LINES),
                 )
             }
             Captured(listOfNotNull(scope.note, read.textOrExplanation()).joinToString("\n"))
@@ -256,7 +250,7 @@ class DebugContextTool : AdbTool {
      * summary comes first, so the section says which window it is and when it was taken.
      */
     private fun renderUi(arguments: JsonObject, device: spock.adb.device.ConnectedDevice): String {
-        val depth = arguments.optionalInt("maxUiDepth", DEFAULT_UI_DEPTH).coerceIn(1, MAX_UI_DEPTH)
+        val depth = arguments.optionalInt("maxUiDepth", DEFAULT_UI_DEPTH, UI_DEPTHS)
         val observation = UiTreeReader.read(device)
         val tree = observation.tree
         return with(UiTreeReader) {
@@ -323,8 +317,24 @@ class DebugContextTool : AdbTool {
         const val MAX_LOGCAT_LINES = 2_000
         const val DEFAULT_UI_DEPTH = 25
         const val MAX_UI_DEPTH = 200
+        val LOGCAT_LINES = 1..MAX_LOGCAT_LINES
+        val UI_DEPTHS = 1..MAX_UI_DEPTH
 
         /** This is the heaviest tool in the registry; the bundle still has to fit a context window. */
         const val MAX_CHARS = 120_000
     }
+}
+
+/**
+ * The output schema of the diagnostic report, for `android_get_debug_context` and
+ * `android_diagnose_current_screen`. Loose on purpose: every section is optional, and only the
+ * fields an agent navigates by are named. The full shape is versioned by `schemaVersion` and
+ * documented in docs/MCP.md. `format: "full"` is text, so it arrives as `text`.
+ */
+internal val DIAGNOSTIC_REPORT_SCHEMA: JsonObject = Schema.obj {
+    integer("schemaVersion", "Report shape version.")
+    objectArray("likelyProblems", "Ranked, most likely first.")
+    objectValue("sectionErrors", "Sections not captured, and why.")
+    objectValue("more", "Per section, the tool for its raw data.")
+    string("text", "The format full bundle.")
 }

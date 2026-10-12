@@ -16,19 +16,16 @@ import spock.adb.command.sendPushMessage
  */
 class SendPushMessageTool : AdbTool {
     override val name = "android_send_push_message"
+    override val title = "Send push message"
     override val description =
-        "Send a push message (Firebase Cloud Messaging) straight to the app's messaging " +
-            "receiver over ADB, with no server and no registration token. Pass data pairs, " +
-            "and a title and/or body for a notification message. It is sent as the app itself, " +
-            "which works on any device, retail phones included, when the installed build is " +
-            "debuggable; a release build needs a root shell (`adb root`). A refusal says so. " +
-            "Follow with android_get_logcat or android_get_ui_tree to see what the app did."
+        "Send an FCM push message to the app over ADB, no server or token needed. Needs a debuggable " +
+            "build or root. Then check android_get_logcat or the UI."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        stringMap("data", "Data payload, as string keys and string values, e.g. {\"orderId\":\"42\"}.")
-        string("title", "Notification title. Setting a title or body makes it a notification message.")
+        stringMap("data", "Data payload of string values, e.g. {\"orderId\":\"42\"}.")
+        string("title", "Notification title; a title or body makes it a notification message.")
         string("body", "Notification body.")
-        packageName("App to send to.")
+        packageName()
         deviceSerial()
     }
 

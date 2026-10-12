@@ -75,7 +75,7 @@ class ReadAppStorageToolTest {
             val result = read { addProperty("maxValueChars", wanted) }
 
             assertTrue(result.isError, "$wanted should be refused")
-            assertEquals("maxValueChars is 50-40000, not $wanted.", result.text())
+            assertEquals("Argument 'maxValueChars' must be between 50 and 40000, got $wanted.", result.text())
             assertTrue(storage.commands.none { it.contains("run-as") }, "nothing read: ${storage.commands}")
         }
     }

@@ -22,6 +22,7 @@ internal object ScreenshotEncoding {
 
     const val MIN_SCALE = 0.1
     const val MAX_SCALE = 1.0
+    val SCALES = MIN_SCALE..MAX_SCALE
 
     enum class Format(val argument: String, val mimeType: String, val imageIoName: String) {
         PNG("png", "image/png", "png"),
@@ -42,15 +43,11 @@ internal object ScreenshotEncoding {
      * The `scale` and `format` arguments, or why they cannot be used — read before the device is
      * asked anything, so a bad argument costs no capture.
      *
-     * A scale is as strictly a number as [optionalInt] holds an integer to: `"0.5"` sent as a
-     * string is refused rather than parsed.
+     * A scale is read by [optionalNumber]: `"0.5"` sent as a string is refused rather than parsed,
+     * and one outside [SCALES] is refused rather than clamped.
      */
     fun request(arguments: JsonObject): Result<Request> = runCatching {
-        val scale = arguments.get("scale")?.takeIf { !it.isJsonNull }?.let {
-            require(it.isJsonPrimitive && it.asJsonPrimitive.isNumber) { "Argument 'scale' must be a number, got $it." }
-            it.asDouble
-        } ?: MAX_SCALE
-        require(scale in MIN_SCALE..MAX_SCALE) { "A screenshot scale is $MIN_SCALE-$MAX_SCALE, not $scale." }
+        val scale = arguments.optionalNumber("scale", MAX_SCALE, SCALES)
         val formatName = arguments.optionalString("format") ?: Format.PNG.argument
         val format = requireNotNull(Format.fromArgument(formatName)) {
             "Unknown format '$formatName'. Use one of: ${Format.entries.joinToString { it.argument }}."

@@ -30,11 +30,10 @@ import spock.adb.uitree.ViewportVisibility
 /** `android_tap_element` — tap by semantics, not coordinates. */
 class TapElementTool : AdbTool {
     override val name = "android_tap_element"
+    override val title = "Tap element"
     override val description =
-        "Tap an element identified by test tag, text or content description. Prefer this over " +
-            "android_tap: coordinates guessed from a screenshot break on a different screen " +
-            "size, density or font scale. Resolves the tappable parent automatically, which " +
-            "Compose needs because the click handler usually sits above the text. $EXPECTATION_HINT"
+        "Tap an element by test tag, text or content description, or its clickable parent; prefer " +
+            "this over android_tap. expect* checks the outcome."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         elementSelector()
@@ -53,18 +52,18 @@ class TapElementTool : AdbTool {
 /** `android_long_press_element`. */
 class LongPressElementTool : AdbTool {
     override val name = "android_long_press_element"
+    override val title = "Long-press element"
     override val description =
-        "Long-press an element identified by test tag, text or content description. $EXPECTATION_HINT"
+        "Long-press an element identified by test tag, text or content description. expect* checks the outcome."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         elementSelector()
-        integer("durationMs", "Press duration in milliseconds. Defaults to 800.")
+        integer("durationMs", "Press duration in milliseconds. Defaults to $DEFAULT_LONG_PRESS_MS.", DURATIONS)
         expectation()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val duration = arguments.optionalInt("durationMs", DEFAULT_LONG_PRESS_MS)
-        require(duration in 1..MAX_LONG_PRESS_MS) { "durationMs must be between 1 and $MAX_LONG_PRESS_MS." }
+        val duration = arguments.optionalInt("durationMs", DEFAULT_LONG_PRESS_MS, DURATIONS)
 
         val spec = ElementActions.Spec(
             UiTreeSearch.Action.LONG_PRESS,
@@ -81,20 +80,20 @@ class LongPressElementTool : AdbTool {
     private companion object {
         const val DEFAULT_LONG_PRESS_MS = 800
         const val MAX_LONG_PRESS_MS = 10_000
+        val DURATIONS = 1..MAX_LONG_PRESS_MS
     }
 }
 
 /** `android_scroll_to_element` — scroll until the element is on screen. */
 class ScrollToElementTool : AdbTool {
     override val name = "android_scroll_to_element"
+    override val title = "Scroll to element"
     override val description =
-        "Scroll the screen until an element becomes visible, then report where it is. Use " +
-            "this before tapping something that is below the fold — an element that is not " +
-            "in the semantics tree cannot be tapped."
+        "Scroll until an element is in view and report where. Use it before tapping below the fold."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         elementSelector()
-        integer("maxSwipes", "How many scroll attempts to make. Defaults to 8.")
+        integer("maxSwipes", "How many scroll attempts to make. Defaults to $DEFAULT_MAX_SWIPES.", SWIPES)
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -103,7 +102,7 @@ class ScrollToElementTool : AdbTool {
         val selector = arguments.toSelector()
         require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
-        val maxSwipes = arguments.optionalInt("maxSwipes", DEFAULT_MAX_SWIPES).coerceIn(1, MAX_SWIPES)
+        val maxSwipes = arguments.optionalInt("maxSwipes", DEFAULT_MAX_SWIPES, SWIPES)
 
         // Measured once: a swipe does not change the display, and each measurement is two commands.
         var metrics: DisplayMetrics? = null
@@ -160,6 +159,7 @@ class ScrollToElementTool : AdbTool {
     private companion object {
         const val DEFAULT_MAX_SWIPES = 8
         const val MAX_SWIPES = 30
+        val SWIPES = 1..MAX_SWIPES
         const val SWIPE_INSET = 4
         const val SWIPE_DURATION_MS = 300
     }
@@ -168,10 +168,10 @@ class ScrollToElementTool : AdbTool {
 /** `android_input_text_into_element` — focus then type. */
 class InputTextIntoElementTool : AdbTool {
     override val name = "android_input_text_into_element"
+    override val title = "Type into element"
     override val description =
-        "Tap a text field identified by test tag, text or content description, then type into " +
-            "it. Use this instead of android_input_text, which types into whatever happens to " +
-            "be focused. $EXPECTATION_HINT"
+        "Tap a text field by test tag, text or content description, then type into it. Prefer this " +
+            "over android_input_text. expect* checks the outcome."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         string("value", "The text to type.", required = true)
@@ -198,13 +198,6 @@ class InputTextIntoElementTool : AdbTool {
         return ElementActions.perform(context, arguments, spec)
     }
 }
-
-/** How each action's description points to its optional check. */
-private const val EXPECTATION_HINT =
-    "Optionally name what should happen, with expectTestTag, expectText or expectContentDescription and " +
-        "expectUntil, and the result says whether it was seen: VERIFIED, NOT OBSERVED, or INCONCLUSIVE when " +
-        "it already held before. The input is sent once and never repeated, even when the check fails or " +
-        "the dispatch is uncertain."
 
 /**
  * The verdict of a visibility assertion over every match, not just the first: one match in the
@@ -241,10 +234,9 @@ private fun UiObservation.visibilityVerdict(matches: List<UiNode>, what: String,
 /** Assertions, so an agent can verify rather than infer from pixels. */
 class AssertVisibleTool : AdbTool {
     override val name = "android_assert_visible"
+    override val title = "Assert visible"
     override val description =
-        "Check that an element is present and in the viewport. Returns an error result when it is " +
-            "not, or when the viewport is unknown, so a test workflow can stop at the first failure. " +
-            "Bounds cannot show whether another element covers it."
+        "Check that an element is in the viewport; an error when it is not or cannot be told."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { elementSelector() }
 
@@ -266,9 +258,9 @@ class AssertVisibleTool : AdbTool {
 
 class AssertEnabledTool : AdbTool {
     override val name = "android_assert_enabled"
+    override val title = "Assert enabled"
     override val description =
-        "Check that exactly one element matches and that it is enabled. Several matches fail, listing them, " +
-            "rather than answering for whichever came first."
+        "Check that exactly one element matches and that it is enabled; several matches fail, listed."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { elementSelector() }
 
@@ -296,14 +288,13 @@ class AssertEnabledTool : AdbTool {
 
 class AssertTextTool : AdbTool {
     override val name = "android_assert_text"
+    override val title = "Assert text"
     override val description =
-        "Check that the given text is on screen: in the viewport, not only in the tree. It matches text or " +
-            "content description, as the text selector of every element tool does. Use it to verify the result " +
-            "of an action rather than inferring it from a screenshot."
+        "Check that text or a content description is in the viewport, to verify an action's result."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         string("text", "The text that should be on screen.", required = true)
-        boolean("exact", "Match the whole value rather than a substring. Defaults to false.")
+        boolean("exact", "Whole-value match.")
         deviceSerial()
     }
 
@@ -344,11 +335,9 @@ class AssertTextTool : AdbTool {
 /** `android_accessibility_audit` — findings with Compose-level fixes. */
 class AccessibilityAuditTool : AdbTool {
     override val name = "android_accessibility_audit"
+    override val title = "Accessibility audit"
     override val description =
-        "Audit the current screen for accessibility problems: unlabelled interactive " +
-            "elements, touch targets below the recommended minimum, ambiguous duplicate " +
-            "labels and unlabelled images. Each finding comes with a code-level fix " +
-            "appropriate to the framework in use."
+        "Audit the screen for accessibility problems, each with a fix for its framework."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
