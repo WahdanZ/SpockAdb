@@ -544,7 +544,11 @@ for that result without guessing how long to sleep. `android_assert_enabled` nee
 with several it fails and lists them, as an action's refusal does, rather than answering for
 whichever came first.
 
-Screenshots are first-class MCP image content, so an agent can also look at the screen.
+Screenshots are first-class MCP image content, so an agent can also look at the screen. A
+full-size PNG is the default, and it is large: about 1.2 MB of base64 on a busy 1080x2400 screen.
+`android_take_screenshot` takes `scale` (0.1–1.0) and `format` (`png` or `jpeg`), and scales in the
+plugin. A scaled image comes with a line that says how to get back to screen pixels, e.g.
+`multiply image coordinates by 2 for android_tap`.
 
 ### Which screen a result describes
 
@@ -1101,6 +1105,14 @@ replaces it and reads it back. What the editor does not understand is preserved:
 elements and unknown protobuf fields survive an edit. Proto DataStore files with the app's own
 schema are listed as unsupported and never decoded.
 
+`android_read_app_storage` keeps its answer bounded. Each value is cut at `maxValueChars`
+(default 500, 50–40000) and ends `…[truncated, N chars]` with the value's full length; `key`
+shows only the entries whose key contains that text, ignoring case. Values whose key contains
+`token`, `secret`, `auth`, `password` or `session` are shown as `<redacted, N chars>` (booleans
+excepted), and the first lines say how many were redacted and cut. `showSecrets: true` asks you
+with the same Allow once / Deny dialog the destructive tools use, naming the keys; if you deny,
+the answer is the redacted one. It is still a read-only tool: without `showSecrets` it never asks.
+
 ### Background work tools
 
 `android_get_scheduled_jobs` reads `dumpsys jobscheduler <package>` and lists each job the app
@@ -1130,7 +1142,8 @@ Background work behaves differently in Doze, in a low App Standby bucket, and on
 tools put the device in those states and take it back out:
 
 - `android_get_device_conditions` reads the deep Doze state, the app's bucket, and whether the
-  battery is overridden. It also lists what Spock changed and has not yet reset.
+  battery is overridden. Doze is answered first and the device's state after it:
+  `Deep Doze: no (state ACTIVE)`, `yes (state IDLE)`; only `IDLE` is dozing. It also lists what Spock changed and has not yet reset.
 - `android_force_doze` unplugs the battery (Doze requires it) and runs
   `dumpsys deviceidle force-idle`. It is **destructive**: every app on the device is deferred until
   reset, and a device left in forced Doze misbehaves for whoever uses it next.
@@ -1274,7 +1287,8 @@ moment.
 **Test a deep link.** `android_open_deep_link(uri)` → `android_get_current_activity` →
 `android_take_screenshot` → report which screen opened.
 
-**Investigate a permission problem.** `android_get_package_info` to see declared vs granted →
+**Investigate a permission problem.** `android_get_package_info` to see which runtime permissions
+are granted and which denied (a summary; `raw: true` for the full `dumpsys package`) →
 `android_get_logcat` for the denial → `android_grant_permission` → `android_restart_app`.
 
 ## Not yet implemented

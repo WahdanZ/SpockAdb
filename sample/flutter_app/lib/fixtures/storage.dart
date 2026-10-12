@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -79,6 +80,25 @@ class _StorageScreenState extends State<StorageScreen> {
     });
   }
 
+  /// One ~40 KB cached JSON value, which `android_read_app_storage` cuts at `maxValueChars`, and
+  /// three fake secrets it redacts until `showSecrets` is approved. All in FlutterSharedPreferences.xml.
+  Future<void> _writeBigAndSecret() async {
+    final prefs = await SharedPreferences.getInstance();
+    final feed = jsonEncode({
+      'items': [
+        for (var i = 1; i <= 540; i++) {'id': i, 'title': 'Cached item $i', 'body': 'Lorem ipsum dolor sit amet.'},
+      ],
+    });
+    await prefs.setString('cached_feed', feed);
+    await prefs.setString('auth_token', 'eyJhbGciOiJIUzI1NiJ9.ZmFrZS1zcG9jay10b2tlbg.fake-signature');
+    await prefs.setString('refreshToken', 'rt-fake-0123456789abcdef');
+    await prefs.setString('user_password', 'not-a-real-password');
+    await prefs.setBool('session_active', true);
+    if (!mounted) return;
+    setState(() => _result = 'prefs: cached_feed (${feed.length} chars), auth_token, refreshToken, '
+        'user_password, session_active');
+  }
+
   Future<void> _readBack() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
@@ -98,6 +118,7 @@ class _StorageScreenState extends State<StorageScreen> {
           label: _writing ? 'Writing…' : 'Write everything',
           onPressed: _writing ? null : _write,
         ),
+        IdButton(id: 'storage_big_secret', label: 'Write big + secret prefs', onPressed: _writeBigAndSecret),
         IdButton(id: 'storage_read', label: 'Read back prefs', onPressed: _readBack),
         ResultText(_result),
       ],
