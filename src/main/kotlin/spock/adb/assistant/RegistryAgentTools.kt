@@ -82,7 +82,8 @@ class RegistryAgentTools(
                 toolName = call.name,
                 safety = tool.safety,
                 arguments = call.arguments.toString(),
-                result = text.take(RESULT_PREVIEW_CHARS),
+                // The model gets the values; the history keeps what the tool chose to record.
+                result = (result.historyText ?: text).take(RESULT_PREVIEW_CHARS),
                 durationMs = System.currentTimeMillis() - startedAt,
                 isError = result.isError,
                 client = ASSISTANT_CLIENT,

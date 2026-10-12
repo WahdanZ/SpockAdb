@@ -236,6 +236,8 @@ class McpSmokeTest {
             "android_get_device_info" to "{}",
             "android_list_packages" to """{"filter":"android"}""",
             "android_get_package_info" to """{"packageName":"com.android.settings"}""",
+            // The dump the summary is parsed from, still capped.
+            "android_get_package_info" to """{"packageName":"com.android.settings","raw":true}""",
             "android_get_current_activity" to "{}",
             "android_get_activity_stack" to "{}",
             "android_get_current_fragments" to "{}",
@@ -245,6 +247,8 @@ class McpSmokeTest {
             "android_get_network_info" to "{}",
             "android_get_debug_context" to """{"include":["activity","ui","logcat"],"maxLogcatLines":20}""",
             "android_take_screenshot" to "{}",
+            // Scaled and re-encoded in the plugin, which only a real capture exercises.
+            "android_take_screenshot" to """{"scale":0.5,"format":"jpeg"}""",
             "android_get_ui_tree" to "{}",
             "android_accessibility_audit" to "{}",
             "android_get_http_proxy" to "{}",

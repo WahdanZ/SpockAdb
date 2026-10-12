@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
 import spock.adb.ShellQuote
+import spock.adb.command.PackageInfoSummary
 import spock.adb.device.ops.AppNotInstalledException
 import spock.adb.device.ops.AppOperations
 
@@ -44,27 +45,46 @@ class ListPackagesTool : AdbTool {
     }
 }
 
-/** `android_get_package_info` — version, permissions, components. */
+/**
+ * `android_get_package_info` — version, permissions, components.
+ *
+ * A summary parsed out of `dumpsys package` by default; see [PackageInfoSummary] for why.
+ */
 class GetPackageInfoTool : AdbTool {
     override val name = "android_get_package_info"
     override val description =
-        "Version name and code, UID, install location, declared and granted permissions, " +
-            "and components for one package. Use this to check whether a permission is " +
-            "actually granted before concluding a permission problem."
+        "A short summary of one installed package: version name and code, UID, min and target SDK, " +
+            "first install and last update time, the launcher activity, component counts, and which " +
+            "runtime permissions are granted and which denied. Use this to check whether a permission " +
+            "is actually granted before concluding a permission problem. Pass raw: true for the full " +
+            "dumpsys package output instead, which runs to tens of thousands of characters and is cut " +
+            "at 40,000."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         packageName("Package to inspect.")
+        boolean(
+            "raw",
+            "Return the full dumpsys package output rather than the summary. Defaults to false.",
+        )
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val raw = arguments.optionalBoolean("raw", false)
 
         return context.withPackage(arguments) { packageName ->
             if (!AppOperations(device).isInstalled(packageName)) {
                 return@withPackage ToolResult.error(AppNotInstalledException.message(packageName))
             }
-            ToolResult.text(McpShell.run(device, "dumpsys package ${ShellQuote.quote(packageName)}"))
+            // The summary reads the whole dump: the package's own section comes after the resolver
+            // tables, so a capped dump can end before the version is printed.
+            val dumpsys = McpShell.run(
+                device,
+                "dumpsys package ${ShellQuote.quote(packageName)}",
+                maxChars = if (raw) McpShell.DEFAULT_MAX_CHARS else Int.MAX_VALUE,
+            )
+            ToolResult.text(if (raw) dumpsys else PackageInfoSummary.parse(packageName, dumpsys).describe())
         }
     }
 }

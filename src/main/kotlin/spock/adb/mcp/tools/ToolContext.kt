@@ -70,12 +70,18 @@ interface ToolContext {
     fun selectProject(name: String): String
 
     /**
-     * Asks the developer to approve a [ToolSafety.DESTRUCTIVE] call.
+     * Asks the developer to approve a [ToolSafety.DESTRUCTIVE] call, or another call that needs
+     * their say, worded by [wording].
      *
      * Returns false when declined. Implementations must block until the developer answers
      * and must never default to true — an unattended IDE denies rather than approves.
      */
-    fun confirmDestructive(toolName: String, summary: String, target: DeviceTarget): Boolean
+    fun confirmDestructive(
+        toolName: String,
+        summary: String,
+        target: DeviceTarget,
+        wording: ConfirmationWording = ConfirmationWording.DESTRUCTIVE,
+    ): Boolean
 
     /** The application ID of the open project's app module, when it can be resolved. */
     fun projectApplicationId(): String?
@@ -116,8 +122,26 @@ interface ToolContext {
  * overload: a member would be forwarded by `by base` delegation straight to the base, past a
  * wrapper that overrides only the target overload.
  */
-fun ToolContext.confirmDestructive(toolName: String, summary: String, device: ConnectedDevice): Boolean =
-    confirmDestructive(toolName, summary, DeviceTarget.Android(device))
+fun ToolContext.confirmDestructive(
+    toolName: String,
+    summary: String,
+    device: ConnectedDevice,
+    wording: ConfirmationWording = ConfirmationWording.DESTRUCTIVE,
+): Boolean = confirmDestructive(toolName, summary, DeviceTarget.Android(device), wording)
+
+/**
+ * The title and closing line of a confirmation. The buttons are always Allow once / Deny.
+ *
+ * Not every question is about destroying something: revealing redacted values changes nothing on
+ * the device, and telling the developer it "cannot be undone" under a "destructive action" title
+ * would describe a different request from the one they are answering.
+ */
+data class ConfirmationWording(val title: String, val closingLine: String?) {
+    companion object {
+        val DESTRUCTIVE = ConfirmationWording("AI Agent Requests a Destructive Action", "This cannot be undone.")
+        val REVEAL_SECRETS = ConfirmationWording("AI Agent Asks to See Secret Values", null)
+    }
+}
 
 /** Convenience for the many tools that only need the ddmlib handle. */
 fun ToolContext.requireIDevice(serialOverride: String? = null): IDevice =

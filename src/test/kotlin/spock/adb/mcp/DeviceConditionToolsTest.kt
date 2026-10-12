@@ -169,6 +169,29 @@ class DeviceConditionToolsTest {
     }
 
     @Test
+    fun `Doze is answered yes or no, with the device's own state beside it`() {
+        // "Deep Doze: ACTIVE" read as dozing, when ACTIVE is the device awake (#182).
+        val device = FakeDevice()
+        mapOf(
+            "ACTIVE" to "Deep Doze: no (state ACTIVE)",
+            "IDLE" to "Deep Doze: yes (state IDLE)",
+            "IDLE_PENDING" to "Deep Doze: no (state IDLE_PENDING)",
+            "SENSING" to "Deep Doze: no (state SENSING)",
+            "" to "Deep Doze: unknown",
+        ).forEach { (state, expected) ->
+            device.deep = state
+
+            // "" asks for the device alone, so the Doze line comes first, with no package note.
+            val read = GetDeviceConditionsTool().execute(
+                JsonObject().apply { addProperty("packageName", "") },
+                device.context,
+            )
+
+            assertEquals(expected, read.text().lines().first(), "deviceidle said '$state'")
+        }
+    }
+
+    @Test
     fun `reading conditions drops what the device has already shed`() {
         val device = FakeDevice()
         ForceDozeTool().execute(JsonObject(), device.context)

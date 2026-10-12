@@ -190,6 +190,24 @@
   instead of passing it off as the app's. This includes the destructive app tools: clearing data,
   uninstalling and revoking a permission now default to the app selected in Spock, and still ask
   you before they run ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
+- **MCP answers that used to run to tens of thousands of characters are bounded
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** An agent pays for every character a
+  tool returns, and three tools returned far more than was asked.
+  - **`android_get_package_info` returns a summary**: version, UID, min and target SDK, install and
+    update time, the launcher activity, component counts, and which runtime permissions are granted
+    and which denied — about 1 KB where Settings' raw dump is 190 KB and a Flutter app's 30 KB, and
+    it no longer stops at the 40 000-character cap before reaching the version. `raw: true` returns
+    the dump as before.
+  - **`android_read_app_storage` cuts each value at 500 characters** (`maxValueChars`, 50–40000),
+    ending it with the value's full length, and `key` reads only the entries you name; one cached
+    JSON value had made a single prefs file 40 000 characters. Values that look secret are
+    redacted, since these files hold push and auth tokens: best-effort, by key name (token, secret,
+    password, api key, cookie and the like) and by value shape (a JWT, or cached JSON holding a
+    token). `showSecrets: true` asks you with Allow once / Deny, and Deny keeps them redacted.
+  - **`android_take_screenshot` takes `scale` and `format`.** A full-size PNG stays the default;
+    `scale: 0.5` and `format: jpeg` return an image several times smaller, with a line telling the
+    agent to multiply its coordinates back for `android_tap`.
+  - Both sample apps' *Storage* screens have a *Write big + secret prefs* button to try it on.
 
 ### Fixed
 
@@ -201,6 +219,13 @@
   `emulatorNoise`, and ranks them after every other problem, counts kept; the Timeline marks them
   too. The sample app's Logcat screen reproduces it
   ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
+- **`android_get_device_conditions` no longer reads as the opposite of the Doze state.** It printed
+  `Deep Doze: ACTIVE`, which reads as "Doze is active" when `ACTIVE` is the device awake. It now
+  answers first and gives the device's state after: `Deep Doze: no (state ACTIVE)`,
+  `yes (state IDLE)`.
+- **`android_get_network_info` no longer prints backslashes in interface names.** `ip -o` marks
+  where its multi-line form would wrap with `\` and padding (`scope host lo\ valid_lft forever`),
+  which an agent read as part of the name; each is now one space.
 - **The device and app popup tells two emulators apart and keeps underscores.** Devices that would
   read the same — two emulators booted from one system image — now show their serial
   (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or

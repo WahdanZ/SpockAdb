@@ -149,12 +149,7 @@ class RunRecipeTool(
                 toolName = toolName,
                 safety = tool.safety,
                 arguments = arguments.toString(),
-                result = result.content.joinToString("\n") { item ->
-                    when (item) {
-                        is ToolContent.Text -> item.text
-                        is ToolContent.Image -> "[${item.mimeType}, ${item.base64Data.length} base64 chars]"
-                    }
-                }.take(RESULT_PREVIEW_CHARS),
+                result = result.historyPreview().take(RESULT_PREVIEW_CHARS),
                 durationMs = System.currentTimeMillis() - startedAt,
                 isError = result.isError,
                 client = "$CLIENT_PREFIX${recipe.id}",

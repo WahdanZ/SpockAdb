@@ -124,7 +124,7 @@ class DebugContextTool : AdbTool {
 
         val content = mutableListOf<ToolContent>()
         if (wantsScreenshot) {
-            val shot = runCatching { TakeScreenshotTool().execute(arguments, context) }.getOrNull()
+            val shot = runCatching { TakeScreenshotTool().execute(screenshotArguments(arguments), context) }.getOrNull()
             val image = shot?.content?.filterIsInstance<ToolContent.Image>()?.firstOrNull()
             report.addProperty(
                 "screenshot",
@@ -240,7 +240,7 @@ class DebugContextTool : AdbTool {
         }
 
         Section.SCREENSHOT -> {
-            val result = TakeScreenshotTool().execute(arguments, context)
+            val result = TakeScreenshotTool().execute(screenshotArguments(arguments), context)
             val image = result.content.filterIsInstance<ToolContent.Image>().firstOrNull()
             when (image) {
                 null -> Captured(textOf(result).ifBlank { "The screenshot could not be captured." })
@@ -272,6 +272,14 @@ class DebugContextTool : AdbTool {
         if (requested.isEmpty()) return DEFAULT_SECTIONS
         val wanted = requested.map { it.trim().lowercase() }.toSet()
         return Section.ALL.filter { it.id in wanted }
+    }
+
+    /**
+     * The device and nothing else: this call's `format` is `summary` or `full`, which the
+     * screenshot tool would read as an image format and refuse.
+     */
+    private fun screenshotArguments(arguments: JsonObject) = JsonObject().apply {
+        arguments.get("deviceSerial")?.let { add("deviceSerial", it) }
     }
 
     private fun textOf(result: ToolResult): String =

@@ -272,14 +272,16 @@ class McpProtocol(
      * A short, readable form of the result for the activity panel.
      *
      * Image payloads are described rather than stored: a base64 screenshot is megabytes and
-     * would make the bounded history meaningless.
+     * would make the bounded history meaningless. A result that names its own [ToolResult.historyText]
+     * is recorded as that, so values revealed to the agent do not reach the history file.
      */
-    private fun ToolResult.summarise(): String = content.joinToString("\n") { item ->
-        when (item) {
-            is ToolContent.Text -> item.text.take(RESULT_PREVIEW_CHARS)
-            is ToolContent.Image -> "[${item.mimeType}, ${item.base64Data.length} base64 chars]"
+    private fun ToolResult.summarise(): String =
+        historyText?.take(RESULT_PREVIEW_CHARS) ?: content.joinToString("\n") { item ->
+            when (item) {
+                is ToolContent.Text -> item.text.take(RESULT_PREVIEW_CHARS)
+                is ToolContent.Image -> "[${item.mimeType}, ${item.base64Data.length} base64 chars]"
+            }
         }
-    }
 
     private fun ToolResult.toJson(): JsonObject = JsonObject().apply {
         add(

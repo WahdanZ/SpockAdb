@@ -253,8 +253,19 @@ class GetNetworkInfoTool : AdbTool {
                 appendLine("airplane_mode:  ${McpShell.run(device, "settings get global airplane_mode_on")}")
                 appendLine()
                 appendLine("interfaces:")
-                append(McpShell.run(device, "ip -o addr show", maxChars = 4_000))
+                append(withoutContinuations(McpShell.run(device, "ip -o addr show", maxChars = 4_000)))
             },
         )
+    }
+
+    internal companion object {
+        /**
+         * `ip -o` prints each address on one line, but keeps a `\` and padding where the
+         * multi-line form would break (`scope host lo\       valid_lft forever`). An agent reads
+         * that as a literal backslash in the interface name, so it becomes one space.
+         */
+        fun withoutContinuations(output: String): String = output.replace(CONTINUATION, " ")
+
+        private val CONTINUATION = Regex(""" ?\\[ \t]+""")
     }
 }
