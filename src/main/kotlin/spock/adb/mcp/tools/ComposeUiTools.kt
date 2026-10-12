@@ -63,9 +63,10 @@ internal object UiTreeReader {
         val recent = if (poll) null else cache.recent(device.serialNumber, device.device)
         val observation = recent?.let { (kept, ageMs) -> kept.copy(reusedAfterMs = ageMs) } ?: run {
             val since = cache.generation()
+            val startedAt = cache.now()
             UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation)
                 .observe(metrics)
-                .also { cache.store(device.serialNumber, device.device, it, since) }
+                .also { cache.store(device.serialNumber, device.device, it, since, startedAt) }
         }
         if (poll) {
             observation

@@ -72,7 +72,7 @@ class UiReadReuseTest {
 
         assertEquals(1, screen.dumpsTaken, screen.commands.toString())
         assertEquals(listOf("input tap 150 150"), screen.commands.filter { it.startsWith("input ") })
-        assertTrue(tap.text().lineSequence().first().contains(" s capture, reused "), tap.text())
+        assertTrue(tap.text().lineSequence().first().contains(" s capture, reused: the screen was read "), tap.text())
     }
 
     @Test
@@ -171,6 +171,24 @@ class UiReadReuseTest {
         cache.store(SERIAL, device, observation, cache.generation())
         cache.invalidate()
         assertNull(cache.recent(SERIAL, device), "input was sent")
+    }
+
+    @Test
+    fun `a reused capture reports the screen's age, from when the slow dump started`() {
+        var now = 0L
+        val cache = UiDumpCache { now }
+        val device = mockk<IDevice>()
+
+        val since = cache.generation()
+        val startedAt = cache.now()
+        now += TimeUnit.MILLISECONDS.toNanos(2_500) // the dump itself takes 2–3 s
+        cache.store(SERIAL, device, observation(), since, startedAt)
+        now += TimeUnit.MILLISECONDS.toNanos(100)
+
+        assertEquals(2_600L, cache.recent(SERIAL, device)?.second, "the screen is 2.6 s old, not 0.1 s")
+
+        now += TimeUnit.MILLISECONDS.toNanos(UiDumpCache.TTL_MS)
+        assertNull(cache.recent(SERIAL, device), "the TTL counts from when the copy was stored")
     }
 
     @Test

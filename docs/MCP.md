@@ -603,7 +603,7 @@ the capture took — for an agent that has read the limits once.
 **A capture is reused for half a second.** A `uiautomator` dump takes 2–3 s, so a find and then a
 tap on what it found used to cost two. The last capture of each device is kept for 500 ms and given
 to the next plain read of that device — on the emulator the tap after a find drops from about 2.4 s
-to under 0.1 s — and the summary says so: `(host clock, 2.6 s capture, reused 0.1 s later)`. It is
+to under 0.1 s — and the summary says so: `(host clock, 2.6 s capture, reused: the screen was read 2.7 s ago)`: the age is the screen's, from when its 2–3 s dump started. It is
 never given where it could mislead: a wait's polls and an action's check after its input always
 capture anew, and any input — an element action's dispatch, a scroll's swipe, and every tool call
 that is not read-only (tap, swipe, key, text, deep link, launch, …) — empties it. Input from outside

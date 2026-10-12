@@ -236,7 +236,7 @@
   `uiautomator` dump, 2–3 s each, so finding a button and then tapping it took five seconds. A
   capture is now reused for half a second by the next read of the same device: on the emulator the
   tap after a find went from 2.3–2.5 s to under 0.1 s. The reuse is said on the summary line
-  (`reused 0.1 s later`), and never happens where it could mislead — a wait's polls, an action's
+  (`reused: the screen was read 2.7 s ago`, the age of the screen it shows), and never happens where it could mislead — a wait's polls, an action's
   check after the input, and any read after a tap, swipe, key, text, deep link or other call that is
   not read-only always capture anew. The UI read tools (`android_get_ui_tree`,
   `android_find_ui_element`, `android_wait_for_element` and the assertions) also take

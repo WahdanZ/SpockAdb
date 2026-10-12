@@ -90,7 +90,7 @@ query also matches it with one.
 | `android_run_recipe {"recipe":"deep_link","params":{"uri":"spockflutter://open/item/42?ref=spock","packageName":"spock.adb.spock_flutter_sample","expectRoute":"/item/42","expectText":"id=42"}}` | Every step PASSED: the deep link step's verdict is VERIFIED; `expectText` checks the same screen without a session |
 | Any of the above with `flutter run` stopped, or the app started from the launcher | INCONCLUSIVE, naming the missing session and pointing to `expectText`; the tap or link is still sent once |
 | `android_get_debug_timeline {"categories":["flutter_error","navigation","http"]}` after *Layout overflow* → *Show overflow*, a route change and *Network* → *GET 500* (wait ~5 s) | A `Flutter error` row, `Navigator: /layout`-style rows for the routes, and an `HTTP` row for the 500 |
-| `android_find_ui_element {"testTag":"hub_navigation","exactTag":true}`, then at once `android_tap_element` with the same selector | The tap's first line says `… s capture, reused 0.x s later)`: no second dump. A find after the tap captures anew |
+| `android_find_ui_element {"testTag":"hub_navigation","exactTag":true}`, then at once `android_tap_element` with the same selector | The tap's first line says `… s capture, reused: the screen was read N s ago)`: no second dump. A find after the tap captures anew |
 | `android_get_ui_tree {"verbose":false}` | First line `Observed on emulator-5554, window spock.adb.spock_flutter_sample, <time> (<n> s capture).`; no `Limits:` line |
 
 ## End to end: selected app → session → Diagnose and Timeline (the H gate)

@@ -104,7 +104,7 @@ data class UiObservation(
         "(${captureSeconds()} s capture${reusedNote()})."
 
     private fun reusedNote(): String = reusedAfterMs?.let {
-        ", reused " + String.format(Locale.ROOT, "%.1f", it / MILLIS_PER_SECOND) + " s later"
+        ", reused: the screen was read " + String.format(Locale.ROOT, "%.1f", it / MILLIS_PER_SECOND) + " s ago"
     }.orEmpty()
 
     /** One line naming every limit that applies to this capture. */
