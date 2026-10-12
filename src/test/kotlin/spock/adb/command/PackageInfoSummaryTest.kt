@@ -127,6 +127,28 @@ class PackageInfoSummaryTest {
     }
 
     @Test
+    fun `Android 9 and older print the uid as userId, which is read inside the package block`() {
+        val summary = PackageInfoSummary.parse(
+            "com.example.app",
+            """
+            Shared users:
+              SharedUser [android.uid.system] (1a2b3c):
+                userId=1000
+
+            Packages:
+              Package [com.example.app] (5d6e7f):
+                userId=10085
+                pkg=Package{8a9b com.example.app}
+                versionCode=12 minSdk=21 targetSdk=28
+                versionName=1.4
+            """.trimIndent(),
+        )
+
+        assertEquals("10085", summary.uid)
+        assertEquals("1.4", summary.versionName)
+    }
+
+    @Test
     fun `a dump with none of the fields says unknown rather than failing`() {
         val text = PackageInfoSummary.parse("com.example.app", "").describe()
 

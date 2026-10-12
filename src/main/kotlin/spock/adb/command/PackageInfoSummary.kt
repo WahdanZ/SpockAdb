@@ -88,7 +88,7 @@ data class PackageInfoSummary(
                 packageName = packageName,
                 versionName = info.versionName,
                 versionCode = info.versionCode,
-                uid = info.uid,
+                uid = info.uid ?: legacyUserId(sections["Packages"]),
                 minSdk = MIN_SDK.find(dumpsys)?.groupValues?.get(1),
                 targetSdk = TARGET_SDK.find(dumpsys)?.groupValues?.get(1),
                 firstInstallTime = dumpsys.lineValue("firstInstallTime"),
@@ -108,6 +108,18 @@ data class PackageInfoSummary(
                     ?.component,
             )
         }
+
+        /**
+         * The package's UID as Android 9 and older print it: `userId=10085`, where later releases
+         * print `appId=`. Read only inside the `Packages:` block, since a shared user elsewhere in
+         * the dump has a `userId=` of its own.
+         */
+        private fun legacyUserId(packages: List<String>?): String? = packages.orEmpty()
+            .map { it.trim() }
+            .firstOrNull { it.startsWith("userId=") }
+            ?.substringAfter('=')
+            ?.takeWhile { !it.isWhitespace() }
+            ?.takeIf { it.isNotEmpty() }
 
         /**
          * The dump's top-level sections by heading — `Activity Resolver Table:` and the rest start
