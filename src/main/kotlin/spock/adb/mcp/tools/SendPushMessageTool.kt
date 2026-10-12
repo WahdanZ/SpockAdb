@@ -28,7 +28,7 @@ class SendPushMessageTool : AdbTool {
         stringMap("data", "Data payload, as string keys and string values, e.g. {\"orderId\":\"42\"}.")
         string("title", "Notification title. Setting a title or body makes it a notification message.")
         string("body", "Notification body.")
-        string("packageName", "App to send to. Defaults to the open project's application ID.")
+        packageName("App to send to.")
         deviceSerial()
     }
 
@@ -43,13 +43,15 @@ class SendPushMessageTool : AdbTool {
             return ToolResult.error(e.message ?: "The push message is not valid.")
         }
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val delivery = device.sendPushMessage(context.resolvePackage(arguments), message)
-        val text = listOfNotNull(
-            delivery.message,
-            "Route: ${delivery.access.label}.",
-            delivery.detail.takeIf { it.isNotBlank() },
-        ).joinToString("\n")
-        return if (delivery.accepted) ToolResult.text(text) else ToolResult.error(text)
+        return context.withPackage(arguments) { packageName ->
+            val delivery = device.sendPushMessage(packageName, message)
+            val text = listOfNotNull(
+                delivery.message,
+                "Route: ${delivery.access.label}.",
+                delivery.detail.takeIf { it.isNotBlank() },
+            ).joinToString("\n")
+            if (delivery.accepted) ToolResult.text(text) else ToolResult.error(text)
+        }
     }
 
     /** Every value is sent as a string extra, so a number or boolean is taken as its text. */

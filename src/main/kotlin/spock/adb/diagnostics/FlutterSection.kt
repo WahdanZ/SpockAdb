@@ -374,11 +374,15 @@ internal class FlutterSectionReport(private val source: FlutterDiagnosticSource,
      * warning that repeated is near the error if any of its lines is beside any of the error's
      * occurrences. At most [FlutterSection.MAX_NEARBY_LOGS] per error, the closest first; the
      * collector lists them right after the error.
+     *
+     * Never [LikelyProblem.emulatorNoise]: the emulator's mapper logs on every frame, so it is
+     * nearly always the closest line to anything, and pairing it would take a slot from the app's
+     * own warning and pull the noise back up the list right after the error.
      */
     private fun pair(all: List<LikelyProblem>): Map<LikelyProblem, List<LikelyProblem>> {
         // After the merges: one the collector dropped (a part merged elsewhere) names no problem.
         crossLayer.values.removeIf { merged -> all.none { it === merged } }
-        val logs = timedLogs(all) ?: return emptyMap()
+        val logs = timedLogs(all)?.filterNot { (log, _) -> log.emulatorNoise } ?: return emptyMap()
         groups.forEach { (group, problem, _) ->
             val near = logs
                 .mapNotNull { (log, epochs) -> distance(group, epochs)?.let { log to it } }

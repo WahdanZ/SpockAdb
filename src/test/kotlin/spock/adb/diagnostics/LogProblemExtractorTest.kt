@@ -39,6 +39,67 @@ class LogProblemExtractorTest {
     }
 
     @Test
+    fun `known emulator noise from the app's own process is tagged, and the app's error is not`() {
+        // Logged in the app's pid: the mapper runs on its RenderThread, the dispatcher in its UI thread.
+        val noise = (1..79).map {
+            line(
+                100,
+                'E',
+                "mapper.ranchu",
+                "getStandardMetadataImpl:886 failure: UNSUPPORTED: id=$it: unexpected standardMetadataType=21",
+            )
+        }
+        val result = extract(
+            *noise.toTypedArray(),
+            line(100, 'W', "WindowOnBackDispatcher", "OnBackInvokedCallback is not enabled for the application."),
+            line(
+                100,
+                'W',
+                "WindowOnBackDispatcher",
+                "Set 'android:enableOnBackInvokedCallback=\"true\"' in the application manifest.",
+            ),
+            line(100, 'E', "SpockSample", "Payment failed: card declined"),
+        )
+
+        val byTag = result.problems.associateBy { it.summary.substringBefore(':') }
+        assertEquals(79, byTag.getValue("mapper.ranchu").count, "the count is kept")
+        assertTrue(byTag.getValue("mapper.ranchu").emulatorNoise)
+        assertTrue(byTag.getValue("WindowOnBackDispatcher").emulatorNoise)
+        assertFalse(byTag.getValue("SpockSample").emulatorNoise)
+        assertEquals(81, result.noiseLines)
+        assertEquals(80, result.errorLines, "noise still counts as the errors it is")
+    }
+
+    @Test
+    fun `the app's own binder threads starving is the app's problem, not noise`() {
+        // An emulator HAL logs this constantly from its own pid, which attribution already drops.
+        val result = extract(
+            line(372, 'E', "IPCThreadState", "binder thread pool (1 threads) starved for 110 ms"),
+            line(100, 'E', "IPCThreadState", "binder thread pool (4 threads) starved for 900 ms"),
+        )
+
+        val starved = result.problems.single()
+        assertTrue(starved.summary.contains("(4 threads)"), starved.summary)
+        assertFalse(starved.emulatorNoise)
+    }
+
+    @Test
+    fun `a noisy tag saying something else is not noise`() {
+        val result = extract(line(100, 'E', "OpenGLRenderer", "GL error: out of memory"))
+
+        assertFalse(result.problems.single().emulatorNoise)
+        assertEquals(0, result.noiseLines)
+    }
+
+    @Test
+    fun `every documented noise example is recognised`() {
+        LogNoise.ENTRIES.forEach { entry ->
+            val parsed = LogProblemExtractor.parse("09-25 10:00:00.000   100   100 ${entry.example}")
+            assertTrue(parsed != null && LogNoise.matches(parsed.tag, parsed.message), entry.example)
+        }
+    }
+
+    @Test
     fun `another app's crash is not this app's problem`() {
         val result = extract(
             line(300, 'E', "AndroidRuntime", "FATAL EXCEPTION: main"),

@@ -3,6 +3,7 @@ package spock.adb.mcp.tools
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.project.Project
 import spock.adb.CancellationSignal
+import spock.adb.context.SpockSelection
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.DeviceTarget
 
@@ -78,6 +79,14 @@ interface ToolContext {
 
     /** The application ID of the open project's app module, when it can be resolved. */
     fun projectApplicationId(): String?
+
+    /**
+     * The app selected in Spock's tool window, or null when none is. Not created here: a
+     * selection nobody has made has nothing to say. A member rather than an extension so a test
+     * context can name one; see [packageOrNull] for how tools use it.
+     */
+    fun selectedApp(): String? =
+        project?.getServiceIfCreated(SpockSelection::class.java)?.snapshot?.app?.takeIf { it.isNotBlank() }
 
     /**
      * Whether the caller has asked this call to stop, for a tool that waits or polls.

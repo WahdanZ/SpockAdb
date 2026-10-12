@@ -142,6 +142,11 @@ data class LikelyProblem(
      * failure beside it, listed as one ([SectionReport.merges]). Empty for a problem of its own.
      */
     val parts: List<LikelyProblem> = emptyList(),
+    /**
+     * A line Android writes whatever the app does ([LogNoise]). Ranked after every other problem,
+     * whatever its severity or count.
+     */
+    val emulatorNoise: Boolean = false,
 ) {
     enum class Severity(val id: String, val rank: Int) {
         ERROR("error", 0),

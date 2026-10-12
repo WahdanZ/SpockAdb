@@ -27,10 +27,15 @@ class DiagnosticCollector(
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
 
+    /**
+     * @param packageFrom where the probe's app came from when the caller did not name it, put
+     *   next to `packageName`; null to leave it out.
+     */
     fun <P : DiagnosticProbe> collect(
         sections: List<DiagnosticSection<P>>,
         probe: P,
         preamble: JsonObject = JsonObject(),
+        packageFrom: String? = null,
     ): JsonObject {
         val deadline = nanoTime() + budgetNanos
         val reports = linkedMapOf<DiagnosticSection<P>, SectionReport>()
@@ -57,6 +62,7 @@ class DiagnosticCollector(
         report.addProperty("schemaVersion", SCHEMA_VERSION)
         preamble.entrySet().forEach { (key, value) -> report.add(key, value) }
         report.addProperty("packageName", probe.packageName)
+        packageFrom?.let { report.addProperty("packageFrom", it) }
         val all = merged(reports.values, reports.values.flatMap { it.problems })
         val listed = addProblems(report, all, companionsOf(reports.values, all))
         reports.forEach { (section, sectionReport) -> report.add(section.id, sectionReport.data) }
@@ -70,6 +76,10 @@ class DiagnosticCollector(
     /**
      * Ranks [problems], each of [companions] right after the problem it belongs with unless it
      * already ranks higher, lists the first [MAX_PROBLEMS] with their ids, and returns them as listed.
+     *
+     * [LikelyProblem.emulatorNoise] goes after everything else, error or not: the emulator's
+     * graphics stack can log the same error eighty times while the app logs its one real error
+     * once, and how often a line repeats says nothing about whether the app caused it.
      */
     private fun addProblems(
         report: JsonObject,
@@ -78,7 +88,8 @@ class DiagnosticCollector(
     ): List<Pair<String, LikelyProblem>> {
         val ranked = withCompanions(
             problems.sortedWith(
-                compareBy<LikelyProblem> { it.severity.rank }
+                compareBy<LikelyProblem> { it.emulatorNoise }
+                    .thenBy { it.severity.rank }
                     .thenBy { typePriority(it.type) }
                     .thenByDescending { it.count },
             ),
@@ -130,7 +141,10 @@ class DiagnosticCollector(
         return found
     }
 
-    /** [ranked], with each companion moved up to just after the first problem it belongs with. */
+    /**
+     * [ranked], with each companion moved up to just after the first problem it belongs with.
+     * Never [LikelyProblem.emulatorNoise], whichever section offers it: noise stays last.
+     */
     private fun withCompanions(
         ranked: List<LikelyProblem>,
         companions: Map<LikelyProblem, List<LikelyProblem>>,
@@ -140,6 +154,7 @@ class DiagnosticCollector(
         val moved = IdentityHashMap<LikelyProblem, LikelyProblem>()
         ranked.forEach { anchor ->
             companions[anchor].orEmpty().forEach { companion ->
+                if (companion.emulatorNoise) return@forEach
                 val below = (rank[companion] ?: return@forEach) > (rank[anchor] ?: return@forEach)
                 if (below && companion !in moved) moved[companion] = anchor
             }
@@ -217,6 +232,7 @@ class DiagnosticCollector(
         if (count > 1) addProperty("count", count)
         lastSeen?.let { addProperty("lastSeen", it) }
         section?.let { addProperty("section", it) }
+        if (emulatorNoise) addProperty("emulatorNoise", true)
         // Each layer's own problem, as its section reported it: not listed apart, so it has no id.
         if (parts.isNotEmpty()) add("parts", JsonArray().apply { parts.forEach { add(it.toJson(null)) } })
     }

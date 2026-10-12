@@ -169,12 +169,27 @@ class FlutterAppStatusToolTest {
     /** Which app the tool asked about, with [arguments], [selected] in Spock and the project's [projectApp]. */
     private fun askedFor(arguments: JsonObject, selected: String?, projectApp: String?): String {
         val asked = mutableListOf<String>()
-        val tool = FlutterAppStatusTool(selectedApp = { selected }) { _, _, packageName ->
+        val tool = FlutterAppStatusTool { _, _, packageName ->
             asked += packageName
             status(outcome = null)
         }
-        tool.execute(arguments, FakeToolContext(applicationId = projectApp))
+        tool.execute(arguments, FakeToolContext(applicationId = projectApp, spockSelectedApp = selected))
         return asked.single()
+    }
+
+    @Test
+    fun `an application ID the agent did not pass says where it came from`() {
+        val tool = FlutterAppStatusTool { _, _, _ -> status(outcome = null) }
+
+        val selected = tool.execute(JsonObject(), FakeToolContext(applicationId = APP, spockSelectedApp = "$APP.dev"))
+        val asked = tool.execute(
+            JsonObject().apply { addProperty("packageName", "$APP.dev") },
+            FakeToolContext(applicationId = APP, spockSelectedApp = "$APP.dev"),
+        )
+
+        val from = JsonParser.parseString(selected.text()).asJsonObject.get("applicationIdFrom")?.asString
+        assertEquals("app selected in Spock", from)
+        assertFalse(JsonParser.parseString(asked.text()).asJsonObject.has("applicationIdFrom"), asked.text())
     }
 
     @Test

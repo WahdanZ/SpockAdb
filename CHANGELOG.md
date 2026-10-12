@@ -179,9 +179,28 @@
   ([#144](https://github.com/WahdanZ/SpockAdb/issues/144)). Both lists now show each element
   once; `interactiveOnly` used to repeat a clickable row nested inside another match. The sample
   app's Recomposition screen and fixture 15 show both.
+- **MCP tools agree on which app a call is about, and say which.** Left without a `packageName`,
+  the tools used to choose differently: with a Flutter project open, whose application ID Spock
+  cannot resolve, `android_get_package_info` refused, `android_get_logcat` quietly returned every
+  process's lines, and `android_get_debug_context` used the app selected in Spock. Every tool now
+  takes the app the call names, else the app selected in Spock, else the open project's, and its
+  answer starts with a line such as `package: com.example.app (app selected in Spock)` whenever
+  the call did not name it. With none of the three, a tool about one app names all three ways to
+  give it one, and logcat, debug context and device conditions say they cover the whole device
+  instead of passing it off as the app's. This includes the destructive app tools: clearing data,
+  uninstalling and revoking a permission now default to the app selected in Spock, and still ask
+  you before they run ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
 
 ### Fixed
 
+- **Emulator noise no longer tops debug context's likely problems.** On an emulator the graphics
+  stack logs the same error — `mapper.ranchu: getStandardMetadataImpl … UNSUPPORTED` — dozens of
+  times from inside the app's own process, and `WindowOnBackDispatcher` warns about predictive back
+  on every window, so by sheer count they outranked the one error the app actually logged. Spock
+  now knows these lines (and a few more, each listed with an example in `LogNoise.kt`), tags them
+  `emulatorNoise`, and ranks them after every other problem, counts kept; the Timeline marks them
+  too. The sample app's Logcat screen reproduces it
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
 - **The device and app popup tells two emulators apart and keeps underscores.** Devices that would
   read the same — two emulators booted from one system image — now show their serial
   (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
