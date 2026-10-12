@@ -64,6 +64,20 @@ data class UiSelector(
         return !compare(node.text, expected) && compare(node.contentDescription, expected)
     }
 
+    /**
+     * Since `text` matches content descriptions too, a field whose text is "Search" and an icon
+     * described as "Search" are both found by it. Neither exact matching nor a package tells them
+     * apart; which field each matched in does. Empty unless [matches] split that way.
+     */
+    internal fun splitAdvice(matches: List<UiNode>): String {
+        val expected = text ?: return ""
+        val (described, written) = matches.partition { matchedContentDescription(it) }
+        if (described.isEmpty() || written.isEmpty()) return ""
+        return " ${written.size} matched text='$expected' in their text and ${described.size} only in their " +
+            "content description: name the content-description one with contentDescription instead of text, " +
+            "and the text one with a testTag (exactTag: true) or containerTag."
+    }
+
     /** " (matched content-desc)" after a match, so a result says which field the words were in. */
     fun matchNote(node: UiNode): String = if (matchedContentDescription(node)) " (matched content-desc)" else ""
 
@@ -141,10 +155,11 @@ object UiTreeSearch {
                 "packageName, or containerTag."
         }
         val candidates = matches.take(MAX_CANDIDATES).joinToString("; ") {
-            "'${it.label}' ${it.className.substringAfterLast('.')} " +
+            "'${it.label}'${selector.matchNote(it)} ${it.className.substringAfterLast('.')} " +
                 "id='${it.resourceId}' package='${it.packageName}' at ${it.bounds}"
         }
-        return "Ambiguous selector ${selector.describe()}: ${matches.size} matches. $advice Candidates: $candidates"
+        return "Ambiguous selector ${selector.describe()}: ${matches.size} matches. $advice" +
+            selector.splitAdvice(matches) + " Candidates: $candidates"
     }
 
     /**

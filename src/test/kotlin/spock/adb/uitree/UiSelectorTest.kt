@@ -357,6 +357,46 @@ class UiSelectorTest {
         }
     }
 
+    /** A search field whose hint reads "Search", beside an icon described as "Search". */
+    private fun searchRow(iconClickable: Boolean = true): UiTree {
+        val field = nodeWithText("Search").copy(
+            className = "android.widget.EditText",
+            clickable = true,
+            focusable = true,
+            bounds = UiNode.Bounds(0, 0, 800, 100),
+        )
+        val icon = nodeWithText("").copy(
+            className = "android.widget.ImageView",
+            contentDescription = "Search",
+            clickable = iconClickable,
+            bounds = UiNode.Bounds(800, 0, 900, 100),
+        )
+        val row = nodeWithText("").copy(bounds = UiNode.Bounds(0, 0, 900, 100), children = listOf(field, icon))
+        return tree.copy(root = row)
+    }
+
+    @Test
+    fun `a refusal says which candidates matched in their text and which only in their content description`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(searchRow(), UiSelector(text = "Search"), UiTreeSearch.Action.TAP)
+        }
+
+        val message = error.message!!
+        assertTrue(message.contains("1 matched text='Search' in their text and 1 only in their content"), message)
+        assertTrue(message.contains("contentDescription instead of text"), message)
+        assertTrue(message.contains("testTag (exactTag: true) or containerTag"), message)
+        assertTrue(message.contains("'Search' (matched content-desc) ImageView"), message)
+    }
+
+    @Test
+    fun `candidates that all matched in one field get no split advice`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(flutterTargeting, UiSelector(text = "Details"), UiTreeSearch.Action.TAP)
+        }
+
+        assertFalse(error.message!!.contains("only in their content description"), error.message)
+    }
+
     private val button = nodeWithText("").copy(clickable = true, bounds = UiNode.Bounds(10, 10, 90, 90))
 
     /** [wrapper] as the matched node, under a plain root, tapped. */
