@@ -38,6 +38,10 @@ object Schema {
         fun boolean(name: String, description: String, required: Boolean = false) =
             property(name, "boolean", description, required)
 
+        /** A number that may have a fraction, such as a scale factor. */
+        fun number(name: String, description: String, required: Boolean = false) =
+            property(name, "number", description, required)
+
         /**
      * An array of strings, optionally constrained to a fixed set.
      *
