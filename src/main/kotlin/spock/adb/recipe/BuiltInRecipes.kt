@@ -71,18 +71,24 @@ object BuiltInRecipes {
     val deepLink = Recipe(
         id = "deep_link",
         title = "Open a deep link and verify the destination",
-        description = "Open a URI, then check which activity it landed on and that expected text is showing.",
+        description = "Open a URI, then check which activity it landed on and that expected text is showing. " +
+            "A Flutter app's activity is always MainActivity: check its destination with expectRoute, read through " +
+            "Spock's session with the app (flutter run), or with expectText, which needs no session.",
         params = listOf(
             RecipeParam("uri", "The URI to open, e.g. myapp://product/42.", required = true),
             packageName,
             RecipeParam("expectActivity", "All or part of the activity class that should open, e.g. ProductActivity."),
+            RecipeParam(
+                "expectRoute",
+                "Flutter: the route name that should be current, matched exactly, e.g. /product/42.",
+            ),
             expectText,
         ),
         steps = listOf(
             Call(
                 "Open the deep link",
                 "android_open_deep_link",
-                mapOf("uri" to "{uri}", "packageName" to "{packageName}"),
+                mapOf("uri" to "{uri}", "packageName" to "{packageName}", "expectRoute" to "{expectRoute}"),
             ),
             waitForText("expectText is on screen", timeoutMs = 10_000),
             Pause("Let the destination settle", millis = 1_000),

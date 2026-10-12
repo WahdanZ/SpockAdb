@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import spock.adb.ShellQuote
 import spock.adb.command.openDeepLinkWithAmStart
 import spock.adb.device.ops.ScreenshotOperations
+import spock.adb.mcp.tools.RouteExpectation.Companion.routeOption
 import java.util.Base64
 
 /** `android_take_screenshot` — the screen, as MCP image content. */
@@ -65,7 +66,9 @@ class TakeScreenshotTool : AdbTool {
 }
 
 /** `android_open_deep_link` — semantic alternative to `am start`. */
-class OpenDeepLinkTool : AdbTool {
+class OpenDeepLinkTool internal constructor(private val routes: RouteReader) : AdbTool {
+    constructor() : this(SessionRouteReader)
+
     override val name = "android_open_deep_link"
     override val description =
         "Open a URI on the device with an ACTION_VIEW intent, the way tapping a link would. " +
@@ -76,26 +79,44 @@ class OpenDeepLinkTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj {
         string("uri", "The URI to open, e.g. myapp://product/42.", required = true)
         string("packageName", "Restrict the intent to this package.")
+        routeOption()
+        integer(
+            RouteExpectation.TIMEOUT,
+            "How long to look for $ROUTE, in milliseconds, 0 to ${RouteExpectation.MAX_TIMEOUT_MS}. Defaults to 5000.",
+        )
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val signal = context.cancellationSignal()
+        val route = RouteExpectation.from(arguments, context.canCancel)
+        val connected = context.requireDevice(arguments.optionalString("deviceSerial"))
+        val device = connected.device
         val uri = arguments.requiredString("uri")
         val target = arguments.optionalString("packageName")
+        val routeCheck = route?.let {
+            RouteCheck(it, { check -> routes.read(context, connected.serialNumber, target, check) }, signal)
+        }
+        val routeBefore = routeCheck?.before()
 
         // Shares the panel's implementation, so the verdict — and the silence a slow cold
         // start produces under `am -W` — cannot differ between an agent and a developer.
         // Classified by AmStartResult rather than by looking for the word "Error": a
         // Permission Denial trace does not contain it, so a refused link was reported as opened.
-        val result = device.openDeepLinkWithAmStart(uri, target)
+        val result = UiDumpCache.shared.aroundInput { device.openDeepLinkWithAmStart(uri, target) }
         val text = with(McpShell) {
             listOfNotNull(result.message, result.raw.takeIf { it.isNotBlank() })
                 .joinToString("\n\n")
                 .truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
         }
 
-        return if (result.succeeded) ToolResult.text(text) else ToolResult.error(text)
+        if (!result.succeeded) return ToolResult.error(text)
+        if (route == null || routeCheck == null || routeBefore == null) return ToolResult.text(text)
+        return ElementActions.routeResult(text + "\n", route, routeCheck.verify(routeBefore, "the deep link"))
+    }
+
+    private companion object {
+        const val ROUTE = RouteExpectation.ROUTE
     }
 }
 

@@ -92,7 +92,8 @@ class UiReadReuseTest {
         val screen = ScriptedScreen(listOf(screen(ORDER), screen(ORDER + STATUS)))
 
         FindUiElementTool().execute(selector(), screen.context)
-        val wait = WaitForElementTool().execute(selector("order_status").apply { addProperty("timeoutMs", 0) }, screen.context)
+        val now = selector("order_status").apply { addProperty("timeoutMs", 0) }
+        val wait = WaitForElementTool().execute(now, screen.context)
 
         assertEquals(2, screen.dumpsTaken, screen.commands.toString())
         assertFalse(wait.isError, wait.text())
@@ -189,7 +190,7 @@ class UiReadReuseTest {
     }
 
     private fun observation() = UiObservation(
-        tree = UiTree(root = null, framework = UiFramework.VIEWS, testTagSupport = UiTree.TestTagSupport.NOT_APPLICABLE),
+        tree = UiTree(null, UiFramework.VIEWS, UiTree.TestTagSupport.NOT_APPLICABLE),
         deviceSerial = SERIAL,
         startedAtMillis = 0,
         completedAtMillis = 0,

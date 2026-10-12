@@ -44,11 +44,11 @@ internal object UiTreeReader {
      *   [UiTreeOperations.observe].
      * @param timeoutSeconds for each command of the capture; a wait passes what it has left.
      * @param cancellation what stops the capture; by default this thread's interrupt.
-     * @param identifyFlutter whether to ask if the app is Flutter. A wait's polls do not: what they
-     *   report — the preface, and whether a condition holds — does not depend on it, and each ask
-     *   can cost adb two commands.
-     * @param reuse whether a capture [UiDumpCache] still holds will do. False for a wait's polls and
-     *   for an action's check after it, which must see the screen as it is now.
+     * @param poll whether this is a wait's poll — a wait for an element, or an action's check after
+     *   its input. A poll always captures anew, never taking the capture [UiDumpCache] still holds:
+     *   it must see the screen as it is now. And it does not ask whether the app is Flutter: what a
+     *   poll reports — the preface, and whether a condition holds — does not depend on it, and each
+     *   ask can cost adb two commands. Any other read takes a capture [UiDumpCache] still holds.
      * @throws IllegalStateException with an actionable message when the dump fails. A lost
      *   device is told what an agent can do about it, which a person in the Inspector cannot.
      */
@@ -57,18 +57,17 @@ internal object UiTreeReader {
         metrics: DisplayMetrics? = null,
         timeoutSeconds: Long = UiTreeOperations.DUMP_TIMEOUT_SECONDS,
         cancellation: CancellationSignal = CancellationSignal.currentThread(),
-        identifyFlutter: Boolean = true,
-        reuse: Boolean = true,
-        cache: UiDumpCache = UiDumpCache.shared,
+        poll: Boolean = false,
     ): UiObservation = try {
-        val recent = if (reuse) cache.recent(device.serialNumber, device.device) else null
+        val cache = UiDumpCache.shared
+        val recent = if (poll) null else cache.recent(device.serialNumber, device.device)
         val observation = recent?.let { (kept, ageMs) -> kept.copy(reusedAfterMs = ageMs) } ?: run {
             val since = cache.generation()
             UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation)
                 .observe(metrics)
                 .also { cache.store(device.serialNumber, device.device, it, since) }
         }
-        if (!identifyFlutter) {
+        if (poll) {
             observation
         } else {
             val seconds = FlutterScreen.checkSeconds(timeoutSeconds)

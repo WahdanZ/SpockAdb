@@ -162,6 +162,22 @@
   ones that won't be asked again, and `android_diagnose_current_screen` lists them in its
   `permissions` section. The sample app's **Permissions** screen has a CAMERA-only request for
   trying the whole cycle ([#146](https://github.com/WahdanZ/SpockAdb/issues/146)).
+- **Agents can check which Flutter screen an action opened: `expectRoute`
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** A Flutter app's activity is always
+  `MainActivity`, so the `deep_link` recipe's `expectActivity` passed whichever screen a link
+  opened. `android_tap_element`, `android_long_press_element`, `android_input_text_into_element` and
+  `android_open_deep_link` now take `expectRoute`, the route name that should be current afterwards,
+  read from the app's own Navigator through Spock's session with it, as Home reads it; the
+  `deep_link` recipe passes it to the link. It answers like the other expectations: `VERIFIED` when
+  the route was something else before and is that one after, `NOT OBSERVED` only when a final check
+  proves every navigator in the app was read and another route is showing, and `INCONCLUSIVE` — with
+  the reason, and `expectText` as the way to check without a session — when it was already current,
+  or whenever the route cannot be read: no session (a release build, or the app not run with
+  `flutter run`), a navigation still moving, or a navigator without a key that could hide it. A
+  route that could not be read is never reported as the wrong one. The name is matched exactly; one
+  without a query also matches it with one, so `/item/42` matches the `/item/42?ref=spock` a link
+  pushes. On the emulator, taps into the sample's *Navigation* screen and a deep link to *Item 42*
+  were verified, and a wrong route reported as not observed.
 
 ### Changed
 

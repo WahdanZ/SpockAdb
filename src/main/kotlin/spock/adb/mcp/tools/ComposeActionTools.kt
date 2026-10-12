@@ -30,7 +30,9 @@ import spock.adb.uitree.ViewportVisibility
  */
 
 /** `android_tap_element` — tap by semantics, not coordinates. */
-class TapElementTool : AdbTool {
+class TapElementTool internal constructor(private val routes: RouteReader) : AdbTool {
+    constructor() : this(SessionRouteReader)
+
     override val name = "android_tap_element"
     override val description =
         "Tap an element identified by test tag, text or content description. Prefer this over " +
@@ -49,11 +51,14 @@ class TapElementTool : AdbTool {
         ElementActions.Spec(UiTreeSearch.Action.TAP, "Tap", unverified = "UI outcome not verified.") { x, y ->
             listOf(ElementActions.Step("input tap $x $y", "the tap"))
         },
+        routes,
     )
 }
 
 /** `android_long_press_element`. */
-class LongPressElementTool : AdbTool {
+class LongPressElementTool internal constructor(private val routes: RouteReader) : AdbTool {
+    constructor() : this(SessionRouteReader)
+
     override val name = "android_long_press_element"
     override val description =
         "Long-press an element identified by test tag, text or content description. $EXPECTATION_HINT"
@@ -77,7 +82,7 @@ class LongPressElementTool : AdbTool {
             // A swipe that starts and ends at the same point is a long press.
             listOf(ElementActions.Step("input swipe $x $y $x $y $duration", "the long press"))
         }
-        return ElementActions.perform(context, arguments, spec)
+        return ElementActions.perform(context, arguments, spec, routes)
     }
 
     private companion object {
@@ -111,8 +116,8 @@ class ScrollToElementTool : AdbTool {
         var metrics: DisplayMetrics? = null
         var seenOutside = false
         repeat(maxSwipes) { attempt ->
-            // Only the first look may reuse a recent capture: every later one follows a swipe.
-            val observation = UiTreeReader.read(connected, metrics, reuse = attempt == 0)
+            // Only the first look can reuse a recent capture: each swipe below empties the cache.
+            val observation = UiTreeReader.read(connected, metrics)
             metrics = observation.metrics
             val tree = observation.tree
             val matches = UiTreeSearch.findAll(tree, selector)
@@ -171,7 +176,9 @@ class ScrollToElementTool : AdbTool {
 }
 
 /** `android_input_text_into_element` — focus then type. */
-class InputTextIntoElementTool : AdbTool {
+class InputTextIntoElementTool internal constructor(private val routes: RouteReader) : AdbTool {
+    constructor() : this(SessionRouteReader)
+
     override val name = "android_input_text_into_element"
     override val description =
         "Tap a text field identified by test tag, text or content description, then type into " +
@@ -200,7 +207,7 @@ class InputTextIntoElementTool : AdbTool {
                 ElementActions.Step("input text ${ShellQuote.quote(value)}", "the text"),
             )
         }
-        return ElementActions.perform(context, arguments, spec)
+        return ElementActions.perform(context, arguments, spec, routes)
     }
 }
 

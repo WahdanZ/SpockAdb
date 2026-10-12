@@ -73,6 +73,26 @@ screen as an API 34 emulator dumped it at 480dpi.
 | `android_tap_element {"testTag":"targeting_save","exactTag":true}` | Taps *Speichern*, the button inside the `Semantics(identifier:)`; the result line reads *Saved* |
 | `android_accessibility_audit {}` | One touch-target warning (`!`), *Roaming info* (the shrink-wrapped `IconButton`), with the `MaterialTapTargetSize.padded` / 48x48 `SizedBox` fix; the two *Details* buttons as a shared label with a `Semantics(label:)` fix; the banner's cut-off offers (*Tarif M*, *Tarif XL*) as notes (`i`) ending "bounds may be cut by a parent clip (e.g. a carousel edge); verify on device"; no finding on the *GRATIS E-SIM* badge itself |
 
+## Routes, the Timeline and faster reads (#182)
+
+`flutter run`, select the app in Spock (its session row shows on the Timeline), start on the hub.
+The existing *Navigation* and *List → detail routes* fixtures are the destinations; every route
+below is a `RouteSettings.name` they push. `expectRoute` is matched exactly, and a name without a
+query also matches it with one.
+
+| Tool call | Expected answer |
+|---|---|
+| `android_tap_element {"testTag":"hub_navigation","exactTag":true,"expectRoute":"/navigation"}` | `VERIFIED: the Flutter route '/navigation' is current …  Before the tap it was '/'.` |
+| `android_tap_element {"text":"Push /nav/a","exact":true,"expectRoute":"/nav/a"}` | VERIFIED, before it `/navigation` |
+| `android_tap_element {"text":"Push /nav/a/b","exact":true,"expectRoute":"/nowhere","expectTimeoutMs":1000}` | `NOT OBSERVED: … it is '/nav/a/b' (exact: every navigator mounted in the app was read)`, an error result |
+| The same tap on *Nested Navigator WITHOUT key* with `"expectRoute":"/nested"` | INCONCLUSIVE: a navigator without a GlobalKey could be hiding it — never NOT OBSERVED |
+| `android_open_deep_link {"uri":"spockflutter://open/item/42?ref=spock","packageName":"spock.adb.spock_flutter_sample","expectRoute":"/item/42"}` | The `am start` answer, then `VERIFIED: the Flutter route '/item/42' is current` (the route is `/item/42?ref=spock`) |
+| `android_run_recipe {"recipe":"deep_link","params":{"uri":"spockflutter://open/item/42?ref=spock","packageName":"spock.adb.spock_flutter_sample","expectRoute":"/item/42","expectText":"id=42"}}` | Every step PASSED: the deep link step's verdict is VERIFIED; `expectText` checks the same screen without a session |
+| Any of the above with `flutter run` stopped, or the app started from the launcher | INCONCLUSIVE, naming the missing session and pointing to `expectText`; the tap or link is still sent once |
+| `android_get_debug_timeline {"categories":["flutter_error","navigation","http"]}` after *Layout overflow* → *Show overflow*, a route change and *Network* → *GET 500* (wait ~5 s) | A `Flutter error` row, `Navigator: /layout`-style rows for the routes, and an `HTTP` row for the 500 |
+| `android_find_ui_element {"testTag":"hub_navigation","exactTag":true}`, then at once `android_tap_element` with the same selector | The tap's first line says `… s capture, reused 0.x s later)`: no second dump. A find after the tap captures anew |
+| `android_get_ui_tree {"verbose":false}` | First line `Observed on emulator-5554, window spock.adb.spock_flutter_sample, <time> (<n> s capture).`; no `Limits:` line |
+
 ## End to end: selected app → session → Diagnose and Timeline (the H gate)
 
 Nothing is pasted at any step. Before each run: in Spock's tool window select the emulator and
