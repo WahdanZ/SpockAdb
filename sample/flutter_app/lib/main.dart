@@ -11,6 +11,7 @@ import 'fixtures/permissions.dart';
 import 'fixtures/push.dart';
 import 'fixtures/routes.dart';
 import 'fixtures/storage.dart';
+import 'fixtures/targeting.dart';
 
 /// Spock ADB's Flutter fixture app. Each hub entry names the Spock feature it exists for;
 /// `sample/flutter_app/README.md` lists what to check on each.
@@ -28,6 +29,7 @@ class Fixture {
 final fixtures = <Fixture>[
   Fixture('/navigation', 'Navigation', 'Current Flutter route and exact back stack checks', (_) => const NavigationScreen()),
   Fixture('/login', 'Login', 'UI tree + android_* element tools via Semantics(identifier:)', (_) => const LoginScreen()),
+  Fixture('/targeting', 'Element targeting', 'text matches content-desc, ambiguity, Flutter audit fixes', (_) => const TargetingScreen()),
   Fixture('/items', 'List → detail routes', 'Deep links, route stack, back navigation', (_) => const ItemListScreen()),
   Fixture('/layout', 'Layout overflow', 'Flutter errors in Diagnose / Timeline', (_) => const LayoutScreen()),
   Fixture('/errors', 'Errors and plugin failures', 'MissingPluginException, PlatformException, Dart and native crashes', (_) => const ErrorsScreen()),
