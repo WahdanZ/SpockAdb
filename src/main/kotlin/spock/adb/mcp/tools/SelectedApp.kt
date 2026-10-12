@@ -1,6 +1,8 @@
 package spock.adb.mcp.tools
 
 import com.google.gson.JsonObject
+import com.intellij.openapi.diagnostic.ControlFlowException
+import java.util.concurrent.CancellationException
 
 /**
  * Where the app a tool acts on came from when the agent did not name it, in the order
@@ -72,14 +74,30 @@ internal fun ToolContext.withPackage(arguments: JsonObject, block: (packageName:
 /**
  * [withPackage], for a tool that needs to know where the app came from: a destructive one says so
  * in its confirmation ([ResolvedPackage.confirming]).
+ *
+ * A failure thrown by [block] becomes an error result carrying the note. The dispatcher would have
+ * made it an error anyway, just without the note, and an agent told "not installed" still has to
+ * learn which app was meant. Interruption, cancellation and the IDE's control-flow exceptions
+ * pass through unchanged.
  */
 internal fun ToolContext.withResolvedPackage(
     arguments: JsonObject,
     block: (ResolvedPackage) -> ToolResult,
 ): ToolResult {
     val resolved = resolvePackage(arguments)
-    return block(resolved).noting(resolved.note)
+    val result = runCatching { block(resolved) }.getOrElse { failure ->
+        if (passesThrough(failure)) throw failure
+        ToolResult.error(failure.message ?: "${failure.javaClass.simpleName} while acting on ${resolved.name}.")
+    }
+    return result.noting(resolved.note)
 }
+
+/** What [withResolvedPackage] must not turn into a result: anything not an Exception, and stop signals. */
+private fun passesThrough(failure: Throwable): Boolean =
+    failure !is Exception ||
+        failure is InterruptedException ||
+        failure is CancellationException ||
+        failure is ControlFlowException
 
 /** [this] with [note] as its first line, or unchanged when there is none. */
 internal fun ToolResult.noting(note: String?): ToolResult {

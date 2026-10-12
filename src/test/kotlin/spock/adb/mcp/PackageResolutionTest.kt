@@ -25,6 +25,8 @@ import spock.adb.mcp.tools.ResolvedPackage
 import spock.adb.mcp.tools.RevokePermissionTool
 import spock.adb.mcp.tools.packageOrNull
 import spock.adb.mcp.tools.resolvePackage
+import spock.adb.mcp.tools.withPackage
+import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -163,6 +165,24 @@ class PackageResolutionTest {
         val named = context(selected = SELECTED, device = device(installed = setOf(ASKED)))
         ClearAppDataTool().execute(args(ASKED), named)
         assertFalse(named.confirmationSummaries.single().contains("did not name"), named.confirmationSummaries[0])
+    }
+
+    @Test
+    fun `a failure thrown while acting on a defaulted app still says which app it was`() {
+        val result = context(selected = SELECTED).withPackage(args()) { error("adb went away") }
+
+        assertTrue(result.isError)
+        assertEquals("package: $SELECTED (app selected in Spock)\nadb went away", result.text())
+    }
+
+    @Test
+    fun `an interrupt or a cancellation passes through unchanged`() {
+        assertThrows<InterruptedException> {
+            context(selected = SELECTED).withPackage(args()) { throw InterruptedException("stop") }
+        }
+        assertThrows<CancellationException> {
+            context(selected = SELECTED).withPackage(args()) { throw CancellationException("stop") }
+        }
     }
 
     @Test
