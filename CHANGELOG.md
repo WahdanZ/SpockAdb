@@ -197,6 +197,29 @@
   tool window the field shared one line with its label and both buttons, which left it about 90 px:
   an address did not fit, and the dropdown arrow that lists every proxy set before barely showed.
   The field now has its own line across the panel, with **Set** and **Remove proxy** beneath it.
+- **Agents find a Flutter element by the words they see.** Flutter publishes every label as the
+  content description, never as text, so `android_find_ui_element {"text":"Suche"}` found nothing
+  on a Flutter app while `android_assert_text` found the same words. The `text` selector of every
+  element tool — find, tap, long press, scroll, type, wait and the assertions — now matches a node's
+  text or its content description, through one matcher, and the result says "matched content-desc"
+  when that is where the words were. `contentDescription` still matches only the content
+  description, and two elements with the same words are still refused rather than guessed between.
+- **A Flutter app is reported as Flutter.** `android_get_ui_tree`, the accessibility audit, the
+  *ui* section of `android_get_debug_context` and the UI Inspector's badge called a Flutter app
+  "Traditional Android Views", because its semantics bridge reports `Button` and `View` like any
+  View screen. Spock now asks whether the app on screen is a Flutter build — the same check
+  `flutter_app_status` makes, once per install — and says `Flutter (semantics bridge)`, with a note
+  that its words are content descriptions and `Semantics(identifier:)` is what `testTag` matches.
+- **The accessibility audit gives Flutter fixes, and no longer flags the cut-off offers of a
+  carousel.** On a Flutter app it suggested `android:contentDescription`; it now suggests
+  `Semantics(label:)`, `ExcludeSemantics`, `MaterialTapTargetSize.padded` or a 48x48 `SizedBox`. An
+  offer banner that does not scroll by touch (a `PageView` with `NeverScrollableScrollPhysics`) has
+  its neighbouring offers cut to a sliver at its edge, and each was flagged as a touch target under
+  48dp, labelled with its badge's words — "GRATIS E-SIM" — so the findings read as if a
+  non-clickable badge had been flagged. Those slivers are now skipped like controls cut at a scroll
+  container's edge, and a finding prints a card's merged label on one line.
+- **The proxy tool warns that Flutter ignores the system proxy.** `android_set_http_proxy` now says
+  that Flutter's `dart:io` `HttpClient` does not use it unless the app opts in.
 
 ## [4.0.7] - 2026-09-29
 
