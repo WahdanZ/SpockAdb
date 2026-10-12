@@ -148,8 +148,15 @@ class AppStorageToolsTest {
         val context = context(approve = false)
         val flood = "\n\r".repeat(200)
 
+        // Named, so the summary is only what the flood left of it: a defaulted app adds a sentence in front.
         SetAppPreferenceTool().execute(
-            args("file" to PREFS, "key" to "injected$flood", "type" to "string", "value" to "value$flood\tend"),
+            args(
+                "file" to PREFS,
+                "key" to "injected$flood",
+                "type" to "string",
+                "value" to "value$flood\tend",
+                "packageName" to "com.example.app",
+            ),
             context,
         )
 

@@ -23,6 +23,15 @@ data class ResolvedPackage(val name: String, val source: PackageSource) {
      * or with another app picked in the tool window, it is not always the one it assumed.
      */
     val note: String? get() = source.label?.let { "package: $name ($it)" }
+
+    /**
+     * [summary] for a confirmation dialog, saying the app was a default when it was. The [note]
+     * only reaches the agent after the action; the developer approving it has to see beforehand
+     * that the agent did not pick this app. In front and on the same line: a summary is one line,
+     * and ends with its warning.
+     */
+    fun confirming(summary: String): String =
+        source.label?.let { "$name is the $it; the agent did not name one. $summary" } ?: summary
 }
 
 /**
@@ -57,9 +66,19 @@ internal fun ToolContext.resolvePackage(arguments: JsonObject): ResolvedPackage 
  * returns, error or not. Not inline, so an early exit has to be `return@withPackage` and cannot
  * skip the note.
  */
-internal fun ToolContext.withPackage(arguments: JsonObject, block: (packageName: String) -> ToolResult): ToolResult {
+internal fun ToolContext.withPackage(arguments: JsonObject, block: (packageName: String) -> ToolResult): ToolResult =
+    withResolvedPackage(arguments) { block(it.name) }
+
+/**
+ * [withPackage], for a tool that needs to know where the app came from: a destructive one says so
+ * in its confirmation ([ResolvedPackage.confirming]).
+ */
+internal fun ToolContext.withResolvedPackage(
+    arguments: JsonObject,
+    block: (ResolvedPackage) -> ToolResult,
+): ToolResult {
     val resolved = resolvePackage(arguments)
-    return block(resolved.name).noting(resolved.note)
+    return block(resolved).noting(resolved.note)
 }
 
 /** [this] with [note] as its first line, or unchanged when there is none. */

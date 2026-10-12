@@ -100,12 +100,15 @@ abstract class AppPreferenceEditTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
-        return context.withPackage(arguments) { packageName ->
+        return context.withResolvedPackage(arguments) { resolved ->
+            val packageName = resolved.name
             val file = AppStoragePaths.parse(arguments.requiredString("file"))
             val restart = arguments.optionalBoolean("restart", false)
-            val edit = Edit(target, packageName, file, changeFrom(arguments), restart)
+            val edit = Edit(target, resolved, file, changeFrom(arguments), restart)
 
-            if (!target.device.isAppInstall(packageName)) return@withPackage ToolResult.error(notInstalled(packageName))
+            if (!target.device.isAppInstall(packageName)) {
+                return@withResolvedPackage ToolResult.error(notInstalled(packageName))
+            }
             try {
                 apply(edit, context)
             } catch (e: AppStorageUnverifiedWriteException) {
@@ -121,11 +124,12 @@ abstract class AppPreferenceEditTool : AdbTool {
 
     private class Edit(
         val target: ConnectedDevice,
-        val packageName: String,
+        val app: ResolvedPackage,
         val file: StorageFile,
         val change: PrefChange,
         val restart: Boolean,
     ) {
+        val packageName: String get() = app.name
         val where: String get() = "${file.path} of $packageName"
     }
 
@@ -143,7 +147,7 @@ abstract class AppPreferenceEditTool : AdbTool {
 
         val stopping = if (edit.restart) "stops the app and starts it again" else "stops the app"
         val summary = summary(edit.change, items.lastOrNull { it.key == edit.change.key }, edit.where)
-        if (!context.confirmDestructive(name, "$summary This $stopping.", edit.target)) {
+        if (!context.confirmDestructive(name, edit.app.confirming("$summary This $stopping."), edit.target)) {
             return ToolResult.error("The developer declined to change ${edit.where}.")
         }
 

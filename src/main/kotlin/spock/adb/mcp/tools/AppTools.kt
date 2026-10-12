@@ -201,19 +201,20 @@ class ClearAppDataTool : AdbTool {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
         val operations = AppOperations(target.device)
 
-        return context.withPackage(arguments) { packageName ->
+        return context.withResolvedPackage(arguments) { resolved ->
+            val packageName = resolved.name
             // Asked before the confirmation, not after: offering to wipe an app that is not on
             // the device is a question with no right answer.
             if (!operations.isInstalled(packageName)) {
-                return@withPackage ToolResult.error(AppNotInstalledException.message(packageName))
+                return@withResolvedPackage ToolResult.error(AppNotInstalledException.message(packageName))
             }
             val approved = context.confirmDestructive(
                 name,
-                "Delete all data for $packageName (shared preferences, databases and caches).",
+                resolved.confirming("Delete all data for $packageName (shared preferences, databases and caches)."),
                 target,
             )
             if (!approved) {
-                return@withPackage ToolResult.error("The developer declined to clear data for $packageName.")
+                return@withResolvedPackage ToolResult.error("The developer declined to clear data for $packageName.")
             }
             appOperation {
                 operations.clearData(packageName)
@@ -289,14 +290,15 @@ class RevokePermissionTool : AdbTool {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
         val permission = arguments.requiredString("permission")
 
-        return context.withPackage(arguments) { packageName ->
+        return context.withResolvedPackage(arguments) { resolved ->
+            val packageName = resolved.name
             val approved = context.confirmDestructive(
                 name,
-                "Revoke $permission from $packageName.",
+                resolved.confirming("Revoke $permission from $packageName."),
                 target,
             )
             if (!approved) {
-                return@withPackage ToolResult.error("The developer declined to revoke $permission.")
+                return@withResolvedPackage ToolResult.error("The developer declined to revoke $permission.")
             }
             val output = McpShell.run(
                 target.device,
@@ -348,17 +350,18 @@ class UninstallAppTool : AdbTool {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
         val operations = AppOperations(target.device)
 
-        return context.withPackage(arguments) { packageName ->
+        return context.withResolvedPackage(arguments) { resolved ->
+            val packageName = resolved.name
             if (!operations.isInstalled(packageName)) {
-                return@withPackage ToolResult.error(AppNotInstalledException.message(packageName))
+                return@withResolvedPackage ToolResult.error(AppNotInstalledException.message(packageName))
             }
             val approved = context.confirmDestructive(
                 name,
-                "Uninstall $packageName, removing the application and all of its data.",
+                resolved.confirming("Uninstall $packageName, removing the application and all of its data."),
                 target,
             )
             if (!approved) {
-                return@withPackage ToolResult.error("The developer declined to uninstall $packageName.")
+                return@withResolvedPackage ToolResult.error("The developer declined to uninstall $packageName.")
             }
             appOperation {
                 operations.uninstall(packageName)

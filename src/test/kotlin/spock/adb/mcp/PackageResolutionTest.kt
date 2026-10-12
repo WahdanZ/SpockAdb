@@ -22,6 +22,7 @@ import spock.adb.mcp.tools.GetLogcatTool
 import spock.adb.mcp.tools.GetPackageInfoTool
 import spock.adb.mcp.tools.PackageSource
 import spock.adb.mcp.tools.ResolvedPackage
+import spock.adb.mcp.tools.RevokePermissionTool
 import spock.adb.mcp.tools.packageOrNull
 import spock.adb.mcp.tools.resolvePackage
 import java.util.concurrent.TimeUnit
@@ -139,6 +140,29 @@ class PackageResolutionTest {
         assertTrue(result.isError)
         assertEquals("package: $SELECTED (app selected in Spock)", result.text().lines().first())
         assertTrue(context.confirmations.isEmpty(), "never asked to wipe an app that is not there")
+    }
+
+    @Test
+    fun `a destructive tool's confirmation says the app was a default, before anything happens`() {
+        // The note in the answer arrives after the action; the developer approving it must know first.
+        val defaulted = context(selected = SELECTED, project = PROJECT, device = device(installed = setOf(SELECTED)))
+        ClearAppDataTool().execute(args(), defaulted)
+        RevokePermissionTool().execute(
+            args().apply { addProperty("permission", "android.permission.CAMERA") },
+            defaulted,
+        )
+
+        assertEquals(listOf("android_clear_app_data", "android_revoke_permission"), defaulted.confirmations)
+        defaulted.confirmationSummaries.forEach { summary ->
+            assertTrue(
+                summary.startsWith("$SELECTED is the app selected in Spock; the agent did not name one. "),
+                summary,
+            )
+        }
+
+        val named = context(selected = SELECTED, device = device(installed = setOf(ASKED)))
+        ClearAppDataTool().execute(args(ASKED), named)
+        assertFalse(named.confirmationSummaries.single().contains("did not name"), named.confirmationSummaries[0])
     }
 
     @Test
