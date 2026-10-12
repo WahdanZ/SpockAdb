@@ -525,7 +525,16 @@ it either, the error says why for both.
 the 48dp minimum, ambiguous duplicate labels and unlabelled images — each with a **code-level
 fix appropriate to the framework**. On a Compose screen it suggests
 `Modifier.semantics { contentDescription = "…" }`, not `android:contentDescription`, because
-the View-level fix does not exist there.
+the View-level fix does not exist there. On a Flutter screen it suggests `Semantics(label:)` or a
+tooltip, `ExcludeSemantics` for a decorative image, and `MaterialTapTargetSize.padded` or a 48x48
+`SizedBox` for a small target.
+
+Flutter cuts a node's bounds at every clip above it, not only at scroll containers. On a Flutter
+screen, a small target in an end page of a carousel that looks cut at its edge — pages laid edge
+to edge, the two end pages narrower wrappers of one child — is reported as a note (`i`), not a
+warning, ending "bounds may be cut by a parent clip (e.g. a carousel edge); verify on device".
+It is never left out, and its label is checked as usual. A merged Flutter label is quoted on one
+line, its lines joined by ` / `.
 
 ## UI automation
 
