@@ -74,13 +74,19 @@ internal class StorageView(
         }
     }
 
-    /** `{"items":[…]…[truncated, 40116 chars]`: the length is the whole value's, so the agent knows what it missed. */
+    /**
+     * `{"items":[…]…[truncated, 40116 chars]`.
+     *
+     * Measured in the value's own characters, both where it is cut and in the length reported, so
+     * asking again with `maxValueChars` at that length returns the whole value. The cut is made
+     * before escaping, so an escape is never split, and it never ends between the two halves of a
+     * surrogate pair. Escapes can make the shown text longer than [maxValueChars]; the cap on the
+     * whole result still holds.
+     */
     private fun bounded(raw: String): Line {
-        val escaped = escapeControlChars(raw)
-        return when {
-            escaped.length <= maxValueChars -> Line(escaped, truncated = false)
-            else -> Line(escaped.take(maxValueChars) + "…[truncated, ${raw.length} chars]", truncated = true)
-        }
+        if (raw.length <= maxValueChars) return Line(escapeControlChars(raw), truncated = false)
+        val end = if (raw[maxValueChars - 1].isHighSurrogate()) maxValueChars - 1 else maxValueChars
+        return Line(escapeControlChars(raw.take(end)) + "…[truncated, ${raw.length} chars]", truncated = true)
     }
 
     private fun filterNote(filter: String, matched: Int): String = when (matched) {
