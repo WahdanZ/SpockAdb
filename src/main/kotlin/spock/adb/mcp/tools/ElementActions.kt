@@ -99,7 +99,8 @@ internal object ElementActions {
         }
         val before = expectation?.condition?.evaluate(resolved.observation)
 
-        val dispatched = "${spec.noun} dispatched once to '${resolved.target.label}'${resolved.matchNote} " +
+        val dispatched = "${spec.noun} dispatched once to '${resolved.target.printableLabel}'" +
+            "${resolved.matchNote} " +
             "${resolved.where}${spec.details}"
         Dispatch(connected, signal, resolved, spec).send()?.let { return it }
 
@@ -182,6 +183,8 @@ internal object ElementActions {
         private val resolved: Resolved,
         private val spec: Spec,
     ) {
+        private val label = resolved.target.printableLabel
+
         private val shell = UiCaptureShell(
             connected.device,
             McpShell.DEFAULT_TIMEOUT_SECONDS,
@@ -199,7 +202,8 @@ internal object ElementActions {
                     val sent = steps.take(index)
                     return error(
                         if (sent.isEmpty()) {
-                            "CANCELLED before anything was sent to '${resolved.target.label}'; nothing was dispatched."
+                            "CANCELLED before anything was sent to '$label'; nothing " +
+                                "was dispatched."
                         } else {
                             "CANCELLED after ${sent.joinToString { it.name }} was dispatched once, and not " +
                                 "repeated.${unsentNote(steps.drop(index))}"
@@ -211,10 +215,10 @@ internal object ElementActions {
                 } catch (e: UiCaptureException) {
                     return error(
                         if (e.kind == UiCaptureException.Kind.CANCELLED) {
-                            "CANCELLED during ${step.name} to '${resolved.target.label}'; the input may or may not " +
+                            "CANCELLED during ${step.name} to '$label'; the input may or may not " +
                                 "have reached the device, and it was not repeated.$unsent"
                         } else {
-                            "Dispatch uncertain at ${step.name} to '${resolved.target.label}': ${e.message} The " +
+                            "Dispatch uncertain at ${step.name} to '$label': ${e.message} The " +
                                 "input may have reached the device and was not repeated.$unsent Check with " +
                                 "android_find_ui_element or android_wait_for_element before retrying."
                         },
@@ -355,7 +359,8 @@ private fun resolveElement(
     val visibility = ViewportVisibility.of(observation, target)
     observation.refusing {
         require(visibility.presence != Presence.OUTSIDE_VIEWPORT && visibility.presence != Presence.ZERO_AREA) {
-            "'${target.label}' at ${target.bounds} is ${visibility.describe()}. Nothing was dispatched: " +
+            "'${target.printableLabel}' at ${target.bounds} is ${visibility.describe()}. Nothing was " +
+                "dispatched: " +
                 "call android_scroll_to_element with the same selector first."
         }
     }

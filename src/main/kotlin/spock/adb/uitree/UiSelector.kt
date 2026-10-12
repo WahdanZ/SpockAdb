@@ -155,7 +155,7 @@ object UiTreeSearch {
                 "packageName, or containerTag."
         }
         val candidates = matches.take(MAX_CANDIDATES).joinToString("; ") {
-            "'${it.label}'${selector.matchNote(it)} ${it.className.substringAfterLast('.')} " +
+            "'${it.printableLabel}'${selector.matchNote(it)} ${it.className.substringAfterLast('.')} " +
                 "id='${it.resourceId}' package='${it.packageName}' at ${it.bounds}"
         }
         return "Ambiguous selector ${selector.describe()}: ${matches.size} matches. $advice" +
@@ -229,9 +229,9 @@ object UiTreeSearch {
         selector: UiSelector = UiSelector(),
     ): UiNode {
         val target = eligibleTarget(tree, node, action)
-        requireNotNull(target) { "Matched '${node.label}' has no eligible target for $action." }
+        requireNotNull(target) { "Matched '${node.printableLabel}' has no eligible target for $action." }
         require(searchRoot(tree, selector).any { it === target }) { "Action target is outside the selected container." }
-        require(target.enabled && node.enabled) { "Matched '${node.label}' is disabled." }
+        require(target.enabled && node.enabled) { "Matched '${node.printableLabel}' is disabled." }
         require(target.packageName == node.packageName) { "Action target belongs to a different package." }
         return target
     }

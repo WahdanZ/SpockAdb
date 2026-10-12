@@ -2,6 +2,7 @@ package spock.adb.uitree
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -391,6 +392,24 @@ class AccessibilityAuditTest {
         val label = finding.describe(UiFramework.FLUTTER).lines().single { it.trim().startsWith("label:") }
         assertTrue(label.endsWith("GRATIS E-SIM / Tarif S"), label)
         assertTrue(finding.describe(UiFramework.FLUTTER).endsWith("fix:    flutter"))
+    }
+
+    @Test
+    fun `a shared merged label is quoted on one line, and so is an ambiguous match`() {
+        val card = node("android.view.View", UiNode.Bounds(0, 0, 500, 300), clickable = true, description = "A\nB")
+        val other = card.copy(bounds = UiNode.Bounds(0, 300, 500, 600))
+        val root = node("android.view.View", UiNode.Bounds(0, 0, 500, 600), children = listOf(card, other))
+        val tree = UiTree(root, UiFramework.FLUTTER, UiTree.TestTagSupport.NOT_APPLICABLE, densityDpi = 160)
+
+        val shared = AccessibilityAudit.audit(tree).filter { it.issue.contains("share the label") }
+        assertEquals(2, shared.size, shared.toString())
+        assertTrue(shared.all { it.issue.endsWith("share the label 'A / B'") }, shared.toString())
+
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(tree, UiSelector(text = "A"), UiTreeSearch.Action.TAP)
+        }.message!!
+        assertFalse(refusal.contains('\n'), refusal)
+        assertTrue(refusal.contains("'A / B' (matched content-desc)"), refusal)
     }
 
     @Test

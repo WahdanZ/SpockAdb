@@ -128,7 +128,7 @@ class ComposeActionToolsTest {
     fun `assert_text matches content descriptions through the shared selector`() {
         val pass = AssertTextTool().execute(text("Tarif S"), flutterTargeting().context)
         assertFalse(pass.isError, pass.text())
-        assertTrue(pass.text().contains("PASS: 'GRATIS E-SIM\nTarif S' (matched content-desc)"), pass.text())
+        assertTrue(pass.text().contains("PASS: 'GRATIS E-SIM / Tarif S' (matched content-desc)"), pass.text())
 
         val fail = AssertTextTool().execute(text("Kündigen"), flutterTargeting().context)
         assertTrue(fail.isError, fail.text())

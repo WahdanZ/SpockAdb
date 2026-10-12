@@ -91,7 +91,7 @@ internal class AuditFindingsPanel(private val onSelectNode: (UiNode) -> Unit) : 
             // The issue can quote a label from the device; appended as a fragment, never as markup.
             append(finding.issue)
             val node = finding.node
-            val where = listOf(node.className.substringAfterLast('.'), node.label, node.bounds.toString())
+            val where = listOf(node.className.substringAfterLast('.'), node.printableLabel, node.bounds.toString())
                 .filter { it.isNotBlank() }
                 .joinToString(" · ")
             append("  $where", SimpleTextAttributes.GRAYED_ATTRIBUTES)

@@ -44,7 +44,10 @@ sealed class UiCondition {
                     "${matches.size} match(es) for ${selector.describe()}, all outside the viewport or their " +
                         "scroll container",
                 )
-            return Check(true, "'${first.label}' at ${first.bounds} is ${visibility.getValue(first).describe()}")
+            return Check(
+                true,
+                "'${first.printableLabel}' at ${first.bounds} is ${visibility.getValue(first).describe()}",
+            )
         }
     }
 
@@ -55,7 +58,7 @@ sealed class UiCondition {
         override fun decide(observation: UiObservation): Check {
             val first = UiTreeSearch.findAll(observation.tree, selector).firstOrNull()
                 ?: return nothingMatched(selector)
-            return Check(true, "'${first.label}' is in the tree at ${first.bounds}")
+            return Check(true, "'${first.printableLabel}' is in the tree at ${first.bounds}")
         }
     }
 
@@ -69,7 +72,7 @@ sealed class UiCondition {
                 ?: return Check(true, "nothing in the tree matches ${selector.describe()}")
             return Check(
                 false,
-                "${matches.size} match(es) still in the tree, the first '${first.label}' at ${first.bounds}",
+                "${matches.size} match(es) still in the tree, the first '${first.printableLabel}' at ${first.bounds}",
             )
         }
     }
@@ -88,7 +91,8 @@ sealed class UiCondition {
                 ?: return Check(true, "${matches.size} match(es) in the tree, none in the viewport")
             return Check(
                 false,
-                "${inView.size} of ${matches.size} match(es) still in the viewport, the first '${first.label}' at " +
+                "${inView.size} of ${matches.size} match(es) still in the viewport, the first " +
+                    "'${first.printableLabel}' at " +
                     "${first.bounds}",
             )
         }
@@ -106,10 +110,10 @@ sealed class UiCondition {
             val node = UiTreeSearch.findUnique(observation.tree, selector) ?: return nothingMatched(selector)
             // A control that cannot be checked reads as unchecked, which would pass a wait for "unchecked".
             if (state == StateProperty.CHECKED && !node.checkable) {
-                return Check(false, "'${node.label}' is not checkable, so it has no checked state")
+                return Check(false, "'${node.printableLabel}' is not checkable, so it has no checked state")
             }
             val actual = state.read(node)
-            return Check(actual == value, "'${node.label}' at ${node.bounds} is ${state.word(actual)}")
+            return Check(actual == value, "'${node.printableLabel}' at ${node.bounds} is ${state.word(actual)}")
         }
     }
 

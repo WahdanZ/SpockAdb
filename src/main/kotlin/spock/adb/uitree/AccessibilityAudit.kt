@@ -27,21 +27,14 @@ object AccessibilityAudit {
             UiFramework.COMPOSE, UiFramework.HYBRID, UiFramework.UNKNOWN -> composeFix
         }
 
-        /**
-         * The label on one line. Flutter merges a card's words into one content-desc, a line each, so
-         * printed as they are the card's first line — often a badge — read as the whole label.
-         */
         fun describe(framework: UiFramework): String = buildString {
             append(severity.marker).append(' ').append(issue).appendLine()
             append("    class:  ").append(node.className).appendLine()
             append("    bounds: ").append(node.bounds).appendLine()
-            node.label.takeIf { it.isNotBlank() }?.let { append("    label:  ").append(oneLine(it)).appendLine() }
+            node.printableLabel.takeIf { it.isNotBlank() }?.let { append("    label:  ").append(it).appendLine() }
             append("    fix:    ")
             append(fixFor(framework))
         }
-
-        private fun oneLine(label: String): String =
-            label.lines().map(String::trim).filter(String::isNotEmpty).joinToString(" / ")
     }
 
     enum class Severity(val marker: String) {
@@ -225,7 +218,7 @@ object AccessibilityAudit {
             .map {
                 Finding(
                     severity = Severity.WARNING,
-                    issue = "Several interactive elements share the label '${it.accessibleLabel}'",
+                    issue = "Several interactive elements share the label '${it.accessibleLabel.oneLine()}'",
                     node = it,
                     composeFix = "Give controls meaningful accessible labels or context " +
                         "that distinguishes their purpose. " +

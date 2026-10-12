@@ -68,7 +68,7 @@ screen as an API 34 emulator dumped it at 480dpi.
 | `android_tap_element {"text":"Suche"}` | `Tap dispatched once to 'Suche' (matched content-desc)`; the result line reads *Tab Suche selected* |
 | `android_find_ui_element {"contentDescription":"Suche"}` | The same 1 match: `contentDescription` matches only content-desc |
 | `android_tap_element {"text":"Details"}` | Refused as ambiguous, 2 matches; nothing is tapped |
-| `android_assert_text {"text":"Tarif S"}` | PASS on `'GRATIS E-SIM\nTarif S' (matched content-desc)`: the badge's words are the card's first line |
+| `android_assert_text {"text":"Tarif S"}` | PASS on `'GRATIS E-SIM / Tarif S' (matched content-desc)`: the badge's words are the first line of the card's content-desc, printed on one line |
 | `android_tap_element {"testTag":"targeting_save","exactTag":true}` | Taps *Speichern*, the button inside the `Semantics(identifier:)`; the result line reads *Saved* |
 | `android_accessibility_audit {}` | One touch-target warning (`!`), *Roaming info* (the shrink-wrapped `IconButton`), with the `MaterialTapTargetSize.padded` / 48x48 `SizedBox` fix; the two *Details* buttons as a shared label with a `Semantics(label:)` fix; the banner's cut-off offers (*Tarif M*, *Tarif XL*) as notes (`i`) ending "bounds may be cut by a parent clip (e.g. a carousel edge); verify on device"; no finding on the *GRATIS E-SIM* badge itself |
 

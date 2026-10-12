@@ -115,7 +115,7 @@ class ScrollToElementTool : AdbTool {
             val matches = UiTreeSearch.findAll(tree, selector)
             found(observation, matches)?.let { (node, visibility) ->
                 return ToolResult.text(
-                    observation.preface() + "\nFound '${node.label}'${selector.matchNote(node)} after " +
+                    observation.preface() + "\nFound '${node.printableLabel}'${selector.matchNote(node)} after " +
                         "$attempt scroll(s) at ${node.bounds}, ${visibility.describe()}.",
                 )
             }
@@ -226,7 +226,7 @@ private fun UiObservation.visibilityVerdict(matches: List<UiNode>, what: String,
         )
         first != null -> ToolResult.text(
             // The description ends "(occlusion not checked)", so the pass never claims more than bounds show.
-            preface() + "\nPASS: '${first.label}'${selector.matchNote(first)} at ${first.bounds} is " +
+            preface() + "\nPASS: '${first.printableLabel}'${selector.matchNote(first)} at ${first.bounds} is " +
                 "${visibility.getValue(first).describe()}. " +
                 "${inView.size} of ${matches.size} match(es) in the viewport.",
         )
@@ -286,8 +286,10 @@ class AssertEnabledTool : AdbTool {
         } ?: return ToolResult.error(observation.preface() + "\nFAIL: nothing matched ${selector.describe()}.")
 
         return when {
-            match.enabled -> ToolResult.text(observation.preface() + "\nPASS: '${match.label}' is enabled.")
-            else -> ToolResult.error(observation.preface() + "\nFAIL: '${match.label}' is present but disabled.")
+            match.enabled ->
+                ToolResult.text(observation.preface() + "\nPASS: '${match.printableLabel}' is enabled.")
+            else ->
+                ToolResult.error(observation.preface() + "\nFAIL: '${match.printableLabel}' is present but disabled.")
         }
     }
 }
