@@ -302,6 +302,50 @@ Rules that hold regardless of what a client asks for:
   JSON under the IDE config directory, capped by the same "keep the most recent N requests"
   setting, and written off the calling thread so an agent never waits on a disk write.
 
+### Tool annotations
+
+`tools/list` carries hints a host can use to decide what to auto-approve. They follow the levels
+above, with one deliberate difference: **reversible, device-wide** tools.
+
+| Hint | Sent as `true` for |
+|---|---|
+| `readOnlyHint` | Every read-only tool. |
+| `destructiveHint` | Every destructive tool; the reversible, device-wide tools `android_set_battery_level`, `android_unplug_battery`, `android_set_charger` and `android_set_standby_bucket`; and `android_run_recipe`. It is `false` for the other state-changing tools, and left out for read-only ones, where the spec gives it no meaning. |
+| `idempotentHint` | Read-only tools, and the state-changing tools that leave nothing more to change when called again with the same arguments: select device or project, stop app, grant permission, force Doze, the battery, charger and standby bucket setters, both resets, set animations, and set or clear the HTTP proxy. |
+| `openWorldHint` | `android_open_deep_link`, `android_set_http_proxy`, `android_run_adb_command` and `android_run_recipe`, which can reach past the device and the IDE. Left out elsewhere. |
+
+A reversible, device-wide tool changes OS state that every app sees — the battery level and
+charger, the standby bucket that rations an app's jobs and alarms — until a reset tool undoes it.
+They stay **safe actions**, so they never interrupt you with a dialog, because
+`android_reset_battery` or `android_reset_device_conditions` undoes them completely. They are
+advertised as destructive so a host that auto-approves anything not so marked does not treat them
+as harmless. `android_run_recipe` is advertised as destructive because a recipe can clear data or
+revoke a permission; each such step still asks you on its own.
+
+### Protocol versions
+
+`initialize` echoes the client's `protocolVersion` when it is `2025-06-18`, `2025-03-26` or
+`2024-11-05`, and answers `2025-06-18` to anything else. Each stdio connection keeps the version it
+negotiated; over HTTP each request carries it in the `MCP-Protocol-Version` header (no header means
+`2025-03-26`, and a version the server does not speak is refused with 400).
+
+| | 2024-11-05 | 2025-03-26 | 2025-06-18 |
+|---|---|---|---|
+| Tool `title` | — | in `annotations` | top level |
+| `outputSchema` and `structuredContent` | — | — | `android_get_debug_context`, `android_diagnose_current_screen`, `flutter_app_status` |
+
+`structuredContent` is the JSON object the result's text already holds, and the text is still sent.
+`format: "full"` of `android_get_debug_context` is text, so it arrives as `{"text": ...}`.
+
+`serverInfo.version` is the plugin's version.
+
+### Numeric arguments
+
+Every integer and number argument declares `minimum` and `maximum` in its schema, and a value
+outside them is refused with an error naming the argument and the range — `android_get_logcat
+{"maxLines":-5}` answers `Argument 'maxLines' must be between 1 and 5000, got -5.` rather than
+reading one line. Nothing is clamped.
+
 ### Turning tools off
 
 `Settings → Tools → Spock ADB → Tool Access` lists every registered tool, grouped by safety
@@ -913,7 +957,7 @@ Flutter tool is attaching meanwhile.
 **Choosing sections.** `include` takes `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`,
 `deviceConditions` and `permissions`; all are on by default. `screenshot` is opt-in, attached as an image, because
 it is by far the most expensive part. `maxLogcatLines` sets how much log is scanned (1,500 by
-default, capped at 2,000).
+default, at most 2,000; more is refused).
 
 **Migrating from 4.x.** The tool used to return a text bundle of the current activity, the whole
 UI tree and raw logcat. That is still available, unchanged, with `format: "full"` — pass it if
