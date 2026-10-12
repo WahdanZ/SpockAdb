@@ -57,7 +57,7 @@ class BackgroundWorkToolsTest {
     @Test
     fun `lists jobs with what each is waiting on`() {
         val result = GetScheduledJobsTool().execute(
-            JsonObject(),
+            JsonObject().apply { addProperty("packageName", DIALER) },
             context(answers = mapOf("dumpsys jobscheduler" to fixture("jobscheduler-api34.txt"))),
         )
 
@@ -77,7 +77,7 @@ class BackgroundWorkToolsTest {
         )
 
         assertFalse(result.isError)
-        assertEquals("$DIALER has no scheduled jobs.", result.text())
+        assertEquals("package: $DIALER (open project's application ID)\n$DIALER has no scheduled jobs.", result.text())
     }
 
     @Test

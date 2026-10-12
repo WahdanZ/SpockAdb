@@ -42,6 +42,7 @@ object TimelineExport {
             append(event.severity.name.padEnd(SEVERITY_WIDTH)).append(' ')
             append(event.category.label.padEnd(CATEGORY_WIDTH)).append(' ')
             append(event.title)
+            if (event.emulatorNoise) append("  (emulator noise)")
             event.deviceSerial?.let { append("  [").append(it).append(']') }
             append('\n')
             event.detail.takeIf { it.isNotBlank() && it != event.title }?.lineSequence()?.forEach { line ->
@@ -51,6 +52,8 @@ object TimelineExport {
     }
 
     private const val SEVERITY_WIDTH = 7
-    private const val CATEGORY_WIDTH = 10
+
+    /** The longest label, so the titles line up whatever the category. */
+    private val CATEGORY_WIDTH = TimelineCategory.entries.maxOf { it.label.length }
     private const val DETAIL_INDENT = "        "
 }

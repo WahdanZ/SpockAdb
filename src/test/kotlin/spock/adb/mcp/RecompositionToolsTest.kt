@@ -245,7 +245,7 @@ class RecompositionToolsTest {
     @Test
     fun `with no packageName the app selected in Spock is recorded, not the project's`() {
         val asked = mutableListOf<String>()
-        val tool = GetRecompositionCountsTool(selectedApp = { "spock.adb.spock_flutter_sample.second" }) { request ->
+        val tool = GetRecompositionCountsTool { request ->
             asked += request.packageName
             rebuilds(FlutterRebuildRecorder.Tracking.SWITCHED_ON_AND_OFF)
         }
@@ -255,11 +255,14 @@ class RecompositionToolsTest {
             FakeToolContext(
                 available = listOf(FakeToolContext.device("emulator-5554").copy(device = healthy())),
                 applicationId = "spock.adb.spock_flutter_sample",
+                spockSelectedApp = "spock.adb.spock_flutter_sample.second",
             ),
         )
 
         assertEquals(listOf("spock.adb.spock_flutter_sample.second"), asked)
-        assertTrue(result.text().startsWith("Recorded spock.adb.spock_flutter_sample.second"), result.text())
+        val lines = result.text().lines()
+        assertEquals("package: spock.adb.spock_flutter_sample.second (app selected in Spock)", lines[0])
+        assertTrue(lines[1].startsWith("Recorded spock.adb.spock_flutter_sample.second"), result.text())
     }
 
     @Test

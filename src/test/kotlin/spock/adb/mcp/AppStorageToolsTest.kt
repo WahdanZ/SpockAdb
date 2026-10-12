@@ -40,13 +40,17 @@ class AppStorageToolsTest {
         val result = ListAppStorageTool().execute(JsonObject(), context)
 
         assertFalse(result.isError, result.text())
-        assertEquals("$PREFS  (SharedPreferences)", result.text())
+        // No packageName was passed, so the answer first says which app it read.
+        assertEquals(
+            "package: com.example.app (open project's application ID)\n$PREFS  (SharedPreferences)",
+            result.text(),
+        )
         assertTrue(context.confirmations.isEmpty())
     }
 
     @Test
     fun `reads typed entries`() {
-        val result = ReadAppStorageTool().execute(args("file" to PREFS), context())
+        val result = ReadAppStorageTool().execute(args("file" to PREFS, "packageName" to "com.example.app"), context())
 
         assertFalse(result.isError, result.text())
         assertEquals("$PREFS (SharedPreferences, 1 entry)\nonboarding_seen (boolean) = false", result.text())
@@ -144,8 +148,15 @@ class AppStorageToolsTest {
         val context = context(approve = false)
         val flood = "\n\r".repeat(200)
 
+        // Named, so the summary is only what the flood left of it: a defaulted app adds a sentence in front.
         SetAppPreferenceTool().execute(
-            args("file" to PREFS, "key" to "injected$flood", "type" to "string", "value" to "value$flood\tend"),
+            args(
+                "file" to PREFS,
+                "key" to "injected$flood",
+                "type" to "string",
+                "value" to "value$flood\tend",
+                "packageName" to "com.example.app",
+            ),
             context,
         )
 

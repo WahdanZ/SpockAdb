@@ -46,12 +46,48 @@ class LogcatActivity : SampleActivity() {
             button("Block the main thread for 8s (ANR)") {
                 Handler(Looper.getMainLooper()).post { Thread.sleep(8_000) }
             }
+            heading("Noise ranking")
+            note(
+                "android_get_debug_context should rank the app's one error p1 and the emulator noise " +
+                    "last, tagged emulatorNoise. Press both, then ask.",
+            )
+            button("Log emulator noise ×80") { logEmulatorNoise() }
+            button("Log one app error") {
+                Log.e(SampleApp.TAG, "Checkout failed: payment provider returned DECLINED for order 42")
+            }
         }
+    }
+
+    /**
+     * Lines Spock's noise list names (`LogNoise.kt`), with the tags and messages Android uses. On a
+     * real emulator these come from inside the app's own process too: the mapper and the renderer
+     * run on its RenderThread, the back dispatcher on its UI thread. Mostly errors, many times over,
+     * so that by count alone the noise would outrank the app's one error.
+     */
+    private fun logEmulatorNoise() {
+        repeat(NOISE_REPEATS) {
+            Log.e(
+                "mapper.ranchu",
+                "getStandardMetadataImpl:886 failure: UNSUPPORTED: id=${130 + it}: unexpected standardMetadataType=21",
+            )
+        }
+        repeat(NOISE_PAIRS) {
+            Log.w("WindowOnBackDispatcher", "OnBackInvokedCallback is not enabled for the application.")
+            Log.w(
+                "WindowOnBackDispatcher",
+                "Set 'android:enableOnBackInvokedCallback=\"true\"' in the application manifest.",
+            )
+        }
+        repeat(NOISE_PAIRS) { Log.e("OpenGLRenderer", "Unable to match the desired swap behavior.") }
     }
 
     private fun parseAmount(text: String): Double = text.toDouble()
 
     private companion object {
+        /** 50 mapper errors, 10 back-dispatcher pairs and 10 renderer errors: 80 W/E noise lines in all. */
+        const val NOISE_REPEATS = 50
+        const val NOISE_PAIRS = 10
+
         /**
          * Assembled rather than written out whole, as in scripts/demo/LogcatDemo.kt.
          *

@@ -33,12 +33,7 @@ class DiagnoseCurrentScreenTool : AdbTool {
     override val safety = ToolSafety.READ_ONLY
 
     override val inputSchema: JsonObject = Schema.obj {
-        string(
-            "packageName",
-            "The app the screen belongs to. Defaults to the app selected in Spock's tool window, " +
-                "else the open project's application ID. " +
-                "Pass an empty string to consider the whole device.",
-        )
+        string("packageName", "The app the screen belongs to. $PACKAGE_DEFAULT_OR_DEVICE")
         boolean(
             "screenshot",
             "Attach a screenshot of the screen. Defaults to true; pass false when you only need " +

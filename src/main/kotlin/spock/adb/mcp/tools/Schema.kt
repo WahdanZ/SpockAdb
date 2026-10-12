@@ -32,6 +32,9 @@ object Schema {
                 if (mayBeEmpty) addProperty("minLength", 0)
             }
 
+        /** `packageName` for a tool about one app: [what] it is, then what it defaults to. */
+        fun packageName(what: String) = string("packageName", "$what $PACKAGE_DEFAULT")
+
         fun integer(name: String, description: String, required: Boolean = false) =
             property(name, "integer", description, required)
 

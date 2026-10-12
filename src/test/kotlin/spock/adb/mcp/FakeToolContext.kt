@@ -22,6 +22,8 @@ class FakeToolContext(
     private val openProjects: List<String> = listOf("app"),
     /** Answer given to every destructive confirmation. */
     var confirmationAnswer: Boolean = false,
+    /** The app selected in Spock's tool window, which tools prefer to the project's. */
+    private val spockSelectedApp: String? = null,
 ) : ToolContext {
 
     val confirmations = mutableListOf<String>()
@@ -74,6 +76,8 @@ class FakeToolContext(
     }
 
     override fun projectApplicationId(): String? = applicationId
+
+    override fun selectedApp(): String? = spockSelectedApp
 
     companion object {
         fun device(serial: String, state: DeviceState = DeviceState.ONLINE): ConnectedDevice =

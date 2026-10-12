@@ -19,8 +19,9 @@ after a change.
    raw data; fetch that only when the summary points there. Use
    `android_diagnose_current_screen` instead when you also need to *see* the screen: same
    report, every section, plus a screenshot.
-2. **Narrow to the app.** Pass `packageName` (or rely on the open project's app, which is the
-   default) so logcat, storage, jobs and alarms are the app's, not the whole device's. Read the
+2. **Narrow to the app.** Pass `packageName` (or rely on the default: the app selected in Spock,
+   else the open project's — a `package: …` first line says which one you got) so logcat,
+   storage, jobs and alarms are the app's, not the whole device's. Read the
    log at `minLevel: "W"` or `"E"` before reading it at `"V"`. Pass `packageName: ""` only when
    you mean the whole device.
 3. **Safe before destructive.** Observe with read-only tools, act with safe actions, and use a

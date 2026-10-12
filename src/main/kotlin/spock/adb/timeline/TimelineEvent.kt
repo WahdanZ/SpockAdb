@@ -10,6 +10,8 @@ package spock.adb.timeline
  * @param id assigned by [DebugTimeline]; orders events recorded at the same millisecond.
  * @param deviceTime the device's own stamp for an event read from its log, kept so the detail
  *   can be matched against Logcat.
+ * @param emulatorNoise a log line Android writes whatever the app does
+ *   ([spock.adb.diagnostics.LogNoise]), so the timeline can collapse or hide it.
  */
 data class TimelineEvent(
     val timeMs: Long,
@@ -20,6 +22,7 @@ data class TimelineEvent(
     val deviceSerial: String? = null,
     val deviceTime: String? = null,
     val id: Long = 0,
+    val emulatorNoise: Boolean = false,
 )
 
 enum class TimelineCategory(val label: String) {
@@ -31,7 +34,7 @@ enum class TimelineCategory(val label: String) {
     DEVICE_CONDITION("Conditions"),
     DEVICE("Device"),
     LOG("Log"),
-    FLUTTER_ERROR("Flutter"),
+    FLUTTER_ERROR("Flutter error"),
     FLUTTER_FRAME("Frame"),
     NAVIGATION("Navigation"),
     HTTP("HTTP"),

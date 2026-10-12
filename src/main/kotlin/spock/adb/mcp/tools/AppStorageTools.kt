@@ -28,22 +28,23 @@ class ListAppStorageTool : AdbTool {
             "build. Read one with android_read_app_storage."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "Package whose storage to list. Defaults to the open project's application ID.")
+        packageName("Package whose storage to list.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        return storageRead(device, packageName) {
-            val files = device.listAppStorage(packageName)
-            ToolResult.text(
-                if (files.isEmpty()) {
-                    "No SharedPreferences or DataStore files found for $packageName."
-                } else {
-                    files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
-                },
-            )
+        return context.withPackage(arguments) { packageName ->
+            storageRead(device, packageName) {
+                val files = device.listAppStorage(packageName)
+                ToolResult.text(
+                    if (files.isEmpty()) {
+                        "No SharedPreferences or DataStore files found for $packageName."
+                    } else {
+                        files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
+                    },
+                )
+            }
         }
     }
 }
@@ -79,49 +80,50 @@ class ReadAppStorageTool : AdbTool {
             "Show the values that are redacted because they look secret. The developer is asked " +
                 "first; if they decline, the values stay redacted. Defaults to false.",
         )
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
         val device = target.device
-        val packageName = context.resolvePackage(arguments)
         val file = AppStoragePaths.parse(arguments.requiredString("file"))
         val view = StorageView.from(arguments).getOrElse { return ToolResult.error(it.message.orEmpty()) }
-        return storageRead(device, packageName) {
-            val format = file.format
-            if (format == null) {
-                return@storageRead ToolResult.text(
-                    "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, " +
-                        "which cannot be decoded without that message's schema.",
+        return context.withPackage(arguments) { packageName ->
+            storageRead(device, packageName) {
+                val format = file.format
+                if (format == null) {
+                    return@storageRead ToolResult.text(
+                        "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, " +
+                            "which cannot be decoded without that message's schema.",
+                    )
+                }
+                val items = format.read(device.readAppStorageFile(packageName, file))
+                val secrets = view.secretKeys(items)
+                val where = "${file.path} of $packageName"
+                val reveal = when {
+                    !view.showSecrets || secrets.isEmpty() -> StorageView.Reveal.NOT_ASKED
+                    context.confirmDestructive(
+                        name,
+                        revealSummary(secrets, where),
+                        target,
+                        ConfirmationWording.REVEAL_SECRETS,
+                    ) -> StorageView.Reveal.ALLOWED
+                    else -> StorageView.Reveal.DECLINED
+                }
+                val text = view.describe(file, items, reveal).truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
+                if (reveal != StorageView.Reveal.ALLOWED) return@storageRead ToolResult.text(text)
+
+                // The agent sees the values; the activity history, which is written to disk and shown in
+                // the panel, keeps the redacted rendering. idea.log records that it happened, by key.
+                val keys = secrets.joinToString { "'${plain(it)}'" }
+                val serial = target.serialNumber
+                LOG.info("MCP $name: secret values revealed with the developer's approval in $where on $serial: $keys")
+                ToolResult.text(text).copy(
+                    historyText = view.describe(file, items, StorageView.Reveal.RECORDED)
+                        .truncateForAgent(McpShell.DEFAULT_MAX_CHARS),
                 )
             }
-            val items = format.read(device.readAppStorageFile(packageName, file))
-            val secrets = view.secretKeys(items)
-            val where = "${file.path} of $packageName"
-            val reveal = when {
-                !view.showSecrets || secrets.isEmpty() -> StorageView.Reveal.NOT_ASKED
-                context.confirmDestructive(
-                    name,
-                    revealSummary(secrets, where),
-                    target,
-                    ConfirmationWording.REVEAL_SECRETS,
-                ) -> StorageView.Reveal.ALLOWED
-                else -> StorageView.Reveal.DECLINED
-            }
-            val text = view.describe(file, items, reveal).truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
-            if (reveal != StorageView.Reveal.ALLOWED) return@storageRead ToolResult.text(text)
-
-            // The agent sees the values; the activity history, which is written to disk and shown in
-            // the panel, keeps the redacted rendering. idea.log records that it happened, by key.
-            val keys = secrets.joinToString { "'${plain(it)}'" }
-            val serial = target.serialNumber
-            LOG.info("MCP $name: secret values revealed with the developer's approval in $where on $serial: $keys")
-            ToolResult.text(text).copy(
-                historyText = view.describe(file, items, StorageView.Reveal.RECORDED)
-                    .truncateForAgent(McpShell.DEFAULT_MAX_CHARS),
-            )
         }
     }
 
@@ -160,30 +162,36 @@ abstract class AppPreferenceEditTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        val file = AppStoragePaths.parse(arguments.requiredString("file"))
-        val edit = Edit(target, packageName, file, changeFrom(arguments), arguments.optionalBoolean("restart", false))
+        return context.withResolvedPackage(arguments) { resolved ->
+            val packageName = resolved.name
+            val file = AppStoragePaths.parse(arguments.requiredString("file"))
+            val restart = arguments.optionalBoolean("restart", false)
+            val edit = Edit(target, resolved, file, changeFrom(arguments), restart)
 
-        if (!target.device.isAppInstall(packageName)) return ToolResult.error(notInstalled(packageName))
-        return try {
-            apply(edit, context)
-        } catch (e: AppStorageUnverifiedWriteException) {
-            // Not "could not change": the old content is gone, and an agent told otherwise would retry.
-            ToolResult.error("The change to ${edit.where} was written but not verified. ${e.message}")
-        } catch (e: IllegalArgumentException) {
-            ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
-        } catch (e: IllegalStateException) {
-            ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            if (!target.device.isAppInstall(packageName)) {
+                return@withResolvedPackage ToolResult.error(notInstalled(packageName))
+            }
+            try {
+                apply(edit, context)
+            } catch (e: AppStorageUnverifiedWriteException) {
+                // Not "could not change": the old content is gone, and an agent told otherwise would retry.
+                ToolResult.error("The change to ${edit.where} was written but not verified. ${e.message}")
+            } catch (e: IllegalArgumentException) {
+                ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            } catch (e: IllegalStateException) {
+                ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            }
         }
     }
 
     private class Edit(
         val target: ConnectedDevice,
-        val packageName: String,
+        val app: ResolvedPackage,
         val file: StorageFile,
         val change: PrefChange,
         val restart: Boolean,
     ) {
+        val packageName: String get() = app.name
         val where: String get() = "${file.path} of $packageName"
     }
 
@@ -201,7 +209,7 @@ abstract class AppPreferenceEditTool : AdbTool {
 
         val stopping = if (edit.restart) "stops the app and starts it again" else "stops the app"
         val summary = summary(edit.change, items.lastOrNull { it.key == edit.change.key }, edit.where)
-        if (!context.confirmDestructive(name, "$summary This $stopping.", edit.target)) {
+        if (!context.confirmDestructive(name, edit.app.confirming("$summary This $stopping."), edit.target)) {
             return ToolResult.error("The developer declined to change ${edit.where}.")
         }
 
@@ -248,7 +256,7 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
             required = true,
         )
         restartArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 
@@ -289,7 +297,7 @@ class DeleteAppPreferenceTool : AppPreferenceEditTool() {
         fileArgument()
         string("key", "Preference key to remove. May be empty.", required = true, mayBeEmpty = true)
         restartArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 

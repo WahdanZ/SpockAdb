@@ -40,7 +40,7 @@ class TimelineExportTest {
         val lines = text.lines()
 
         assertTrue(lines[0].startsWith("Spock ADB debug timeline, 1 event(s), 1970-01-01 00:00:01.234"))
-        assertEquals("00:00:01.234  ERROR   Log        AndroidRuntime: FATAL EXCEPTION  [emulator-5554]", lines[1])
+        assertEquals("00:00:01.234  ERROR   Log           AndroidRuntime: FATAL EXCEPTION  [emulator-5554]", lines[1])
         assertEquals("        line one", lines[2])
         assertEquals("        line two", lines[3])
     }

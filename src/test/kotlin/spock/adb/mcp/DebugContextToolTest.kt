@@ -217,10 +217,11 @@ class DebugContextToolTest {
 
         assertEquals(2, report["schemaVersion"].asInt)
         assertEquals(
-            listOf("schemaVersion", "device", "packageName", "likelyProblems"),
-            report.keySet().take(4),
+            listOf("schemaVersion", "device", "packageName", "packageFrom", "likelyProblems"),
+            report.keySet().take(5),
             "problems must come before the sections that explain them",
         )
+        assertEquals("open project's application ID", report["packageFrom"].asString)
         assertFalse(text.contains("## "), "no 4.x headings in the summary: $text")
         assertFalse(text.contains("android.widget.") || text.contains("[0,0]"), "no raw UI tree: $text")
         assertFalse(text.contains("01-01 00:00:00.000  1234"), "no raw logcat lines: $text")

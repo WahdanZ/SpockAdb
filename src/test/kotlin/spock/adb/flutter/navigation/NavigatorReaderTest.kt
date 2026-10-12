@@ -353,13 +353,13 @@ class NavigatorReaderTest {
     }
 
     @Test
-    fun `two keyed navigators - several, and no guess at which is showing`() {
+    fun `two keyed navigators whose elements hold no inherited map - unavailable, by the field`() {
         val objects = FixtureObjects.load("several-keyed-3.22.2.json")
 
         val keyed = reader(objects).readKeyed()
         val checked = reader(objects).readChecked()
 
-        assertEquals(NavigatorReader.severalKeyed(2), keyed.unavailable)
+        assertEquals(NavigatorReader.missing("Element", "_inheritedElements"), keyed.unavailable)
         assertEquals(Confidence.UNAVAILABLE, keyed.confidence)
         assertEquals(keyed, checked)
         assertTrue(objects.calls.none { it.startsWith("getInstances") })
