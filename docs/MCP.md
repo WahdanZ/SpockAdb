@@ -380,7 +380,10 @@ would report every pure-Compose screen as hybrid.
 Element selectors accept optional `packageName` and `containerTag` scopes. A container tag
 must identify exactly one subtree; `exactTag: true` matches a complete case-sensitive tag or
 raw resource ID. Existing substring matching remains the default for compatibility.
-Taps, long presses, and text entry reject multiple matches and disabled or ineligible targets.
+Taps, long presses, and text entry reject multiple matches and disabled or ineligible targets. When
+several elements match but exactly one can take the action — a search field and the "Search" icon
+beside it, for text entry — the action goes to that one, and the result names it and what it
+ignored.
 Matches that resolve to the same control count once. A refusal lists the candidates and names
 what can separate them: often `exact: true`. An action result reports that the input was
 dispatched, not that the app changed, unless the call names an expected result — see

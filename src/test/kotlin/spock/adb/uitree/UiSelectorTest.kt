@@ -116,13 +116,15 @@ class UiSelectorTest {
         )
         val dialog = tree.copy(root = nodeWithText("").copy(children = listOf(title, button)))
 
+        // Without an action nothing is chosen; a tap would go to the button, the only one it lands on.
         val error = assertThrows(IllegalArgumentException::class.java) {
-            UiTreeSearch.findUnique(dialog, UiSelector(text = "Save"), UiTreeSearch.Action.TAP)
+            UiTreeSearch.findUnique(dialog, UiSelector(text = "Save"))
         }.message!!
         assertTrue(error.contains("'Save changes?' TextView"), error)
         assertTrue(error.contains("'Save' Button"), error)
         assertTrue(error.contains("exact: true"), error)
         assertEquals(button, UiTreeSearch.findUnique(dialog, UiSelector(text = "Save", exact = true)))
+        assertEquals(button, UiTreeSearch.findUnique(dialog, UiSelector(text = "Save"), UiTreeSearch.Action.TAP))
     }
 
     @Test
@@ -386,6 +388,37 @@ class UiSelectorTest {
         assertTrue(message.contains("contentDescription instead of text"), message)
         assertTrue(message.contains("testTag (exactTag: true) or containerTag"), message)
         assertTrue(message.contains("'Search' (matched content-desc) ImageView"), message)
+    }
+
+    @Test
+    fun `input goes to the only match that takes text, and says what it passed over`() {
+        val choice = UiTreeSearch.choose(searchRow(), UiSelector(text = "Search"), UiTreeSearch.Action.TEXT_INPUT)!!
+
+        assertEquals("android.widget.EditText", choice.node.className)
+        assertEquals(
+            "2 matched; acted on the only one that accepts input (EditText 'Search'); ignored: " +
+                "ImageView content-desc 'Search'",
+            choice.note(UiSelector(text = "Search"), UiTreeSearch.Action.TEXT_INPUT),
+        )
+    }
+
+    @Test
+    fun `a tap goes to the only clickable match, and is refused when both are`() {
+        val selector = UiSelector(text = "Search")
+        val choice = UiTreeSearch.choose(searchRow(iconClickable = false), selector, UiTreeSearch.Action.TAP)!!
+
+        assertEquals("android.widget.EditText", choice.node.className)
+        assertTrue(choice.note(selector, UiTreeSearch.Action.TAP)!!.contains("the only one that can be tapped"))
+        assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.choose(searchRow(), selector, UiTreeSearch.Action.TAP)
+        }
+    }
+
+    @Test
+    fun `without an action several matches are still refused`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(searchRow(iconClickable = false), UiSelector(text = "Search"))
+        }
     }
 
     @Test

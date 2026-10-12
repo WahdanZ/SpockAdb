@@ -174,6 +174,13 @@
   ([#144](https://github.com/WahdanZ/SpockAdb/issues/144)). Both lists now show each element
   once; `interactiveOnly` used to repeat a clickable row nested inside another match. The sample
   app's Recomposition screen and fixture 15 show both.
+- **An element action goes to the one match it can act on.** Since `text` also matches content
+  descriptions, `android_input_text_into_element {"text":"Search"}` matched both a search field
+  whose hint reads "Search" and the search icon beside it, and was refused as ambiguous. When a
+  selector matches several elements but exactly one of them can take the tap, long press or text,
+  the action now goes to that one, and the result says so: "2 matched; acted on the only one that
+  accepts input (EditText 'Search'); ignored: ImageView content-desc 'Search'". Two or more that
+  could take it, or none, are refused as before, and checks that act on nothing still refuse.
 
 ### Fixed
 

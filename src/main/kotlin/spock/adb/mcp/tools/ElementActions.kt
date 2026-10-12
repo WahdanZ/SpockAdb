@@ -101,7 +101,7 @@ internal object ElementActions {
 
         val dispatched = "${spec.noun} dispatched once to '${resolved.target.printableLabel}'" +
             "${resolved.matchNote} " +
-            "${resolved.where}${spec.details}"
+            "${resolved.where}${spec.details}" + resolved.choiceNote?.let { "; $it" }.orEmpty()
         Dispatch(connected, signal, resolved, spec).send()?.let { return it }
 
         if (expectation == null || before == null) {
@@ -346,12 +346,13 @@ private fun resolveElement(
     val observation = UiTreeReader.read(device, cancellation = signal)
     val tree = observation.tree
     // Ambiguity is decided over the whole tree: an off-screen duplicate still makes a selector ambiguous.
-    val match = observation.refusing { UiTreeSearch.findUnique(tree, selector, action) }
+    val choice = observation.refusing { UiTreeSearch.choose(tree, selector, action) }
         ?: throw IllegalStateException(
             observation.summary() + "\nNo element matched ${selector.describe()}. " + tree.frameworkNote() +
                 " Call android_get_ui_tree to see what is actually on screen. An element scrolled out of " +
                 "view is often left out of the capture entirely; android_scroll_to_element brings it in.",
         )
+    val match = choice.node
 
     // Compose usually puts text on a child and the click handler on its parent, so the node
     // carrying the text is often not the one that can be tapped.
@@ -364,7 +365,7 @@ private fun resolveElement(
                 "call android_scroll_to_element with the same selector first."
         }
     }
-    return Resolved(observation, target, visibility, selector.matchNote(match))
+    return Resolved(observation, target, visibility, selector.matchNote(match), choice.note(selector, action))
 }
 
 private class Resolved(
@@ -373,6 +374,8 @@ private class Resolved(
     val visibility: NodeVisibility,
     /** Which field the selector's text was found in, when it was the content description. */
     val matchNote: String,
+    /** What was passed over to land on [target], when several matched; see [UiTreeSearch.choose]. */
+    val choiceNote: String?,
 ) {
 
     /**

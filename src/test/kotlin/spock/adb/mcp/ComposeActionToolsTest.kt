@@ -135,6 +135,54 @@ class ComposeActionToolsTest {
         assertTrue(fail.text().contains("\"Suche\""), "content descriptions are offered: ${fail.text()}")
     }
 
+    /** A search field whose hint reads "Search", beside an icon described as "Search". */
+    private fun searchScreen(iconClickable: Boolean) = Screen(
+        screenXml(
+            """<node class="android.widget.EditText" text="Search" package="p" clickable="true" focusable="true"
+                enabled="true" bounds="[0,0][400,100]" />""" +
+                """<node class="android.widget.ImageView" content-desc="Search" package="p"
+                clickable="$iconClickable" enabled="true" bounds="[400,0][500,100]" />""",
+        ),
+    )
+
+    @Test
+    fun `text goes into the field beside an icon of the same name, and the result says so`() {
+        val screen = searchScreen(iconClickable = true)
+
+        val result = InputTextIntoElementTool().execute(
+            JsonObject().apply {
+                addProperty("text", "Search")
+                addProperty("value", "shoes")
+            },
+            screen.context,
+        )
+
+        val inputs = screen.commands.filter { it.startsWith("input ") }
+        assertEquals(listOf("input tap 200 50", "input text 'shoes'"), inputs)
+        assertTrue(
+            result.text().contains(
+                "2 matched; acted on the only one that accepts input (EditText 'Search'); ignored: " +
+                    "ImageView content-desc 'Search'",
+            ),
+            result.text(),
+        )
+    }
+
+    @Test
+    fun `a tap is refused when both are clickable, and goes to the only clickable one otherwise`() {
+        val both = searchScreen(iconClickable = true)
+        assertThrows(IllegalArgumentException::class.java) {
+            TapElementTool().execute(text("Search"), both.context)
+        }
+        assertTrue(both.commands.none { it.startsWith("input ") })
+
+        val one = searchScreen(iconClickable = false)
+        val result = TapElementTool().execute(text("Search"), one.context)
+        assertEquals(listOf("input tap 200 50"), one.commands.filter { it.startsWith("input ") })
+        val note = "acted on the only one that can be tapped (EditText 'Search')"
+        assertTrue(result.text().contains(note), result.text())
+    }
+
     @Test
     fun `a wait's polls do not ask whether the app is Flutter`() {
         val screen = flutterTargeting()
