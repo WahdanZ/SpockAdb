@@ -38,6 +38,14 @@ object LogNoise {
             Regex("""Set 'android:enableOnBackInvokedCallback="true"' in the application manifest"""),
             "W WindowOnBackDispatcher: Set 'android:enableOnBackInvokedCallback=\"true\"' in the application manifest.",
         ),
+        // Android 14+ on every Back press or back gesture, whatever the app; seen at p2 above the
+        // rest of this list on emulator-5554 (API 34) once the others were ranked last.
+        Entry(
+            Regex("""WindowOnBackDispatcher"""),
+            Regex("""sendCancelIfRunning: isInProgress="""),
+            "W WindowOnBackDispatcher: sendCancelIfRunning: isInProgress=falsecallback=" +
+                "android.view.ViewRootImpl\$\$ExternalSyntheticLambda17@948a850",
+        ),
         // Not here: IPCThreadState's "binder thread pool starved". On an emulator a HAL logs it
         // constantly, but from its own pid, which the app's pid filter already leaves out; logged
         // from the app's pid it is the app's own binder threads starving, which is worth seeing.
