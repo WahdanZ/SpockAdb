@@ -17,6 +17,7 @@ import spock.adb.setHttpProxy
  */
 class GetHttpProxyTool : AdbTool {
     override val name = "android_get_http_proxy"
+    override val title = "HTTP proxy"
     override val description =
         "Read the device's global HTTP proxy. Reports no proxy when the device connects directly."
     override val safety = ToolSafety.READ_ONLY
@@ -58,25 +59,18 @@ class SetHttpProxyTool(
     private val rememberedProxy: () -> String = { AppSettingService.getInstance().lastHttpProxy() },
 ) : AdbTool {
     override val name = "android_set_http_proxy"
+    override val title = "Set HTTP proxy"
     override val description =
-        "Point the device's global HTTP proxy at a host, so its traffic can be inspected " +
-            "(Charles, Proxyman, mitmproxy). The setting is global and survives a reboot — " +
-            "clear it with android_clear_http_proxy when finished, or the device keeps " +
-            "routing through a proxy that may no longer be listening. Apps that use their " +
-            "own HTTP stack or pin certificates will not be captured; Flutter's dart:io HttpClient " +
-            "ignores the system proxy unless the app opts in."
+        "Set the global HTTP proxy; it survives a reboot, so clear it when done. Flutter's dart:io " +
+            "HttpClient ignores it unless the app opts in."
     override val safety = ToolSafety.DESTRUCTIVE
+    override val idempotent = true
+
+    /** Every request the device makes goes to a host outside the device and the IDE. */
+    override val openWorld = true
     override val inputSchema: JsonObject = Schema.obj {
-        string(
-            "host",
-            "Host the proxy listens on, for example 192.168.1.10. Defaults to the host of the " +
-                "proxy last set in the SpockAdb tool window.",
-        )
-        integer(
-            "port",
-            "Port the proxy listens on, for example 8888. Defaults to the port of the proxy " +
-                "last set in the SpockAdb tool window.",
-        )
+        string("host", "Default: the proxy last set in the tool window.")
+        integer("port", "Default: the proxy last set in the tool window.", HttpProxy.PORT_RANGE)
         deviceSerial()
     }
 
@@ -110,7 +104,7 @@ class SetHttpProxyTool(
      */
     private fun resolveProxy(arguments: JsonObject): HttpProxy {
         val host = arguments.optionalString("host")
-        val port = arguments.optionalInt("port")
+        val port = arguments.optionalInt("port", HttpProxy.PORT_RANGE)
         if (host != null && port != null) return HttpProxy.of(host, port)
 
         val missing = listOfNotNull("host".takeIf { host == null }, "port".takeIf { port == null })
@@ -138,9 +132,11 @@ class SetHttpProxyTool(
 /** `android_clear_http_proxy` — restore direct connections. */
 class ClearHttpProxyTool : AdbTool {
     override val name = "android_clear_http_proxy"
+    override val title = "Clear HTTP proxy"
     override val description =
         "Clear the device's global HTTP proxy so it connects directly again."
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult =

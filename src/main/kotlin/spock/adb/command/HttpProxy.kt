@@ -20,7 +20,8 @@ data class HttpProxy(val host: String, val port: Int) {
         /** What Android writes to mean "no proxy". Removing the row is not how it is cleared. */
         const val CLEARED = ":0"
 
-        private val PORT_RANGE = 1..65535
+        /** The ports a proxy can listen on; the MCP tool declares and enforces the same range. */
+        val PORT_RANGE = 1..65535
 
         /**
          * Reads `settings get global http_proxy` output. Null when no proxy is set.

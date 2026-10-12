@@ -100,6 +100,17 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     }
 }
 
+// The MCP server reports the plugin version in serverInfo. Inside the IDE it reads the plugin
+// descriptor; this resource is its fallback, so tests and anything outside a running IDE report
+// the same version rather than a placeholder.
+tasks.processResources {
+    val version = pluginVersion
+    inputs.property("pluginVersion", version)
+    filesMatching("spock/adb/mcp/plugin-version.properties") {
+        expand("pluginVersion" to version)
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
     // ChangelogShapeTest reads CHANGELOG.md, which is not otherwise an input to this task —

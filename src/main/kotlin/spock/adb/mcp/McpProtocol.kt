@@ -35,13 +35,15 @@ class McpProtocol(
      *
      * @param cancellable false for a transport that cannot cancel a request — HTTP — so tools
      *   are told, through [ToolContext.canCancel], that nothing will end their call early.
+     * @param session what this connection negotiated at `initialize`. A caller with no session
+     *   of its own shares [defaultSession].
      * @return the JSON-RPC response, or null for a notification, which by spec gets no reply.
      */
     // The dispatcher's branch count is the JSON-RPC method list, and catching broadly is
     // required of a protocol boundary: an unexpected exception must become an error response,
     // not a dead connection that leaves the client waiting.
     @Suppress("CyclomaticComplexMethod", "TooGenericExceptionCaught")
-    fun handle(rawRequest: String, cancellable: Boolean = true): String? {
+    fun handle(rawRequest: String, cancellable: Boolean = true, session: McpSession = defaultSession): String? {
         val request = try {
             JsonParser.parseString(rawRequest).asJsonObject
         } catch (e: Exception) {
@@ -60,12 +62,13 @@ class McpProtocol(
         return try {
             when (method) {
                 "initialize" -> {
-                    rememberClient(request.getAsJsonObject("params"))
-                    success(id, initialize())
+                    val params = request.getAsJsonObject("params")
+                    rememberClient(params)
+                    success(id, initialize(params, session))
                 }
                 "ping" -> success(id, JsonObject())
-                "tools/list" -> success(id, toolsList())
-                "tools/call" -> success(id, toolsCall(request.getAsJsonObject("params"), cancellable))
+                "tools/list" -> success(id, toolsList(session))
+                "tools/call" -> success(id, toolsCall(request.getAsJsonObject("params"), cancellable, session))
                 "resources/list" -> success(id, resourcesList())
                 "resources/read" -> success(id, resourcesRead(request.getAsJsonObject("params")))
                 "prompts/list" -> success(id, JsonObject().apply { add("prompts", JsonArray()) })
@@ -74,6 +77,21 @@ class McpProtocol(
         } catch (e: Exception) {
             error(id, INTERNAL_ERROR, e.message ?: e.javaClass.simpleName).toString()
         }
+    }
+
+    /**
+     * The session of a caller that has none of its own: the protocol tests, and anything else
+     * that drives one protocol instance as one conversation.
+     */
+    val defaultSession = McpSession()
+
+    /**
+     * A handler bound to a new session, for a transport whose connection is the session — the
+     * stdio bridge opens one per connection, so each client keeps the version it negotiated.
+     */
+    fun openSession(): (String) -> String? {
+        val session = McpSession()
+        return { message -> handle(message, session = session) }
     }
 
     /** Name reported by the connected client at `initialize`, when it reported one. */
@@ -91,8 +109,12 @@ class McpProtocol(
         )
     }
 
-    private fun initialize(): JsonObject = JsonObject().apply {
-        addProperty("protocolVersion", PROTOCOL_VERSION)
+    /** Answers with the version [McpSession.negotiate] picks, and remembers it for [session]. */
+    private fun initialize(params: JsonObject?, session: McpSession): JsonObject = JsonObject().apply {
+        val requested = params?.get("protocolVersion")?.takeIf { it.isJsonPrimitive }?.asString
+        val version = McpSession.negotiate(requested)
+        session.protocolVersion = version
+        addProperty("protocolVersion", version)
         add(
             "capabilities",
             JsonObject().apply {
@@ -105,43 +127,63 @@ class McpProtocol(
             JsonObject().apply {
                 addProperty("name", "spock-adb")
                 addProperty("title", "Spock ADB — Android device tools")
-                addProperty("version", SERVER_VERSION)
+                addProperty("version", McpServerVersion.current)
             },
         )
         addProperty(
             "instructions",
             "Tools for inspecting and driving a connected Android device. Call " +
-                "android_list_devices first. Read-only tools are safe to call freely; tools " +
+                "android_list_devices first. deviceSerial defaults to the device selected with " +
+                "android_select_device, or the only one attached. packageName defaults to the app " +
+                "selected in Spock, else the open project's application ID, and a result says when it " +
+                "used that default. Read-only tools are safe to call freely; tools " +
                 "that destroy state (clear app data, revoke permissions, arbitrary shell) " +
                 "require the developer to approve each call and may be declined.",
         )
     }
 
-    private fun toolsList(): JsonObject = JsonObject().apply {
+    private fun toolsList(session: McpSession): JsonObject = JsonObject().apply {
         add(
             "tools",
             JsonArray().apply {
-                ToolRegistry.all().forEach { add(it.describe()) }
+                ToolRegistry.all().forEach { add(it.describe(session)) }
             },
         )
     }
 
-    private fun AdbTool.describe(): JsonObject = JsonObject().apply {
+    /**
+     * One tool as `tools/list` shows it to [session]. `title` is top-level in 2025-06-18, an
+     * annotation in 2025-03-26, and absent from 2024-11-05, which has none; `outputSchema` exists
+     * only in 2025-06-18, so an older client sees the shape it always has.
+     */
+    private fun AdbTool.describe(session: McpSession): JsonObject = JsonObject().apply {
         addProperty("name", name)
+        if (session.topLevelTitle) addProperty("title", title)
         addProperty("description", description)
         add("inputSchema", inputSchema)
+        if (session.structuredOutput) outputSchema?.let { add("outputSchema", it) }
         // Advertise the safety level so a client can surface it, and so the destructive
         // tools are visibly different rather than looking like every other call.
         add(
             "annotations",
             JsonObject().apply {
-                addProperty("readOnlyHint", safety == spock.adb.mcp.tools.ToolSafety.READ_ONLY)
-                addProperty("destructiveHint", safety == spock.adb.mcp.tools.ToolSafety.DESTRUCTIVE)
+                if (session.annotationTitle) addProperty("title", title)
+                // This block repeats in every tool, so a hint is left out where its absence already
+                // says the same: readOnlyHint is false when absent, and destructiveHint means nothing
+                // for a read-only tool. idempotentHint and openWorldHint are sent only where they
+                // are clearly true; openWorldHint's absence reads as "may be", the cautious answer.
+                if (safety == spock.adb.mcp.tools.ToolSafety.READ_ONLY) {
+                    addProperty("readOnlyHint", true)
+                } else {
+                    addProperty("destructiveHint", destructiveHint)
+                }
+                if (idempotent) addProperty("idempotentHint", true)
+                if (openWorld) addProperty("openWorldHint", true)
             },
         )
     }
 
-    private fun toolsCall(params: JsonObject?, cancellable: Boolean): JsonObject {
+    private fun toolsCall(params: JsonObject?, cancellable: Boolean, session: McpSession): JsonObject {
         val name = params?.get("name")?.asString
             ?: throw IllegalArgumentException("Missing tool name")
         val arguments = params.getAsJsonObject("arguments") ?: JsonObject()
@@ -173,7 +215,23 @@ class McpProtocol(
                 deviceSerial = arguments.get("deviceSerial")?.takeIf { !it.isJsonNull }?.asString,
             ),
         )
-        return result.toJson()
+        return result.toJson().apply {
+            if (session.structuredOutput && tool.outputSchema != null && !result.isError) {
+                add("structuredContent", structured(result))
+            }
+        }
+    }
+
+    /**
+     * The result's first text block as the JSON object it already is, for `structuredContent`.
+     * The text stays in `content`, as the spec asks, so the two are always the same data. A
+     * text-only result, such as `format: "full"`, is carried as `{"text": ...}`, which each
+     * output schema declares.
+     */
+    private fun structured(result: ToolResult): JsonObject {
+        val text = result.content.filterIsInstance<ToolContent.Text>().firstOrNull()?.text.orEmpty()
+        val parsed = runCatching { JsonParser.parseString(text) }.getOrNull()
+        return parsed?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject().apply { addProperty("text", text) }
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -326,9 +384,6 @@ class McpProtocol(
     }
 
     companion object {
-        const val PROTOCOL_VERSION = "2024-11-05"
-        const val SERVER_VERSION = "1.0.0"
-
         const val PARSE_ERROR = -32700
         const val INVALID_REQUEST = -32600
         const val METHOD_NOT_FOUND = -32601

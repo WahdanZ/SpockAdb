@@ -116,16 +116,14 @@ internal class RouteExpectation(val route: String, val timeoutMs: Int, val reque
         /** Null when no route was asked for. */
         fun from(arguments: JsonObject, canCancel: Boolean): RouteExpectation? {
             val route = arguments.optionalString(ROUTE) ?: return null
-            val requested = arguments.optionalInt(TIMEOUT, DEFAULT_TIMEOUT_MS).coerceIn(0, MAX_TIMEOUT_MS)
+            val requested = arguments.optionalInt(TIMEOUT, DEFAULT_TIMEOUT_MS, 0..MAX_TIMEOUT_MS)
             return RouteExpectation(route, WaitForElementTool.timeoutFor(requested, canCancel), requested)
         }
 
         fun Schema.ObjectBuilder.routeOption() {
             string(
                 ROUTE,
-                "Optional check after the action, for a Flutter app: the route name that should then be current, " +
-                    "matched exactly (a name without ?query also matches it with one). Read through Spock's " +
-                    "session with the app; without one the check is INCONCLUSIVE.",
+                "Flutter: the route name expected after, exact (?query ignored). INCONCLUSIVE without a session.",
             )
         }
     }

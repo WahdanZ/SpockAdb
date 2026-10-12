@@ -17,16 +17,16 @@ import spock.adb.command.setAllAnimationScales
  */
 class SetAnimationsTool : AdbTool {
     override val name = "android_set_animations"
+    override val title = "Set animations"
     override val description =
-        "Set the window, transition and animator-duration animation scales together. Scale 0 turns " +
-            "animations off, which makes UI automation with the element and wait tools reliable. " +
-            "Each value is read back from the device, and the result gives the previous values so " +
-            "they can be restored by calling this again. The same as Home › Developer options."
+        "Set all three animation scales; 0 turns animations off for reliable UI automation. Returns the " +
+            "previous values."
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
         enumeration(
             "scale",
-            "The scale for all three: 0 is off, 1 is normal speed, larger is slower.",
+            "0 is off, 1 is normal speed, larger is slower.",
             ARGUMENTS,
             required = true,
         )

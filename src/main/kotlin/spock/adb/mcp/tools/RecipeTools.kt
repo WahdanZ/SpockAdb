@@ -20,10 +20,10 @@ class ListRecipesTool(
     private val findTool: (String) -> AdbTool? = ToolRegistry::find,
 ) : AdbTool {
     override val name = "android_list_recipes"
+    override val title = "List recipes"
     override val description =
-        "List the Debug Recipes android_run_recipe can run: reusable, multi-step scenarios such as " +
-            "testing process death or verifying a deep link. Shows each recipe's parameters, its steps, " +
-            "and which steps ask the developer to confirm."
+        "List the Debug Recipes android_run_recipe can run, multi-step scenarios such as process death, " +
+            "with their parameters and steps."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.empty()
 
@@ -76,16 +76,25 @@ class RunRecipeTool(
     private val record: (McpCall) -> Unit = ::recordInHistory,
 ) : AdbTool {
     override val name = "android_run_recipe"
+    override val title = "Run recipe"
     override val description =
-        "Run a Debug Recipe — an ordered sequence of Spock tool calls, waits and checks — and report " +
-            "each step as passed, failed, skipped or not run. A failing step stops the recipe unless it is " +
-            "marked to continue; restore steps run afterwards regardless. Destructive steps still ask the " +
-            "developer. Call android_list_recipes first to see the recipes and their parameters."
+        "Run a Debug Recipe, a sequence of tool calls and checks, reporting each step; destructive steps " +
+            "ask the developer. Call android_list_recipes first."
     override val safety = ToolSafety.SAFE_ACTION
+
+    /**
+     * Advertised as destructive although it stays SAFE_ACTION: a recipe can clear data or revoke a
+     * permission, and each such step is confirmed on its own. A host that prompts on the hint asks
+     * once, up front, before any step runs.
+     */
+    override val destructiveHint = true
+
+    /** A recipe can open a deep link, which can name any web address. */
+    override val openWorld = true
     override val inputSchema: JsonObject = Schema.obj {
         enumeration("recipe", "The recipe to run.", recipes().map { it.id }, required = true)
         stringMap("params", "The recipe's parameters, by name. android_list_recipes lists them.")
-        boolean("restore", "Run the recipe's restore steps at the end. Defaults to true.")
+        boolean("restore", "Run the recipe's restore steps at the end. Default true.")
         deviceSerial()
     }
 

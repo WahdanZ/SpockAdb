@@ -83,9 +83,22 @@ class McpHttpServer(
             }
 
             val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+
+            // HTTP is stateless, so the version negotiated at initialize comes back on every later
+            // request in this header. Without it the spec says to assume 2025-03-26; a version this
+            // server does not speak is refused with 400, as the spec requires — except on initialize,
+            // where a newer client naming its own version must still be answered with one this
+            // server speaks, or it could never negotiate down.
+            val header = exchange.requestHeaders.getFirst(PROTOCOL_VERSION_HEADER)?.trim()
+            val version = header?.takeIf { it in McpSession.SUPPORTED_VERSIONS } ?: ASSUMED_PROTOCOL_VERSION
+            if (header != null && header !in McpSession.SUPPORTED_VERSIONS && !isInitialize(body)) {
+                respond(exchange, HTTP_BAD_REQUEST, """{"error":"Unsupported MCP-Protocol-Version"}""")
+                return
+            }
+
             // HTTP has no cancel: a client that gives up closes its connection, and the call
             // runs on regardless. Tools are told, so a wait cannot hold a thread for long.
-            val response = protocol.handle(body, cancellable = false)
+            val response = protocol.handle(body, cancellable = false, session = McpSession(version))
 
             if (response == null) {
                 // JSON-RPC notification: accepted, no body.
@@ -102,6 +115,10 @@ class McpHttpServer(
             runCatching { respond(exchange, HTTP_SERVER_ERROR, """{"error":"Internal error"}""") }
         }
     }
+
+    private fun isInitialize(body: String): Boolean = runCatching {
+        com.google.gson.JsonParser.parseString(body).asJsonObject.get("method")?.asString == "initialize"
+    }.getOrDefault(false)
 
     private fun isAuthorised(exchange: HttpExchange): Boolean {
         val header = exchange.requestHeaders.getFirst("Authorization").orEmpty()
@@ -123,11 +140,16 @@ class McpHttpServer(
 
     companion object {
         const val ENDPOINT = "/mcp"
+        const val PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version"
+
+        /** What the Streamable HTTP spec says to assume when a request names no version. */
+        const val ASSUMED_PROTOCOL_VERSION = "2025-03-26"
 
         private const val BACKLOG = 0
         private const val THREADS = 4
         private const val HTTP_OK = 200
         private const val HTTP_ACCEPTED = 202
+        private const val HTTP_BAD_REQUEST = 400
         private const val HTTP_UNAUTHORIZED = 401
         private const val HTTP_METHOD_NOT_ALLOWED = 405
         private const val HTTP_SERVER_ERROR = 500

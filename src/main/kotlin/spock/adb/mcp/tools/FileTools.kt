@@ -99,20 +99,17 @@ class PushFileTool(
 ) : AdbTool {
 
     override val name = "android_push_file"
+    override val title = "Push file"
 
     override val description =
-        "Copy a file from this machine onto the device, for example a test fixture, a " +
-            "seeded database or a config file. The destination must be under /sdcard, " +
-            "/storage or /data/local/tmp, and the source must be inside the open project or " +
-            "the IDE's Spock ADB pull directory."
+        "Copy a file from this machine onto the device, such as a test fixture or seeded database."
 
     override val safety = ToolSafety.SAFE_ACTION
 
     override val inputSchema: JsonObject = Schema.obj {
         string(
             "localPath",
-            "Absolute path of the file on this machine, inside the open project or the " +
-                "IDE's Spock ADB pull directory.",
+            "Absolute path on this machine, inside the open project or Spock's pull directory.",
             required = true,
         )
         string(
@@ -170,12 +167,11 @@ class PullFileTool(
 ) : AdbTool {
 
     override val name = "android_pull_file"
+    override val title = "Pull file"
 
     override val description =
-        "Copy a file off the device — a screen recording, an exported database, a log — into " +
-            "the IDE's own pull directory, and report where it landed. The source must be " +
-            "under /sdcard, /storage or /data/local/tmp. Small text files are also returned " +
-            "inline so you can read them without a second call."
+        "Copy a file off the device into the IDE's pull directory and report where it landed. Small " +
+            "text files are also returned inline."
 
     override val safety = ToolSafety.SAFE_ACTION
 

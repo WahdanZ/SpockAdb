@@ -224,6 +224,39 @@
     `scale: 0.5` and `format: jpeg` return an image several times smaller, with a line telling the
     agent to multiply its coordinates back for `android_tap`.
   - Both sample apps' *Storage* screens have a *Write big + secret prefs* button to try it on.
+- **The MCP tool list is 44% smaller, and speaks the 2025-06-18 protocol
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** A client sends the whole tool list
+  to its model on every turn, and Spock's had grown to 71,680 characters (~18K tokens) before an
+  agent called anything: the same `deviceSerial` description in 67 tools, eight selector
+  descriptions in nine, paragraph-long tool descriptions. It is now about 41,100 characters for a
+  2024-11-05 client, with the workflow hints kept ("call android_list_devices first", "prefer
+  android_tap_element over android_tap"); how `deviceSerial` and `packageName` default is said
+  once, in the server's instructions. A test keeps it there.
+  - A client that asks for `2025-06-18`, `2025-03-26` or `2024-11-05` now gets that version back,
+    instead of `2024-11-05` whatever it asked; each stdio connection keeps its own.
+  - On 2025-06-18, `android_get_debug_context`, `android_diagnose_current_screen` and
+    `flutter_app_status` declare an output schema and return their JSON as `structuredContent` as
+    well as text. Older clients see exactly what they saw before.
+  - Every tool has a human title, such as "Tap element", where the client's protocol version puts
+    it.
+  - `serverInfo.version` is the plugin's version; it said `1.0.0`.
+- **MCP hints no longer present device-wide changes as harmless
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** A host that auto-approves anything
+  not marked destructive would have run `android_set_battery_level`, `android_unplug_battery`,
+  `android_set_charger` and `android_set_standby_bucket` without a thought, though each changes
+  what every app on the device sees until reset. They are now advertised with
+  `destructiveHint: true`, and still run without a dialog in Spock, since a reset tool undoes them
+  completely. `android_run_recipe` is advertised as destructive too, so a host asks once before a
+  recipe whose steps can clear data. Tools also say where they are idempotent, and which reach past
+  the device: opening a link, setting a proxy, the shell.
+- **Out-of-range numbers are refused instead of quietly reshaped
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** `android_get_logcat
+  {"maxLines":-5}` used to read one line and answer "Logcat returned nothing." — the agent never
+  learned its call was wrong. Every number an agent can send now has a `minimum` and `maximum` in
+  its schema, and a value outside them is refused with the argument and its range, e.g.
+  `Argument 'maxLines' must be between 1 and 5000, got -5.` Values that used to be clamped — a
+  60-second recomposition window, a 9999-second screen recording, 999999 log lines — are refused
+  the same way.
 - **An element action goes to the one match it can act on.** Since `text` also matches content
   descriptions, `android_input_text_into_element {"text":"Search"}` matched both a search field
   whose hint reads "Search" and the search icon beside it, and was refused as ambiguous. When a

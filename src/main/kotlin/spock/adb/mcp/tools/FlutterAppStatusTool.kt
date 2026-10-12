@@ -33,22 +33,19 @@ class FlutterAppStatusTool(
         { context, device, packageName -> projectStatus(context, device, packageName) },
 ) : AdbTool {
     override val name = "flutter_app_status"
+    override val title = "Flutter app status"
     override val description =
-        "Report Spock's connection to a running Flutter app's Dart VM Service: whether it is a Flutter " +
-            "app and its build (from the APK), how the attach went in words (connected, not running, " +
-            "release build, starting, no debugger session, ambiguous, not found, failed), how the session " +
-            "was found and verified (Dart Tooling Daemon or logcat, by pid and process start), the " +
-            "connection kind (DDS, or a read-only direct VM), the build mode, the UI isolate, the Dart " +
-            "version (the Flutter version when the app reports it, else unknown), whether Spock records " +
-            "HTTP, and the device clock Spock pairs Flutter events with log lines by. Attaches by itself " +
-            "within about 3 seconds when there is no session yet, as android_diagnose_current_screen does " +
-            "(a new session switches on Dart's HTTP recording, as Diagnose's does). Call it when Diagnose's " +
-            "flutter section says the session is missing, to see why. It never returns a VM Service address " +
-            "or token. Flutter's errors, frames and HTTP failures are in android_diagnose_current_screen; " +
-            "the widget tree, hot reload and evaluating Dart belong to the Dart MCP server, run next to Spock."
+        "Spock's Dart VM Service session on a Flutter app: how the attach went, build mode, versions. " +
+            "Call it when Diagnose says the session is missing."
     override val safety = ToolSafety.READ_ONLY
+    override val outputSchema: JsonObject = Schema.obj {
+        string("applicationId", "The app.")
+        boolean("flutterApp", "Its APK has the Flutter engine.")
+        string("attach", "How the attach went.")
+        boolean("connected", "Spock has a live session.")
+    }
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("The Flutter app's application ID.")
+        packageName()
         deviceSerial()
     }
 

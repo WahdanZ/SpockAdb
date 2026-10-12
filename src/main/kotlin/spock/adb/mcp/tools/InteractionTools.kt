@@ -10,23 +10,20 @@ import java.util.Base64
 /** `android_take_screenshot` — the screen, as MCP image content. */
 class TakeScreenshotTool : AdbTool {
     override val name = "android_take_screenshot"
+    override val title = "Screenshot"
     override val description =
-        "Capture the device screen and return it as an image. Use this to see what is " +
-            "actually on screen rather than inferring it from logs, and to verify the " +
-            "result of an action you just performed. By default it is a full-size PNG, about " +
-            "1.2 MB of base64 for a 1080x2400 screen; when you only need to see the layout, pass " +
-            "scale 0.5 and format jpeg for a far smaller image."
+        "Capture the screen as an image. Full-size PNG is about 1.2 MB of base64; scale 0.5 and " +
+            "format jpeg are far smaller."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         number(
             "scale",
-            "Shrink the image by this factor, ${ScreenshotEncoding.MIN_SCALE}-${ScreenshotEncoding.MAX_SCALE}. " +
-                "Defaults to 1.0 (full size). A scaled result says how to turn its coordinates back " +
-                "into screen pixels for android_tap.",
+            "Shrink factor. Default 1.0. The result says how to map coordinates back.",
+            ScreenshotEncoding.SCALES,
         )
         enumeration(
             "format",
-            "Image format. Defaults to png; jpeg is several times smaller and fine for reading a screen.",
+            "Default png; jpeg is several times smaller.",
             ScreenshotEncoding.Format.entries.map { it.argument },
         )
         deviceSerial()
@@ -70,19 +67,22 @@ class OpenDeepLinkTool internal constructor(private val routes: RouteReader) : A
     constructor() : this(SessionRouteReader)
 
     override val name = "android_open_deep_link"
+    override val title = "Open deep link"
     override val description =
-        "Open a URI on the device with an ACTION_VIEW intent, the way tapping a link would. " +
-            "Optionally restrict it to one package so you test your own app's handler rather " +
-            "than whatever else claims the scheme. Follow with android_get_current_activity " +
-            "to see which screen actually opened."
+        "Open a URI with an ACTION_VIEW intent, as tapping a link would. Follow with " +
+            "android_get_current_activity to see which screen opened."
     override val safety = ToolSafety.SAFE_ACTION
+
+    /** A web URI opens whatever site it names, in whichever app claims it. */
+    override val openWorld = true
     override val inputSchema: JsonObject = Schema.obj {
         string("uri", "The URI to open, e.g. myapp://product/42.", required = true)
-        string("packageName", "Restrict the intent to this package.")
+        string("packageName", "Only this app's handler, not whatever else claims the scheme.")
         routeOption()
         integer(
             RouteExpectation.TIMEOUT,
-            "How long to look for $ROUTE, in milliseconds, 0 to ${RouteExpectation.MAX_TIMEOUT_MS}. Defaults to 5000.",
+            "How long to look for $ROUTE, in ms. Defaults to 5000.",
+            0..RouteExpectation.MAX_TIMEOUT_MS,
         )
         deviceSerial()
     }
@@ -123,9 +123,9 @@ class OpenDeepLinkTool internal constructor(private val routes: RouteReader) : A
 /** `android_input_text` — type into the focused field. */
 class InputTextTool : AdbTool {
     override val name = "android_input_text"
+    override val title = "Type text"
     override val description =
-        "Type into whatever field currently has focus. Prefer " +
-            "android_input_text_into_element, which focuses the right field first."
+        "Type into the focused field. Prefer android_input_text_into_element, which focuses it first."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         string("text", "The text to type.", required = true)
@@ -143,22 +143,21 @@ class InputTextTool : AdbTool {
 /** `android_tap`, `android_swipe`, `android_press_key`. */
 class TapTool : AdbTool {
     override val name = "android_tap"
+    override val title = "Tap coordinates"
     override val description =
-        "Tap raw screen coordinates. This is the FALLBACK: prefer android_tap_element, which " +
-            "resolves the element from semantics and works on Compose screens where guessed " +
-            "coordinates are the main cause of flaky automation. Use this only when no " +
-            "semantic identifier is available."
+        "Tap raw screen coordinates. FALLBACK only: prefer android_tap_element, as guessed coordinates " +
+            "are the main cause of flaky automation."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        integer("x", "X coordinate in pixels.", required = true)
-        integer("y", "Y coordinate in pixels.", required = true)
+        integer("x", "X coordinate in pixels.", COORDINATES, required = true)
+        integer("y", "Y coordinate in pixels.", COORDINATES, required = true)
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val x = arguments.requiredInt("x")
-        val y = arguments.requiredInt("y")
+        val x = arguments.requiredInt("x", COORDINATES)
+        val y = arguments.requiredInt("y", COORDINATES)
         McpShell.run(device, "input tap $x $y")
         return ToolResult.text("Tapped ($x, $y).")
     }
@@ -166,39 +165,48 @@ class TapTool : AdbTool {
 
 class SwipeTool : AdbTool {
     override val name = "android_swipe"
+    override val title = "Swipe"
     override val description =
         "Swipe between two points. Use it to scroll, or with a long duration to long-press."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        integer("startX", "Start X in pixels.", required = true)
-        integer("startY", "Start Y in pixels.", required = true)
-        integer("endX", "End X in pixels.", required = true)
-        integer("endY", "End Y in pixels.", required = true)
-        integer("durationMs", "Duration in milliseconds. Defaults to 300. Use 1000+ to long-press.")
+        integer("startX", "Start X in pixels.", COORDINATES, required = true)
+        integer("startY", "Start Y in pixels.", COORDINATES, required = true)
+        integer("endX", "End X in pixels.", COORDINATES, required = true)
+        integer("endY", "End Y in pixels.", COORDINATES, required = true)
+        integer("durationMs", "Duration in milliseconds. Defaults to $DEFAULT_SWIPE_MS; 1000+ long-presses.", DURATIONS)
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        // Every argument is read before anything is sent, so a bad one refuses the whole swipe.
+        val points = listOf("startX", "startY", "endX", "endY").map { arguments.requiredInt(it, COORDINATES) }
+        val duration = arguments.optionalInt("durationMs", DEFAULT_SWIPE_MS, DURATIONS)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val duration = arguments.optionalInt("durationMs", DEFAULT_SWIPE_MS)
-        McpShell.run(
-            device,
-            "input swipe ${arguments.requiredInt("startX")} ${arguments.requiredInt("startY")} " +
-                "${arguments.requiredInt("endX")} ${arguments.requiredInt("endY")} $duration",
-        )
+        McpShell.run(device, "input swipe ${points.joinToString(" ")} $duration")
         return ToolResult.text("Swiped.")
     }
 
     private companion object {
         const val DEFAULT_SWIPE_MS = 300
+        const val MAX_SWIPE_MS = 10_000
+        val DURATIONS = 1..MAX_SWIPE_MS
     }
 }
 
+private const val MAX_COORDINATE = 16_384
+
+/**
+ * Screen coordinates the raw input tools accept: never negative, and no larger than an 8K display
+ * with room to spare, so a value that cannot be on any screen is refused rather than sent.
+ */
+private val COORDINATES = 0..MAX_COORDINATE
+
 class PressKeyTool : AdbTool {
     override val name = "android_press_key"
+    override val title = "Press key"
     override val description =
-        "Press a hardware or navigation key: BACK, HOME, ENTER, TAB, DELETE, MENU, " +
-            "APP_SWITCH, VOLUME_UP, VOLUME_DOWN or POWER."
+        "Press a hardware or navigation key, such as BACK or HOME."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
         enumeration("key", "The key to press.", KEYCODES.keys.toList(), required = true)

@@ -20,16 +20,14 @@ import spock.adb.isAppInstall
 /** `android_get_device_conditions` — Doze, the app's standby bucket, the battery override. */
 class GetDeviceConditionsTool : AdbTool {
     override val name = "android_get_device_conditions"
+    override val title = "Device conditions"
     override val description =
-        "Read the device conditions background work reacts to: whether the device is in deep Doze, " +
-            "the app's App Standby bucket, whether the battery is overridden, and which of these Spock " +
-            "has changed and not yet reset."
+        "Doze, the app's standby bucket and battery overrides, and which of them Spock has not reset."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         string(
             "packageName",
-            "App whose bucket to read. Defaults to the app selected in Spock, else the open project's; " +
-                "with neither, the bucket is left out. Pass an empty string for the device alone.",
+            "$PACKAGE_DEFAULT \"\" for the device alone.",
         )
         deviceSerial()
     }
@@ -99,12 +97,12 @@ internal fun deepDozeLine(conditions: DeviceConditions): String = when (val stat
  */
 class ForceDozeTool : AdbTool {
     override val name = "android_force_doze"
+    override val title = "Force Doze"
     override val description =
-        "Put the whole device into deep Doze now (battery reported unplugged, then dumpsys deviceidle " +
-            "force-idle), to test how an app's jobs, alarms and network behave in Doze. Affects every app " +
-            "until android_reset_device_conditions is called, so call it when done. Requires the " +
-            "developer to confirm."
+        "Force the whole device into deep Doze. Affects every app until android_reset_device_conditions; " +
+            "the developer confirms."
     override val safety = ToolSafety.DESTRUCTIVE
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -125,12 +123,13 @@ class ForceDozeTool : AdbTool {
 /** `android_set_standby_bucket` — move one app between App Standby buckets, read back. */
 class SetStandbyBucketTool : AdbTool {
     override val name = "android_set_standby_bucket"
+    override val title = "Set standby bucket"
     override val description =
-        "Put an app in an App Standby bucket (active, working_set, frequent, rare, restricted) to test how " +
-            "its jobs and alarms are rationed. The bucket is read back: Android may keep the app higher, " +
-            "e.g. apps allowed exact alarms never drop below working_set on Android 12+. Undo with " +
+        "Put an app in an App Standby bucket, read back as Android may keep it higher. Undo with " +
             "android_reset_device_conditions."
     override val safety = ToolSafety.SAFE_ACTION
+    override val deviceWide = true
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
         enumeration(
             "bucket",
@@ -138,7 +137,7 @@ class SetStandbyBucketTool : AdbTool {
             StandbyBucket.SETTABLE.map { it.argument },
             required = true,
         )
-        packageName("App to move.")
+        packageName()
         deviceSerial()
     }
 
@@ -164,10 +163,13 @@ class SetStandbyBucketTool : AdbTool {
 /** `android_unplug_battery` — report the battery as unplugged, so charging constraints are unmet. */
 class UnplugBatteryTool : AdbTool {
     override val name = "android_unplug_battery"
+    override val title = "Unplug battery"
     override val description =
-        "Report the battery as unplugged (dumpsys battery unplug), so jobs that require charging wait and " +
-            "Doze becomes possible. The real battery state is ignored until android_reset_device_conditions."
+        "Report the battery as unplugged, so charging-only jobs wait and Doze becomes possible. Undo " +
+            "with android_reset_battery."
     override val safety = ToolSafety.SAFE_ACTION
+    override val deviceWide = true
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -182,48 +184,42 @@ class UnplugBatteryTool : AdbTool {
 /** `android_set_battery_level` — report a battery percentage, discharging, and read it back. */
 class SetBatteryLevelTool : AdbTool {
     override val name = "android_set_battery_level"
+    override val title = "Set battery level"
     override val description =
-        "Report the battery at a given percentage and discharging (dumpsys battery unplug, then set " +
-            "level), to test what an app does at a low battery: Battery Saver, deferred jobs, and " +
-            "charging constraints. The level is read back. Common levels are " +
+        "Report the battery at a percentage, discharging. Common levels: " +
             BatteryLevelPreset.entries.joinToString { "${it.level} (${it.note})" } +
-            ". The real battery is ignored until android_reset_battery or " +
-            "android_reset_device_conditions."
+            ". Undo with android_reset_battery."
     override val safety = ToolSafety.SAFE_ACTION
+    override val deviceWide = true
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
-        integer(
-            "level",
-            "Battery percentage, ${DeviceConditionShell.MIN_LEVEL}-${DeviceConditionShell.MAX_LEVEL}.",
-            required = true,
-        )
+        integer("level", "Battery percentage.", LEVELS, required = true)
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val level = arguments.requiredInt("level")
-        if (level !in DeviceConditionShell.MIN_LEVEL..DeviceConditionShell.MAX_LEVEL) {
-            return ToolResult.error(
-                "A battery level is ${DeviceConditionShell.MIN_LEVEL}-${DeviceConditionShell.MAX_LEVEL}, " +
-                    "not $level.",
-            )
-        }
+        val level = arguments.requiredInt("level", LEVELS)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         return runCatching { device.setBatteryLevel(level) }.fold(
             onSuccess = { ToolResult.text("$it Call android_reset_battery when done.") },
             onFailure = { ToolResult.error(it.message ?: "Could not set the battery level.") },
         )
     }
+
+    private companion object {
+        val LEVELS = DeviceConditionShell.MIN_LEVEL..DeviceConditionShell.MAX_LEVEL
+    }
 }
 
 /** `android_set_charger` — switch one charger on its own, leaving the others and the level alone. */
 class SetChargerTool : AdbTool {
     override val name = "android_set_charger"
+    override val title = "Set charger"
     override val description =
-        "Report one charger (ac, usb, wireless) as connected or disconnected, leaving the others and " +
-            "the battery level alone. Use it for the case a plain unplug cannot express: AC off with USB " +
-            "still on is a device discharging while still plugged into the machine. The state is read " +
-            "back. Undo with android_reset_battery."
+        "Report one charger as connected or not, leaving the others alone. Undo with android_reset_battery."
     override val safety = ToolSafety.SAFE_ACTION
+    override val deviceWide = true
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
         enumeration("source", "The charger to switch.", ChargerSource.entries.map { it.argument }, required = true)
         boolean("connected", "True to report it connected, false to disconnect it.", required = true)
@@ -248,11 +244,11 @@ class SetChargerTool : AdbTool {
 /** `android_reset_battery` — hand the battery back, leaving Doze and buckets alone. */
 class ResetBatteryTool : AdbTool {
     override val name = "android_reset_battery"
+    override val title = "Reset battery"
     override val description =
-        "Hand the battery back to the real hardware (dumpsys battery reset), undoing a level or unplug " +
-            "override. Leaves forced Doze and standby buckets alone; use " +
-            "android_reset_device_conditions to undo everything. Safe to call when nothing was changed."
+        "Undo battery level, unplug and charger overrides. android_reset_device_conditions also undoes Doze."
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -267,12 +263,13 @@ class ResetBatteryTool : AdbTool {
 /** `android_reset_device_conditions` — leave the device as it was found. */
 class ResetDeviceConditionsTool : AdbTool {
     override val name = "android_reset_device_conditions"
+    override val title = "Reset device conditions"
     override val description =
-        "Undo forced Doze, the battery override, and standby buckets Spock changed, and set the given " +
-            "app's bucket back to active. Safe to call when nothing was changed."
+        "Undo forced Doze, battery overrides and the standby buckets Spock changed. Safe to call anytime."
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "An app whose bucket to set back to active as well. Optional.")
+        string("packageName", "Also set this app's bucket back to active.")
         deviceSerial()
     }
 

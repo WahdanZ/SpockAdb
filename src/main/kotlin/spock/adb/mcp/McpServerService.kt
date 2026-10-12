@@ -225,7 +225,7 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
      */
     private fun startStdioBridge(mcpProtocol: McpProtocol, sessionToken: String) {
         val stdioBridge = McpBridgeServer(
-            handle = mcpProtocol::handle,
+            openSession = mcpProtocol::openSession,
             token = sessionToken,
             diagnostics = { message, error -> if (error == null) log.info(message) else log.warn(message, error) },
         )

@@ -55,6 +55,90 @@ class ToolSafetyTest {
     }
 
     @Test
+    fun `exactly the reversible device-wide tools are flagged, and they stay safe actions`() {
+        // Pinned like the destructive set. They change OS state every app sees until a reset tool
+        // undoes it, so hosts are told destructiveHint: true; a reset undoes them completely, so
+        // the developer is not interrupted with a dialog.
+        val deviceWide = ToolRegistry.all().filter { it.deviceWide }
+        assertEquals(
+            setOf(
+                "android_set_battery_level",
+                "android_unplug_battery",
+                "android_set_charger",
+                "android_set_standby_bucket",
+            ),
+            deviceWide.map { it.name }.toSet(),
+        )
+        deviceWide.forEach { tool ->
+            assertEquals(ToolSafety.SAFE_ACTION, tool.safety, tool.name)
+            assertTrue(tool.destructiveHint, tool.name)
+        }
+    }
+
+    @Test
+    fun `exactly these tools are advertised as destructive without asking per call`() {
+        // destructiveHint beyond ToolSafety.DESTRUCTIVE: the device-wide tools, and the recipe
+        // runner, whose destructive steps each ask but whose host should prompt once up front.
+        assertEquals(
+            setOf(
+                "android_set_battery_level",
+                "android_unplug_battery",
+                "android_set_charger",
+                "android_set_standby_bucket",
+                "android_run_recipe",
+            ),
+            ToolRegistry.all().filter { it.destructiveHint && it.safety != ToolSafety.DESTRUCTIVE }.map { it.name }
+                .toSet(),
+        )
+        ToolRegistry.bySafety(ToolSafety.DESTRUCTIVE).forEach { assertTrue(it.destructiveHint, it.name) }
+    }
+
+    @Test
+    fun `exactly the tools that reach past the device and the IDE are open-world`() {
+        assertEquals(
+            setOf(
+                "android_open_deep_link",
+                "android_set_http_proxy",
+                "android_run_adb_command",
+                "android_run_recipe",
+            ),
+            ToolRegistry.all().filter { it.openWorld }.map { it.name }.toSet(),
+        )
+    }
+
+    @Test
+    fun `read-only tools are idempotent, and exactly these state-changing ones are too`() {
+        ToolRegistry.bySafety(ToolSafety.READ_ONLY).forEach { assertTrue(it.idempotent, it.name) }
+        assertEquals(
+            setOf(
+                "android_select_device",
+                "android_select_project",
+                "android_stop_app",
+                "android_grant_permission",
+                "android_force_doze",
+                "android_set_standby_bucket",
+                "android_unplug_battery",
+                "android_set_battery_level",
+                "android_set_charger",
+                "android_reset_battery",
+                "android_reset_device_conditions",
+                "android_set_animations",
+                "android_set_http_proxy",
+                "android_clear_http_proxy",
+            ),
+            ToolRegistry.all().filter { it.idempotent && it.safety != ToolSafety.READ_ONLY }.map { it.name }.toSet(),
+        )
+    }
+
+    @Test
+    fun `every tool has a short human title`() {
+        ToolRegistry.all().forEach { tool ->
+            assertTrue(tool.title.isNotBlank() && tool.title.length <= MAX_TITLE, "${tool.name}: '${tool.title}'")
+        }
+        assertEquals(ToolRegistry.all().size, ToolRegistry.all().map { it.title }.toSet().size, "titles must be unique")
+    }
+
+    @Test
     fun `read-only tools never mutate device state`() {
         assertEquals(
             setOf(
@@ -259,6 +343,8 @@ class ToolSafetyTest {
     }
 
     private companion object {
+        const val MAX_TITLE = 30
+
         /**
          * Destructive tools that, against the fake device, stop at a precondition before
          * asking. The fake reports no packages installed, so there is nothing to clear or

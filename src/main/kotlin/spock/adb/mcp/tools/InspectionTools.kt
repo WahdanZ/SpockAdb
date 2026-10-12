@@ -10,9 +10,9 @@ import spock.adb.models.FragmentData
 /** `android_get_current_activity` — the resumed activity. */
 class GetCurrentActivityTool : AdbTool {
     override val name = "android_get_current_activity"
+    override val title = "Current activity"
     override val description =
-        "The fully qualified class name of the activity currently on screen. Use this to " +
-            "confirm which screen an app is showing after launching it or opening a deep link."
+        "The activity on screen, fully qualified: confirms which screen opened after a launch or link."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
@@ -30,9 +30,9 @@ class GetCurrentActivityTool : AdbTool {
 /** `android_get_activity_stack` — the back stack across apps. */
 class GetActivityStackTool : AdbTool {
     override val name = "android_get_activity_stack"
+    override val title = "Activity stack"
     override val description =
-        "The activity back stack, grouped by package, most recent first. Use this to " +
-            "understand how the user reached the current screen."
+        "The activity back stack by package, most recent first: how the user reached this screen."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
 
@@ -58,12 +58,12 @@ class GetActivityStackTool : AdbTool {
 /** `android_get_current_fragments` — visible fragments. */
 class GetCurrentFragmentsTool : AdbTool {
     override val name = "android_get_current_fragments"
+    override val title = "Current fragments"
     override val description =
-        "Fragments currently visible in the foreground app, including nested ones. Useful " +
-            "when the activity alone does not identify the screen."
+        "Visible fragments of the foreground app, nested ones included, when the activity is not enough."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package.")
+        packageName()
         deviceSerial()
     }
 
@@ -100,6 +100,7 @@ internal object LogcatReader {
 
     const val DEFAULT_MAX_LINES = 300
     const val MAX_LINES = 5_000
+    val LINES = 1..MAX_LINES
 
     /** @param packageName null reads the whole log; otherwise only that package's processes. */
     fun read(device: IDevice, packageName: String?, minLevel: String, maxLines: Int): Read {
@@ -164,21 +165,20 @@ internal object LogcatReader {
 
     fun JsonObject.logcatLevel(): String = optionalString("minLevel")?.uppercase() ?: "V"
 
-    fun JsonObject.logcatMaxLines(default: Int = DEFAULT_MAX_LINES): Int =
-        optionalInt("maxLines", default).coerceIn(1, MAX_LINES)
+    fun JsonObject.logcatMaxLines(default: Int = DEFAULT_MAX_LINES): Int = optionalInt("maxLines", default, LINES)
 }
 
 /** `android_get_logcat` — recent log, filtered. */
 class GetLogcatTool : AdbTool {
     override val name = "android_get_logcat"
+    override val title = "Logcat"
     override val description =
-        "Read recent logcat output. Always narrow it: filter by package to see one app, or " +
-            "set minLevel to E to find crashes. Returns the most recent lines, oldest first."
+        "Recent logcat lines, oldest first. Narrow it: one app's package, or minLevel E for crashes."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         string("packageName", "Only lines from this package's processes. $PACKAGE_DEFAULT_OR_DEVICE")
         enumeration("minLevel", "Minimum log level.", listOf("V", "D", "I", "W", "E", "F"))
-        integer("maxLines", "Maximum lines to return. Defaults to 300.")
+        integer("maxLines", "Most recent lines. Default ${LogcatReader.DEFAULT_MAX_LINES}.", LogcatReader.LINES)
         deviceSerial()
     }
 
@@ -200,6 +200,7 @@ class GetLogcatTool : AdbTool {
 /** `android_get_processes`, `android_get_battery_info`, `android_get_network_info`. */
 class GetProcessesTool : AdbTool {
     override val name = "android_get_processes"
+    override val title = "Processes"
     override val description =
         "Running processes with their PIDs. Filter by name to find one app's processes."
     override val safety = ToolSafety.READ_ONLY
@@ -225,6 +226,7 @@ class GetProcessesTool : AdbTool {
 
 class GetBatteryInfoTool : AdbTool {
     override val name = "android_get_battery_info"
+    override val title = "Battery info"
     override val description =
         "Battery level, charging state, health and temperature."
     override val safety = ToolSafety.READ_ONLY
@@ -238,6 +240,7 @@ class GetBatteryInfoTool : AdbTool {
 
 class GetNetworkInfoTool : AdbTool {
     override val name = "android_get_network_info"
+    override val title = "Network info"
     override val description =
         "Network state: Wi-Fi and mobile data toggles, airplane mode, IP addresses and " +
             "active network interfaces."

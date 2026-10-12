@@ -158,11 +158,15 @@ class DebugContextToolTest {
     }
 
     @Test
-    fun `logcat lines are capped however many the caller asks for`() {
-        run(include("logcat").apply { addProperty("maxLogcatLines", 999_999) })
+    fun `logcat lines up to the declared cap are read, and more is refused rather than clamped`() {
+        run(include("logcat").apply { addProperty("maxLogcatLines", 2_000) })
+        assertTrue(issued.single { it.startsWith("logcat") }.contains("-t 2000"), issued.toString())
 
-        val logcat = issued.single { it.startsWith("logcat") }
-        assertTrue(logcat.contains("-t 2000"), "should clamp to the documented cap: $logcat")
+        issued.clear()
+        val text = textOf(run(include("logcat").apply { addProperty("maxLogcatLines", 999_999) }))
+
+        assertTrue(issued.none { it.startsWith("logcat") }, "an out-of-range count must not be read: $issued")
+        assertTrue(text.contains("Argument 'maxLogcatLines' must be between 1 and 2000, got 999999."), text)
     }
 
     @Test

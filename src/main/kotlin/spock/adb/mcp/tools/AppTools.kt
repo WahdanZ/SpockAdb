@@ -9,14 +9,13 @@ import spock.adb.device.ops.AppOperations
 /** `android_list_packages` — installed packages, optionally filtered. */
 class ListPackagesTool : AdbTool {
     override val name = "android_list_packages"
+    override val title = "List packages"
     override val description =
-        "List installed package names. Use the filter to narrow the list — a device has " +
-            "hundreds of packages. Set includeSystem to true to include system packages, " +
-            "which are excluded by default."
+        "List installed packages, system ones excluded unless includeSystem. Narrow it with filter."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         string("filter", "Substring to match against package names, e.g. 'com.example'.")
-        boolean("includeSystem", "Include system packages. Defaults to false.")
+        boolean("includeSystem", "Include system packages.")
         deviceSerial()
     }
 
@@ -52,19 +51,15 @@ class ListPackagesTool : AdbTool {
  */
 class GetPackageInfoTool : AdbTool {
     override val name = "android_get_package_info"
+    override val title = "Package info"
     override val description =
-        "A short summary of one installed package: version name and code, UID, min and target SDK, " +
-            "first install and last update time, the launcher activity, component counts, and which " +
-            "runtime permissions are granted and which denied. Use this to check whether a permission " +
-            "is actually granted before concluding a permission problem. Pass raw: true for the full " +
-            "dumpsys package output instead, which runs to tens of thousands of characters and is cut " +
-            "at 40,000."
+        "An installed package's version, SDKs, launcher activity, and granted and denied permissions."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package to inspect.")
+        packageName()
         boolean(
             "raw",
-            "Return the full dumpsys package output rather than the summary. Defaults to false.",
+            "Full dumpsys output instead, cut at 40,000 chars.",
         )
         deviceSerial()
     }
@@ -92,12 +87,12 @@ class GetPackageInfoTool : AdbTool {
 /** `android_launch_app` — start the launcher activity. */
 class LaunchAppTool : AdbTool {
     override val name = "android_launch_app"
+    override val title = "Launch app"
     override val description =
-        "Launch an app's default launcher activity. Use android_open_deep_link instead if " +
-            "you need to open a specific screen."
+        "Launch an app's launcher activity; android_open_deep_link opens a specific screen."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package to launch.")
+        packageName()
         deviceSerial()
     }
 
@@ -113,11 +108,13 @@ class LaunchAppTool : AdbTool {
 /** `android_stop_app` — force-stop. */
 class StopAppTool : AdbTool {
     override val name = "android_stop_app"
+    override val title = "Stop app"
     override val description =
         "Force-stop an app. The app is not removed from recents and its data is untouched."
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package to stop.")
+        packageName()
         deviceSerial()
     }
 
@@ -136,11 +133,12 @@ class StopAppTool : AdbTool {
 /** `android_restart_app` — stop then launch. */
 class RestartAppTool : AdbTool {
     override val name = "android_restart_app"
+    override val title = "Restart app"
     override val description =
         "Force-stop an app and launch it again. Useful for reproducing a cold start."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package to restart.")
+        packageName()
         deviceSerial()
     }
 
@@ -162,20 +160,15 @@ class RestartAppTool : AdbTool {
  */
 class SimulateProcessDeathTool : AdbTool {
     override val name = "android_simulate_process_death"
+    override val title = "Simulate process death"
     override val description =
-        "Simulate Android killing the app in the background to reclaim memory: send it to the " +
-            "background, kill its process, and relaunch it the way the launcher icon does, so Android " +
-            "recreates the top screen from saved instance state. Use it to test that a screen survives " +
-            "process death. Not the same as android_stop_app or android_restart_app, which force-stop " +
-            "and discard saved state. The app must be running. Reports the pid before and after, and " +
-            "fails if the process did not die."
+        "Kill a backgrounded app as Android would and relaunch it, to test restoring saved state."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package to kill.")
+        packageName()
         boolean(
             "relaunch",
-            "Bring the app back after the kill. Defaults to true. Pass false to inspect the device " +
-                "while the process is dead, then restore it from recents (android_press_key APP_SWITCH).",
+            "Relaunch after the kill. Default true; false leaves it to restore from recents.",
         )
         deviceSerial()
     }
@@ -208,12 +201,12 @@ class SimulateProcessDeathTool : AdbTool {
 /** `android_clear_app_data` — destructive, always confirmed. */
 class ClearAppDataTool : AdbTool {
     override val name = "android_clear_app_data"
+    override val title = "Clear app data"
     override val description =
-        "Delete all data for an app: shared preferences, databases and caches. This cannot " +
-            "be undone and requires the developer to confirm before it runs."
+        "Delete all of an app's data. Cannot be undone; the developer confirms."
     override val safety = ToolSafety.DESTRUCTIVE
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package to wipe.")
+        packageName()
         deviceSerial()
     }
 
@@ -247,13 +240,12 @@ class ClearAppDataTool : AdbTool {
 /** `android_clear_app_cache` — cache only, so nothing a developer has to re-seed is lost. */
 class ClearAppCacheTool : AdbTool {
     override val name = "android_clear_app_cache"
+    override val title = "Clear app cache"
     override val description =
-        "Delete only an app's internal cache and code_cache. Shared preferences, databases " +
-            "and files are left alone. Requires a debuggable build; use " +
-            "android_clear_app_data to wipe everything."
+        "Delete only an app's cache and code_cache, keeping its data. Needs a debuggable build."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package whose cache to clear.")
+        packageName()
         deviceSerial()
     }
 
@@ -267,12 +259,14 @@ class ClearAppCacheTool : AdbTool {
 /** `android_grant_permission` / `android_revoke_permission`. */
 class GrantPermissionTool : AdbTool {
     override val name = "android_grant_permission"
+    override val title = "Grant permission"
     override val description =
         "Grant one runtime permission to an app, e.g. android.permission.CAMERA."
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
     override val inputSchema: JsonObject = Schema.obj {
         string("permission", "Full permission name, e.g. android.permission.CAMERA.", required = true)
-        packageName("Package.")
+        packageName()
         deviceSerial()
     }
 
@@ -296,13 +290,13 @@ class GrantPermissionTool : AdbTool {
 
 class RevokePermissionTool : AdbTool {
     override val name = "android_revoke_permission"
+    override val title = "Revoke permission"
     override val description =
-        "Revoke one runtime permission from an app. Revoking a permission an app is using " +
-            "usually kills its process, which is often the point when testing."
+        "Revoke one runtime permission from an app, which usually kills its process."
     override val safety = ToolSafety.DESTRUCTIVE
     override val inputSchema: JsonObject = Schema.obj {
         string("permission", "Full permission name, e.g. android.permission.CAMERA.", required = true)
-        packageName("Package.")
+        packageName()
         deviceSerial()
     }
 
@@ -357,12 +351,12 @@ private inline fun appOperation(block: () -> String): ToolResult =
 /** `android_uninstall_app` — removes the app entirely. Destructive, always confirmed. */
 class UninstallAppTool : AdbTool {
     override val name = "android_uninstall_app"
+    override val title = "Uninstall app"
     override val description =
-        "Uninstall an app from the device, removing the application and all of its data. " +
-            "This cannot be undone and requires the developer to confirm before it runs."
+        "Uninstall an app and all its data. Cannot be undone; the developer confirms."
     override val safety = ToolSafety.DESTRUCTIVE
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package to uninstall.")
+        packageName()
         deviceSerial()
     }
 

@@ -22,6 +22,7 @@ internal object ScreenRecorder {
     /** The platform's own hard cap. `screenrecord` stops itself here whatever we ask for. */
     const val MAX_SECONDS = 180
     const val DEFAULT_SECONDS = 180
+    val LIMITS = 1..MAX_SECONDS
 
     private const val SHELL_SLACK_SECONDS = 30L
     private const val FINALISE_TIMEOUT_MS = 15_000L
@@ -106,28 +107,26 @@ internal object ScreenRecorder {
 class StartScreenRecordTool : AdbTool {
 
     override val name = "android_start_screen_recording"
+    override val title = "Start screen recording"
 
     override val description =
-        "Start recording the device screen to a file on the device. Stop it with " +
-            "android_stop_screen_recording, which retrieves the video. Recording captures " +
-            "whatever is on screen, including notifications and any personal content, so ask " +
-            "before recording anything you were not asked to record. The platform stops the " +
-            "recording after three minutes whatever limit you set."
+        "Start recording the screen, personal content included, so ask first if not asked to. " +
+            "android_stop_screen_recording retrieves it."
 
     override val safety = ToolSafety.SAFE_ACTION
 
     override val inputSchema: JsonObject = Schema.obj {
         integer(
             "timeLimitSeconds",
-            "Stop automatically after this many seconds. Defaults to 180, which is also the " +
-                "platform's hard maximum.",
+            "Stop after this many seconds. Defaults to ${ScreenRecorder.DEFAULT_SECONDS}, the platform's maximum.",
+            ScreenRecorder.LIMITS,
         )
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val limit = arguments.optionalInt("timeLimitSeconds", ScreenRecorder.DEFAULT_SECONDS)
+        val limit = arguments.optionalInt("timeLimitSeconds", ScreenRecorder.DEFAULT_SECONDS, ScreenRecorder.LIMITS)
 
         val session = ScreenRecorder.start(device.device, device.serialNumber, limit)
         return ToolResult.text(
@@ -144,11 +143,11 @@ class StopScreenRecordTool(
 ) : AdbTool {
 
     override val name = "android_stop_screen_recording"
+    override val title = "Stop screen recording"
 
     override val description =
-        "Stop the recording started with android_start_screen_recording, copy the video off " +
-            "the device into the IDE's pull directory, and report where it landed. The file " +
-            "is removed from the device afterwards."
+        "Stop the recording, copy the video into the IDE's pull directory, report where it landed, and " +
+            "remove it from the device."
 
     override val safety = ToolSafety.SAFE_ACTION
 

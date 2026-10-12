@@ -14,20 +14,19 @@ import com.google.gson.JsonObject
 class SelectProjectTool : AdbTool {
 
     override val name = "android_select_project"
+    override val title = "Select project"
 
     override val description =
-        "Select which open project later calls are about, for an IDE with more than one " +
-            "project open. Only needed when a tool reports that the project is ambiguous — " +
-            "that error lists the names to choose from. With a single project open, every " +
-            "tool already targets it and this call is unnecessary."
+        "Select which open project later calls are about. Only needed when a tool reports the project " +
+            "is ambiguous; that error lists the names."
 
     override val safety = ToolSafety.SAFE_ACTION
+    override val idempotent = true
 
     override val inputSchema: JsonObject = Schema.obj {
         string(
             "projectName",
-            "The open project to target. Pass one of the entries from the ambiguity error " +
-                "exactly as written; its name or its full path on their own are accepted too.",
+            "An entry from the ambiguity error as written, or a project's name or full path.",
             required = true,
         )
     }

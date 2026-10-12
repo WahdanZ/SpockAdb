@@ -19,34 +19,26 @@ import spock.adb.timeline.TimelineSeverity
  */
 class GetDebugTimelineTool : AdbTool {
     override val name = DebugTimelineService.GET_TIMELINE_TOOL
+    override val title = "Debug timeline"
     override val description =
-        "Read Spock's Debug Timeline: one chronological list of what happened recently — the app's " +
-            "activity lifecycle and fragments, process starts and deaths, crashes and ANRs, warnings and " +
-            "errors the app logged, actions run from the Spock tool window (restart, clear data, permission " +
-            "changes, storage writes, jobs run, device conditions), devices connecting, markers the developer " +
-            "added, and MCP tool calls. All times are on one clock. Use it to answer what happened " +
-            "immediately before a bug, or to see what a sequence of your own calls did to the app. Reads what " +
-            "the IDE already recorded and asks the device nothing; device events are recorded only while the " +
-            "Spock ADB tool window has a device and app selected, which the result reports. The Flutter " +
-            "categories (flutter_error, navigation, http; flutter_frame in profile builds only) come from " +
-            "Spock's session with the selected Flutter app run with flutter run; with no session they are " +
-            "empty, and flutter_app_status says why."
+        "Spock's Debug Timeline on one clock: lifecycle, process deaths, crashes, app errors, Spock " +
+            "actions and MCP calls, to see what came before a bug. Device events need a device and app " +
+            "selected in the tool window. Flutter categories (flutter_error, navigation, http; " +
+            "flutter_frame in profile builds) come from Spock's session with the selected app run with " +
+            "flutter run; flutter_app_status says why they are empty."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        integer("sinceSeconds", "Only events from the last this many seconds. Defaults to 300.")
-        stringArray(
-            "categories",
-            "Only these kinds of event. Defaults to all.",
-            TimelineCategory.entries.map { it.name.lowercase() },
-        )
+        integer("sinceSeconds", "Only the last this many seconds. Default $DEFAULT_SECONDS.", SECONDS)
+        val categories = TimelineCategory.entries.map { it.name.lowercase() }
+        stringArray("categories", "Only these kinds. Default all.", categories)
         enumeration(
             "minSeverity",
-            "Only events at least this severe. Defaults to info.",
+            "Only at least this severe. Default info.",
             TimelineSeverity.entries.map { it.name.lowercase() },
         )
-        string("query", "Only events whose title or detail contains this text, ignoring case.")
-        integer("limit", "At most this many events, the most recent kept. Defaults to 200.")
-        boolean("includeDetails", "Include each event's detail, such as stack traces. Defaults to true.")
+        string("query", "Only events whose title or detail contains this, ignoring case.")
+        integer("limit", "At most this many, the latest kept. Default $DEFAULT_LIMIT.", LIMITS)
+        boolean("includeDetails", "Include details such as stack traces. Default true.")
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -71,8 +63,8 @@ class GetDebugTimelineTool : AdbTool {
             TimelineSeverity.parse(text)
                 ?: return ToolResult.error("Unknown minSeverity \"$text\". Use info, warning or error.")
         }
-        val seconds = arguments.optionalInt("sinceSeconds", DEFAULT_SECONDS).coerceIn(1, MAX_SECONDS)
-        val limit = arguments.optionalInt("limit", DEFAULT_LIMIT).coerceIn(1, MAX_LIMIT)
+        val seconds = arguments.optionalInt("sinceSeconds", DEFAULT_SECONDS, SECONDS)
+        val limit = arguments.optionalInt("limit", DEFAULT_LIMIT, LIMITS)
         val details = arguments.optionalBoolean("includeDetails", true)
         val filter = TimelineFilter(
             categories = categories?.toSet() ?: TimelineCategory.entries.toSet(),
@@ -108,6 +100,8 @@ class GetDebugTimelineTool : AdbTool {
         const val MAX_SECONDS = 86_400
         const val DEFAULT_LIMIT = 200
         const val MAX_LIMIT = 2_000
+        val SECONDS = 1..MAX_SECONDS
+        val LIMITS = 1..MAX_LIMIT
         const val SWITCHED_OFF = "off — Record device events is switched off in the Timeline tab"
         const val NOT_FOLLOWING = "off — no device and app selected in the Spock ADB tool window, " +
             "or the device's log stream ended (see the latest Device event)"

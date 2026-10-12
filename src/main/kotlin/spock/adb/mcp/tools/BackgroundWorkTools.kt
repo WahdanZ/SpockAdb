@@ -17,14 +17,13 @@ import java.util.Locale
 /** `android_get_scheduled_jobs` — JobScheduler and WorkManager jobs, with what blocks each. */
 class GetScheduledJobsTool : AdbTool {
     override val name = "android_get_scheduled_jobs"
+    override val title = "Scheduled jobs"
     override val description =
-        "List an app's scheduled JobScheduler jobs, which include WorkManager workers. For each: " +
-            "job id, service, periodic or one-off, required constraints and which are unsatisfied " +
-            "right now, backoff and failure count, next and last run. Use this to find out why " +
+        "An app's JobScheduler and WorkManager jobs with unmet constraints, backoff and runs: why " +
             "background work is not running."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package whose jobs to list.")
+        packageName()
         deviceSerial()
     }
 
@@ -52,12 +51,12 @@ class GetScheduledJobsTool : AdbTool {
 /** `android_get_pending_alarms` — the app's AlarmManager alarms with real clock times. */
 class GetPendingAlarmsTool : AdbTool {
     override val name = "android_get_pending_alarms"
+    override val title = "Pending alarms"
     override val description =
-        "List an app's pending AlarmManager alarms: type, next trigger as a device clock time, " +
-            "repeat interval, whether it is exact, and what it delivers to."
+        "List an app's pending AlarmManager alarms: type, next trigger time, repeat, exactness, target."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        packageName("Package whose alarms to list.")
+        packageName()
         deviceSerial()
     }
 
@@ -83,25 +82,20 @@ class GetPendingAlarmsTool : AdbTool {
 /** `android_run_job_now` — force a job to run, so its code path can be exercised on demand. */
 class RunJobNowTool : AdbTool {
     override val name = "android_run_job_now"
+    override val title = "Run job now"
     override val description =
-        "Run one of an app's scheduled jobs now, ignoring its constraints (cmd jobscheduler run " +
-            "-f). Get the job id from android_get_scheduled_jobs. For a WorkManager job, WorkManager " +
-            "itself still skips periodic or backed-off work that is not due, so confirm the Worker " +
-            "ran (android_get_logcat) rather than assuming it."
+        "Run a scheduled job now, ignoring its constraints. WorkManager may still skip work not due, so " +
+            "confirm the Worker ran in android_get_logcat."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        integer("jobId", "The job id, as android_get_scheduled_jobs reports it.", required = true)
-        string(
-            "namespace",
-            "The job's namespace, if android_get_scheduled_jobs reported one. Found automatically " +
-                "when omitted, which covers WorkManager's namespaced jobs on API 34+.",
-        )
-        packageName("Package that owns the job.")
+        integer("jobId", "Job id from android_get_scheduled_jobs.", JOB_IDS, required = true)
+        string("namespace", "The job's namespace, if one was reported. Found when omitted.")
+        packageName()
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val jobId = arguments.requiredInt("jobId")
+        val jobId = arguments.requiredInt("jobId", JOB_IDS)
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
         return context.withPackage(arguments) { packageName ->
             if (!device.isAppInstall(packageName)) {
@@ -114,6 +108,11 @@ class RunJobNowTool : AdbTool {
                 onFailure = { ToolResult.error("Could not run job $jobId: ${it.message}") },
             )
         }
+    }
+
+    private companion object {
+        /** Any int: a JobInfo id is whatever the app chose, negative ones included. */
+        val JOB_IDS = Int.MIN_VALUE..Int.MAX_VALUE
     }
 }
 

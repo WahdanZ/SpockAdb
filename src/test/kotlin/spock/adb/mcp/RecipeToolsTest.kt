@@ -31,6 +31,7 @@ class RecipeToolsTest {
         override val safety: ToolSafety = ToolSafety.SAFE_ACTION,
         private val reply: (ToolContext) -> ToolResult = { ToolResult.text("done: $name") },
     ) : AdbTool {
+        override val title = name
         override val description = name
         override val inputSchema: JsonObject = Schema.empty()
         override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {

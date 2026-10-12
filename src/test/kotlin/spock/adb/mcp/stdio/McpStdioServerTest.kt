@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.mcp.FakeToolContext
 import spock.adb.mcp.McpProtocol
+import spock.adb.mcp.McpSession
 import spock.adb.mcp.tools.ToolRegistry
 import java.io.BufferedReader
 import java.io.PipedInputStream
@@ -72,7 +73,7 @@ class McpStdioServerTest {
         send("""{"jsonrpc":"2.0","id":1,"method":"initialize"}""")
 
         val result = read().getAsJsonObject("result")
-        assertEquals(McpProtocol.PROTOCOL_VERSION, result.get("protocolVersion").asString)
+        assertEquals(McpSession.LATEST_VERSION, result.get("protocolVersion").asString)
         assertEquals("spock-adb", result.getAsJsonObject("serverInfo").get("name").asString)
     }
 
