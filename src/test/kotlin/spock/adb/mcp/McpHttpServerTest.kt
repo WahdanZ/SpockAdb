@@ -69,6 +69,19 @@ class McpHttpServerTest {
     }
 
     @Test
+    fun `a newer client naming its own version on initialize is answered with one this server speaks`() {
+        val initialize = """{"jsonrpc":"2.0","id":1,"method":"initialize",""" +
+            """"params":{"protocolVersion":"2099-01-01","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"""
+
+        val response = post(initialize, protocolVersion = "2099-01-01")
+
+        assertEquals(200, response.statusCode(), response.body())
+        val negotiated = JsonParser.parseString(response.body()).asJsonObject.getAsJsonObject("result")
+            .get("protocolVersion").asString
+        assertTrue(negotiated in McpSession.SUPPORTED_VERSIONS, negotiated)
+    }
+
+    @Test
     fun `serves an authorised request`() {
         val response = post("""{"jsonrpc":"2.0","id":1,"method":"initialize"}""")
 
