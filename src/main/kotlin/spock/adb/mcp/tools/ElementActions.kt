@@ -211,7 +211,7 @@ internal object ElementActions {
                     )
                 }
                 try {
-                    shell.run(step.command)
+                    UiDumpCache.shared.aroundInput { shell.run(step.command) }
                 } catch (e: UiCaptureException) {
                     return error(
                         if (e.kind == UiCaptureException.Kind.CANCELLED) {
@@ -248,9 +248,10 @@ internal object ElementActions {
         /** Looks for the expectation after the input was sent, and says what was found. */
         fun verify(connected: ConnectedDevice, signal: CancellationSignal, heldBefore: UiCondition.Check): ToolResult {
             val waiter = UiWaiter(
-                // The display does not change because of a tap, so the pre-action metrics are reused.
+                // The display does not change because of a tap, so the pre-action metrics are reused;
+                // the screen does, so no capture is.
                 capture = { seconds ->
-                    UiTreeReader.read(connected, before.metrics, seconds, signal, identifyFlutter = false)
+                    UiTreeReader.read(connected, before.metrics, seconds, signal, identifyFlutter = false, reuse = false)
                 },
                 signal = signal,
             )

@@ -215,6 +215,17 @@
   the action now goes to that one, and the result says so: "2 matched; acted on the only one that
   accepts input (EditText 'Search'); ignored: ImageView content-desc 'Search'". Two or more that
   could take it, or none, are refused as before, and checks that act on nothing still refuse.
+- **A tap right after a find no longer dumps the screen twice
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** Every UI read paid for a fresh
+  `uiautomator` dump, 2–3 s each, so finding a button and then tapping it took five seconds. A
+  capture is now reused for half a second by the next read of the same device: on the emulator the
+  tap after a find went from 2.3–2.5 s to under 0.1 s. The reuse is said on the summary line
+  (`reused 0.1 s later`), and never happens where it could mislead — a wait's polls, an action's
+  check after the input, and any read after a tap, swipe, key, text, deep link or other call that is
+  not read-only always capture anew. The UI read tools (`android_get_ui_tree`,
+  `android_find_ui_element`, `android_wait_for_element` and the assertions) also take
+  `verbose: false`, which shortens the two-line "Observed on … / Limits: …" preamble to one short
+  line for an agent that has read it once.
 
 ### Fixed
 

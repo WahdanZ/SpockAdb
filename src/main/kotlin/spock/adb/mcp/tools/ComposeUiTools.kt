@@ -47,6 +47,8 @@ internal object UiTreeReader {
      * @param identifyFlutter whether to ask if the app is Flutter. A wait's polls do not: what they
      *   report — the preface, and whether a condition holds — does not depend on it, and each ask
      *   can cost adb two commands.
+     * @param reuse whether a capture [UiDumpCache] still holds will do. False for a wait's polls and
+     *   for an action's check after it, which must see the screen as it is now.
      * @throws IllegalStateException with an actionable message when the dump fails. A lost
      *   device is told what an agent can do about it, which a person in the Inspector cannot.
      */
@@ -56,9 +58,16 @@ internal object UiTreeReader {
         timeoutSeconds: Long = UiTreeOperations.DUMP_TIMEOUT_SECONDS,
         cancellation: CancellationSignal = CancellationSignal.currentThread(),
         identifyFlutter: Boolean = true,
+        reuse: Boolean = true,
+        cache: UiDumpCache = UiDumpCache.shared,
     ): UiObservation = try {
-        val observation = UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation)
-            .observe(metrics)
+        val recent = if (reuse) cache.recent(device.serialNumber, device.device) else null
+        val observation = recent?.let { (kept, ageMs) -> kept.copy(reusedAfterMs = ageMs) } ?: run {
+            val since = cache.generation()
+            UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation)
+                .observe(metrics)
+                .also { cache.store(device.serialNumber, device.device, it, since) }
+        }
         if (!identifyFlutter) {
             observation
         } else {
@@ -77,10 +86,24 @@ internal object UiTreeReader {
 
     /**
      * What every result built on a capture starts with: the summary line and, when the result
-     * makes a claim about the screen, the limits line. Two lines, so the cost stays small.
+     * makes a claim about the screen, the limits line. Two lines, so the cost stays small. Not
+     * [verbose], one short line: an agent that has read the limits once need not pay for them on
+     * every call.
      */
-    fun UiObservation.preface(withLimits: Boolean = true): String =
-        if (withLimits) summary() + "\n" + limitsNote() else summary()
+    fun UiObservation.preface(withLimits: Boolean = true, verbose: Boolean = true): String = when {
+        !verbose -> brief()
+        withLimits -> summary() + "\n" + limitsNote()
+        else -> summary()
+    }
+
+    /** The `verbose` argument of the UI read tools; see [verboseOption]. */
+    fun JsonObject.verbose(): Boolean = optionalBoolean(VERBOSE, true)
+
+    fun Schema.ObjectBuilder.verboseOption() {
+        boolean(VERBOSE, "false: one short line in place of the capture's details and limits. Defaults to true.")
+    }
+
+    private const val VERBOSE = "verbose"
 
     /** Guidance an agent needs before it starts matching elements on this screen. */
     fun UiTree.frameworkNote(): String = buildString {
@@ -245,6 +268,7 @@ class GetUiTreeTool : AdbTool {
                 "screen order, so each control keeps the label next to it. Takes precedence over " +
                 "interactiveOnly. Defaults to false.",
         )
+        with(UiTreeReader) { verboseOption() }
         deviceSerial()
     }
 
@@ -254,8 +278,9 @@ class GetUiTreeTool : AdbTool {
         val visibility = ViewportVisibility.classifyAll(observation)
 
         with(UiTreeReader) {
+            val preface = observation.preface(verbose = arguments.verbose())
             val root = tree.root
-                ?: return ToolResult.error(observation.preface() + "\nThe dump contained no UI nodes.")
+                ?: return ToolResult.error(preface + "\nThe dump contained no UI nodes.")
             val listing = when {
                 arguments.optionalBoolean("meaningfulOnly", false) -> list(
                     "Interactive and labelled elements:",
@@ -269,7 +294,7 @@ class GetUiTreeTool : AdbTool {
                 )
                 else -> root.render(visibility = visibility, withCenter = true)
             }
-            return ToolResult.text(observation.preface() + "\n" + tree.frameworkNote() + "\n\n" + listing)
+            return ToolResult.text(preface + "\n" + tree.frameworkNote() + "\n\n" + listing)
         }
     }
 
@@ -295,7 +320,12 @@ class FindUiElementTool : AdbTool {
             "Use it to check an element exists before acting, or to disambiguate when several match. " +
             "To find a composable by its Modifier.testTag, pass testTag with exactTag=true."
     override val safety = ToolSafety.READ_ONLY
-    override val inputSchema: JsonObject = Schema.obj { with(UiTreeReader) { elementSelector() } }
+    override val inputSchema: JsonObject = Schema.obj {
+        with(UiTreeReader) {
+            elementSelector()
+            verboseOption()
+        }
+    }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
@@ -309,15 +339,15 @@ class FindUiElementTool : AdbTool {
         val matches = UiTreeSearch.findAll(tree, selector)
 
         return with(UiTreeReader) {
+            val preface = observation.preface(verbose = arguments.verbose())
             when {
                 matches.isEmpty() -> ToolResult.text(
-                    observation.preface() + "\nNo element matched ${selector.describe()}.\n\n" +
-                        tree.frameworkNote(),
+                    preface + "\nNo element matched ${selector.describe()}.\n\n" + tree.frameworkNote(),
                 )
                 else -> {
                     val visibility = ViewportVisibility.classifyAll(observation)
                     ToolResult.text(
-                        observation.preface() + "\n${matches.size} match(es) for ${selector.describe()}:\n" +
+                        preface + "\n${matches.size} match(es) for ${selector.describe()}:\n" +
                             matches.joinToString("\n") {
                                 "  " + it.render() + "\n    visibility: " + visibility.getValue(it).describe() +
                                     (if (selector.matchedContentDescription(it)) "\n    matched content-desc" else "")
