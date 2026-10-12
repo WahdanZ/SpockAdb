@@ -163,7 +163,8 @@ internal object ElementActions {
         enumeration(
             UNTIL,
             "What the expected element should be after the action, in android_wait_for_element's words. " +
-                "Defaults to $DEFAULT_UNTIL.",
+                "Defaults to $DEFAULT_UNTIL. 'gone' and 'hidden' wait for every match, and $TEXT matches content " +
+                "descriptions too, so give them $EXACT: true or $TEST_TAG.",
             UntilArgument.WORDS,
         )
         integer(
