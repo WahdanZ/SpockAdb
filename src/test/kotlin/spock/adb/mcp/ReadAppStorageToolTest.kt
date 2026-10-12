@@ -37,7 +37,13 @@ class ReadAppStorageToolTest {
     )
 
     private fun read(context: FakeToolContext = context(), extra: JsonObject.() -> Unit = {}) =
-        ReadAppStorageTool().execute(JsonObject().apply { addProperty("file", PREFS) }.apply(extra), context)
+        ReadAppStorageTool().execute(
+            JsonObject().apply {
+                addProperty("file", PREFS)
+                addProperty("packageName", APP)
+            }.apply(extra),
+            context,
+        )
 
     private fun line(text: String, key: String) = text.lines().single { it.startsWith("$key ") }
 
@@ -195,5 +201,8 @@ class ReadAppStorageToolTest {
 
     private companion object {
         const val PREFS = "shared_prefs/settings.xml"
+
+        // Named in every call, so answers carry no "package: … (open project's application ID)" line.
+        const val APP = "com.example.app"
     }
 }

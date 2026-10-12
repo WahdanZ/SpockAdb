@@ -21,6 +21,10 @@ class GetPackageInfoToolTest {
 
     private val dumpsys = checkNotNull(javaClass.getResource("/dumpsys/package-api34-sample-app.txt")).readText()
 
+    // The app is named, so the answer carries no "package: … (open project's application ID)" line.
+    private fun args(extra: JsonObject.() -> Unit = {}) =
+        JsonObject().apply { addProperty("packageName", APP) }.apply(extra)
+
     private fun context(dump: String = dumpsys): FakeToolContext {
         val device = mockk<IDevice>(relaxed = true)
         val command = slot<String>()
@@ -42,7 +46,7 @@ class GetPackageInfoToolTest {
 
     @Test
     fun `the default answer is the summary`() {
-        val result = GetPackageInfoTool().execute(JsonObject(), context())
+        val result = GetPackageInfoTool().execute(args(), context())
 
         assertFalse(result.isError, result.text())
         assertTrue(result.text().startsWith("$APP\nVersion: 1.2.0-sample (7)"), result.text())
@@ -51,7 +55,7 @@ class GetPackageInfoToolTest {
 
     @Test
     fun `raw returns the dump itself`() {
-        val result = GetPackageInfoTool().execute(JsonObject().apply { addProperty("raw", true) }, context())
+        val result = GetPackageInfoTool().execute(args { addProperty("raw", true) }, context())
 
         assertEquals(dumpsys.trim(), result.text().trim())
     }
@@ -63,8 +67,8 @@ class GetPackageInfoToolTest {
         val padding = "Activity Resolver Table:\n" + "  Schemes:\n".repeat(5_000)
         val long = padding + dumpsys.substringAfter("Domain verification status:")
 
-        val summary = GetPackageInfoTool().execute(JsonObject(), context(long)).text()
-        val raw = GetPackageInfoTool().execute(JsonObject().apply { addProperty("raw", true) }, context(long)).text()
+        val summary = GetPackageInfoTool().execute(args(), context(long)).text()
+        val raw = GetPackageInfoTool().execute(args { addProperty("raw", true) }, context(long)).text()
 
         assertTrue(summary.contains("Version: 1.2.0-sample (7)"), summary)
         assertTrue(raw.contains("[truncated:"), "raw stays capped")

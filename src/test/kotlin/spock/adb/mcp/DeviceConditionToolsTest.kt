@@ -181,7 +181,11 @@ class DeviceConditionToolsTest {
         ).forEach { (state, expected) ->
             device.deep = state
 
-            val read = GetDeviceConditionsTool().execute(JsonObject(), device.context)
+            // "" asks for the device alone, so the Doze line comes first, with no package note.
+            val read = GetDeviceConditionsTool().execute(
+                JsonObject().apply { addProperty("packageName", "") },
+                device.context,
+            )
 
             assertEquals(expected, read.text().lines().first(), "deviceidle said '$state'")
         }
