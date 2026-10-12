@@ -1119,7 +1119,8 @@ redacted — best-effort, by key name and value shape:
 Booleans, ints and longs are always shown, and the first lines say how many values were redacted
 and cut. `showSecrets: true` asks you
 with an Allow once / Deny dialog titled "AI Agent Asks to See Secret Values", naming the keys; if
-you deny, the answer is the redacted one. It is still a read-only tool: without `showSecrets` it never asks.
+you deny, the answer is the redacted one. An allowed reveal is written to `idea.log` with the
+package, file and key names, never the values, and the activity history keeps the redacted answer. It is still a read-only tool: without `showSecrets` it never asks.
 
 ### Background work tools
 

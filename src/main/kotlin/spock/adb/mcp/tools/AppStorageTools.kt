@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
+import com.intellij.openapi.diagnostic.Logger
 import spock.adb.command.AppStorageUnverifiedWriteException
 import spock.adb.command.listAppStorage
 import spock.adb.command.readAppStorageFile
@@ -36,11 +37,13 @@ class ListAppStorageTool : AdbTool {
         val packageName = context.resolvePackage(arguments)
         return storageRead(device, packageName) {
             val files = device.listAppStorage(packageName)
-            if (files.isEmpty()) {
-                "No SharedPreferences or DataStore files found for $packageName."
-            } else {
-                files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
-            }
+            ToolResult.text(
+                if (files.isEmpty()) {
+                    "No SharedPreferences or DataStore files found for $packageName."
+                } else {
+                    files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
+                },
+            )
         }
     }
 }
@@ -89,35 +92,49 @@ class ReadAppStorageTool : AdbTool {
         return storageRead(device, packageName) {
             val format = file.format
             if (format == null) {
-                "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, which " +
-                    "cannot be decoded without that message's schema."
-            } else {
-                val items = format.read(device.readAppStorageFile(packageName, file))
-                val secrets = view.secretKeys(items)
-                val reveal = when {
-                    !view.showSecrets || secrets.isEmpty() -> StorageView.Reveal.NOT_ASKED
-                    context.confirmDestructive(
-                        name,
-                        revealSummary(secrets, "${file.path} of $packageName"),
-                        target,
-                        ConfirmationWording.REVEAL_SECRETS,
-                    ) -> StorageView.Reveal.ALLOWED
-                    else -> StorageView.Reveal.DECLINED
-                }
-                view.describe(file, items, reveal).truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
+                return@storageRead ToolResult.text(
+                    "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, " +
+                        "which cannot be decoded without that message's schema.",
+                )
             }
+            val items = format.read(device.readAppStorageFile(packageName, file))
+            val secrets = view.secretKeys(items)
+            val where = "${file.path} of $packageName"
+            val reveal = when {
+                !view.showSecrets || secrets.isEmpty() -> StorageView.Reveal.NOT_ASKED
+                context.confirmDestructive(
+                    name,
+                    revealSummary(secrets, where),
+                    target,
+                    ConfirmationWording.REVEAL_SECRETS,
+                ) -> StorageView.Reveal.ALLOWED
+                else -> StorageView.Reveal.DECLINED
+            }
+            val text = view.describe(file, items, reveal).truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
+            if (reveal != StorageView.Reveal.ALLOWED) return@storageRead ToolResult.text(text)
+
+            // The agent sees the values; the activity history, which is written to disk and shown in
+            // the panel, keeps the redacted rendering. idea.log records that it happened, by key.
+            val keys = secrets.joinToString { "'${plain(it)}'" }
+            val serial = target.serialNumber
+            LOG.info("MCP $name: secret values revealed with the developer's approval in $where on $serial: $keys")
+            ToolResult.text(text).copy(
+                historyText = view.describe(file, items, StorageView.Reveal.RECORDED)
+                    .truncateForAgent(McpShell.DEFAULT_MAX_CHARS),
+            )
         }
     }
 
     private fun revealSummary(keys: List<String>, where: String): String {
         val named = keys.take(MAX_NAMED_KEYS).joinToString { "'${plain(it)}'" } +
             if (keys.size > MAX_NAMED_KEYS) " and ${keys.size - MAX_NAMED_KEYS} more" else ""
-        return "Show the agent ${keys.size} value(s) from $where that are redacted because their key looks " +
+        return "Show the agent ${keys.size} value(s) from $where that are redacted because they look " +
             "secret: $named."
     }
 
     private companion object {
         const val MAX_NAMED_KEYS = 8
+        val LOG = Logger.getInstance(ReadAppStorageTool::class.java)
     }
 }
 
@@ -284,10 +301,10 @@ class DeleteAppPreferenceTool : AppPreferenceEditTool() {
     override fun done(change: PrefChange, where: String): String = "Deleted '${plain(change.key)}' from $where."
 }
 
-private fun storageRead(device: IDevice, packageName: String, read: () -> String): ToolResult {
+private fun storageRead(device: IDevice, packageName: String, read: () -> ToolResult): ToolResult {
     if (!device.isAppInstall(packageName)) return ToolResult.error(notInstalled(packageName))
     return runCatching(read).fold(
-        onSuccess = { ToolResult.text(it) },
+        onSuccess = { it },
         onFailure = { ToolResult.error(it.message ?: "Could not read the storage of $packageName.") },
     )
 }

@@ -17,7 +17,20 @@ sealed interface ToolContent {
 data class ToolResult(
     val content: List<ToolContent>,
     val isError: Boolean = false,
+    /**
+     * What the activity history records in place of [content], when the two must differ: values
+     * the developer let one agent see are not kept in a file every later reader of the panel can.
+     */
+    val historyText: String? = null,
 ) {
+    /** The result as the activity history keeps it: [historyText], or the content with images described. */
+    fun historyPreview(): String = historyText ?: content.joinToString("\n") { item ->
+        when (item) {
+            is ToolContent.Text -> item.text
+            is ToolContent.Image -> "[${item.mimeType}, ${item.base64Data.length} base64 chars]"
+        }
+    }
+
     companion object {
         fun text(value: String) = ToolResult(listOf(ToolContent.Text(value)))
 

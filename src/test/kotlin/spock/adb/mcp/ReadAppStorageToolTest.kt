@@ -132,6 +132,39 @@ class ReadAppStorageToolTest {
     }
 
     @Test
+    fun `an allowed reveal keeps the values out of the history, and says they were shown`() {
+        val result = read(context(approve = true)) { addProperty("showSecrets", true) }
+
+        assertTrue(result.text().contains("hunter2"), "the agent sees the value")
+        val history = checkNotNull(result.historyText) { "an allowed reveal names its own history text" }
+        assertFalse(history.contains("hunter2"), history)
+        assertFalse(history.contains("rt-0123456789abcdef"), history)
+        assertTrue(history.contains("user_password (string) = <redacted, 7 chars>"), history)
+        assertTrue(history.contains("3 values are redacted in this record. The agent was shown them"), history)
+    }
+
+    @Test
+    fun `the protocol's audit record of an allowed reveal holds no secret value`() {
+        val calls = mutableListOf<McpCall>()
+        val protocol = McpProtocol(contextProvider = { context(approve = true) }, auditLog = { calls += it })
+
+        val response = protocol.handle(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"android_read_app_storage",
+               "arguments":{"file":"$PREFS","showSecrets":true}}}""",
+        )!!
+
+        assertTrue(response.contains("hunter2"), "the agent's answer carries the value")
+        assertFalse(calls.single().result.contains("hunter2"), calls.single().result)
+        assertTrue(calls.single().result.contains("redacted in this record"), calls.single().result)
+    }
+
+    @Test
+    fun `a read that reveals nothing records what the agent saw`() {
+        assertEquals(null, read(context(approve = false)) { addProperty("showSecrets", true) }.historyText)
+        assertEquals(null, read().historyText)
+    }
+
+    @Test
     fun `a declined reveal returns the redacted answer, not an error`() {
         val context = context(approve = false)
 

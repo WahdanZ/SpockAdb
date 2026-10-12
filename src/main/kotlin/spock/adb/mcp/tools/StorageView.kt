@@ -31,8 +31,11 @@ internal class StorageView(
     val showSecrets: Boolean = false,
 ) {
 
-    /** What became of [showSecrets]: whether the developer was asked, and what they said. */
-    enum class Reveal { NOT_ASKED, ALLOWED, DECLINED }
+    /**
+     * What became of [showSecrets]: whether the developer was asked, and what they said. [RECORDED]
+     * is the rendering kept in the activity history after an allowed reveal: redacted, and saying so.
+     */
+    enum class Reveal { NOT_ASKED, ALLOWED, DECLINED, RECORDED }
 
     /** The keys of the shown entries that would be redacted, which is what the developer is asked about. */
     fun secretKeys(items: List<PrefItem>): List<String> =
@@ -132,6 +135,8 @@ internal class StorageView(
         val values = if (secrets == 1) "1 value is" else "$secrets values are"
         return when (reveal) {
             Reveal.ALLOWED -> "$values shown although the key or value looks secret: the developer allowed it."
+            Reveal.RECORDED ->
+                "$values redacted in this record. The agent was shown them, with the developer's approval."
             Reveal.DECLINED ->
                 "$values redacted because the key or value looks secret, and the developer declined to " +
                     "reveal them."
