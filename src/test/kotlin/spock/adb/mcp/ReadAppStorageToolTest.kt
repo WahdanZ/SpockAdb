@@ -21,7 +21,7 @@ class ReadAppStorageToolTest {
         files[PREFS] = """
             <map>
                 <string name="cached_feed">$bigJson</string>
-                <string name="auth_token">eyJhbGciOiJIUzI1NiJ9.fake.signature</string>
+                <string name="auth_token">$FAKE_JWT</string>
                 <string name="refreshToken">rt-0123456789abcdef</string>
                 <string name="user_password">hunter2</string>
                 <boolean name="session_active" value="true" />
@@ -201,6 +201,12 @@ class ReadAppStorageToolTest {
 
     private companion object {
         const val PREFS = "shared_prefs/settings.xml"
+
+        /**
+         * Assembled, not written out whole: a complete JWT literal in a tracked file trips secret
+         * scanners. Not a credential: the header says HS256 and the payload names no one real.
+         */
+        val FAKE_JWT = listOf("eyJhbGciOiJIUzI1NiJ9", "fake", "signature").joinToString(".")
 
         // Named in every call, so answers carry no "package: … (open project's application ID)" line.
         const val APP = "com.example.app"

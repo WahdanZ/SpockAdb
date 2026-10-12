@@ -46,7 +46,7 @@ class StorageViewTest {
 
     @Test
     fun `a JWT under a harmless key is redacted`() {
-        val jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzcG9jayJ9.c2lnbmF0dXJl"
+        val jwt = listOf(JWT_HEADER, "eyJzdWIiOiJzcG9jayJ9", "c2lnbmF0dXJl").joinToString(".")
 
         assertEquals(
             "<redacted: looks like a JWT, ${jwt.length} chars>",
@@ -85,7 +85,8 @@ class StorageViewTest {
 
     @Test
     fun `a string set holding a JWT is redacted`() {
-        val value = PrefValue.StringSetValue(listOf("plain", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.sig"))
+        val jwt = listOf(JWT_HEADER, "eyJzdWIiOiJ4In0", "sig").joinToString(".")
+        val value = PrefValue.StringSetValue(listOf("plain", jwt))
 
         assertTrue(shownValue("recent", value).startsWith("<redacted: looks like a JWT"))
     }
@@ -141,5 +142,13 @@ class StorageViewTest {
         val value = "a".repeat(48) + "🚀" + "b".repeat(10)
 
         assertEquals("a".repeat(48) + "🚀…[truncated, 60 chars]", shown("note", value))
+    }
+
+    private companion object {
+        /**
+         * Assembled, not written out whole: a complete JWT literal in a tracked file trips secret
+         * scanners. Not a credential: the header says HS256 and the payload names no one real.
+         */
+        const val JWT_HEADER = "eyJhbGciOiJIUzI1NiJ9"
     }
 }

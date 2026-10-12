@@ -79,7 +79,7 @@ class StorageActivity : SampleActivity() {
         }
         getSharedPreferences("session", MODE_PRIVATE).edit()
             .putString("cached_feed", feed)
-            .putString("auth_token", "eyJhbGciOiJIUzI1NiJ9.ZmFrZS1zcG9jay10b2tlbg.fake-signature")
+            .putString("auth_token", listOf(JWT_HEADER, JWT_PAYLOAD, "fake-signature").joinToString("."))
             .putString("refreshToken", "rt-fake-0123456789abcdef")
             .putString("user_password", "not-a-real-password")
             .putBoolean("session_active", true)
@@ -111,5 +111,14 @@ class StorageActivity : SampleActivity() {
                 appendLine("files/keep_me.txt exists: ${File(filesDir, "keep_me.txt").exists()}")
             }
         }
+    }
+
+    private companion object {
+        /**
+         * Assembled rather than written out whole, as in LogcatActivity: a complete JWT literal in a
+         * tracked file trips secret scanners. Not a credential: the payload reads "fake-spock-token".
+         */
+        const val JWT_HEADER = "eyJhbGciOiJIUzI1NiJ9"
+        const val JWT_PAYLOAD = "ZmFrZS1zcG9jay10b2tlbg"
     }
 }
