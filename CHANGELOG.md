@@ -184,9 +184,10 @@
     the dump as before.
   - **`android_read_app_storage` cuts each value at 500 characters** (`maxValueChars`, 50–40000),
     ending it with the value's full length, and `key` reads only the entries you name; one cached
-    JSON value had made a single prefs file 40 000 characters. Values whose key contains token,
-    secret, auth, password or session are redacted, since these files hold push and auth tokens;
-    `showSecrets: true` asks you with Allow once / Deny, and Deny keeps them redacted.
+    JSON value had made a single prefs file 40 000 characters. Values that look secret are
+    redacted, since these files hold push and auth tokens: best-effort, by key name (token, secret,
+    password, api key, cookie and the like) and by value shape (a JWT, or cached JSON holding a
+    token). `showSecrets: true` asks you with Allow once / Deny, and Deny keeps them redacted.
   - **`android_take_screenshot` takes `scale` and `format`.** A full-size PNG stays the default;
     `scale: 0.5` and `format: jpeg` return an image several times smaller, with a line telling the
     agent to multiply its coordinates back for `android_tap`.

@@ -1107,9 +1107,17 @@ schema are listed as unsupported and never decoded.
 
 `android_read_app_storage` keeps its answer bounded. Each value is cut at `maxValueChars`
 (default 500, 50–40000) and ends `…[truncated, N chars]` with the value's full length; `key`
-shows only the entries whose key contains that text, ignoring case. Values whose key contains
-`token`, `secret`, `auth`, `password` or `session` are shown as `<redacted, N chars>` (booleans
-excepted), and the first lines say how many were redacted and cut. `showSecrets: true` asks you
+shows only the entries whose key contains that text, ignoring case. Values that look secret are
+redacted — best-effort, by key name and value shape:
+
+- a key containing `token`, `secret`, `auth` (not `author`), `passw`, `pwd`, `session`, `api_key`,
+  `jwt`, `bearer`, `cookie`, `credential` or `private_key`: `<redacted, N chars>`;
+- a JWT anywhere in the value: `<redacted: looks like a JWT, N chars>`;
+- JSON holding such a key at any depth, e.g. `flutter.user` = `{"accessToken":"…"}`:
+  `<redacted: holds accessToken, N chars>`.
+
+Booleans, ints and longs are always shown, and the first lines say how many values were redacted
+and cut. `showSecrets: true` asks you
 with the same Allow once / Deny dialog the destructive tools use, naming the keys; if you deny,
 the answer is the redacted one. It is still a read-only tool: without `showSecrets` it never asks.
 

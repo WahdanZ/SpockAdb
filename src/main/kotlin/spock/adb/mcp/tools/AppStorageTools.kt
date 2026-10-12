@@ -59,8 +59,9 @@ class ReadAppStorageTool : AdbTool {
             "Use it to check an app's stored state — onboarding flags, feature toggles, a cached user — " +
             "before or after reproducing a bug. Requires a debuggable build. Each value is cut at " +
             "maxValueChars (default ${StorageView.DEFAULT_MAX_VALUE_CHARS}); use key to read only the " +
-            "entries you need. Values whose key contains token, secret, auth, password or session are " +
-            "redacted; showSecrets asks the developer to reveal them."
+            "entries you need. Values that look secret are redacted — best-effort, by key name (token, " +
+            "secret, auth, password, session, api key, jwt, bearer, cookie, credential, private key) and " +
+            "value shape (a JWT, or JSON holding such a key); showSecrets asks the developer to reveal them."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
@@ -72,7 +73,7 @@ class ReadAppStorageTool : AdbTool {
         )
         boolean(
             "showSecrets",
-            "Show the values that are redacted because their key looks secret. The developer is asked " +
+            "Show the values that are redacted because they look secret. The developer is asked " +
                 "first; if they decline, the values stay redacted. Defaults to false.",
         )
         string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
