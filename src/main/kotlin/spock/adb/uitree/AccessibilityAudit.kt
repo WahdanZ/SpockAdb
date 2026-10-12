@@ -1,11 +1,14 @@
 package spock.adb.uitree
 
+import java.util.Collections
+import java.util.IdentityHashMap
+
 /**
  * Finds accessibility problems an agent can explain and a developer can fix in code.
  *
- * Every finding carries a Compose-level suggestion as well as a View-level one, because the
- * fix differs entirely: Compose problems are solved with `Modifier.semantics`, not with
- * `android:contentDescription`.
+ * Every finding carries a Compose-level, a View-level and a Flutter-level suggestion, because the
+ * fix differs entirely: Compose problems are solved with `Modifier.semantics`, Flutter's with a
+ * `Semantics` widget, and neither with `android:contentDescription`.
  */
 object AccessibilityAudit {
 
@@ -15,15 +18,30 @@ object AccessibilityAudit {
         val node: UiNode,
         val composeFix: String,
         val viewFix: String,
+        val flutterFix: String,
     ) {
+        /** The fix written for [framework]; Compose's wherever Compose may be. */
+        fun fixFor(framework: UiFramework): String = when (framework) {
+            UiFramework.VIEWS -> viewFix
+            UiFramework.FLUTTER -> flutterFix
+            UiFramework.COMPOSE, UiFramework.HYBRID, UiFramework.UNKNOWN -> composeFix
+        }
+
+        /**
+         * The label on one line. Flutter merges a card's words into one content-desc, a line each, so
+         * printed as they are the card's first line — often a badge — read as the whole label.
+         */
         fun describe(framework: UiFramework): String = buildString {
             append(severity.marker).append(' ').append(issue).appendLine()
             append("    class:  ").append(node.className).appendLine()
             append("    bounds: ").append(node.bounds).appendLine()
-            node.label.takeIf { it.isNotBlank() }?.let { append("    label:  ").append(it).appendLine() }
+            node.label.takeIf { it.isNotBlank() }?.let { append("    label:  ").append(oneLine(it)).appendLine() }
             append("    fix:    ")
-            append(if (framework == UiFramework.VIEWS) viewFix else composeFix)
+            append(fixFor(framework))
         }
+
+        private fun oneLine(label: String): String =
+            label.lines().map(String::trim).filter(String::isNotEmpty).joinToString(" / ")
     }
 
     enum class Severity(val marker: String) {
@@ -54,11 +72,63 @@ object AccessibilityAudit {
      * `uiautomator` cuts such a node's bounds to the part in view and drops a text child that is
      * out of view, so a half-visible list row looked both too small and unlabelled. A finding that
      * comes from clipping is not a finding about the app. Off-screen controls with complete
-     * bounds are still checked: nothing about them was cut.
+     * bounds are still checked: nothing about them was cut. So are the pages a carousel cuts at its
+     * edge without scrolling; see [cutPages].
      */
     private fun clippedIn(tree: UiTree, viewport: UiNode.Bounds?): (UiNode) -> Boolean {
         val visibility = ViewportVisibility.classifyAll(tree, viewport)
-        return { visibility[it]?.clippedByContainer == true }
+        val cut = cutPages(tree)
+        return { visibility[it]?.clippedByContainer == true || it in cut }
+    }
+
+    /**
+     * Every node in a page a carousel cuts at its edge although it publishes no scroll action.
+     *
+     * Flutter cuts a node's bounds at every clip above it, not only at scroll containers, and an
+     * auto-advancing offer banner — a `PageView` with `NeverScrollableScrollPhysics` — does not
+     * scroll by touch, so [ViewportVisibility] does not know it for a clip. The neighbouring offers
+     * peeking in at its sides were then reported as slivers a few dp wide, and flagged as small
+     * touch targets under their badge's words, the first line of each card's content-desc.
+     *
+     * Told by its shape: at least three pages laid edge to edge along one axis, filling the banner
+     * exactly and spanning it across, the inner pages all one size and the end pages narrower. Known
+     * gap: a row of three controls that tiles its parent exactly, with smaller ones at its ends, has
+     * the same shape, and its end controls are left out of the size and label checks.
+     */
+    private fun cutPages(tree: UiTree): Set<UiNode> {
+        val cut = Collections.newSetFromMap(IdentityHashMap<UiNode, Boolean>())
+        tree.nodes().filterNot { it.scrollable }.forEach { banner ->
+            Axis.entries.flatMap { cutEnds(banner, it) }.forEach { cut.addAll(it.flatten()) }
+        }
+        return cut
+    }
+
+    private fun cutEnds(banner: UiNode, axis: Axis): List<UiNode> {
+        if (banner.children.size < MIN_PAGES) return emptyList()
+        val pages = banner.children.sortedBy { axis.start(it.bounds) }
+        val tiled = axis.start(pages.first().bounds) == axis.start(banner.bounds) &&
+            axis.end(pages.last().bounds) == axis.end(banner.bounds) &&
+            pages.zipWithNext().all { (a, b) -> axis.end(a.bounds) == axis.start(b.bounds) } &&
+            pages.all { axis.spansAcross(it.bounds, banner.bounds) }
+        val inner = pages.drop(1).dropLast(1).map { axis.extent(it.bounds) }.distinct().singleOrNull()
+        if (!tiled || inner == null) return emptyList()
+        return listOf(pages.first(), pages.last()).filter { axis.extent(it.bounds) < inner }
+    }
+
+    private enum class Axis {
+        HORIZONTAL,
+        VERTICAL,
+        ;
+
+        fun start(b: UiNode.Bounds) = if (this == HORIZONTAL) b.left else b.top
+        fun end(b: UiNode.Bounds) = if (this == HORIZONTAL) b.right else b.bottom
+        fun extent(b: UiNode.Bounds) = end(b) - start(b)
+
+        fun spansAcross(b: UiNode.Bounds, of: UiNode.Bounds) = if (this == HORIZONTAL) {
+            b.top == of.top && b.bottom == of.bottom
+        } else {
+            b.left == of.left && b.right == of.right
+        }
     }
 
     /** How many controls [audit] left out because they were cut off, and would otherwise have been findings. */
@@ -88,6 +158,8 @@ object AccessibilityAudit {
                         "composable visible text. Add Modifier.testTag(\"…\") so it can also be " +
                         "addressed by automation.",
                     viewFix = "android:contentDescription=\"…\" on the view.",
+                    flutterFix = "Wrap it in Semantics(label: '…'), or give an IconButton a tooltip. Add " +
+                        "Semantics(identifier: '…') so it can also be addressed by automation.",
                 )
             }
 
@@ -106,6 +178,8 @@ object AccessibilityAudit {
                     composeFix = "Use a minimum 48.dp touch target, for example IconButton, and verify " +
                         "any expanded touch area on the device.",
                     viewFix = "Use a minimum 48dp touch target and verify any TouchDelegate expansion.",
+                    flutterFix = "Keep MaterialTapTargetSize.padded (the default) rather than shrinkWrap, or wrap " +
+                        "the control in a SizedBox of at least 48x48, and verify on the device.",
                 )
             }
     }
@@ -121,7 +195,8 @@ object AccessibilityAudit {
         }
         val skipped = skippedAsClipped(tree, viewport)
         if (skipped > 0) {
-            append(" Skipped $skipped control(s) at a scroll container's edge, possibly partially scrolled out, ")
+            append(" Skipped $skipped control(s) at a scroll container's edge or a carousel's, possibly ")
+            append("partly out of view, ")
             append("whose reported size or label may be cut off; they are checked when fully in view.")
         }
     }
@@ -142,6 +217,8 @@ object AccessibilityAudit {
                         "that distinguishes their purpose. " +
                         "A test tag alone does not change what a screen reader announces.",
                     viewFix = "Give each view a distinct contentDescription.",
+                    flutterFix = "Give each control a Semantics(label: '…') or tooltip that says what it acts on. " +
+                        "Semantics(identifier:) alone does not change what a screen reader announces.",
                 )
             }
 
@@ -157,9 +234,12 @@ object AccessibilityAudit {
                         "decorative, pass null explicitly so the intent is recorded.",
                     viewFix = "android:contentDescription, or " +
                         "android:importantForAccessibility=\"no\" when decorative.",
+                    flutterFix = "Pass semanticLabel to the Image or Icon. If it is purely decorative, wrap it " +
+                        "in ExcludeSemantics.",
                 )
             }
 
     private const val MIN_TOUCH_DP = 48.0
+    private const val MIN_PAGES = 3
     private const val BASE_DENSITY = 160.0
 }

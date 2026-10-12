@@ -144,6 +144,8 @@ internal class NodeDetailsPanel(
         // On a Views screen the "tag" is a View id, and calling it a test tag would mislead.
         val basis = when {
             current.basis == SelectorSuggestion.Basis.TEST_TAG && tree.framework == UiFramework.VIEWS -> "resource id"
+            current.basis == SelectorSuggestion.Basis.TEST_TAG && tree.framework == UiFramework.FLUTTER ->
+                "Semantics identifier"
             else -> current.basis.label
         }
         selectorHeading.text = "Selector · by $basis"

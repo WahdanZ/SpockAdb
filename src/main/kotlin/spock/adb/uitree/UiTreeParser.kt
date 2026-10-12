@@ -82,6 +82,9 @@ object UiTreeParser {
      * misreported as hybrid.
      *
      * Only widgets **outside** every Compose subtree count as real Views.
+     *
+     * Flutter is told from the dump only when it shows: see [FlutterScreen.looksLikeFlutter]. Whether
+     * the app on screen is a Flutter app is better asked of the device, which [FlutterScreen] does.
      */
     private fun detectFramework(root: UiNode): UiFramework {
         val hasCompose = root.asSequence().any { it.isComposeHost() }
@@ -90,6 +93,7 @@ object UiTreeParser {
         return when {
             hasCompose && hasViewWidgets -> UiFramework.HYBRID
             hasCompose -> UiFramework.COMPOSE
+            FlutterScreen.looksLikeFlutter(root) -> UiFramework.FLUTTER
             else -> UiFramework.VIEWS
         }
     }
@@ -130,7 +134,7 @@ object UiTreeParser {
 
     private fun detectTestTagSupport(framework: UiFramework, nodes: List<UiNode>): UiTree.TestTagSupport =
         when (framework) {
-            UiFramework.VIEWS, UiFramework.UNKNOWN -> UiTree.TestTagSupport.NOT_APPLICABLE
+            UiFramework.VIEWS, UiFramework.FLUTTER, UiFramework.UNKNOWN -> UiTree.TestTagSupport.NOT_APPLICABLE
             else -> if (nodes.any { it.testTag != null }) {
                 UiTree.TestTagSupport.AVAILABLE
             } else {

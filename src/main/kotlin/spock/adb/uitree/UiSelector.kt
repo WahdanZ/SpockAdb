@@ -16,6 +16,10 @@ import java.util.IdentityHashMap
  *  1. **testTag** — an identifier the developer chose, stable across copy changes.
  *  2. **content description** — stable, and meaningful for accessibility.
  *  3. **text** — visible, but changes with translations and copy edits.
+ *
+ * `text` matches a node's content description as well as its text: it is "the words on screen",
+ * and Flutter publishes every label, and Compose an icon's, as the content description, so an
+ * agent searching for what it reads found nothing. `contentDescription` matches only that field.
  */
 data class UiSelector(
     val testTag: String? = null,
@@ -50,10 +54,18 @@ data class UiSelector(
         }
     }
 
-    private fun textMatches(node: UiNode): Boolean = listOfNotNull(
-        contentDescription?.let { node.contentDescription to it },
-        text?.let { node.text to it },
-    ).all { (actual, expected) -> compare(actual, expected) }
+    private fun textMatches(node: UiNode): Boolean =
+        (contentDescription == null || compare(node.contentDescription, contentDescription)) &&
+            (text == null || compare(node.text, text) || compare(node.contentDescription, text))
+
+    /** [text] found [node] through its content description and not its text. */
+    fun matchedContentDescription(node: UiNode): Boolean {
+        val expected = text ?: return false
+        return !compare(node.text, expected) && compare(node.contentDescription, expected)
+    }
+
+    /** " (matched content-desc)" after a match, so a result says which field the words were in. */
+    fun matchNote(node: UiNode): String = if (matchedContentDescription(node)) " (matched content-desc)" else ""
 
     private fun compare(actual: String, expected: String): Boolean = when {
         exact -> actual.equals(expected, ignoreCase = true)

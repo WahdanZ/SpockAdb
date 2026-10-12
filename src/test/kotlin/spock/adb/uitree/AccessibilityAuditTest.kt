@@ -204,8 +204,109 @@ class AccessibilityAuditTest {
         assertTrue(AccessibilityAudit.audit(auditTab, viewport).any { it.node.bounds == row5 })
     }
 
+    /**
+     * The sample's *Element targeting* screen as an API 34 emulator dumped it at 480dpi. Its offer
+     * banner is a `PageView` that does not scroll by touch, so it publishes no scroll action, but
+     * Flutter still cuts the neighbouring offers' bounds at its edge: 74px wide slivers of cards that
+     * are 836px wide. Each card's content-desc starts with its badge, "GRATIS E-SIM".
+     */
+    private val flutterTargeting = UiTreeParser.parse(
+        checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-targeting.xml")).bufferedReader().readText(),
+    ).copy(framework = UiFramework.FLUTTER, densityDpi = 480)
+
+    @Test
+    fun `offers cut at a banner's edge are not small targets, the shrink-wrapped icon button is`() {
+        val small = AccessibilityAudit.audit(flutterTargeting).filter { it.issue.contains("smaller than") }
+
+        assertEquals(listOf("Roaming info"), small.map { it.node.label }, small.joinToString("\n") { it.issue })
+    }
+
+    @Test
+    fun `the coverage note counts the cut-off offers as skipped`() {
+        val note = AccessibilityAudit.coverageNote(flutterTargeting)
+
+        assertTrue(note.contains("Skipped 2 control(s)"), note)
+    }
+
+    @Test
+    fun `pages that tile a row evenly are not taken for a cut banner`() {
+        val banner = flutterTargeting.nodes().first { node ->
+            node.children.size == BANNER_PAGES && node.children.all { it.children.singleOrNull()?.clickable == true }
+        }
+        val width = banner.bounds.width / BANNER_PAGES
+        val even = banner.copy(
+            children = banner.children.mapIndexed { i, page ->
+                val left = banner.bounds.left + i * width
+                val bounds = page.bounds.copy(left = left, right = left + width)
+                page.copy(bounds = bounds, children = page.children.map { it.copy(bounds = bounds) })
+            },
+        )
+        // At this density 48dp is 600px, so every one of the three 328px offers is too small.
+        val tree = flutterTargeting.copy(root = replace(flutterTargeting.root!!, banner, even), densityDpi = 2000)
+        val offers = AccessibilityAudit.audit(tree)
+            .filter { it.issue.contains("smaller than") && it.node.bounds.top == banner.bounds.top }
+
+        assertEquals(BANNER_PAGES, offers.size, offers.joinToString("\n") { it.node.label })
+    }
+
+    @Test
+    fun `a badge inside a tappable card is no finding of its own`() {
+        val findings = AccessibilityAudit.audit(flutterTargeting)
+
+        assertTrue(flutterTargeting.nodes().none { it.contentDescription == "GRATIS E-SIM" }, "merged into the card")
+        assertTrue(findings.none { it.node.accessibleLabel == "GRATIS E-SIM" }, findings.toString())
+    }
+
+    @Test
+    fun `a finding prints a merged Flutter label on one line`() {
+        val card = flutterTargeting.nodes().first { it.contentDescription == "GRATIS E-SIM\nTarif S" }
+        val finding = AccessibilityAudit.Finding(
+            AccessibilityAudit.Severity.WARNING,
+            "issue",
+            card,
+            composeFix = "compose",
+            viewFix = "view",
+            flutterFix = "flutter",
+        )
+
+        val label = finding.describe(UiFramework.FLUTTER).lines().single { it.trim().startsWith("label:") }
+        assertTrue(label.endsWith("GRATIS E-SIM / Tarif S"), label)
+        assertTrue(finding.describe(UiFramework.FLUTTER).endsWith("fix:    flutter"))
+    }
+
+    @Test
+    fun `a Flutter screen gets Flutter fixes`() {
+        val findings = AccessibilityAudit.audit(flutterTargeting)
+        val small = findings.first { it.issue.contains("smaller than") }.describe(UiFramework.FLUTTER)
+        val duplicate = findings.first { it.issue.contains("share the label") }.describe(UiFramework.FLUTTER)
+
+        assertTrue(small.contains("MaterialTapTargetSize.padded") && small.contains("SizedBox"), small)
+        assertTrue(duplicate.contains("Semantics(label:"), duplicate)
+        assertFalse(small.contains("Modifier") || small.contains("android:"), small)
+    }
+
+    @Test
+    fun `the unlabelled control and image checks have Flutter fixes too`() {
+        val unlabelled = composeTree.nodes().first { it.clickable }.copy(
+            text = "",
+            contentDescription = "",
+            resourceId = "",
+            children = emptyList(),
+        )
+        val image = unlabelled.copy(className = "android.widget.ImageView", clickable = false)
+        val screen = unlabelled.copy(clickable = false, children = listOf(unlabelled, image))
+        val findings = AccessibilityAudit.audit(composeTree.copy(root = screen))
+
+        assertTrue(findings.any { it.flutterFix.contains("Semantics(label:") }, findings.toString())
+        assertTrue(findings.any { it.flutterFix.contains("ExcludeSemantics") }, findings.toString())
+    }
+
     private fun replace(node: UiNode, old: UiNode, new: UiNode): UiNode = when {
         node === old -> new
         else -> node.copy(children = node.children.map { replace(it, old, new) })
+    }
+
+    private companion object {
+        const val BANNER_PAGES = 3
     }
 }

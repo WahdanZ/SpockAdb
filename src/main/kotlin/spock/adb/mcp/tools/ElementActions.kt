@@ -99,7 +99,8 @@ internal object ElementActions {
         }
         val before = expectation?.condition?.evaluate(resolved.observation)
 
-        val dispatched = "${spec.noun} dispatched once to '${resolved.target.label}' ${resolved.where}${spec.details}"
+        val dispatched = "${spec.noun} dispatched once to '${resolved.target.label}'${resolved.matchNote} " +
+            "${resolved.where}${spec.details}"
         Dispatch(connected, signal, resolved, spec).send()?.let { return it }
 
         if (expectation == null || before == null) {
@@ -150,11 +151,12 @@ internal object ElementActions {
     fun Schema.ObjectBuilder.expectation() {
         string(
             TEST_TAG,
-            "Optional check after the action: the test tag or resource id of an element that should then be in " +
-                "the state $UNTIL names. Any $TEST_TAG, $TEXT or $DESCRIPTION turns the check on. It is matched " +
+            "Optional check after the action: the test tag, resource id or Flutter Semantics(identifier:) of an " +
+                "element that should then be in the state $UNTIL names. Any $TEST_TAG, $TEXT or $DESCRIPTION " +
+                "turns the check on. It is matched " +
                 "over the whole screen: packageName and containerTag scope only the element acted on.",
         )
-        string(TEXT, "Optional check after the action: text of the element expected.")
+        string(TEXT, "Optional check after the action: text or content description of the element expected.")
         string(DESCRIPTION, "Optional check after the action: content description of the element expected.")
         boolean(EXACT, "Whole-value match for $TEXT and $DESCRIPTION. Defaults to false.")
         boolean(EXACT_TAG, "Case-sensitive whole match for $TEST_TAG. Defaults to false.")
@@ -354,10 +356,16 @@ private fun resolveElement(
                 "call android_scroll_to_element with the same selector first."
         }
     }
-    return Resolved(observation, target, visibility)
+    return Resolved(observation, target, visibility, selector.matchNote(match))
 }
 
-private class Resolved(val observation: UiObservation, val target: UiNode, val visibility: NodeVisibility) {
+private class Resolved(
+    val observation: UiObservation,
+    val target: UiNode,
+    val visibility: NodeVisibility,
+    /** Which field the selector's text was found in, when it was the content description. */
+    val matchNote: String,
+) {
 
     /**
      * The centre of the part in view, so a partly scrolled-out control is pressed where it can be

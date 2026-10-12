@@ -312,9 +312,14 @@ class UiInspectorPanel(
         }
     }
 
-    /** The same capture the `android_get_ui_tree` family runs — see [UiTreeOperations]. */
-    private fun observe(target: ConnectedDevice): UiObservation =
-        UiTreeOperations(target.device, serial = target.serialNumber).observe()
+    /**
+     * The same capture the `android_get_ui_tree` family runs — see [UiTreeOperations] — and the
+     * same question of whether the app is Flutter: see [FlutterScreen].
+     */
+    private fun observe(target: ConnectedDevice): UiObservation {
+        val observation = UiTreeOperations(target.device, serial = target.serialNumber).observe()
+        return observation.copy(tree = FlutterScreen.classifyOn(observation.tree, target.device, target.serialNumber))
+    }
 
     /**
      * The Activity on screen, read after the tree is shown with the same code as Current Activity.

@@ -23,9 +23,16 @@ internal object NodeProperties {
     const val NOT_INTERACTIVE_VIEWS_HINT =
         "Not interactive. The click listener is on another View, most often a parent row or container."
 
+    const val NOT_INTERACTIVE_FLUTTER_HINT =
+        "Not interactive. In Flutter the tap handler (an InkWell or GestureDetector) is usually on an " +
+            "ancestor, whose node then carries this one's words too."
+
     /** The Compose explanation only where Compose is: on a Views screen it pointed at the wrong cause. */
-    fun notInteractiveHint(framework: UiFramework): String =
-        if (framework == UiFramework.VIEWS) NOT_INTERACTIVE_VIEWS_HINT else NOT_INTERACTIVE_HINT
+    fun notInteractiveHint(framework: UiFramework): String = when (framework) {
+        UiFramework.VIEWS -> NOT_INTERACTIVE_VIEWS_HINT
+        UiFramework.FLUTTER -> NOT_INTERACTIVE_FLUTTER_HINT
+        UiFramework.COMPOSE, UiFramework.HYBRID, UiFramework.UNKNOWN -> NOT_INTERACTIVE_HINT
+    }
 
     const val NONE = "—"
     private const val BASELINE_DPI = 160.0
@@ -83,7 +90,11 @@ internal object NodeProperties {
             }
 
         // On a Views screen the resource id is the View id; calling it a test tag would mislead.
-        val tagName = if (framework == UiFramework.VIEWS) "View id" else "Test tag"
+        val tagName = when (framework) {
+            UiFramework.VIEWS -> "View id"
+            UiFramework.FLUTTER -> "Semantics identifier"
+            UiFramework.COMPOSE, UiFramework.HYBRID, UiFramework.UNKNOWN -> "Test tag"
+        }
         val spoken = node.accessibleLabel.takeIf { it.isNotBlank() && it != node.text && it != node.contentDescription }
         return listOfNotNull(
             row("Class", classText(node.className)),

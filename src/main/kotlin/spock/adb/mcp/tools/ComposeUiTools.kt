@@ -5,6 +5,7 @@ import spock.adb.CancellationSignal
 import spock.adb.device.ConnectedDevice
 import spock.adb.device.ops.UiTreeOperations
 import spock.adb.uitree.DisplayMetrics
+import spock.adb.uitree.FlutterScreen
 import spock.adb.uitree.NodeVisibility
 import spock.adb.uitree.OPAQUE_SURFACE_NOTE
 import spock.adb.uitree.Presence
@@ -39,6 +40,9 @@ internal object UiTreeReader {
      * @param metrics display metrics an earlier capture in the same call already read; see
      *   [UiTreeOperations.observe].
      * @param timeoutSeconds for each command of the capture; a wait passes what it has left.
+     * Whether the screen is a Flutter app's is asked of the app on the device, best effort: see
+     * [FlutterScreen].
+     *
      * @param cancellation what stops the capture; by default this thread's interrupt.
      * @throws IllegalStateException with an actionable message when the dump fails. A lost
      *   device is told what an agent can do about it, which a person in the Inspector cannot.
@@ -49,7 +53,10 @@ internal object UiTreeReader {
         timeoutSeconds: Long = UiTreeOperations.DUMP_TIMEOUT_SECONDS,
         cancellation: CancellationSignal = CancellationSignal.currentThread(),
     ): UiObservation = try {
-        UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation).observe(metrics)
+        val observation = UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation)
+            .observe(metrics)
+        val seconds = FlutterScreen.checkSeconds(timeoutSeconds)
+        observation.copy(tree = FlutterScreen.classifyOn(observation.tree, device.device, device.serialNumber, seconds))
     } catch (e: UiCaptureException) {
         throw when (e.kind) {
             UiCaptureException.Kind.DEVICE_UNAVAILABLE ->
@@ -84,6 +91,12 @@ internal object UiTreeReader {
             append(
                 "\nThis screen is Compose: do not assume a View hierarchy, and prefer semantic " +
                     "matching over coordinates.",
+            )
+        }
+        if (framework == UiFramework.FLUTTER) {
+            append(
+                "\nThis screen is Flutter: its words are content descriptions, which text also matches, and " +
+                    "Semantics(identifier:) is the resource id, which testTag matches.",
             )
         }
     }
@@ -183,9 +196,16 @@ internal object UiTreeReader {
     )
 
     fun Schema.ObjectBuilder.elementSelector() {
-        string("testTag", "Compose Modifier.testTag, or a View resource id. The most reliable match.")
-        string("text", "Visible text of the element.")
-        string("contentDescription", "Accessibility content description.")
+        string(
+            "testTag",
+            "Compose Modifier.testTag, a View resource id, or Flutter Semantics(identifier:). The most reliable match.",
+        )
+        string(
+            "text",
+            "Words on the element: its text or, where Flutter and icon-only controls put them, its content " +
+                "description.",
+        )
+        string("contentDescription", "Accessibility content description only.")
         boolean("exact", "Match the whole value rather than a substring. Defaults to false.")
         string("packageName", "Restrict matches to this application package.")
         string("containerTag", "Exact tag or resource ID of one container to search within.")
@@ -289,7 +309,8 @@ class FindUiElementTool : AdbTool {
                     ToolResult.text(
                         observation.preface() + "\n${matches.size} match(es) for ${selector.describe()}:\n" +
                             matches.joinToString("\n") {
-                                "  " + it.render() + "\n    visibility: " + visibility.getValue(it).describe()
+                                "  " + it.render() + "\n    visibility: " + visibility.getValue(it).describe() +
+                                    (if (selector.matchedContentDescription(it)) "\n    matched content-desc" else "")
                             },
                     )
                 }

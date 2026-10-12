@@ -63,7 +63,8 @@ class SetHttpProxyTool(
             "(Charles, Proxyman, mitmproxy). The setting is global and survives a reboot — " +
             "clear it with android_clear_http_proxy when finished, or the device keeps " +
             "routing through a proxy that may no longer be listening. Apps that use their " +
-            "own HTTP stack or pin certificates will not be captured."
+            "own HTTP stack or pin certificates will not be captured; Flutter's dart:io HttpClient " +
+            "ignores the system proxy unless the app opts in."
     override val safety = ToolSafety.DESTRUCTIVE
     override val inputSchema: JsonObject = Schema.obj {
         string(

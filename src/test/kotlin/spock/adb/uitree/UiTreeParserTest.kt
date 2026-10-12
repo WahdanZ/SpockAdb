@@ -189,6 +189,64 @@ class UiTreeParserTest {
         assertFalse(login.isOpaqueSurface)
     }
 
+    @Test
+    fun `a Flutter dump with Semantics identifiers is read as Flutter`() {
+        for (name in listOf("flutter-login.xml", "flutter-targeting.xml")) {
+            val tree = UiTreeParser.parse(dump(name))
+            assertEquals(UiFramework.FLUTTER, tree.framework, name)
+            assertEquals(UiTree.TestTagSupport.NOT_APPLICABLE, tree.testTagSupport, name)
+        }
+    }
+
+    @Test
+    fun `a Flutter dump without an identifier cannot be told from Views by the dump alone`() {
+        val anonymous = dump("flutter-targeting.xml")
+            .replace("resource-id=\"targeting_save\"", "resource-id=\"\"")
+            .replace("resource-id=\"result\"", "resource-id=\"\"")
+
+        assertEquals(UiFramework.VIEWS, UiTreeParser.parse(anonymous).framework)
+    }
+
+    @Test
+    fun `bare ids beside visible text are not Flutter's`() {
+        // React Native's testID is a bare resource id too, but its words are text.
+        val reactNative = UiTreeParser.parse(
+            """
+            <hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][500,500]">
+              <node class="android.widget.TextView" resource-id="login" text="Log in" bounds="[0,0][100,100]" />
+              <node class="android.view.ViewGroup" resource-id="row" bounds="[0,100][100,200]" />
+            </node></hierarchy>
+            """.trimIndent(),
+        )
+
+        assertEquals(UiFramework.VIEWS, reactNative.framework)
+    }
+
+    @Test
+    fun `the app on the device decides, over what the dump looked like`() {
+        val targeting = UiTreeParser.parse(dump("flutter-targeting.xml"))
+        val anonymous = targeting.copy(framework = UiFramework.VIEWS)
+        val asked = mutableListOf<String>()
+
+        assertEquals(
+            UiFramework.FLUTTER,
+            FlutterScreen.classify(anonymous) {
+                asked += it
+                true
+            }.framework,
+        )
+        assertEquals(listOf("spock.adb.spock_flutter_sample"), asked)
+        assertEquals(UiFramework.VIEWS, FlutterScreen.classify(targeting) { false }.framework)
+        assertEquals(UiFramework.FLUTTER, FlutterScreen.classify(targeting) { null }.framework, "adb failed")
+        assertEquals(UiFramework.VIEWS, FlutterScreen.classify(anonymous) { null }.framework)
+    }
+
+    @Test
+    fun `a native screen inside a Flutter app stays Views, and Compose stays Compose`() {
+        assertEquals(UiFramework.VIEWS, FlutterScreen.classify(viewsTree) { true }.framework)
+        assertEquals(UiFramework.COMPOSE, FlutterScreen.classify(composeTree) { true }.framework)
+    }
+
     private fun hierarchy(root: String) =
         UiTreeParser.parse("<?xml version='1.0' ?><hierarchy rotation=\"0\">$root</hierarchy>")
 

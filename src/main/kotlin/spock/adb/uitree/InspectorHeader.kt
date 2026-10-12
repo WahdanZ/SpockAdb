@@ -139,10 +139,12 @@ internal class InspectorHeader(private val onNotice: (String) -> Unit) : JPanel(
 
         val COMPOSE_COLOR = JBColor(0x1F6F4A, 0x57BA8C)
         val HYBRID_COLOR = JBColor(0x8A6100, 0xE0A030)
+        val FLUTTER_COLOR = JBColor(0x0D5BA8, 0x54A9EB)
 
         fun frameworkColour(framework: UiFramework): JBColor = when (framework) {
             UiFramework.COMPOSE -> COMPOSE_COLOR
             UiFramework.HYBRID -> HYBRID_COLOR
+            UiFramework.FLUTTER -> FLUTTER_COLOR
             else -> JBColor.GRAY
         }
     }
@@ -156,6 +158,7 @@ internal fun frameworkBadge(framework: UiFramework): String = when (framework) {
     UiFramework.COMPOSE -> "Compose"
     UiFramework.HYBRID -> "Hybrid"
     UiFramework.VIEWS -> "Views"
+    UiFramework.FLUTTER -> "Flutter"
     UiFramework.UNKNOWN -> "Unknown"
 }
 

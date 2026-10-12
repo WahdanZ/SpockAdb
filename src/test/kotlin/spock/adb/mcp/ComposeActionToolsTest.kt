@@ -10,13 +10,16 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.mcp.tools.AccessibilityAuditTool
 import spock.adb.mcp.tools.AssertEnabledTool
 import spock.adb.mcp.tools.AssertTextTool
 import spock.adb.mcp.tools.AssertVisibleTool
+import spock.adb.mcp.tools.FindUiElementTool
 import spock.adb.mcp.tools.InputTextIntoElementTool
 import spock.adb.mcp.tools.LongPressElementTool
 import spock.adb.mcp.tools.ScrollToElementTool
 import spock.adb.mcp.tools.TapElementTool
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class ComposeActionToolsTest {
@@ -24,7 +27,13 @@ class ComposeActionToolsTest {
      * A device showing [xml], or after each swipe the next of [after]. Without [size] it does not
      * answer `wm size`, so the viewport is the window's own bounds.
      */
-    private class Screen(xml: String, private val size: String = "", after: List<String> = emptyList()) {
+    private class Screen(
+        xml: String,
+        private val size: String = "",
+        after: List<String> = emptyList(),
+        serial: String = "emulator-5554",
+        flutterApp: Boolean = false,
+    ) {
         private val dumps = listOf(xml) + after
         val commands = mutableListOf<String>()
         val device = mockk<IDevice>(relaxed = true).also { device ->
@@ -36,12 +45,106 @@ class ComposeActionToolsTest {
                     command.startsWith("cat ") -> dumps[swipes.coerceAtMost(dumps.lastIndex)]
                     command == "wm size" -> size
                     command == "wm density" -> "Physical density: 320"
+                    command.startsWith("dumpsys package") -> INSTALL
+                    flutterApp && command.startsWith("for a in") -> FLUTTER_DEBUG_APK
                     else -> ""
                 }.toByteArray()
                 secondArg<IShellOutputReceiver>().addOutput(output, 0, output.size)
             }
         }
-        val context = FakeToolContext(available = listOf(FakeToolContext.device("emulator-5554").copy(device = device)))
+        val context = FakeToolContext(available = listOf(FakeToolContext.device(serial).copy(device = device)))
+    }
+
+    /**
+     * The sample's *Element targeting* screen on a device that says the app is Flutter, or is not.
+     * A serial of its own each time, so no other test's answer about the app is remembered for it.
+     */
+    private fun flutterTargeting(flutterApp: Boolean = true) = Screen(
+        checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-targeting.xml")).bufferedReader().readText(),
+        size = "Physical size: 1080x2636",
+        serial = "emulator-${UUID.randomUUID()}",
+        flutterApp = flutterApp,
+    )
+
+    @Test
+    fun `text finds a Flutter label in its content description and the tap says so`() {
+        val screen = flutterTargeting()
+
+        val result = TapElementTool().execute(text("Suche"), screen.context)
+
+        assertEquals(listOf("input tap 372 552"), screen.commands.filter { it.startsWith("input ") })
+        assertTrue(result.text().contains("Tap dispatched once to 'Suche' (matched content-desc)"), result.text())
+    }
+
+    @Test
+    fun `two Flutter buttons with one label are still refused`() {
+        val screen = flutterTargeting()
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            TapElementTool().execute(text("Details"), screen.context)
+        }
+
+        assertTrue(error.message!!.contains("Ambiguous selector text='Details': 2 matches"), error.message)
+        assertTrue(screen.commands.none { it.startsWith("input ") })
+    }
+
+    @Test
+    fun `contentDescription stays strict and never matches visible text`() {
+        val screen = Screen(screenXml(control("Save", "save")))
+
+        val result = FindUiElementTool().execute(
+            JsonObject().apply { addProperty("contentDescription", "Save") },
+            screen.context,
+        )
+
+        assertTrue(result.text().contains("No element matched"), result.text())
+    }
+
+    @Test
+    fun `find names the field the text was found in`() {
+        val result = FindUiElementTool().execute(text("Suche"), flutterTargeting().context)
+
+        assertTrue(result.text().contains("1 match(es) for text='Suche'"), result.text())
+        assertTrue(result.text().contains("matched content-desc"), result.text())
+    }
+
+    @Test
+    fun `a Semantics identifier is a testTag, and taps the button it wraps`() {
+        val screen = flutterTargeting()
+
+        TapElementTool().execute(
+            JsonObject().apply {
+                addProperty("testTag", "targeting_save")
+                addProperty("exactTag", true)
+            },
+            screen.context,
+        )
+
+        assertEquals(listOf("input tap 540 1782"), screen.commands.filter { it.startsWith("input ") })
+    }
+
+    @Test
+    fun `assert_text matches content descriptions through the shared selector`() {
+        val pass = AssertTextTool().execute(text("Tarif S"), flutterTargeting().context)
+        assertFalse(pass.isError, pass.text())
+        assertTrue(pass.text().contains("PASS: 'GRATIS E-SIM\nTarif S' (matched content-desc)"), pass.text())
+
+        val fail = AssertTextTool().execute(text("Kündigen"), flutterTargeting().context)
+        assertTrue(fail.isError, fail.text())
+        assertTrue(fail.text().contains("\"Suche\""), "content descriptions are offered: ${fail.text()}")
+    }
+
+    @Test
+    fun `the audit names Flutter and gives Flutter fixes when the app is a Flutter app`() {
+        val flutter = AccessibilityAuditTool().execute(JsonObject(), flutterTargeting().context).text()
+
+        assertTrue(flutter.contains("UI framework: Flutter (semantics bridge)"), flutter)
+        assertTrue(flutter.contains("MaterialTapTargetSize.padded"), flutter)
+        assertFalse(flutter.contains("label:  GRATIS E-SIM\n"), "a merged label is printed on one line: $flutter")
+        assertTrue(flutter.contains("Skipped 2 control(s)"), flutter)
+
+        val native = AccessibilityAuditTool().execute(JsonObject(), flutterTargeting(flutterApp = false).context).text()
+        assertTrue(native.contains("UI framework: Traditional Android Views"), native)
     }
 
     @Test
@@ -264,6 +367,8 @@ class ComposeActionToolsTest {
 
     private fun byTag(tag: String) = JsonObject().apply { addProperty("testTag", tag) }
 
+    private fun text(value: String) = JsonObject().apply { addProperty("text", value) }
+
     private fun screenXml(children: String) =
         "<hierarchy><node class=\"android.view.View\" bounds=\"[0,0][500,500]\">$children</node></hierarchy>"
 
@@ -292,5 +397,12 @@ class ComposeActionToolsTest {
 
     private companion object {
         const val PHONE = "Physical size: 1080x2400"
+
+        /** What `dumpsys package` says of an install, enough to tell it from the next one. */
+        const val INSTALL = "    versionCode=1 minSdk=21 targetSdk=34\n    lastUpdateTime=2026-10-11 09:00:00\n"
+
+        /** The APK listing of a Flutter debug build. */
+        const val FLUTTER_DEBUG_APK = "  11206032  1981-01-01 01:01   lib/arm64-v8a/libflutter.so\n" +
+            "  2048  1981-01-01 01:01   assets/flutter_assets/kernel_blob.bin\n"
     }
 }

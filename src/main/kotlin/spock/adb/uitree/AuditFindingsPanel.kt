@@ -43,7 +43,7 @@ internal class AuditFindingsPanel(private val onSelectNode: (UiNode) -> Unit) : 
             val finding = list.selectedValue
             fix.isVisible = finding != null
             if (finding == null) return@addListSelectionListener
-            fix.text = if (framework == UiFramework.VIEWS) finding.viewFix else finding.composeFix
+            fix.text = finding.fixFor(framework)
             onSelectNode(finding.node)
         }
         add(JBScrollPane(list), BorderLayout.CENTER)

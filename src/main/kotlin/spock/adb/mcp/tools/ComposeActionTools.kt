@@ -115,8 +115,8 @@ class ScrollToElementTool : AdbTool {
             val matches = UiTreeSearch.findAll(tree, selector)
             found(observation, matches)?.let { (node, visibility) ->
                 return ToolResult.text(
-                    observation.preface() +
-                        "\nFound '${node.label}' after $attempt scroll(s) at ${node.bounds}, ${visibility.describe()}.",
+                    observation.preface() + "\nFound '${node.label}'${selector.matchNote(node)} after " +
+                        "$attempt scroll(s) at ${node.bounds}, ${visibility.describe()}.",
                 )
             }
             seenOutside = seenOutside || matches.isNotEmpty()
@@ -214,7 +214,7 @@ private const val EXPECTATION_HINT =
  * cannot be said to be on screen or off it, so the verdict is inconclusive — an error result, since
  * a test workflow must not read it as a pass.
  */
-private fun UiObservation.visibilityVerdict(matches: List<UiNode>, what: String): ToolResult? {
+private fun UiObservation.visibilityVerdict(matches: List<UiNode>, what: String, selector: UiSelector): ToolResult? {
     if (matches.isEmpty()) return null
     val visibility = ViewportVisibility.classifyAll(this)
     val inView = matches.filter { visibility.getValue(it).inViewport }
@@ -226,7 +226,8 @@ private fun UiObservation.visibilityVerdict(matches: List<UiNode>, what: String)
         )
         first != null -> ToolResult.text(
             // The description ends "(occlusion not checked)", so the pass never claims more than bounds show.
-            preface() + "\nPASS: '${first.label}' at ${first.bounds} is ${visibility.getValue(first).describe()}. " +
+            preface() + "\nPASS: '${first.label}'${selector.matchNote(first)} at ${first.bounds} is " +
+                "${visibility.getValue(first).describe()}. " +
                 "${inView.size} of ${matches.size} match(es) in the viewport.",
         )
         else -> ToolResult.error(
@@ -254,7 +255,7 @@ class AssertVisibleTool : AdbTool {
 
         val observation = UiTreeReader.read(device)
         val matches = UiTreeSearch.findAll(observation.tree, selector)
-        return observation.visibilityVerdict(matches, "an element matching ${selector.describe()}")
+        return observation.visibilityVerdict(matches, "an element matching ${selector.describe()}", selector)
             ?: ToolResult.error(
                 observation.preface() + "\nFAIL: nothing matched ${selector.describe()}. An element scrolled out " +
                     "of view is often left out of the capture entirely; android_scroll_to_element brings it in.\n\n" +
@@ -294,8 +295,9 @@ class AssertEnabledTool : AdbTool {
 class AssertTextTool : AdbTool {
     override val name = "android_assert_text"
     override val description =
-        "Check that the given text is on screen: in the viewport, not only in the tree. Use it to " +
-            "verify the result of an action rather than inferring it from a screenshot."
+        "Check that the given text is on screen: in the viewport, not only in the tree. It matches text or " +
+            "content description, as the text selector of every element tool does. Use it to verify the result " +
+            "of an action rather than inferring it from a screenshot."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         string("text", "The text that should be on screen.", required = true)
@@ -310,18 +312,17 @@ class AssertTextTool : AdbTool {
 
         val observation = UiTreeReader.read(device)
         val tree = observation.tree
-        // Content description counts: Compose text is often exposed that way.
-        val byText = UiTreeSearch.findAll(tree, UiSelector(text = expected, exact = exact))
-        val byDescription = UiTreeSearch.findAll(tree, UiSelector(contentDescription = expected, exact = exact))
-        val matches = byText + byDescription.filterNot { match -> byText.any { it === match } }
+        // The text selector matches content descriptions too, where Flutter and Compose icons put their words.
+        val selector = UiSelector(text = expected, exact = exact)
+        val matches = UiTreeSearch.findAll(tree, selector)
 
-        return observation.visibilityVerdict(matches, "'$expected'") ?: run {
+        return observation.visibilityVerdict(matches, "'$expected'", selector) ?: run {
             // Only what is in the viewport is offered as what the screen shows, when that can be told.
             val visibility = ViewportVisibility.classifyAll(observation)
             val known = observation.viewport != null
             val shown = tree.nodes()
                 .filter { !known || visibility.getValue(it).inViewport }
-                .mapNotNull { it.text.takeIf(String::isNotBlank) }
+                .mapNotNull { node -> node.text.ifBlank { node.contentDescription }.takeIf(String::isNotBlank) }
                 .distinct()
                 .take(VISIBLE_TEXT_SAMPLE)
                 .toList()

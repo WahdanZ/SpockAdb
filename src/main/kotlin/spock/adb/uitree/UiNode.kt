@@ -171,5 +171,12 @@ enum class UiFramework(val description: String) {
     VIEWS("Traditional Android Views"),
     COMPOSE("Jetpack Compose"),
     HYBRID("Mixed Views and Jetpack Compose"),
+
+    /**
+     * A Flutter app, read through the accessibility bridge Flutter's engine publishes its semantics
+     * on. Its node classes are `Button`, `EditText` and `View` like any View screen's, so the dump
+     * alone rarely tells; see [FlutterScreen].
+     */
+    FLUTTER("Flutter (semantics bridge)"),
     UNKNOWN("Could not be determined"),
 }

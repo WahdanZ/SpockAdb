@@ -295,6 +295,68 @@ class UiSelectorTest {
         }
     }
 
+    /** Captured from sample/flutter_app's Element targeting screen: Flutter 3.47, Android 14. */
+    private val flutterTargeting = UiTreeParser.parse(
+        checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-targeting.xml")).bufferedReader().readText(),
+    )
+
+    @Test
+    fun `text matches a content description, which is where Flutter puts every label`() {
+        val tab = UiTreeSearch.findUnique(flutterTargeting, UiSelector(text = "Suche"), UiTreeSearch.Action.TAP)!!
+
+        assertEquals("Suche", tab.contentDescription)
+        assertEquals("", tab.text)
+        assertTrue(UiSelector(text = "Suche").matchedContentDescription(tab))
+        assertEquals(" (matched content-desc)", UiSelector(text = "Suche").matchNote(tab))
+    }
+
+    @Test
+    fun `visible text that matches says nothing about the content description`() {
+        val node = nodeWithText("Save").copy(contentDescription = "Save the draft")
+
+        assertFalse(UiSelector(text = "Save").matchedContentDescription(node))
+        assertEquals("", UiSelector(contentDescription = "Save").matchNote(node))
+    }
+
+    @Test
+    fun `text matches either field, contentDescription only its own`() {
+        val described = nodeWithText("").copy(contentDescription = "Suche")
+        val written = nodeWithText("Suche")
+
+        assertTrue(UiSelector(text = "Suche").matches(described))
+        assertTrue(UiSelector(text = "Suche").matches(written))
+        assertTrue(UiSelector(contentDescription = "Suche").matches(described))
+        assertFalse(UiSelector(contentDescription = "Suche").matches(written))
+        assertTrue(UiSelector(text = "suche", exact = true).matches(described))
+        assertFalse(UiSelector(text = "Such", exact = true).matches(described))
+    }
+
+    @Test
+    fun `text and contentDescription together must both hold`() {
+        val node = nodeWithText("").copy(contentDescription = "Suche")
+
+        assertTrue(UiSelector(text = "Suche", contentDescription = "Suche").matches(node))
+        assertFalse(UiSelector(text = "Suche", contentDescription = "Start").matches(node))
+    }
+
+    @Test
+    fun `a substring of a merged Flutter label finds its card`() {
+        val card = UiTreeSearch.findUnique(flutterTargeting, UiSelector(text = "Tarif S"), UiTreeSearch.Action.TAP)!!
+
+        assertEquals("GRATIS E-SIM\nTarif S", card.contentDescription)
+        assertTrue(card.clickable)
+    }
+
+    @Test
+    fun `two Flutter buttons with one label are ambiguous by text as by content description`() {
+        for (selector in listOf(UiSelector(text = "Details"), UiSelector(contentDescription = "Details"))) {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                UiTreeSearch.findUnique(flutterTargeting, selector, UiTreeSearch.Action.TAP)
+            }
+            assertTrue(error.message!!.contains("2 matches"), error.message)
+        }
+    }
+
     private val button = nodeWithText("").copy(clickable = true, bounds = UiNode.Bounds(10, 10, 90, 90))
 
     /** [wrapper] as the matched node, under a plain root, tapped. */
