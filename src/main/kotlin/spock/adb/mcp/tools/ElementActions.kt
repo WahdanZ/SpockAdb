@@ -3,6 +3,7 @@ package spock.adb.mcp.tools
 import com.google.gson.JsonObject
 import spock.adb.CancellationSignal
 import spock.adb.device.ConnectedDevice
+import spock.adb.mcp.tools.RouteExpectation.Companion.routeOption
 import spock.adb.mcp.tools.UiTreeReader.frameworkNote
 import spock.adb.mcp.tools.UiTreeReader.preface
 import spock.adb.mcp.tools.UiTreeReader.toSelector
@@ -82,11 +83,22 @@ internal object ElementActions {
         val steps: (x: Int, y: Int) -> List<Step>,
     )
 
-    fun perform(context: ToolContext, arguments: JsonObject, spec: Spec): ToolResult {
+    /** @param routes where `expectRoute` reads the Flutter route; the app's session, but for tests. */
+    fun perform(
+        context: ToolContext,
+        arguments: JsonObject,
+        spec: Spec,
+        routes: RouteReader = SessionRouteReader,
+    ): ToolResult {
         // Taken first, on this thread: the default signal is this thread's interrupt.
         val signal = context.cancellationSignal()
         // An argument error is reported before the device is touched, let alone pressed.
         val expectation = Expectation.from(arguments, context.canCancel)
+        val route = RouteExpectation.from(arguments, context.canCancel)
+        require(expectation == null || route == null) {
+            "${RouteExpectation.ROUTE} is checked on its own: leave out $TEST_TAG, $TEXT and $DESCRIPTION, and " +
+                "check the element afterwards with android_wait_for_element."
+        }
         val connected = context.requireDevice(arguments.optionalString("deviceSerial"))
         val resolved = try {
             resolveElement(connected, arguments, spec.action, signal)
@@ -98,17 +110,35 @@ internal object ElementActions {
             )
         }
         val before = expectation?.condition?.evaluate(resolved.observation)
+        val routeCheck = route?.let {
+            // The app the element is in; the session must be that app's.
+            val app = resolved.observation.windowPackage
+            RouteCheck(it, { check -> routes.read(context, connected.serialNumber, app, check) }, signal)
+        }
+        val routeBefore = routeCheck?.before()
 
         val dispatched = "${spec.noun} dispatched once to '${resolved.target.printableLabel}'" +
             "${resolved.matchNote} " +
             "${resolved.where}${spec.details}" + resolved.choiceNote?.let { "; $it" }.orEmpty()
         Dispatch(connected, signal, resolved, spec).send()?.let { return it }
 
-        if (expectation == null || before == null) {
-            return ToolResult.text(resolved.observation.summary() + "\n$dispatched; ${spec.unverified}")
+        val sent = "$dispatched; it was not repeated."
+        return when {
+            route != null && routeCheck != null && routeBefore != null -> routeResult(
+                resolved.observation.summary() + "\n" + sent,
+                route,
+                routeCheck.verify(routeBefore, "the ${spec.noun.lowercase()}"),
+            )
+            expectation == null || before == null ->
+                ToolResult.text(resolved.observation.summary() + "\n$dispatched; ${spec.unverified}")
+            else -> Verdict(resolved.observation, sent, spec.noun, expectation).verify(connected, signal, before)
         }
-        val verdict = Verdict(resolved.observation, "$dispatched; it was not repeated.", spec.noun, expectation)
-        return verdict.verify(connected, signal, before)
+    }
+
+    /** [verdict] on [route] after [lead] — what was dispatched — with a note when its time was capped. */
+    fun routeResult(lead: String, route: RouteExpectation, verdict: RouteCheck.Verdict): ToolResult {
+        val result = ToolResult(listOf(ToolContent.Text(lead + "\n" + verdict.text)), isError = verdict.outcome.isError)
+        return if (route.capped) result.withNote(WaitReport.cappedNote(TIMEOUT, route.requestedMs)) else result
     }
 
     /** What the agent said should hold after the action. Its selector has no package or container scope. */
@@ -130,7 +160,9 @@ internal object ElementActions {
                 )
                 val until = arguments.optionalString(UNTIL)
                 if (selector.isEmpty) {
-                    val stray = listOf(UNTIL, TIMEOUT, EXACT, EXACT_TAG).filter { arguments.has(it) }
+                    // expectRoute takes the timeout too.
+                    val timed = if (arguments.has(RouteExpectation.ROUTE)) emptyList() else listOf(TIMEOUT)
+                    val stray = (listOf(UNTIL, EXACT, EXACT_TAG) + timed).filter { arguments.has(it) }
                     require(stray.isEmpty()) {
                         "${stray.joinToString()} given without $TEST_TAG, $TEXT or $DESCRIPTION, so there is " +
                             "nothing to check. Name the element expected after the action, or leave them out."
@@ -174,6 +206,7 @@ internal object ElementActions {
                 "$DEFAULT_TIMEOUT_MS; over HTTP at most ${WaitForElementTool.UNCANCELLABLE_MAX_TIMEOUT_MS}. The " +
                 "first look always completes, even past this limit.",
         )
+        routeOption()
     }
 
     /** Sends each step once, in order, and stops at the first that fails or is cancelled. */
@@ -211,7 +244,7 @@ internal object ElementActions {
                     )
                 }
                 try {
-                    shell.run(step.command)
+                    UiDumpCache.shared.aroundInput { shell.run(step.command) }
                 } catch (e: UiCaptureException) {
                     return error(
                         if (e.kind == UiCaptureException.Kind.CANCELLED) {
@@ -248,9 +281,10 @@ internal object ElementActions {
         /** Looks for the expectation after the input was sent, and says what was found. */
         fun verify(connected: ConnectedDevice, signal: CancellationSignal, heldBefore: UiCondition.Check): ToolResult {
             val waiter = UiWaiter(
-                // The display does not change because of a tap, so the pre-action metrics are reused.
+                // The display does not change because of a tap, so the pre-action metrics are reused;
+                // the screen does, so no capture is.
                 capture = { seconds ->
-                    UiTreeReader.read(connected, before.metrics, seconds, signal, identifyFlutter = false)
+                    UiTreeReader.read(connected, before.metrics, seconds, signal, poll = true)
                 },
                 signal = signal,
             )

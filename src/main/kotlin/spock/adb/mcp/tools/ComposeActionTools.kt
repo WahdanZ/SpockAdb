@@ -7,6 +7,8 @@ import spock.adb.mcp.tools.UiTreeReader.elementSelector
 import spock.adb.mcp.tools.UiTreeReader.frameworkNote
 import spock.adb.mcp.tools.UiTreeReader.preface
 import spock.adb.mcp.tools.UiTreeReader.toSelector
+import spock.adb.mcp.tools.UiTreeReader.verbose
+import spock.adb.mcp.tools.UiTreeReader.verboseOption
 import spock.adb.uitree.AccessibilityAudit
 import spock.adb.uitree.DisplayMetrics
 import spock.adb.uitree.NodeVisibility
@@ -28,7 +30,9 @@ import spock.adb.uitree.ViewportVisibility
  */
 
 /** `android_tap_element` — tap by semantics, not coordinates. */
-class TapElementTool : AdbTool {
+class TapElementTool internal constructor(private val routes: RouteReader) : AdbTool {
+    constructor() : this(SessionRouteReader)
+
     override val name = "android_tap_element"
     override val description =
         "Tap an element identified by test tag, text or content description. Prefer this over " +
@@ -47,11 +51,14 @@ class TapElementTool : AdbTool {
         ElementActions.Spec(UiTreeSearch.Action.TAP, "Tap", unverified = "UI outcome not verified.") { x, y ->
             listOf(ElementActions.Step("input tap $x $y", "the tap"))
         },
+        routes,
     )
 }
 
 /** `android_long_press_element`. */
-class LongPressElementTool : AdbTool {
+class LongPressElementTool internal constructor(private val routes: RouteReader) : AdbTool {
+    constructor() : this(SessionRouteReader)
+
     override val name = "android_long_press_element"
     override val description =
         "Long-press an element identified by test tag, text or content description. $EXPECTATION_HINT"
@@ -75,7 +82,7 @@ class LongPressElementTool : AdbTool {
             // A swipe that starts and ends at the same point is a long press.
             listOf(ElementActions.Step("input swipe $x $y $x $y $duration", "the long press"))
         }
-        return ElementActions.perform(context, arguments, spec)
+        return ElementActions.perform(context, arguments, spec, routes)
     }
 
     private companion object {
@@ -109,6 +116,7 @@ class ScrollToElementTool : AdbTool {
         var metrics: DisplayMetrics? = null
         var seenOutside = false
         repeat(maxSwipes) { attempt ->
+            // Only the first look can reuse a recent capture: each swipe below empties the cache.
             val observation = UiTreeReader.read(connected, metrics)
             metrics = observation.metrics
             val tree = observation.tree
@@ -131,7 +139,9 @@ class ScrollToElementTool : AdbTool {
             val x = scrollable.bounds.centerX
             val top = scrollable.bounds.top + scrollable.bounds.height / SWIPE_INSET
             val bottom = scrollable.bounds.bottom - scrollable.bounds.height / SWIPE_INSET
-            McpShell.run(device, "input swipe $x $bottom $x $top $SWIPE_DURATION_MS")
+            UiDumpCache.shared.aroundInput {
+                McpShell.run(device, "input swipe $x $bottom $x $top $SWIPE_DURATION_MS")
+            }
         }
 
         val outside = if (seenOutside) " It was in the tree, but outside the viewport or its scroll container." else ""
@@ -166,7 +176,9 @@ class ScrollToElementTool : AdbTool {
 }
 
 /** `android_input_text_into_element` — focus then type. */
-class InputTextIntoElementTool : AdbTool {
+class InputTextIntoElementTool internal constructor(private val routes: RouteReader) : AdbTool {
+    constructor() : this(SessionRouteReader)
+
     override val name = "android_input_text_into_element"
     override val description =
         "Tap a text field identified by test tag, text or content description, then type into " +
@@ -195,7 +207,7 @@ class InputTextIntoElementTool : AdbTool {
                 ElementActions.Step("input text ${ShellQuote.quote(value)}", "the text"),
             )
         }
-        return ElementActions.perform(context, arguments, spec)
+        return ElementActions.perform(context, arguments, spec, routes)
     }
 }
 
@@ -214,24 +226,30 @@ private const val EXPECTATION_HINT =
  * cannot be said to be on screen or off it, so the verdict is inconclusive — an error result, since
  * a test workflow must not read it as a pass.
  */
-private fun UiObservation.visibilityVerdict(matches: List<UiNode>, what: String, selector: UiSelector): ToolResult? {
+private fun UiObservation.visibilityVerdict(
+    matches: List<UiNode>,
+    what: String,
+    selector: UiSelector,
+    verbose: Boolean,
+): ToolResult? {
     if (matches.isEmpty()) return null
     val visibility = ViewportVisibility.classifyAll(this)
     val inView = matches.filter { visibility.getValue(it).inViewport }
     val first = inView.firstOrNull()
+    val preface = preface(verbose = verbose)
     return when {
         viewport == null -> ToolResult.error(
-            preface() + "\nINCONCLUSIVE: $what is in the tree (${matches.size} match(es)), but the viewport is " +
+            preface + "\nINCONCLUSIVE: $what is in the tree (${matches.size} match(es)), but the viewport is " +
                 "unknown, so whether it is on screen was not checked.",
         )
         first != null -> ToolResult.text(
             // The description ends "(occlusion not checked)", so the pass never claims more than bounds show.
-            preface() + "\nPASS: '${first.printableLabel}'${selector.matchNote(first)} at ${first.bounds} is " +
+            preface + "\nPASS: '${first.printableLabel}'${selector.matchNote(first)} at ${first.bounds} is " +
                 "${visibility.getValue(first).describe()}. " +
                 "${inView.size} of ${matches.size} match(es) in the viewport.",
         )
         else -> ToolResult.error(
-            preface() + "\nFAIL: $what is present in the tree but outside the viewport or its scroll container " +
+            preface + "\nFAIL: $what is present in the tree but outside the viewport or its scroll container " +
                 "(${matches.size} match(es), first at ${matches.first().bounds}). Call android_scroll_to_element " +
                 "to bring it into view.",
         )
@@ -246,7 +264,10 @@ class AssertVisibleTool : AdbTool {
             "not, or when the viewport is unknown, so a test workflow can stop at the first failure. " +
             "Bounds cannot show whether another element covers it."
     override val safety = ToolSafety.READ_ONLY
-    override val inputSchema: JsonObject = Schema.obj { elementSelector() }
+    override val inputSchema: JsonObject = Schema.obj {
+        elementSelector()
+        verboseOption()
+    }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
@@ -255,9 +276,11 @@ class AssertVisibleTool : AdbTool {
 
         val observation = UiTreeReader.read(device)
         val matches = UiTreeSearch.findAll(observation.tree, selector)
-        return observation.visibilityVerdict(matches, "an element matching ${selector.describe()}", selector)
+        val verbose = arguments.verbose()
+        return observation.visibilityVerdict(matches, "an element matching ${selector.describe()}", selector, verbose)
             ?: ToolResult.error(
-                observation.preface() + "\nFAIL: nothing matched ${selector.describe()}. An element scrolled out " +
+                observation.preface(verbose = verbose) + "\nFAIL: nothing matched ${selector.describe()}. An " +
+                    "element scrolled out " +
                     "of view is often left out of the capture entirely; android_scroll_to_element brings it in.\n\n" +
                     observation.tree.frameworkNote(),
             )
@@ -270,7 +293,10 @@ class AssertEnabledTool : AdbTool {
         "Check that exactly one element matches and that it is enabled. Several matches fail, listing them, " +
             "rather than answering for whichever came first."
     override val safety = ToolSafety.READ_ONLY
-    override val inputSchema: JsonObject = Schema.obj { elementSelector() }
+    override val inputSchema: JsonObject = Schema.obj {
+        elementSelector()
+        verboseOption()
+    }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
@@ -278,18 +304,17 @@ class AssertEnabledTool : AdbTool {
         require(!selector.isEmpty) { "Give at least one of testTag, text or contentDescription." }
 
         val observation = UiTreeReader.read(device)
+        val preface = observation.preface(verbose = arguments.verbose())
         // One element or none: with several, "enabled" would be answered for whichever came first.
         val match = try {
             UiTreeSearch.findUnique(observation.tree, selector)
         } catch (e: IllegalArgumentException) {
-            return ToolResult.error(observation.preface() + "\nFAIL: ${e.message}")
-        } ?: return ToolResult.error(observation.preface() + "\nFAIL: nothing matched ${selector.describe()}.")
+            return ToolResult.error(preface + "\nFAIL: ${e.message}")
+        } ?: return ToolResult.error(preface + "\nFAIL: nothing matched ${selector.describe()}.")
 
         return when {
-            match.enabled ->
-                ToolResult.text(observation.preface() + "\nPASS: '${match.printableLabel}' is enabled.")
-            else ->
-                ToolResult.error(observation.preface() + "\nFAIL: '${match.printableLabel}' is present but disabled.")
+            match.enabled -> ToolResult.text(preface + "\nPASS: '${match.printableLabel}' is enabled.")
+            else -> ToolResult.error(preface + "\nFAIL: '${match.printableLabel}' is present but disabled.")
         }
     }
 }
@@ -304,6 +329,7 @@ class AssertTextTool : AdbTool {
     override val inputSchema: JsonObject = Schema.obj {
         string("text", "The text that should be on screen.", required = true)
         boolean("exact", "Match the whole value rather than a substring. Defaults to false.")
+        verboseOption()
         deviceSerial()
     }
 
@@ -311,6 +337,7 @@ class AssertTextTool : AdbTool {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
         val expected = arguments.requiredString("text")
         val exact = arguments.optionalBoolean("exact", false)
+        val verbose = arguments.verbose()
 
         val observation = UiTreeReader.read(device)
         val tree = observation.tree
@@ -318,7 +345,7 @@ class AssertTextTool : AdbTool {
         val selector = UiSelector(text = expected, exact = exact)
         val matches = UiTreeSearch.findAll(tree, selector)
 
-        return observation.visibilityVerdict(matches, "'$expected'", selector) ?: run {
+        return observation.visibilityVerdict(matches, "'$expected'", selector, verbose) ?: run {
             // Only what is in the viewport is offered as what the screen shows, when that can be told.
             val visibility = ViewportVisibility.classifyAll(observation)
             val known = observation.viewport != null
@@ -329,7 +356,7 @@ class AssertTextTool : AdbTool {
                 .take(VISIBLE_TEXT_SAMPLE)
                 .toList()
             ToolResult.error(
-                observation.preface() + "\nFAIL: '$expected' is not on screen. " +
+                observation.preface(verbose = verbose) + "\nFAIL: '$expected' is not on screen. " +
                     (if (known) "Text in the viewport: " else "Text in the capture: ") +
                     shown.joinToString(", ") { "\"$it\"" },
             )

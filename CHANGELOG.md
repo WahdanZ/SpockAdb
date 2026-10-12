@@ -162,6 +162,22 @@
   ones that won't be asked again, and `android_diagnose_current_screen` lists them in its
   `permissions` section. The sample app's **Permissions** screen has a CAMERA-only request for
   trying the whole cycle ([#146](https://github.com/WahdanZ/SpockAdb/issues/146)).
+- **Agents can check which Flutter screen an action opened: `expectRoute`
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** A Flutter app's activity is always
+  `MainActivity`, so the `deep_link` recipe's `expectActivity` passed whichever screen a link
+  opened. `android_tap_element`, `android_long_press_element`, `android_input_text_into_element` and
+  `android_open_deep_link` now take `expectRoute`, the route name that should be current afterwards,
+  read from the app's own Navigator through Spock's session with it, as Home reads it; the
+  `deep_link` recipe passes it to the link. It answers like the other expectations: `VERIFIED` when
+  the route was something else before and is that one after, `NOT OBSERVED` only when a final check
+  proves every navigator in the app was read and another route is showing, and `INCONCLUSIVE` — with
+  the reason, and `expectText` as the way to check without a session — when it was already current,
+  or whenever the route cannot be read: no session (a release build, or the app not run with
+  `flutter run`), a navigation still moving, or a navigator without a key that could hide it. A
+  route that could not be read is never reported as the wrong one. The name is matched exactly; one
+  without a query also matches it with one, so `/item/42` matches the `/item/42?ref=spock` a link
+  pushes. On the emulator, taps into the sample's *Navigation* screen and a deep link to *Item 42*
+  were verified, and a wrong route reported as not observed.
 
 ### Changed
 
@@ -215,6 +231,17 @@
   the action now goes to that one, and the result says so: "2 matched; acted on the only one that
   accepts input (EditText 'Search'); ignored: ImageView content-desc 'Search'". Two or more that
   could take it, or none, are refused as before, and checks that act on nothing still refuse.
+- **A tap right after a find no longer dumps the screen twice
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** Every UI read paid for a fresh
+  `uiautomator` dump, 2–3 s each, so finding a button and then tapping it took five seconds. A
+  capture is now reused for half a second by the next read of the same device: on the emulator the
+  tap after a find went from 2.3–2.5 s to under 0.1 s. The reuse is said on the summary line
+  (`reused: the screen was read 2.7 s ago`, the age of the screen it shows), and never happens where it could mislead — a wait's polls, an action's
+  check after the input, and any read after a tap, swipe, key, text, deep link or other call that is
+  not read-only always capture anew. The UI read tools (`android_get_ui_tree`,
+  `android_find_ui_element`, `android_wait_for_element` and the assertions) also take
+  `verbose: false`, which shortens the two-line "Observed on … / Limits: …" preamble to one short
+  line for an agent that has read it once.
 
 ### Fixed
 
@@ -282,6 +309,13 @@
   check only looks at clickable nodes, and the sample did not reproduce it.
 - **The proxy tool warns that Flutter ignores the system proxy.** `android_set_http_proxy` now says
   that Flutter's `dart:io` `HttpClient` does not use it unless the app opts in.
+- **`android_get_debug_timeline` no longer tells agents its Flutter rows are always empty.** Its
+  description still said Spock "does not open" a Flutter session "in this version", so an agent
+  skipped the flutter_error, navigation and http categories, although the Timeline has recorded
+  them from the session since this release. It now says where they come from — Spock's session
+  with the selected app run with `flutter run`, slow frames in profile builds only — and that
+  `flutter_app_status` explains an empty one
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
 
 ## [4.0.7] - 2026-09-29
 

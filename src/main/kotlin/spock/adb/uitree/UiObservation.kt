@@ -23,6 +23,8 @@ data class UiObservation(
     val completedAtMillis: Long,
     val metrics: DisplayMetrics,
     val source: DataSource = DataSource.UIAUTOMATOR_ACTIVE_WINDOW,
+    /** How long after it was taken this capture was handed out again, when it was; see `UiDumpCache`. */
+    val reusedAfterMs: Long? = null,
 ) {
 
     val densityDpi: Int? get() = tree.densityDpi
@@ -90,11 +92,20 @@ data class UiObservation(
         append("Observed on ").append(deviceSerial)
         append(", window ").append(windowPackage ?: "unknown")
         append(", ").append(Instant.ofEpochMilli(startedAtMillis).truncatedTo(ChronoUnit.SECONDS))
-        append(" (host clock, ").append(captureSeconds()).append(" s capture)")
+        append(" (host clock, ").append(captureSeconds()).append(" s capture").append(reusedNote()).append(")")
         append(", viewport ").append(describeViewport())
         append(", ").append(describeDensity())
         append(", source: ").append(source.description).append('.')
     }
+
+    /** [summary] in brief, for a caller that asked to leave the rest out: device, window, when. */
+    fun brief(): String = "Observed on $deviceSerial, window ${windowPackage ?: "unknown"}, " +
+        "${Instant.ofEpochMilli(startedAtMillis).truncatedTo(ChronoUnit.SECONDS)} " +
+        "(${captureSeconds()} s capture${reusedNote()})."
+
+    private fun reusedNote(): String = reusedAfterMs?.let {
+        ", reused: the screen was read " + String.format(Locale.ROOT, "%.1f", it / MILLIS_PER_SECOND) + " s ago"
+    }.orEmpty()
 
     /** One line naming every limit that applies to this capture. */
     fun limitsNote(): String = "Limits: " + limits.joinToString("; ") { it.description } + "."

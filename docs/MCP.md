@@ -596,6 +596,19 @@ Element actions open with the summary line alone, since sending input makes no c
 screen. When an action checks an expected result, the capture that settled it follows with both
 lines. The UI Inspector shows the same summary in its header, with the limits on hover.
 
+`android_get_ui_tree`, `android_find_ui_element`, `android_wait_for_element` and the assertions take
+`verbose: false`, which replaces both lines with one short one — device, window, time and how long
+the capture took — for an agent that has read the limits once.
+
+**A capture is reused for half a second.** A `uiautomator` dump takes 2–3 s, so a find and then a
+tap on what it found used to cost two. The last capture of each device is kept for 500 ms and given
+to the next plain read of that device — on the emulator the tap after a find drops from about 2.4 s
+to under 0.1 s — and the summary says so: `(host clock, 2.6 s capture, reused: the screen was read 2.7 s ago)`: the age is the screen's, from when its 2–3 s dump started. It is
+never given where it could mislead: a wait's polls and an action's check after its input always
+capture anew, and any input — an element action's dispatch, a scroll's swipe, and every tool call
+that is not read-only (tap, swipe, key, text, deep link, launch, …) — empties it. Input from outside
+Spock, a finger on the device, is not seen; the 500 ms bounds how old a reused capture can be.
+
 ### In the tree, in the viewport, and in view
 
 These are three different answers, and the tools keep them apart. Each node of a capture is
@@ -728,6 +741,27 @@ pre-action capture are reused. The answer is one of:
 | `NOT OBSERVED` | yes | Not seen within `expectTimeoutMs`. The input may still have landed, or the screen may need longer |
 | `INCONCLUSIVE` | yes | Already true before the action, so seeing it afterwards proves nothing. Expect something the action changes |
 | `CANCELLED` | yes | Stopped while checking; the input had been sent |
+
+**A Flutter destination: `expectRoute`.** A Flutter app's activity is always `MainActivity`, so the
+activity cannot tell its screens apart. `expectRoute` names the route that should be current after
+the action, read from the app's own `Navigator` through Spock's session with it — the read Home and
+App back stack make. It is matched on the route's name, exactly and case-sensitively; a name given
+without a query also matches the same path with one, so `/item/42` matches the `/item/42?ref=spock`
+a deep link pushes, and an unnamed route (a dialog) matches nothing. It takes `expectTimeoutMs` and
+is checked on its own: give it without `expectTestTag`, `expectText` or `expectContentDescription`.
+`android_open_deep_link` takes it too, with `expectTimeoutMs`.
+
+- `VERIFIED`: the route was read before the action, was not that one, and is after it.
+- `INCONCLUSIVE` when it already was current before, and whenever the route cannot be read — no
+  Flutter session with that app on that device (a release build, or the app not run with
+  `flutter run`), the app paused in the debugger, a navigation still under way, several nested
+  navigators showing at once, or a navigator without a `GlobalKey` that could be hiding the route.
+  The reason is given, with `expectText` as the way to check without a session. A route that could
+  not be read is never reported as the wrong one.
+- `NOT OBSERVED` only when the time ran out, and a final check that walks the app's heap (it pauses
+  the app briefly) proves every navigator mounted was read and the route showing is another.
+
+Spock never attaches for this: with no session, `flutter_app_status` attaches.
 
 **An action is dispatched once and never repeated** — not when the result is not observed, and not
 when the shell call itself fails. A tap whose `input tap` timed out or lost its device may still have
@@ -1276,7 +1310,7 @@ you to confirm — and `android_run_recipe` runs one and reports every step.
 | Recipe | What it does | Parameters |
 |---|---|---|
 | `process_death` | Notes the screen in front, kills the process in the background and relaunches it, then checks the same activity came back — and that `expectText` is still on screen, when given. | `packageName`, `expectText` |
-| `deep_link` | Opens a URI and checks the activity it landed on and the text it shows. | `uri` (required), `packageName`, `expectActivity`, `expectText` |
+| `deep_link` | Opens a URI and checks the activity it landed on and the text it shows. For a Flutter app, whose activity is always `MainActivity`, `expectRoute` checks the route the link opened (see `expectRoute` above), and `expectText` checks what it shows without a session. | `uri` (required), `packageName`, `expectActivity`, `expectRoute`, `expectText` |
 | `restart_keeps_state` | Checks `expectText` is on screen, force-stops and relaunches the app, and checks it is back. Passes only for state the app persists itself: a restart drops saved instance state. | `expectText` (required), `packageName` |
 | `job_in_doze` | Checks the job is scheduled, forces deep Doze, runs the job now, and reads the app's log and the job afterwards. Restores the device out of Doze whatever happened. | `jobId` (required), `namespace`, `packageName` |
 
@@ -1331,7 +1365,8 @@ trace. The first call is small enough to always make, and every section describe
 moment.
 
 **Test a deep link.** `android_open_deep_link(uri)` → `android_get_current_activity` →
-`android_take_screenshot` → report which screen opened.
+`android_take_screenshot` → report which screen opened. On a Flutter app,
+`android_open_deep_link(uri, expectRoute)` says whether the route it opened is the one expected.
 
 **Investigate a permission problem.** `android_get_package_info` to see which runtime permissions
 are granted and which denied (a summary; `raw: true` for the full `dumpsys package`) →
