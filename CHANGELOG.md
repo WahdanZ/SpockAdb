@@ -282,6 +282,13 @@
   check only looks at clickable nodes, and the sample did not reproduce it.
 - **The proxy tool warns that Flutter ignores the system proxy.** `android_set_http_proxy` now says
   that Flutter's `dart:io` `HttpClient` does not use it unless the app opts in.
+- **`android_get_debug_timeline` no longer tells agents its Flutter rows are always empty.** Its
+  description still said Spock "does not open" a Flutter session "in this version", so an agent
+  skipped the flutter_error, navigation and http categories, although the Timeline has recorded
+  them from the session since this release. It now says where they come from — Spock's session
+  with the selected app run with `flutter run`, slow frames in profile builds only — and that
+  `flutter_app_status` explains an empty one
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
 
 ## [4.0.7] - 2026-09-29
 
