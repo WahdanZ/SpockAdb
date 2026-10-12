@@ -24,27 +24,28 @@ class GetScheduledJobsTool : AdbTool {
             "background work is not running."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "Package whose jobs to list. Defaults to the open project's application ID.")
+        packageName("Package whose jobs to list.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        return context.withPackage(arguments) { packageName ->
+            if (!device.isAppInstall(packageName)) {
+                return@withPackage ToolResult.error("Package '$packageName' is not installed on this device.")
+            }
+
+            val dump = device.scheduledJobs(packageName)
+            dump.problem?.let { return@withPackage ToolResult.error(it) }
+            if (dump.jobs.isEmpty()) return@withPackage ToolResult.text("$packageName has no scheduled jobs.")
+
+            ToolResult.text(
+                "${dump.jobs.size} scheduled job(s) for $packageName:\n\n" +
+                    dump.jobs.joinToString("\n\n") {
+                        BackgroundWorkText.job(it, dump.deviceTimeMillis ?: System.currentTimeMillis())
+                    },
+            )
         }
-
-        val dump = device.scheduledJobs(packageName)
-        dump.problem?.let { return ToolResult.error(it) }
-        if (dump.jobs.isEmpty()) return ToolResult.text("$packageName has no scheduled jobs.")
-
-        return ToolResult.text(
-            "${dump.jobs.size} scheduled job(s) for $packageName:\n\n" +
-                dump.jobs.joinToString("\n\n") {
-                    BackgroundWorkText.job(it, dump.deviceTimeMillis ?: System.currentTimeMillis())
-                },
-        )
     }
 }
 
@@ -56,25 +57,26 @@ class GetPendingAlarmsTool : AdbTool {
             "repeat interval, whether it is exact, and what it delivers to."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "Package whose alarms to list. Defaults to the open project's application ID.")
+        packageName("Package whose alarms to list.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        return context.withPackage(arguments) { packageName ->
+            if (!device.isAppInstall(packageName)) {
+                return@withPackage ToolResult.error("Package '$packageName' is not installed on this device.")
+            }
+
+            val dump = device.pendingAlarms(packageName)
+            dump.problem?.let { return@withPackage ToolResult.error(it) }
+            if (dump.alarms.isEmpty()) return@withPackage ToolResult.text("$packageName has no pending alarms.")
+
+            ToolResult.text(
+                "${dump.alarms.size} pending alarm(s) for $packageName:\n\n" +
+                    dump.alarms.joinToString("\n\n") { BackgroundWorkText.alarm(it) },
+            )
         }
-
-        val dump = device.pendingAlarms(packageName)
-        dump.problem?.let { return ToolResult.error(it) }
-        if (dump.alarms.isEmpty()) return ToolResult.text("$packageName has no pending alarms.")
-
-        return ToolResult.text(
-            "${dump.alarms.size} pending alarm(s) for $packageName:\n\n" +
-                dump.alarms.joinToString("\n\n") { BackgroundWorkText.alarm(it) },
-        )
     }
 }
 
@@ -94,23 +96,24 @@ class RunJobNowTool : AdbTool {
             "The job's namespace, if android_get_scheduled_jobs reported one. Found automatically " +
                 "when omitted, which covers WorkManager's namespaced jobs on API 34+.",
         )
-        string("packageName", "Package that owns the job. Defaults to the open project's application ID.")
+        packageName("Package that owns the job.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val jobId = arguments.requiredInt("jobId")
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
-        }
+        return context.withPackage(arguments) { packageName ->
+            if (!device.isAppInstall(packageName)) {
+                return@withPackage ToolResult.error("Package '$packageName' is not installed on this device.")
+            }
 
-        val request = RunJobRequest(packageName, jobId, arguments.optionalString("namespace"))
-        return runCatching { device.runJobNow(request) }.fold(
-            onSuccess = { ToolResult.text(it) },
-            onFailure = { ToolResult.error("Could not run job $jobId: ${it.message}") },
-        )
+            val request = RunJobRequest(packageName, jobId, arguments.optionalString("namespace"))
+            runCatching { device.runJobNow(request) }.fold(
+                onSuccess = { ToolResult.text(it) },
+                onFailure = { ToolResult.error("Could not run job $jobId: ${it.message}") },
+            )
+        }
     }
 }
 

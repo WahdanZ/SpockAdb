@@ -61,11 +61,7 @@ class DebugContextTool : AdbTool {
                 "about it — it is by far the most expensive section.",
             values = (DiagnosticSections.ALL.map { it.id } + Section.ALL.map { it.id }).distinct(),
         )
-        string(
-            "packageName",
-            "The app the question is about. Defaults to the app selected in Spock's tool window, " +
-                "else the open project's application ID. Pass an empty string to consider the whole device.",
-        )
+        string("packageName", "The app the question is about. $PACKAGE_DEFAULT_OR_DEVICE")
         enumeration(
             "minLevel",
             "full format only: minimum logcat level. Defaults to V; use E when hunting a crash.",
@@ -105,7 +101,8 @@ class DebugContextTool : AdbTool {
             )
         }
 
-        val packageName = summaryPackage(arguments, context)
+        val scope = with(LogcatReader) { arguments.logcatScope(context) }
+        val packageName = scope.packageName
         val probe = AndroidProbe(
             device = device.device,
             serialNumber = device.serialNumber,
@@ -123,7 +120,7 @@ class DebugContextTool : AdbTool {
                 },
             )
         }
-        val report = DiagnosticCollector().collect(sections, probe, preamble)
+        val report = DiagnosticCollector().collect(sections, probe, preamble, packageFrom(scope))
 
         val content = mutableListOf<ToolContent>()
         if (wantsScreenshot) {
@@ -146,13 +143,13 @@ class DebugContextTool : AdbTool {
     }
 
     /**
-     * The app the summary is about: the one asked for, else the one selected in Spock's tool
-     * window — as the Diagnose tab does, so a report does not open a session for another app
-     * than the one the developer follows — else the open project's.
+     * Where the summary's app came from, when the agent did not name it: the app selected in
+     * Spock, the project's, or none, in which case the report covers the whole device.
      */
-    private fun summaryPackage(arguments: JsonObject, context: ToolContext): String? {
-        if (arguments.has("packageName")) return with(LogcatReader) { arguments.logcatPackage(context) }
-        return context.selectedApp() ?: context.projectApplicationId()
+    private fun packageFrom(scope: LogcatReader.Scope): String? = when {
+        scope.resolved != null -> scope.resolved.source.label
+        scope.wholeDeviceAsked -> null
+        else -> NO_APP_RESOLVED
     }
 
     /**
@@ -226,10 +223,11 @@ class DebugContextTool : AdbTool {
         Section.UI -> Captured(renderUi(arguments, device))
 
         Section.LOGCAT -> {
+            val scope = with(LogcatReader) { arguments.logcatScope(context) }
             val read = with(LogcatReader) {
                 LogcatReader.read(
                     device = device.device,
-                    packageName = arguments.logcatPackage(context),
+                    packageName = scope.packageName,
                     minLevel = arguments.logcatLevel(),
                     // Deliberately not LogcatReader.logcatMaxLines: that helper reads the
                     // `maxLines` argument android_get_logcat declares, and this tool's
@@ -238,7 +236,7 @@ class DebugContextTool : AdbTool {
                         .coerceIn(1, MAX_LOGCAT_LINES),
                 )
             }
-            Captured(read.textOrExplanation())
+            Captured(listOfNotNull(scope.note, read.textOrExplanation()).joinToString("\n"))
         }
 
         Section.SCREENSHOT -> {
@@ -309,6 +307,9 @@ class DebugContextTool : AdbTool {
         const val FORMAT_SUMMARY = "summary"
         const val FORMAT_FULL = "full"
         const val MAX_SCREENSHOT_NOTE_CHARS = 300
+        const val NO_APP_RESOLVED =
+            "none: no app is selected in Spock and the open project's application ID could not be " +
+                "resolved, so this covers the whole device"
 
         const val DEFAULT_LOGCAT_LINES = 200
         const val MAX_LOGCAT_LINES = 2_000

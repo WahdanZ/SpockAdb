@@ -27,19 +27,20 @@ class ListAppStorageTool : AdbTool {
             "build. Read one with android_read_app_storage."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "Package whose storage to list. Defaults to the open project's application ID.")
+        packageName("Package whose storage to list.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        return storageRead(device, packageName) {
-            val files = device.listAppStorage(packageName)
-            if (files.isEmpty()) {
-                "No SharedPreferences or DataStore files found for $packageName."
-            } else {
-                files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
+        return context.withPackage(arguments) { packageName ->
+            storageRead(device, packageName) {
+                val files = device.listAppStorage(packageName)
+                if (files.isEmpty()) {
+                    "No SharedPreferences or DataStore files found for $packageName."
+                } else {
+                    files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
+                }
             }
         }
     }
@@ -55,22 +56,23 @@ class ReadAppStorageTool : AdbTool {
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
         val file = AppStoragePaths.parse(arguments.requiredString("file"))
-        return storageRead(device, packageName) {
-            val format = file.format
-            if (format == null) {
-                "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, which " +
-                    "cannot be decoded without that message's schema."
-            } else {
-                describeStorage(file, format.read(device.readAppStorageFile(packageName, file)))
-                    .truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
+        return context.withPackage(arguments) { packageName ->
+            storageRead(device, packageName) {
+                val format = file.format
+                if (format == null) {
+                    "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, which " +
+                        "cannot be decoded without that message's schema."
+                } else {
+                    describeStorage(file, format.read(device.readAppStorageFile(packageName, file)))
+                        .truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
+                }
             }
         }
     }
@@ -98,20 +100,22 @@ abstract class AppPreferenceEditTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        val file = AppStoragePaths.parse(arguments.requiredString("file"))
-        val edit = Edit(target, packageName, file, changeFrom(arguments), arguments.optionalBoolean("restart", false))
+        return context.withPackage(arguments) { packageName ->
+            val file = AppStoragePaths.parse(arguments.requiredString("file"))
+            val restart = arguments.optionalBoolean("restart", false)
+            val edit = Edit(target, packageName, file, changeFrom(arguments), restart)
 
-        if (!target.device.isAppInstall(packageName)) return ToolResult.error(notInstalled(packageName))
-        return try {
-            apply(edit, context)
-        } catch (e: AppStorageUnverifiedWriteException) {
-            // Not "could not change": the old content is gone, and an agent told otherwise would retry.
-            ToolResult.error("The change to ${edit.where} was written but not verified. ${e.message}")
-        } catch (e: IllegalArgumentException) {
-            ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
-        } catch (e: IllegalStateException) {
-            ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            if (!target.device.isAppInstall(packageName)) return@withPackage ToolResult.error(notInstalled(packageName))
+            try {
+                apply(edit, context)
+            } catch (e: AppStorageUnverifiedWriteException) {
+                // Not "could not change": the old content is gone, and an agent told otherwise would retry.
+                ToolResult.error("The change to ${edit.where} was written but not verified. ${e.message}")
+            } catch (e: IllegalArgumentException) {
+                ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            } catch (e: IllegalStateException) {
+                ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            }
         }
     }
 
@@ -186,7 +190,7 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
             required = true,
         )
         restartArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 
@@ -227,7 +231,7 @@ class DeleteAppPreferenceTool : AppPreferenceEditTool() {
         fileArgument()
         string("key", "Preference key to remove. May be empty.", required = true, mayBeEmpty = true)
         restartArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 

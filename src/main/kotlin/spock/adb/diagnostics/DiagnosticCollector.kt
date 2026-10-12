@@ -27,10 +27,15 @@ class DiagnosticCollector(
     private val nanoTime: () -> Long = System::nanoTime,
 ) {
 
+    /**
+     * @param packageFrom where the probe's app came from when the caller did not name it, put
+     *   next to `packageName`; null to leave it out.
+     */
     fun <P : DiagnosticProbe> collect(
         sections: List<DiagnosticSection<P>>,
         probe: P,
         preamble: JsonObject = JsonObject(),
+        packageFrom: String? = null,
     ): JsonObject {
         val deadline = nanoTime() + budgetNanos
         val reports = linkedMapOf<DiagnosticSection<P>, SectionReport>()
@@ -57,6 +62,7 @@ class DiagnosticCollector(
         report.addProperty("schemaVersion", SCHEMA_VERSION)
         preamble.entrySet().forEach { (key, value) -> report.add(key, value) }
         report.addProperty("packageName", probe.packageName)
+        packageFrom?.let { report.addProperty("packageFrom", it) }
         val all = merged(reports.values, reports.values.flatMap { it.problems })
         val listed = addProblems(report, all, companionsOf(reports.values, all))
         reports.forEach { (section, sectionReport) -> report.add(section.id, sectionReport.data) }

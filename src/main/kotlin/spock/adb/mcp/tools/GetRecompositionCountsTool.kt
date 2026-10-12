@@ -24,16 +24,14 @@ import java.util.Locale
  * rebuilds the whole widget tree once (a reassemble, which keeps state), a frame the counts leave
  * out.
  *
- * The app is the one asked for, else the one selected in Spock, else the project's, as for
- * Diagnose. Only an app with a live Flutter session records rebuilds: a Compose host that embeds a
+ * The app is the one asked for, else the one selected in Spock, else the project's
+ * ([packageOrNull]). Only an app with a live Flutter session records rebuilds: a Compose host that embeds a
  * Flutter module ships the Flutter engine too, and without a session it records Compose.
  *
- * @param selectedApp the app selected in Spock; tests pass their own.
  * @param flutterRebuilds the rebuild window for a Flutter app, or null for any other app, which
  *   then records Compose. The project's Flutter session by default; tests pass their own.
  */
 class GetRecompositionCountsTool(
-    private val selectedApp: (ToolContext) -> String? = { it.selectedApp() },
     private val flutterRebuilds: (FlutterRebuildRequest) -> FlutterRebuildRecorder.Result? =
         { projectRebuilds(it) },
 ) : AdbTool {
@@ -65,7 +63,7 @@ class GetRecompositionCountsTool(
             "it on makes Flutter rebuild the whole widget tree once, keeping state; that frame is not counted."
     override val safety = ToolSafety.SAFE_ACTION
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "App to record. Defaults to the app selected in Spock, else the open project's.")
+        packageName("App to record.")
         integer(
             "durationSeconds",
             "How long to record, 1 to 30 seconds. Defaults to 5. The call blocks for this long.",
@@ -81,7 +79,15 @@ class GetRecompositionCountsTool(
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolveFollowedPackage(arguments, selectedApp(context))
+        return context.withPackage(arguments) { packageName -> record(arguments, context, device, packageName) }
+    }
+
+    private fun record(
+        arguments: JsonObject,
+        context: ToolContext,
+        device: ConnectedDevice,
+        packageName: String,
+    ): ToolResult {
         val seconds = arguments.optionalInt("durationSeconds", DEFAULT_SECONDS).coerceIn(1, MAX_SECONDS)
         val includeLibraries = arguments.optionalBoolean("includeLibraries", false)
         val limit = arguments.optionalInt("limit", DEFAULT_LIMIT).coerceIn(1, MAX_LIMIT)

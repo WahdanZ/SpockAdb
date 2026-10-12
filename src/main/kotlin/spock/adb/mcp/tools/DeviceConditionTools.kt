@@ -25,13 +25,18 @@ class GetDeviceConditionsTool : AdbTool {
             "has changed and not yet reset."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "App whose bucket to read. Defaults to the open project's application ID.")
+        string(
+            "packageName",
+            "App whose bucket to read. Defaults to the app selected in Spock, else the open project's; " +
+                "with neither, the bucket is left out.",
+        )
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = arguments.optionalString("packageName") ?: context.projectApplicationId()
+        val resolved = context.packageOrNull(arguments)
+        val packageName = resolved?.name
         val conditions = target.device.deviceConditions(packageName)
         DeviceConditionTracker.reconcile(target.serialNumber, conditions)
         val changed = DeviceConditionTracker.conditions(target.serialNumber)
@@ -54,7 +59,13 @@ class GetDeviceConditionsTool : AdbTool {
                     },
                 )
             }.joinToString("\n"),
-        )
+        ).noting(if (resolved == null) NO_BUCKET else resolved.note)
+    }
+
+    private companion object {
+        const val NO_BUCKET =
+            "Standby bucket: not read. No packageName was given, no app is selected in Spock, and no " +
+                "application ID was resolved from the open project."
     }
 }
 
@@ -103,7 +114,7 @@ class SetStandbyBucketTool : AdbTool {
             StandbyBucket.SETTABLE.map { it.argument },
             required = true,
         )
-        string("packageName", "App to move. Defaults to the open project's application ID.")
+        packageName("App to move.")
         deviceSerial()
     }
 
@@ -114,14 +125,15 @@ class SetStandbyBucketTool : AdbTool {
                 "Unknown bucket '$bucketName'. Use one of: ${StandbyBucket.SETTABLE.joinToString { it.argument }}.",
             )
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        if (!device.isAppInstall(packageName)) {
-            return ToolResult.error("Package '$packageName' is not installed on this device.")
+        return context.withPackage(arguments) { packageName ->
+            if (!device.isAppInstall(packageName)) {
+                return@withPackage ToolResult.error("Package '$packageName' is not installed on this device.")
+            }
+            runCatching { device.setStandbyBucket(packageName, bucket) }.fold(
+                onSuccess = { ToolResult.text(it) },
+                onFailure = { ToolResult.error(it.message ?: "Could not set the standby bucket.") },
+            )
         }
-        return runCatching { device.setStandbyBucket(packageName, bucket) }.fold(
-            onSuccess = { ToolResult.text(it) },
-            onFailure = { ToolResult.error(it.message ?: "Could not set the standby bucket.") },
-        )
     }
 }
 
