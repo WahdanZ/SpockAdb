@@ -210,14 +210,17 @@
   View screen. Spock now asks whether the app on screen is a Flutter build — the same check
   `flutter_app_status` makes, once per install — and says `Flutter (semantics bridge)`, with a note
   that its words are content descriptions and `Semantics(identifier:)` is what `testTag` matches.
-- **The accessibility audit gives Flutter fixes, and no longer flags the cut-off offers of a
-  carousel.** On a Flutter app it suggested `android:contentDescription`; it now suggests
-  `Semantics(label:)`, `ExcludeSemantics`, `MaterialTapTargetSize.padded` or a 48x48 `SizedBox`. An
-  offer banner that does not scroll by touch (a `PageView` with `NeverScrollableScrollPhysics`) has
-  its neighbouring offers cut to a sliver at its edge, and each was flagged as a touch target under
-  48dp, labelled with its badge's words — "GRATIS E-SIM" — so the findings read as if a
-  non-clickable badge had been flagged. Those slivers are now skipped like controls cut at a scroll
-  container's edge, and a finding prints a card's merged label on one line.
+- **The accessibility audit gives Flutter fixes, and prints Flutter labels whole.** On a Flutter app
+  it suggested `android:contentDescription`; it now suggests `Semantics(label:)`,
+  `ExcludeSemantics`, `MaterialTapTargetSize.padded` or a 48x48 `SizedBox`. Flutter merges a
+  card's words into one content description, a line each, and a finding printed it as it was, so
+  a card whose first line is a badge's "GRATIS E-SIM" read as a finding about the badge; labels
+  are now printed on one line (`GRATIS E-SIM / Tarif M`). On a Flutter screen, a touch-target
+  finding on a carousel page that looks cut at the carousel's edge — an offer banner that does not
+  scroll by touch reports its neighbouring offers as slivers — is now a note rather than a
+  warning, saying the bounds may be cut by a parent clip and should be checked on the device. The
+  review's report of non-clickable badges flagged as small targets is not yet explained: the
+  check only looks at clickable nodes, and the sample did not reproduce it.
 - **The proxy tool warns that Flutter ignores the system proxy.** `android_set_http_proxy` now says
   that Flutter's `dart:io` `HttpClient` does not use it unless the app opts in.
 
