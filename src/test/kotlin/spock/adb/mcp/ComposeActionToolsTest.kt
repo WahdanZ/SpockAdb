@@ -140,8 +140,9 @@ class ComposeActionToolsTest {
 
         assertTrue(flutter.contains("UI framework: Flutter (semantics bridge)"), flutter)
         assertTrue(flutter.contains("MaterialTapTargetSize.padded"), flutter)
-        assertFalse(flutter.contains("label:  GRATIS E-SIM\n"), "a merged label is printed on one line: $flutter")
-        assertTrue(flutter.contains("Skipped 2 control(s)"), flutter)
+        assertTrue(flutter.contains("label:  GRATIS E-SIM / Tarif M"), "a merged label on one line: $flutter")
+        assertTrue(flutter.contains("i Reported bounds are smaller"), "a cut-off offer is noted: $flutter")
+        assertTrue(flutter.contains("bounds may be cut by a parent clip"), flutter)
 
         val native = AccessibilityAuditTool().execute(JsonObject(), flutterTargeting(flutterApp = false).context).text()
         assertTrue(native.contains("UI framework: Traditional Android Views"), native)

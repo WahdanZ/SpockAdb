@@ -47,6 +47,9 @@ object AccessibilityAudit {
     enum class Severity(val marker: String) {
         ERROR("✗"),
         WARNING("!"),
+
+        /** Possibly a problem, and possibly an artefact of what the capture could see. */
+        INFO("i"),
     }
 
     fun audit(observation: UiObservation): List<Finding> = audit(observation.tree, observation.viewport)
@@ -60,7 +63,7 @@ object AccessibilityAudit {
         val complete = nodes.filterNot(clippedIn(tree, viewport))
         return buildList {
             addAll(unlabelledInteractiveNodes(complete))
-            addAll(tinyTouchTargets(complete, tree.densityDpi))
+            addAll(tinyTouchTargets(complete, tree.densityDpi, cutPages(tree)))
             addAll(duplicateLabels(nodes))
             addAll(unlabelledImages(nodes))
         }
@@ -72,48 +75,54 @@ object AccessibilityAudit {
      * `uiautomator` cuts such a node's bounds to the part in view and drops a text child that is
      * out of view, so a half-visible list row looked both too small and unlabelled. A finding that
      * comes from clipping is not a finding about the app. Off-screen controls with complete
-     * bounds are still checked: nothing about them was cut. So are the pages a carousel cuts at its
-     * edge without scrolling; see [cutPages].
+     * bounds are still checked: nothing about them was cut.
      */
     private fun clippedIn(tree: UiTree, viewport: UiNode.Bounds?): (UiNode) -> Boolean {
         val visibility = ViewportVisibility.classifyAll(tree, viewport)
-        val cut = cutPages(tree)
-        return { visibility[it]?.clippedByContainer == true || it in cut }
+        return { visibility[it]?.clippedByContainer == true }
     }
 
     /**
-     * Every node in a page a carousel cuts at its edge although it publishes no scroll action.
+     * The nodes of Flutter carousel pages whose bounds are probably cut at the carousel's edge,
+     * though nothing scrolls there.
      *
      * Flutter cuts a node's bounds at every clip above it, not only at scroll containers, and an
-     * auto-advancing offer banner — a `PageView` with `NeverScrollableScrollPhysics` — does not
-     * scroll by touch, so [ViewportVisibility] does not know it for a clip. The neighbouring offers
-     * peeking in at its sides were then reported as slivers a few dp wide, and flagged as small
-     * touch targets under their badge's words, the first line of each card's content-desc.
+     * auto-advancing offer banner — a `PageView` with `NeverScrollableScrollPhysics` — publishes no
+     * scroll action, so [ViewportVisibility] does not know it for a clip. The offers peeking in at
+     * its sides are reported as slivers a few dp wide. Their size findings are still made, at
+     * [Severity.INFO] and saying the bounds may be cut; the label check is not affected, since a
+     * cut page keeps its whole merged content description.
      *
-     * Told by its shape: at least three pages laid edge to edge along one axis, filling the banner
-     * exactly and spanning it across, the inner pages all one size and the end pages narrower. Known
-     * gap: a row of three controls that tiles its parent exactly, with smaller ones at its ends, has
-     * the same shape, and its end controls are left out of the size and label checks.
+     * Only on a Flutter screen, and only this shape: at least three pages laid edge to edge along
+     * one axis, filling the carousel exactly and spanning it across; the inner pages one size; the
+     * two end pages one smaller size, each a non-interactive wrapper whose single child has its
+     * exact bounds — which is how Flutter publishes a `PageView` page.
      */
     private fun cutPages(tree: UiTree): Set<UiNode> {
         val cut = Collections.newSetFromMap(IdentityHashMap<UiNode, Boolean>())
-        tree.nodes().filterNot { it.scrollable }.forEach { banner ->
-            Axis.entries.flatMap { cutEnds(banner, it) }.forEach { cut.addAll(it.flatten()) }
+        if (tree.framework != UiFramework.FLUTTER) return cut
+        tree.nodes().filterNot { it.scrollable }.forEach { carousel ->
+            Axis.entries.flatMap { cutEnds(carousel, it) }.forEach { cut.addAll(it.flatten()) }
         }
         return cut
     }
 
-    private fun cutEnds(banner: UiNode, axis: Axis): List<UiNode> {
-        if (banner.children.size < MIN_PAGES) return emptyList()
-        val pages = banner.children.sortedBy { axis.start(it.bounds) }
-        val tiled = axis.start(pages.first().bounds) == axis.start(banner.bounds) &&
-            axis.end(pages.last().bounds) == axis.end(banner.bounds) &&
+    private fun cutEnds(carousel: UiNode, axis: Axis): List<UiNode> {
+        if (carousel.children.size < MIN_PAGES) return emptyList()
+        val pages = carousel.children.sortedBy { axis.start(it.bounds) }
+        val tiled = axis.start(pages.first().bounds) == axis.start(carousel.bounds) &&
+            axis.end(pages.last().bounds) == axis.end(carousel.bounds) &&
             pages.zipWithNext().all { (a, b) -> axis.end(a.bounds) == axis.start(b.bounds) } &&
-            pages.all { axis.spansAcross(it.bounds, banner.bounds) }
+            pages.all { axis.spansAcross(it.bounds, carousel.bounds) }
         val inner = pages.drop(1).dropLast(1).map { axis.extent(it.bounds) }.distinct().singleOrNull()
-        if (!tiled || inner == null) return emptyList()
-        return listOf(pages.first(), pages.last()).filter { axis.extent(it.bounds) < inner }
+        val ends = listOf(pages.first(), pages.last())
+        val endExtent = ends.map { axis.extent(it.bounds) }.distinct().singleOrNull()
+        val cut = tiled && inner != null && endExtent != null && endExtent < inner && ends.all { it.isPageWrapper() }
+        return if (cut) ends else emptyList()
     }
+
+    /** Flutter's page: nothing to act on itself, and exactly one child filling it. */
+    private fun UiNode.isPageWrapper(): Boolean = !isInteractive && children.singleOrNull()?.bounds == bounds
 
     private enum class Axis {
         HORIZONTAL,
@@ -163,17 +172,23 @@ object AccessibilityAudit {
                 )
             }
 
-    /** Bounds are an estimate: accessibility XML does not expose every expanded hit region. */
-    private fun tinyTouchTargets(nodes: List<UiNode>, densityDpi: Int?): List<Finding> {
+    /**
+     * Bounds are an estimate: accessibility XML does not expose every expanded hit region.
+     *
+     * @param cut nodes whose bounds may be cut by a parent clip (see [cutPages]): reported at
+     *   [Severity.INFO], saying so, rather than left out.
+     */
+    private fun tinyTouchTargets(nodes: List<UiNode>, densityDpi: Int?, cut: Set<UiNode> = emptySet()): List<Finding> {
         if (densityDpi == null || densityDpi <= 0) return emptyList()
         val minimumPx = MIN_TOUCH_DP * densityDpi / BASE_DENSITY
         return nodes.filter { it.clickable && (it.bounds.width < minimumPx || it.bounds.height < minimumPx) }
             .map {
+                val maybeCut = it in cut
                 Finding(
-                    severity = Severity.WARNING,
+                    severity = if (maybeCut) Severity.INFO else Severity.WARNING,
                     issue = "Reported bounds are smaller than the recommended minimum of 48dp " +
                         "(${it.bounds.width}x${it.bounds.height}px at ${densityDpi}dpi); " +
-                        "verify the effective touch target",
+                        if (maybeCut) CUT_NOTE else "verify the effective touch target",
                     node = it,
                     composeFix = "Use a minimum 48.dp touch target, for example IconButton, and verify " +
                         "any expanded touch area on the device.",
@@ -195,8 +210,7 @@ object AccessibilityAudit {
         }
         val skipped = skippedAsClipped(tree, viewport)
         if (skipped > 0) {
-            append(" Skipped $skipped control(s) at a scroll container's edge or a carousel's, possibly ")
-            append("partly out of view, ")
+            append(" Skipped $skipped control(s) at a scroll container's edge, possibly partially scrolled out, ")
             append("whose reported size or label may be cut off; they are checked when fully in view.")
         }
     }
@@ -241,5 +255,6 @@ object AccessibilityAudit {
 
     private const val MIN_TOUCH_DP = 48.0
     private const val MIN_PAGES = 3
+    private const val CUT_NOTE = "bounds may be cut by a parent clip (e.g. a carousel edge); verify on device"
     private const val BASE_DENSITY = 160.0
 }

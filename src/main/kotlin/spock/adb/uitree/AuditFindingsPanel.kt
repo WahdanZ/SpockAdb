@@ -86,6 +86,7 @@ internal class AuditFindingsPanel(private val onSelectNode: (UiNode) -> Unit) : 
             icon = when (finding.severity) {
                 AccessibilityAudit.Severity.ERROR -> AllIcons.General.Error
                 AccessibilityAudit.Severity.WARNING -> AllIcons.General.Warning
+                AccessibilityAudit.Severity.INFO -> AllIcons.General.Information
             }
             // The issue can quote a label from the device; appended as a fragment, never as markup.
             append(finding.issue)

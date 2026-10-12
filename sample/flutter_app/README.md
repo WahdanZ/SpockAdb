@@ -70,7 +70,7 @@ screen as an API 34 emulator dumped it at 480dpi.
 | `android_tap_element {"text":"Details"}` | Refused as ambiguous, 2 matches; nothing is tapped |
 | `android_assert_text {"text":"Tarif S"}` | PASS on `'GRATIS E-SIM\nTarif S' (matched content-desc)`: the badge's words are the card's first line |
 | `android_tap_element {"testTag":"targeting_save","exactTag":true}` | Taps *Speichern*, the button inside the `Semantics(identifier:)`; the result line reads *Saved* |
-| `android_accessibility_audit {}` | One touch-target finding, *Roaming info* (the shrink-wrapped `IconButton`), with the `MaterialTapTargetSize.padded` / 48x48 `SizedBox` fix; the two *Details* buttons as a shared label with a `Semantics(label:)` fix; no finding on *GRATIS E-SIM* or the banner's cut-off offers (*Tarif M*, *Tarif XL*), which the coverage note counts as skipped |
+| `android_accessibility_audit {}` | One touch-target warning (`!`), *Roaming info* (the shrink-wrapped `IconButton`), with the `MaterialTapTargetSize.padded` / 48x48 `SizedBox` fix; the two *Details* buttons as a shared label with a `Semantics(label:)` fix; the banner's cut-off offers (*Tarif M*, *Tarif XL*) as notes (`i`) ending "bounds may be cut by a parent clip (e.g. a carousel edge); verify on device"; no finding on the *GRATIS E-SIM* badge itself |
 
 ## End to end: selected app → session → Diagnose and Timeline (the H gate)
 

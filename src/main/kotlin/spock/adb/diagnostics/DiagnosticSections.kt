@@ -275,6 +275,7 @@ object UiSection : DiagnosticSection<AndroidProbe> {
                 JsonObject().apply {
                     addProperty("errors", findings.count { it.severity == AccessibilityAudit.Severity.ERROR })
                     addProperty("warnings", findings.count { it.severity == AccessibilityAudit.Severity.WARNING })
+                    addProperty("notes", findings.count { it.severity == AccessibilityAudit.Severity.INFO })
                 },
             )
         }
