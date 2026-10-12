@@ -92,6 +92,27 @@ class DiagnosticCollectorTest {
     }
 
     @Test
+    fun `a section that offers noise as a companion does not move it up`() {
+        val anchor = LikelyProblem("crash", Severity.ERROR, "crash")
+        val noise = LikelyProblem("log", Severity.ERROR, "mapper.ranchu", count = 79, emulatorNoise = true)
+        val warning = LikelyProblem("log", Severity.WARNING, "app warning")
+        val pairing = object : DiagnosticSection<AndroidProbe> {
+            override val id = "pairing"
+            override val detail: DetailRef? = null
+            override fun collect(probe: AndroidProbe) = SectionReport(
+                JsonObject(),
+                listOf(anchor, noise, warning),
+                companions = { mapOf(anchor to listOf(noise)) },
+            )
+        }
+
+        val report = DiagnosticCollector().collect(listOf(pairing), probe)
+
+        val summaries = report["likelyProblems"].asJsonArray.map { it.asJsonObject["summary"].asString }
+        assertEquals(listOf("crash", "app warning", "mapper.ranchu"), summaries)
+    }
+
+    @Test
     fun `a merged problem is listed in place of its parts, and a merge missing a part is dropped`() {
         val dart = LikelyProblem("flutterError", Severity.ERROR, "dart")
         val native = LikelyProblem("crash", Severity.ERROR, "native")

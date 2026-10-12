@@ -141,7 +141,10 @@ class DiagnosticCollector(
         return found
     }
 
-    /** [ranked], with each companion moved up to just after the first problem it belongs with. */
+    /**
+     * [ranked], with each companion moved up to just after the first problem it belongs with.
+     * Never [LikelyProblem.emulatorNoise], whichever section offers it: noise stays last.
+     */
     private fun withCompanions(
         ranked: List<LikelyProblem>,
         companions: Map<LikelyProblem, List<LikelyProblem>>,
@@ -151,6 +154,7 @@ class DiagnosticCollector(
         val moved = IdentityHashMap<LikelyProblem, LikelyProblem>()
         ranked.forEach { anchor ->
             companions[anchor].orEmpty().forEach { companion ->
+                if (companion.emulatorNoise) return@forEach
                 val below = (rank[companion] ?: return@forEach) > (rank[anchor] ?: return@forEach)
                 if (below && companion !in moved) moved[companion] = anchor
             }

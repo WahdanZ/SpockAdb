@@ -222,6 +222,27 @@ class FlutterSectionTest : FlutterSectionFixture() {
     }
 
     @Test
+    fun `emulator noise beside an error is not paired with it, and stays last`() {
+        // The mapper logs on every frame, so it is nearly always the closest line to an error.
+        val noise = LikelyProblem(
+            LogProblemExtractor.TYPE_LOG,
+            Severity.ERROR,
+            "mapper.ranchu: getStandardMetadataImpl:886 failure: UNSUPPORTED",
+            count = 79,
+            lastSeen = "10-02 14:00:00.100",
+            section = LogsSection.id,
+            emulatorNoise = true,
+        )
+        val warning = logProblem("exception: the app's own", "10-02 14:00:01.000")
+        val report = collect(live(errors = listOf(error(AT))), noise, warning)
+
+        val nearby = groupOf(report).getAsJsonArray("nearbyLogs").map { it.asString }
+        assertEquals(listOf(idOf(report, "exception: the app's own")), nearby)
+        val summaries = report.getAsJsonArray("likelyProblems").map { it.asJsonObject["summary"].asString }
+        assertTrue(summaries.last().startsWith("mapper.ranchu"), "$summaries")
+    }
+
+    @Test
     fun `logcat stamps are moved by the device's zone, not read as UTC`() {
         // 12:00:00.5 is what the device logged half a second after the error only if read as UTC:
         // in Berlin (+0200) it is two hours earlier, and must not pair.
