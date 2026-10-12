@@ -76,6 +76,10 @@ class DiagnosticCollector(
     /**
      * Ranks [problems], each of [companions] right after the problem it belongs with unless it
      * already ranks higher, lists the first [MAX_PROBLEMS] with their ids, and returns them as listed.
+     *
+     * [LikelyProblem.emulatorNoise] goes after everything else, error or not: the emulator's
+     * graphics stack can log the same error eighty times while the app logs its one real error
+     * once, and how often a line repeats says nothing about whether the app caused it.
      */
     private fun addProblems(
         report: JsonObject,
@@ -84,7 +88,8 @@ class DiagnosticCollector(
     ): List<Pair<String, LikelyProblem>> {
         val ranked = withCompanions(
             problems.sortedWith(
-                compareBy<LikelyProblem> { it.severity.rank }
+                compareBy<LikelyProblem> { it.emulatorNoise }
+                    .thenBy { it.severity.rank }
                     .thenBy { typePriority(it.type) }
                     .thenByDescending { it.count },
             ),
@@ -223,6 +228,7 @@ class DiagnosticCollector(
         if (count > 1) addProperty("count", count)
         lastSeen?.let { addProperty("lastSeen", it) }
         section?.let { addProperty("section", it) }
+        if (emulatorNoise) addProperty("emulatorNoise", true)
         // Each layer's own problem, as its section reported it: not listed apart, so it has no id.
         if (parts.isNotEmpty()) add("parts", JsonArray().apply { parts.forEach { add(it.toJson(null)) } })
     }

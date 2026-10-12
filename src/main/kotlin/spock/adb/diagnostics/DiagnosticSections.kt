@@ -221,6 +221,7 @@ object LogsSection : DiagnosticSection<AndroidProbe> {
             addProperty("appLines", result.appLines)
             addProperty("errors", result.errorLines)
             addProperty("warnings", result.warningLines)
+            if (result.noiseLines > 0) addProperty("emulatorNoise", result.noiseLines)
             addProperty("distinctProblems", result.problems.size)
         }
         return SectionReport(data, result.problems)

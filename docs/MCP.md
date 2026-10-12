@@ -779,7 +779,7 @@ that returns its detail, so the agent fetches it only when the summary points th
 | `device` | yes | The device the report describes. |
 | `packageName` | yes | The app it is about, or `null` when none is known. Unless the call names one, the app selected in Spock's tool window, else the open project's. |
 | `packageFrom` | no | Where `packageName` came from when the call did not name it: `app selected in Spock`, `open project's application ID`, or `none: …` when the report covers the whole device. |
-| `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then a Flutter error and a native failure seen together (`flutterCrossLayer`, with `parts`; see `flutter`), crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. The log problems paired with a Flutter error (see `flutter`) follow it directly. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
+| `likelyProblems` | yes | At most 10, ranked: known emulator and platform noise last whatever its severity (tagged `"emulatorNoise": true`, count kept; `logs.emulatorNoise` says how many of the log's warnings and errors it is), otherwise severity (`error`, `warning`, `info`), then a Flutter error and a native failure seen together (`flutterCrossLayer`, with `parts`; see `flutter`), crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. The log problems paired with a Flutter error (see `flutter`) follow it directly. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
 | `moreProblems` | no | How many problems were ranked below the cut. |
 | `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`, `deviceConditions`, `permissions` | per `include` | One short summary per section. `screen` also carries the app's `activityStack` (top first) and `fragments` when the app is in front. `flutter` is there only for a Flutter app (below). |
 | `sectionErrors` | no | `{section: reason}` for each section that failed. A failure never fails the call. |
@@ -981,7 +981,8 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
   destroyed, and the fragment tree after each resume;
 - `app_lifecycle` — its process starting and dying, crashes and ANRs;
 - `log` — warnings and errors the app's own process logged, one event per log call with any stack
-  trace in the detail;
+  trace in the detail; a line Android writes whatever the app does, such as the emulator's
+  `mapper.ranchu … UNSUPPORTED`, ends its title with `(emulator noise)`;
 - `flutter_error`, `flutter_frame`, `navigation`, `http` — from a Flutter app's Dart VM Service,
   recorded **only while a Flutter session is live**: Spock opens one by itself for the selected
   Flutter app (debug or profile, run with `flutter run`), when it is selected, when its process

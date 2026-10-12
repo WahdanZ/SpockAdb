@@ -63,6 +63,35 @@ class DiagnosticCollectorTest {
     }
 
     @Test
+    fun `emulator noise ranks after every other problem, whatever its severity and count, and keeps its count`() {
+        // The review's case: 79 lines of the emulator's gralloc mapper outranked the app's one error.
+        val report = DiagnosticCollector().collect(
+            listOf(
+                section(
+                    "a",
+                    problems = listOf(
+                        LikelyProblem("log", Severity.ERROR, "mapper.ranchu", count = 79, emulatorNoise = true),
+                        LikelyProblem("log", Severity.WARNING, "OnBackDispatcher", count = 40, emulatorNoise = true),
+                        LikelyProblem("accessibility", Severity.INFO, "a11y"),
+                        LikelyProblem("log", Severity.ERROR, "SpockSample: payment failed"),
+                    ),
+                ),
+            ),
+            probe,
+        )
+
+        val problems = report["likelyProblems"].asJsonArray.map { it.asJsonObject }
+        assertEquals(
+            listOf("SpockSample: payment failed", "a11y", "mapper.ranchu", "OnBackDispatcher"),
+            problems.map { it["summary"].asString },
+        )
+        assertEquals("p1", problems[0]["id"].asString)
+        assertFalse(problems[0].has("emulatorNoise"))
+        assertTrue(problems[2]["emulatorNoise"].asBoolean)
+        assertEquals(79, problems[2]["count"].asInt)
+    }
+
+    @Test
     fun `a merged problem is listed in place of its parts, and a merge missing a part is dropped`() {
         val dart = LikelyProblem("flutterError", Severity.ERROR, "dart")
         val native = LikelyProblem("crash", Severity.ERROR, "native")

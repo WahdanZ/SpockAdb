@@ -139,6 +139,29 @@ class LogcatTimelineClassifierTest {
     }
 
     @Test
+    fun `emulator noise from the app's process is still an event, tagged so it can be collapsed`() {
+        val events = classifier().all(
+            entry(
+                "mapper.ranchu",
+                "getStandardMetadataImpl:886 failure: UNSUPPORTED: id=131: unexpected standardMetadataType=21",
+                level = LogLevel.ERROR,
+                stamp = "09-26 14:00:01.500",
+            ),
+            entry(
+                "WindowOnBackDispatcher",
+                "OnBackInvokedCallback is not enabled for the application.",
+                level = LogLevel.WARN,
+                stamp = "09-26 14:00:01.600",
+            ),
+            entry("SpockSample", "Payment failed: card declined", level = LogLevel.ERROR, stamp = "09-26 14:00:01.700"),
+        )
+
+        assertEquals(listOf(true, true, false), events.map { it.emulatorNoise })
+        assertEquals(TimelineSeverity.ERROR, events[0].severity, "tagged, not downgraded")
+        assertTrue(TimelineExport.format(events.take(1)).contains("(emulator noise)"))
+    }
+
+    @Test
     fun `a crash and an ANR from the event log are errors`() {
         val events = classifier().all(
             entry(

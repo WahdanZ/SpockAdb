@@ -42,6 +42,7 @@ object TimelineExport {
             append(event.severity.name.padEnd(SEVERITY_WIDTH)).append(' ')
             append(event.category.label.padEnd(CATEGORY_WIDTH)).append(' ')
             append(event.title)
+            if (event.emulatorNoise) append("  (emulator noise)")
             event.deviceSerial?.let { append("  [").append(it).append(']') }
             append('\n')
             event.detail.takeIf { it.isNotBlank() && it != event.title }?.lineSequence()?.forEach { line ->

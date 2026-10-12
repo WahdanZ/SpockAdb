@@ -1,5 +1,6 @@
 package spock.adb.timeline
 
+import spock.adb.diagnostics.LogNoise
 import spock.adb.logcat.AppProcessTracker
 import spock.adb.logcat.AppProcesses
 import spock.adb.logcat.LogLevel
@@ -15,7 +16,8 @@ import spock.adb.logcat.LogcatEntry
  * - its activities' lifecycle, from the `wm_on_*_called` event tags (`am_on_*_called` before
  *   Android 9), which the app's own process writes;
  * - a crash or an ANR, from the `am_crash` and `am_anr` event tags;
- * - a warning or error the app's own process logged.
+ * - a warning or error the app's own process logged, tagged [TimelineEvent.emulatorNoise] when it
+ *   is one Android writes whatever the app does.
  *
  * One `Log.e(tag, msg, throwable)` arrives as a line per stack frame. Lines that continue the
  * previous one — same process, thread, tag, level and stamp — are folded into one event, so a
@@ -175,6 +177,7 @@ class LogcatTimelineClassifier(
             detail = "${first.tag} (pid ${first.pid}, tid ${first.tid})\n" + lines.joinToString("\n"),
             deviceSerial = deviceSerial,
             deviceTime = first.timestamp.ifBlank { null },
+            emulatorNoise = LogNoise.matches(first.tag, first.message),
         )
     }
 
