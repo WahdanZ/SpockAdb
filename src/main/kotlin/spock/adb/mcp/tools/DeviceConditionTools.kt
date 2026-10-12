@@ -5,6 +5,7 @@ import spock.adb.command.BatteryLevelPreset
 import spock.adb.command.ChargerSource
 import spock.adb.command.DeviceConditionShell
 import spock.adb.command.DeviceConditionTracker
+import spock.adb.command.DeviceConditions
 import spock.adb.command.StandbyBucket
 import spock.adb.command.deviceConditions
 import spock.adb.command.forceDoze
@@ -38,7 +39,7 @@ class GetDeviceConditionsTool : AdbTool {
 
         return ToolResult.text(
             buildList {
-                add("Deep Doze: ${conditions.deepIdle ?: "unknown"}${if (conditions.dozing) " (dozing)" else ""}")
+                add(deepDozeLine(conditions))
                 packageName?.let { add("Standby bucket of $it: ${conditions.bucket?.label ?: "unknown"}") }
                 add(
                     "Battery: ${conditions.batteryLevel?.let { "$it%" } ?: "level unknown"}, " +
@@ -56,6 +57,19 @@ class GetDeviceConditionsTool : AdbTool {
             }.joinToString("\n"),
         )
     }
+}
+
+/**
+ * `Deep Doze: no (state ACTIVE)`: the answer first, the device's own word after it.
+ *
+ * The state used to be the answer, and `ACTIVE` reads as "Doze is active" when it is the device's
+ * normal, awake state — the opposite. Only `IDLE` is dozing, as [DeviceConditions.dozing] has
+ * it: the states on the way there (`IDLE_PENDING`, `SENSING`, `LOCATING`) are not, and neither is
+ * `IDLE_MAINTENANCE`, the window in which Doze lets deferred work run.
+ */
+internal fun deepDozeLine(conditions: DeviceConditions): String = when (val state = conditions.deepIdle) {
+    null -> "Deep Doze: unknown"
+    else -> "Deep Doze: ${if (conditions.dozing) "yes" else "no"} (state $state)"
 }
 
 /**
