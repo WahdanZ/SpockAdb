@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import spock.adb.command.FakeStorageDevice
+import spock.adb.mcp.tools.ConfirmationWording
 import spock.adb.mcp.tools.ReadAppStorageTool
 
 /**
@@ -119,6 +120,10 @@ class ReadAppStorageToolTest {
         val text = read(context) { addProperty("showSecrets", true) }.text()
 
         assertEquals(listOf("android_read_app_storage"), context.confirmations)
+        // Not the destructive wording: nothing on the device changes, so nothing "cannot be undone".
+        assertEquals(ConfirmationWording.REVEAL_SECRETS, context.confirmationWordings.single())
+        assertEquals("AI Agent Asks to See Secret Values", context.confirmationWordings.single().title)
+        assertEquals(null, context.confirmationWordings.single().closingLine)
         val summary = context.confirmationSummaries.single()
         assertTrue(summary.contains("3 value(s)") && summary.contains("'auth_token'"), summary)
         assertFalse(summary.contains("hunter2"), "the dialog names keys, not values: $summary")

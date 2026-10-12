@@ -7,6 +7,7 @@ import spock.adb.device.ConnectedDevice
 import spock.adb.device.DeviceInfo
 import spock.adb.device.DeviceState
 import spock.adb.device.DeviceTarget
+import spock.adb.mcp.tools.ConfirmationWording
 import spock.adb.mcp.tools.ToolContext
 
 /**
@@ -28,6 +29,9 @@ class FakeToolContext(
     /** What each confirmation told the developer, in step with [confirmations]. */
     val confirmationSummaries = mutableListOf<String>()
     val confirmationTargets = mutableListOf<DeviceTarget>()
+
+    /** How each confirmation was worded, in step with [confirmations]. */
+    val confirmationWordings = mutableListOf<ConfirmationWording>()
     private var selected: String? = null
 
     var selectedProject: String? = null
@@ -53,10 +57,12 @@ class FakeToolContext(
         toolName: String,
         summary: String,
         target: DeviceTarget,
+        wording: ConfirmationWording,
     ): Boolean {
         confirmations += toolName
         confirmationTargets += target
         confirmationSummaries += summary
+        confirmationWordings += wording
         return confirmationAnswer
     }
 

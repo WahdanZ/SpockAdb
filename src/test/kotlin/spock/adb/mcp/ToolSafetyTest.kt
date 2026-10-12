@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
+import spock.adb.mcp.tools.ConfirmationWording
 import spock.adb.mcp.tools.RunAdbCommandTool
 import spock.adb.mcp.tools.ToolRegistry
 import spock.adb.mcp.tools.ToolSafety
@@ -186,6 +187,7 @@ class ToolSafetyTest {
 
         assertTrue(result.isError)
         assertEquals(listOf("android_revoke_permission"), context.confirmations)
+        assertEquals(listOf(ConfirmationWording.DESTRUCTIVE), context.confirmationWordings)
     }
 
     @Test

@@ -96,8 +96,12 @@ class ReadAppStorageTool : AdbTool {
                 val secrets = view.secretKeys(items)
                 val reveal = when {
                     !view.showSecrets || secrets.isEmpty() -> StorageView.Reveal.NOT_ASKED
-                    context.confirmDestructive(name, revealSummary(secrets, "${file.path} of $packageName"), target) ->
-                        StorageView.Reveal.ALLOWED
+                    context.confirmDestructive(
+                        name,
+                        revealSummary(secrets, "${file.path} of $packageName"),
+                        target,
+                        ConfirmationWording.REVEAL_SECRETS,
+                    ) -> StorageView.Reveal.ALLOWED
                     else -> StorageView.Reveal.DECLINED
                 }
                 view.describe(file, items, reveal).truncateForAgent(McpShell.DEFAULT_MAX_CHARS)

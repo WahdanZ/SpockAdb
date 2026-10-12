@@ -1118,8 +1118,8 @@ redacted — best-effort, by key name and value shape:
 
 Booleans, ints and longs are always shown, and the first lines say how many values were redacted
 and cut. `showSecrets: true` asks you
-with the same Allow once / Deny dialog the destructive tools use, naming the keys; if you deny,
-the answer is the redacted one. It is still a read-only tool: without `showSecrets` it never asks.
+with an Allow once / Deny dialog titled "AI Agent Asks to See Secret Values", naming the keys; if
+you deny, the answer is the redacted one. It is still a read-only tool: without `showSecrets` it never asks.
 
 ### Background work tools
 
