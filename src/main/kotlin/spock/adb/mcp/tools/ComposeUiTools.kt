@@ -37,13 +37,16 @@ internal object UiTreeReader {
      * The serial named in the observation is the one the agent chose, read from [device]'s
      * resolved metadata rather than from ddmlib.
      *
-     * @param metrics display metrics an earlier capture in the same call already read; see
-     *   [UiTreeOperations.observe].
-     * @param timeoutSeconds for each command of the capture; a wait passes what it has left.
      * Whether the screen is a Flutter app's is asked of the app on the device, best effort: see
      * [FlutterScreen].
      *
+     * @param metrics display metrics an earlier capture in the same call already read; see
+     *   [UiTreeOperations.observe].
+     * @param timeoutSeconds for each command of the capture; a wait passes what it has left.
      * @param cancellation what stops the capture; by default this thread's interrupt.
+     * @param identifyFlutter whether to ask if the app is Flutter. A wait's polls do not: what they
+     *   report — the preface, and whether a condition holds — does not depend on it, and each ask
+     *   can cost adb two commands.
      * @throws IllegalStateException with an actionable message when the dump fails. A lost
      *   device is told what an agent can do about it, which a person in the Inspector cannot.
      */
@@ -52,11 +55,18 @@ internal object UiTreeReader {
         metrics: DisplayMetrics? = null,
         timeoutSeconds: Long = UiTreeOperations.DUMP_TIMEOUT_SECONDS,
         cancellation: CancellationSignal = CancellationSignal.currentThread(),
+        identifyFlutter: Boolean = true,
     ): UiObservation = try {
         val observation = UiTreeOperations(device.device, timeoutSeconds, device.serialNumber, cancellation)
             .observe(metrics)
-        val seconds = FlutterScreen.checkSeconds(timeoutSeconds)
-        observation.copy(tree = FlutterScreen.classifyOn(observation.tree, device.device, device.serialNumber, seconds))
+        if (!identifyFlutter) {
+            observation
+        } else {
+            val seconds = FlutterScreen.checkSeconds(timeoutSeconds)
+            observation.copy(
+                tree = FlutterScreen.classifyOn(observation.tree, device.device, device.serialNumber, seconds),
+            )
+        }
     } catch (e: UiCaptureException) {
         throw when (e.kind) {
             UiCaptureException.Kind.DEVICE_UNAVAILABLE ->

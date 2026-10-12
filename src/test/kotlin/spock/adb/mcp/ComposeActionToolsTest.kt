@@ -19,6 +19,7 @@ import spock.adb.mcp.tools.InputTextIntoElementTool
 import spock.adb.mcp.tools.LongPressElementTool
 import spock.adb.mcp.tools.ScrollToElementTool
 import spock.adb.mcp.tools.TapElementTool
+import spock.adb.mcp.tools.WaitForElementTool
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -132,6 +133,22 @@ class ComposeActionToolsTest {
         val fail = AssertTextTool().execute(text("Kündigen"), flutterTargeting().context)
         assertTrue(fail.isError, fail.text())
         assertTrue(fail.text().contains("\"Suche\""), "content descriptions are offered: ${fail.text()}")
+    }
+
+    @Test
+    fun `a wait's polls do not ask whether the app is Flutter`() {
+        val screen = flutterTargeting()
+
+        val result = WaitForElementTool().execute(
+            JsonObject().apply {
+                addProperty("text", "Suche")
+                addProperty("timeoutMs", 0)
+            },
+            screen.context,
+        )
+
+        assertFalse(result.isError, result.text())
+        assertEquals(0, screen.commands.count { it.startsWith("dumpsys package") }, screen.commands.toString())
     }
 
     @Test

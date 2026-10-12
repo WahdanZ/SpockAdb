@@ -245,7 +245,9 @@ internal object ElementActions {
         fun verify(connected: ConnectedDevice, signal: CancellationSignal, heldBefore: UiCondition.Check): ToolResult {
             val waiter = UiWaiter(
                 // The display does not change because of a tap, so the pre-action metrics are reused.
-                capture = { seconds -> UiTreeReader.read(connected, before.metrics, seconds, signal) },
+                capture = { seconds ->
+                    UiTreeReader.read(connected, before.metrics, seconds, signal, identifyFlutter = false)
+                },
                 signal = signal,
             )
             val outcome = waiter.await(condition, expectation.timeoutMs.toLong(), POLL_INTERVAL_MS)

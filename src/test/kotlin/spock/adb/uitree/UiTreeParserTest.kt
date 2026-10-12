@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterBuildCache
+import java.util.UUID
 
 class UiTreeParserTest {
 
@@ -239,6 +242,32 @@ class UiTreeParserTest {
         assertEquals(UiFramework.VIEWS, FlutterScreen.classify(targeting) { false }.framework)
         assertEquals(UiFramework.FLUTTER, FlutterScreen.classify(targeting) { null }.framework, "adb failed")
         assertEquals(UiFramework.VIEWS, FlutterScreen.classify(anonymous) { null }.framework)
+    }
+
+    @Test
+    fun `a failed Flutter check is not repeated for ten seconds`() {
+        val targeting = UiTreeParser.parse(dump("flutter-targeting.xml")).copy(framework = UiFramework.VIEWS)
+        val serial = "emulator-${UUID.randomUUID()}"
+        var now = 0L
+        var answer: FlutterBuildCache.Detection = FlutterBuildCache.Detection.AdbFailed
+        var reads = 0
+        fun classify() = FlutterScreen.classifyOn(targeting, serial, clock = { now }) {
+            reads++
+            answer
+        }.framework
+
+        assertEquals(UiFramework.VIEWS, classify(), "adb failed: the dump's reading stays")
+        now = 9_999L
+        assertEquals(UiFramework.VIEWS, classify())
+        assertEquals(1, reads, "not asked again within ten seconds")
+
+        now = 10_000L
+        answer = FlutterBuildCache.Detection.Listed(FlutterBuild.DEBUG)
+        assertEquals(UiFramework.FLUTTER, classify())
+        assertEquals(2, reads)
+        now = 10_001L
+        assertEquals(UiFramework.FLUTTER, classify())
+        assertEquals(3, reads, "an answer is the build cache's to remember, not this memo's")
     }
 
     @Test

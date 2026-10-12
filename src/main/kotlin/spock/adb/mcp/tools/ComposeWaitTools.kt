@@ -71,7 +71,8 @@ class WaitForElementTool : AdbTool {
         var metrics: DisplayMetrics? = null
         val waiter = UiWaiter(
             capture = { seconds ->
-                UiTreeReader.read(device, metrics, seconds, signal).also { metrics = it.metrics }
+                UiTreeReader.read(device, metrics, seconds, signal, identifyFlutter = false)
+                    .also { metrics = it.metrics }
             },
             signal = signal,
         )

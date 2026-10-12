@@ -56,16 +56,49 @@ object FlutterScreen {
      * `dumpsys package`, at most every ten seconds, and the APK listing once per install.
      */
     fun classifyOn(tree: UiTree, device: IDevice, serial: String, shellSeconds: Long = CHECK_SECONDS): UiTree =
-        classify(tree) { packageName ->
-            when (val read = FlutterBuildCache.shared.readOn(device, serial, packageName, shellSeconds)) {
-                is FlutterBuildCache.Detection.Listed -> read.build != null
-                FlutterBuildCache.Detection.AdbFailed -> null
+        classifyOn(tree, serial) { packageName ->
+            FlutterBuildCache.shared.readOn(device, serial, packageName, shellSeconds)
+        }
+
+    /**
+     * [classify] with [read] as the device's answer. A failed read is remembered for
+     * [FAILURE_MEMORY_MS] per device and app, and not asked again meanwhile: a device whose adb
+     * times out would otherwise cost every capture two more timeouts. A successful read is
+     * [FlutterBuildCache]'s to remember.
+     */
+    internal fun classifyOn(
+        tree: UiTree,
+        serial: String,
+        clock: () -> Long = System::currentTimeMillis,
+        read: (packageName: String) -> FlutterBuildCache.Detection,
+    ): UiTree = classify(tree) { packageName ->
+        val key = "$serial $packageName"
+        val failedAt = synchronized(failures) { failures[key] }
+        if (failedAt != null && clock() - failedAt < FAILURE_MEMORY_MS) return@classify null
+        when (val answer = read(packageName)) {
+            is FlutterBuildCache.Detection.Listed -> {
+                synchronized(failures) { failures.remove(key) }
+                answer.build != null
+            }
+            FlutterBuildCache.Detection.AdbFailed -> {
+                synchronized(failures) {
+                    failures[key] = clock()
+                    if (failures.size > MAX_FAILURES) failures.remove(failures.keys.first())
+                }
+                null
             }
         }
+    }
+
+    private val failures = LinkedHashMap<String, Long>()
 
     /** What a capture gives the check: never longer than the capture itself was given. */
     fun checkSeconds(captureSeconds: Long): Long = minOf(captureSeconds, CHECK_SECONDS)
 
     /** As long as Diagnose gives adb to tell whether an app is Flutter. */
     private const val CHECK_SECONDS = 5L
+
+    /** As long as [FlutterBuildCache] trusts an answer before asking `dumpsys` again. */
+    private const val FAILURE_MEMORY_MS = 10_000L
+    private const val MAX_FAILURES = 64
 }
