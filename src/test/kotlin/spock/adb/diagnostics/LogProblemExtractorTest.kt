@@ -58,7 +58,6 @@ class LogProblemExtractorTest {
                 "WindowOnBackDispatcher",
                 "Set 'android:enableOnBackInvokedCallback=\"true\"' in the application manifest.",
             ),
-            line(372, 'E', "IPCThreadState", "binder thread pool (1 threads) starved for 110 ms"),
             line(100, 'E', "SpockSample", "Payment failed: card declined"),
         )
 
@@ -67,9 +66,21 @@ class LogProblemExtractorTest {
         assertTrue(byTag.getValue("mapper.ranchu").emulatorNoise)
         assertTrue(byTag.getValue("WindowOnBackDispatcher").emulatorNoise)
         assertFalse(byTag.getValue("SpockSample").emulatorNoise)
-        assertFalse("IPCThreadState" in byTag, "another process's line is not the app's: ${result.problems}")
         assertEquals(81, result.noiseLines)
         assertEquals(80, result.errorLines, "noise still counts as the errors it is")
+    }
+
+    @Test
+    fun `the app's own binder threads starving is the app's problem, not noise`() {
+        // An emulator HAL logs this constantly from its own pid, which attribution already drops.
+        val result = extract(
+            line(372, 'E', "IPCThreadState", "binder thread pool (1 threads) starved for 110 ms"),
+            line(100, 'E', "IPCThreadState", "binder thread pool (4 threads) starved for 900 ms"),
+        )
+
+        val starved = result.problems.single()
+        assertTrue(starved.summary.contains("(4 threads)"), starved.summary)
+        assertFalse(starved.emulatorNoise)
     }
 
     @Test

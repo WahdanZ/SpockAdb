@@ -38,12 +38,10 @@ object LogNoise {
             Regex("""Set 'android:enableOnBackInvokedCallback="true"' in the application manifest"""),
             "W WindowOnBackDispatcher: Set 'android:enableOnBackInvokedCallback=\"true\"' in the application manifest.",
         ),
-        // A HAL or system service whose one binder thread was busy; on a loaded emulator, constantly.
-        Entry(
-            Regex("""IPCThreadState"""),
-            Regex("""binder thread pool \(\d+ threads?\) starved for \d+ ms"""),
-            "E IPCThreadState: binder thread pool (1 threads) starved for 110 ms",
-        ),
+        // Not here: IPCThreadState's "binder thread pool starved". On an emulator a HAL logs it
+        // constantly, but from its own pid, which the app's pid filter already leaves out; logged
+        // from the app's pid it is the app's own binder threads starving, which is worth seeing.
+        //
         // The emulator's EGL has no preserved-swap or 10-bit configs; HWUI falls back and says so
         // once per window.
         Entry(

@@ -59,11 +59,10 @@ class LogcatActivity : SampleActivity() {
     }
 
     /**
-     * The lines Spock's noise list names (`LogNoise.kt`), with the tags and messages Android uses.
-     * The mapper and back-dispatcher lines come from inside the app's own process on a real
-     * emulator too; the binder line comes from a system process there, and only from here so the
-     * same screen exercises every entry. Mostly errors, many times over, so that by count alone the
-     * noise would outrank the app's one error.
+     * Lines Spock's noise list names (`LogNoise.kt`), with the tags and messages Android uses. On a
+     * real emulator these come from inside the app's own process too: the mapper and the renderer
+     * run on its RenderThread, the back dispatcher on its UI thread. Mostly errors, many times over,
+     * so that by count alone the noise would outrank the app's one error.
      */
     private fun logEmulatorNoise() {
         repeat(NOISE_REPEATS) {
@@ -79,13 +78,13 @@ class LogcatActivity : SampleActivity() {
                 "Set 'android:enableOnBackInvokedCallback=\"true\"' in the application manifest.",
             )
         }
-        repeat(NOISE_PAIRS) { Log.e("IPCThreadState", "binder thread pool (1 threads) starved for ${100 + it} ms") }
+        repeat(NOISE_PAIRS) { Log.e("OpenGLRenderer", "Unable to match the desired swap behavior.") }
     }
 
     private fun parseAmount(text: String): Double = text.toDouble()
 
     private companion object {
-        /** 50 mapper errors, 10 back-dispatcher pairs and 10 binder lines: 80 W/E noise lines in all. */
+        /** 50 mapper errors, 10 back-dispatcher pairs and 10 renderer errors: 80 W/E noise lines in all. */
         const val NOISE_REPEATS = 50
         const val NOISE_PAIRS = 10
 
