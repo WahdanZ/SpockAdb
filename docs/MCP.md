@@ -561,7 +561,11 @@ for that result without guessing how long to sleep. `android_assert_enabled` nee
 with several it fails and lists them, as an action's refusal does, rather than answering for
 whichever came first.
 
-Screenshots are first-class MCP image content, so an agent can also look at the screen.
+Screenshots are first-class MCP image content, so an agent can also look at the screen. A
+full-size PNG is the default, and it is large: about 1.2 MB of base64 on a busy 1080x2400 screen.
+`android_take_screenshot` takes `scale` (0.1–1.0) and `format` (`png` or `jpeg`), and scales in the
+plugin. A scaled image comes with a line that says how to get back to screen pixels, e.g.
+`multiply image coordinates by 2 for android_tap`.
 
 ### Which screen a result describes
 
@@ -738,6 +742,24 @@ was dispatched.
 
 ## Triage, files and screen recording
 
+### Which app a call is about
+
+Every tool that takes `packageName` resolves it the same way: the app the call names, else the
+app selected in Spock's tool window, else the open project's application ID. When the call does
+not name the app, the answer starts with one line saying which it got, e.g.
+`package: com.example.app (app selected in Spock)`; JSON answers carry the same as `packageFrom`
+(`applicationIdFrom` in `flutter_app_status`). With none of the three, a tool about one app
+refuses and names all three ways to give it one. The tools that can look at the whole device —
+`android_get_logcat`, `android_get_debug_context`, `android_diagnose_current_screen` and
+`android_get_device_conditions` — do so instead, and say so: logcat's first line reads
+`Whole-device log: …`, and device conditions leave out the standby bucket and say why. An explicit
+`""` asks for the whole device (for device conditions, no bucket) and adds no note.
+
+This includes the destructive app tools: `android_clear_app_data`, `android_uninstall_app` and the
+rest default to the app selected in Spock, and still ask the developer before they run. The
+confirmation then opens with `<app> is the app selected in Spock; the agent did not name one.`, so
+the developer knows before approving that the agent did not choose it.
+
 ### `android_get_debug_context`
 
 The call to reach for first when something is wrong. It answers with a **bounded JSON summary**
@@ -780,7 +802,8 @@ that returns its detail, so the agent fetches it only when the summary points th
 | `schemaVersion` | yes | `2`. Bumped when a field changes meaning or goes away; adding one does not. |
 | `device` | yes | The device the report describes. |
 | `packageName` | yes | The app it is about, or `null` when none is known. Unless the call names one, the app selected in Spock's tool window, else the open project's. |
-| `likelyProblems` | yes | At most 10, ranked: severity (`error`, `warning`, `info`), then a Flutter error and a native failure seen together (`flutterCrossLayer`, with `parts`; see `flutter`), crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. The log problems paired with a Flutter error (see `flutter`) follow it directly. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
+| `packageFrom` | no | Where `packageName` came from when the call did not name it: `app selected in Spock`, `open project's application ID`, or `none: …` when the report covers the whole device. |
+| `likelyProblems` | yes | At most 10, ranked: known emulator and platform noise last whatever its severity (tagged `"emulatorNoise": true`, count kept; `logs.emulatorNoise` says how many of the log's warnings and errors it is), otherwise severity (`error`, `warning`, `info`), then a Flutter error and a native failure seen together (`flutterCrossLayer`, with `parts`; see `flutter`), crashes, ANRs, a stopped process, a failing Flutter plugin or channel handler, a Flutter framework error, network, exceptions, the screen, slow Flutter frames and frequent rebuilds; then how often. The log problems paired with a Flutter error (see `flutter`) follow it directly. Each has an `id` (`p1`, `p2`… in this order, for other parts of the report to point at), `type`, `severity`, `summary`, and when known `count`, `lastSeen` and the `section` it came from. |
 | `moreProblems` | no | How many problems were ranked below the cut. |
 | `screen`, `app`, `logs`, `flutter`, `ui`, `backgroundWork`, `deviceConditions`, `permissions` | per `include` | One short summary per section. `screen` also carries the app's `activityStack` (top first) and `fragments` when the app is in front. `flutter` is there only for a Flutter app (below). |
 | `sectionErrors` | no | `{section: reason}` for each section that failed. A failure never fails the call. |
@@ -982,7 +1005,8 @@ Events, all on the host's clock (device log stamps are moved onto it with a meas
   destroyed, and the fragment tree after each resume;
 - `app_lifecycle` — its process starting and dying, crashes and ANRs;
 - `log` — warnings and errors the app's own process logged, one event per log call with any stack
-  trace in the detail;
+  trace in the detail; a line Android writes whatever the app does, such as the emulator's
+  `mapper.ranchu … UNSUPPORTED`, ends its title with `(emulator noise)`;
 - `flutter_error`, `flutter_frame`, `navigation`, `http` — from a Flutter app's Dart VM Service,
   recorded **only while a Flutter session is live**: Spock opens one by itself for the selected
   Flutter app (debug or profile, run with `flutter run`), when it is selected, when its process
@@ -1084,8 +1108,8 @@ certificates, will not route through it.
 
 Hands a push message to the app's Firebase Messaging receiver over ADB, the way Google Play
 services would, with no server and no registration token. `data` is an object of string pairs;
-a `title` or `body` makes it a notification message. `packageName` defaults to the open
-project's application ID. It is a safe action: nothing persistent on the device changes, and it
+a `title` or `body` makes it a notification message. `packageName` defaults to the app selected
+in Spock, else the open project's. It is a safe action: nothing persistent on the device changes, and it
 gives an agent the loop *send → wait → assert* against `android_get_logcat` or the UI tree.
 
 The receiver is guarded by a signature permission only Google Play services holds, so a plain
@@ -1118,6 +1142,23 @@ replaces it and reads it back. What the editor does not understand is preserved:
 elements and unknown protobuf fields survive an edit. Proto DataStore files with the app's own
 schema are listed as unsupported and never decoded.
 
+`android_read_app_storage` keeps its answer bounded. Each value is cut at `maxValueChars`
+(default 500, 50–40000) and ends `…[truncated, N chars]` with the value's full length; `key`
+shows only the entries whose key contains that text, ignoring case. Values that look secret are
+redacted — best-effort, by key name and value shape:
+
+- a key containing `token`, `secret`, `auth` (not `author`), `passw`, `pwd`, `session`, `api_key`,
+  `jwt`, `bearer`, `cookie`, `credential` or `private_key`: `<redacted, N chars>`;
+- a JWT anywhere in the value: `<redacted: looks like a JWT, N chars>`;
+- JSON holding such a key at any depth, e.g. `flutter.user` = `{"accessToken":"…"}`:
+  `<redacted: holds accessToken, N chars>`.
+
+Booleans, ints and longs are always shown, and the first lines say how many values were redacted
+and cut. `showSecrets: true` asks you
+with an Allow once / Deny dialog titled "AI Agent Asks to See Secret Values", naming the keys; if
+you deny, the answer is the redacted one. An allowed reveal is written to `idea.log` with the
+package, file and key names, never the values, and the activity history keeps the redacted answer. It is still a read-only tool: without `showSecrets` it never asks.
+
 ### Background work tools
 
 `android_get_scheduled_jobs` reads `dumpsys jobscheduler <package>` and lists each job the app
@@ -1147,7 +1188,8 @@ Background work behaves differently in Doze, in a low App Standby bucket, and on
 tools put the device in those states and take it back out:
 
 - `android_get_device_conditions` reads the deep Doze state, the app's bucket, and whether the
-  battery is overridden. It also lists what Spock changed and has not yet reset.
+  battery is overridden. Doze is answered first and the device's state after it:
+  `Deep Doze: no (state ACTIVE)`, `yes (state IDLE)`; only `IDLE` is dozing. It also lists what Spock changed and has not yet reset.
 - `android_force_doze` unplugs the battery (Doze requires it) and runs
   `dumpsys deviceidle force-idle`. It is **destructive**: every app on the device is deferred until
   reset, and a device left in forced Doze misbehaves for whoever uses it next.
@@ -1213,7 +1255,7 @@ state.
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `packageName` | the open project's app | The app to kill. It must be running. |
+| `packageName` | the app selected in Spock, else the open project's | The app to kill. It must be running. |
 | `relaunch` | `true` | `false` leaves the process dead, for looking at the device meanwhile; restore it from recents. |
 | `deviceSerial` | the selected device | Which device. |
 
@@ -1291,7 +1333,8 @@ moment.
 **Test a deep link.** `android_open_deep_link(uri)` → `android_get_current_activity` →
 `android_take_screenshot` → report which screen opened.
 
-**Investigate a permission problem.** `android_get_package_info` to see declared vs granted →
+**Investigate a permission problem.** `android_get_package_info` to see which runtime permissions
+are granted and which denied (a summary; `raw: true` for the full `dumpsys package`) →
 `android_get_logcat` for the denial → `android_grant_permission` → `android_restart_app`.
 
 ## Not yet implemented

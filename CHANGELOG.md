@@ -132,6 +132,11 @@
   and the popup says what failed. Unnamed routes show their class, and ambiguous or transitional
   navigation is unavailable, never guessed. The check briefly pauses the app; Home never attaches
   a session, and for any other app App back stack is unchanged.
+  Apps with several navigators — go_router's `ShellRoute` and `StatefulShellRoute`, auto_route's
+  tabs and nested routers, a keyed `Navigator` in a page — are read as a tree: each navigator
+  listed under the route that holds it and marked hidden or showing by Flutter's own flags, and
+  the current route followed down to the navigator on screen. Where a route holds several
+  navigators none of which is hidden, current stops at that route and says why.
 - **A guide for Flutter apps, and a Flutter section in the agent skill.** What Spock does for a
   Flutter app was spread across the MCP reference and release notes, so it was hard to tell what
   needs `flutter run`, what works in a profile or release build, and what is still unchecked.
@@ -174,6 +179,35 @@
   ([#144](https://github.com/WahdanZ/SpockAdb/issues/144)). Both lists now show each element
   once; `interactiveOnly` used to repeat a clickable row nested inside another match. The sample
   app's Recomposition screen and fixture 15 show both.
+- **MCP tools agree on which app a call is about, and say which.** Left without a `packageName`,
+  the tools used to choose differently: with a Flutter project open, whose application ID Spock
+  cannot resolve, `android_get_package_info` refused, `android_get_logcat` quietly returned every
+  process's lines, and `android_get_debug_context` used the app selected in Spock. Every tool now
+  takes the app the call names, else the app selected in Spock, else the open project's, and its
+  answer starts with a line such as `package: com.example.app (app selected in Spock)` whenever
+  the call did not name it. With none of the three, a tool about one app names all three ways to
+  give it one, and logcat, debug context and device conditions say they cover the whole device
+  instead of passing it off as the app's. This includes the destructive app tools: clearing data,
+  uninstalling and revoking a permission now default to the app selected in Spock, and still ask
+  you before they run ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
+- **MCP answers that used to run to tens of thousands of characters are bounded
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** An agent pays for every character a
+  tool returns, and three tools returned far more than was asked.
+  - **`android_get_package_info` returns a summary**: version, UID, min and target SDK, install and
+    update time, the launcher activity, component counts, and which runtime permissions are granted
+    and which denied — about 1 KB where Settings' raw dump is 190 KB and a Flutter app's 30 KB, and
+    it no longer stops at the 40 000-character cap before reaching the version. `raw: true` returns
+    the dump as before.
+  - **`android_read_app_storage` cuts each value at 500 characters** (`maxValueChars`, 50–40000),
+    ending it with the value's full length, and `key` reads only the entries you name; one cached
+    JSON value had made a single prefs file 40 000 characters. Values that look secret are
+    redacted, since these files hold push and auth tokens: best-effort, by key name (token, secret,
+    password, api key, cookie and the like) and by value shape (a JWT, or cached JSON holding a
+    token). `showSecrets: true` asks you with Allow once / Deny, and Deny keeps them redacted.
+  - **`android_take_screenshot` takes `scale` and `format`.** A full-size PNG stays the default;
+    `scale: 0.5` and `format: jpeg` return an image several times smaller, with a line telling the
+    agent to multiply its coordinates back for `android_tap`.
+  - Both sample apps' *Storage* screens have a *Write big + secret prefs* button to try it on.
 - **An element action goes to the one match it can act on.** Since `text` also matches content
   descriptions, `android_input_text_into_element {"text":"Search"}` matched both a search field
   whose hint reads "Search" and the search icon beside it, and was refused as ambiguous. When a
@@ -184,6 +218,21 @@
 
 ### Fixed
 
+- **Emulator noise no longer tops debug context's likely problems.** On an emulator the graphics
+  stack logs the same error — `mapper.ranchu: getStandardMetadataImpl … UNSUPPORTED` — dozens of
+  times from inside the app's own process, and `WindowOnBackDispatcher` warns about predictive back
+  on every window, so by sheer count they outranked the one error the app actually logged. Spock
+  now knows these lines (and a few more, each listed with an example in `LogNoise.kt`), tags them
+  `emulatorNoise`, and ranks them after every other problem, counts kept; the Timeline marks them
+  too. The sample app's Logcat screen reproduces it
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
+- **`android_get_device_conditions` no longer reads as the opposite of the Doze state.** It printed
+  `Deep Doze: ACTIVE`, which reads as "Doze is active" when `ACTIVE` is the device awake. It now
+  answers first and gives the device's state after: `Deep Doze: no (state ACTIVE)`,
+  `yes (state IDLE)`.
+- **`android_get_network_info` no longer prints backslashes in interface names.** `ip -o` marks
+  where its multi-line form would wrap with `\` and padding (`scope host lo\ valid_lft forever`),
+  which an agent read as part of the name; each is now one space.
 - **The device and app popup tells two emulators apart and keeps underscores.** Devices that would
   read the same — two emulators booted from one system image — now show their serial
   (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
@@ -196,6 +245,9 @@
 - **The grant and revoke balloons name the permission.** Granting or revoking one permission from
   **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
   revoked` instead of the permission's name.
+- **The Timeline's Flutter filter is called "Flutter error".** It lists Flutter framework errors only;
+  "Flutter" read as if it held every Flutter row, so an empty list looked broken. Routes, slow
+  frames and failed requests keep their own filters: Navigation, Frame and HTTP.
 - **Choosing a device or app says so.** Picking one in the device and app chooser changed only the
   line's text, so it was easy to wonder whether the click had landed. The tool window now shows a
   short balloon under the line — "Spock now acts on `<app>` on `<device>`" — and the status bar

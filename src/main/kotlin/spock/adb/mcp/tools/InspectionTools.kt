@@ -63,27 +63,29 @@ class GetCurrentFragmentsTool : AdbTool {
             "when the activity alone does not identify the screen."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "Package. Defaults to the open project's application ID.")
+        packageName("Package.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
-        val fragments = InspectionOperations(device).fragments(context.resolvePackage(arguments))
-        if (fragments.isEmpty()) return ToolResult.text("No visible fragments were reported.")
+        return context.withPackage(arguments) { packageName ->
+            val fragments = InspectionOperations(device).fragments(packageName)
+            if (fragments.isEmpty()) return@withPackage ToolResult.text("No visible fragments were reported.")
 
-        return ToolResult.text(
-            buildString {
-                fun render(list: List<FragmentData>, depth: Int) {
-                    list.forEach { fragment ->
-                        appendLine("  ".repeat(depth) + fragment.fragment)
-                        render(fragment.innerFragments, depth + 1)
+            ToolResult.text(
+                buildString {
+                    fun render(list: List<FragmentData>, depth: Int) {
+                        list.forEach { fragment ->
+                            appendLine("  ".repeat(depth) + fragment.fragment)
+                            render(fragment.innerFragments, depth + 1)
+                        }
                     }
-                }
-                render(fragments, 0)
-            }.trimEnd(),
-        )
+                    render(fragments, 0)
+                }.trimEnd(),
+            )
+        }
     }
 }
 
@@ -134,11 +136,31 @@ internal object LogcatReader {
         fun textOrExplanation(): String = output.ifBlank { emptyExplanation }
     }
 
-    /** Absent `packageName` means the open project's app; an explicit empty string means all. */
-    fun JsonObject.logcatPackage(context: ToolContext): String? {
-        if (has("packageName") && optionalString("packageName") == null) return null
-        return optionalString("packageName") ?: context.projectApplicationId()
+    /** Which app's lines to read: [resolved], or the whole device when it is null. */
+    data class Scope(val resolved: ResolvedPackage?, val wholeDeviceAsked: Boolean = false) {
+        val packageName: String? get() = resolved?.name
+
+        /**
+         * What goes first in the answer: the app, when the agent did not name it, or that the read
+         * covers the whole device though nobody asked for that.
+         */
+        val note: String? get() = if (resolved == null) WHOLE_DEVICE.takeUnless { wholeDeviceAsked } else resolved.note
     }
+
+    /**
+     * The app from [packageOrNull]; an explicit empty string means the whole device. So does an app
+     * that cannot be resolved, which used to happen silently: an agent read every process's
+     * lines as its app's.
+     */
+    fun JsonObject.logcatScope(context: ToolContext): Scope {
+        if (has("packageName") && optionalString("packageName") == null) return Scope(null, wholeDeviceAsked = true)
+        return Scope(context.packageOrNull(this))
+    }
+
+    const val WHOLE_DEVICE =
+        "Whole-device log: no packageName was given, no app is selected in Spock, and no application ID " +
+            "was resolved from the open project, so these lines come from every process. Pass packageName " +
+            "for one app's lines."
 
     fun JsonObject.logcatLevel(): String = optionalString("minLevel")?.uppercase() ?: "V"
 
@@ -154,11 +176,7 @@ class GetLogcatTool : AdbTool {
             "set minLevel to E to find crashes. Returns the most recent lines, oldest first."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string(
-            "packageName",
-            "Only lines from this package's processes. Defaults to the open project's " +
-                "application ID. Pass an empty string to read the whole log.",
-        )
+        string("packageName", "Only lines from this package's processes. $PACKAGE_DEFAULT_OR_DEVICE")
         enumeration("minLevel", "Minimum log level.", listOf("V", "D", "I", "W", "E", "F"))
         integer("maxLines", "Maximum lines to return. Defaults to 300.")
         deviceSerial()
@@ -166,15 +184,16 @@ class GetLogcatTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
+        val scope = with(LogcatReader) { arguments.logcatScope(context) }
         val read = with(LogcatReader) {
             LogcatReader.read(
                 device = device,
-                packageName = arguments.logcatPackage(context),
+                packageName = scope.packageName,
                 minLevel = arguments.logcatLevel(),
                 maxLines = arguments.logcatMaxLines(),
             )
         }
-        return ToolResult.text(read.textOrExplanation())
+        return ToolResult.text(read.textOrExplanation()).noting(scope.note)
     }
 }
 
@@ -234,8 +253,19 @@ class GetNetworkInfoTool : AdbTool {
                 appendLine("airplane_mode:  ${McpShell.run(device, "settings get global airplane_mode_on")}")
                 appendLine()
                 appendLine("interfaces:")
-                append(McpShell.run(device, "ip -o addr show", maxChars = 4_000))
+                append(withoutContinuations(McpShell.run(device, "ip -o addr show", maxChars = 4_000)))
             },
         )
+    }
+
+    internal companion object {
+        /**
+         * `ip -o` prints each address on one line, but keeps a `\` and padding where the
+         * multi-line form would break (`scope host lo\       valid_lft forever`). An agent reads
+         * that as a literal backslash in the interface name, so it becomes one space.
+         */
+        fun withoutContinuations(output: String): String = output.replace(CONTINUATION, " ")
+
+        private val CONTINUATION = Regex(""" ?\\[ \t]+""")
     }
 }

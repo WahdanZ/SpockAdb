@@ -21,16 +21,14 @@ import spock.adb.flutter.vmservice.Redaction
  * Read-only, like Diagnose: it attaches as Diagnose does when there is no session yet, and reads
  * the session's state. An attach is not quite nothing to the app: a new session over DDS switches
  * on Dart's HTTP recording, as Diagnose's does, unless the setting is off. The app is the one asked
- * for, else the one selected in Spock, else the project's, as for Diagnose. Never prints a VM
+ * for, else the one selected in Spock, else the project's ([packageOrNull]). Never prints a VM
  * Service address or token: the session hands none out, and the whole answer is scrubbed once
  * more before it leaves.
  *
- * @param selectedApp the app selected in Spock; tests pass their own.
  * @param statusOf what the status is, for [execute]; the project's [FlutterFollowerService] by
  *   default. Tests pass their own.
  */
 class FlutterAppStatusTool(
-    private val selectedApp: (ToolContext) -> String? = { it.selectedApp() },
     private val statusOf: (ToolContext, ConnectedDevice, String) -> FlutterAppStatus =
         { context, device, packageName -> projectStatus(context, device, packageName) },
 ) : AdbTool {
@@ -50,23 +48,24 @@ class FlutterAppStatusTool(
             "the widget tree, hot reload and evaluating Dart belong to the Dart MCP server, run next to Spock."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string(
-            "packageName",
-            "The Flutter app's application ID. Defaults to the app selected in Spock, else the open project's.",
-        )
+        packageName("The Flutter app's application ID.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolveFollowedPackage(arguments, selectedApp(context))
-        return ToolResult.text(render(statusOf(context, device, packageName)))
+        val resolved = context.resolvePackage(arguments)
+        return ToolResult.text(render(statusOf(context, device, resolved.name), resolved.source))
     }
 
-    /** The status as JSON, scrubbed of any VM Service address as a last guard [FR9]. */
-    internal fun render(status: FlutterAppStatus): String {
+    /**
+     * The status as JSON, scrubbed of any VM Service address as a last guard [FR9]. [source] is
+     * named next to the application ID when the agent did not pass one.
+     */
+    internal fun render(status: FlutterAppStatus, source: PackageSource = PackageSource.ARGUMENT): String {
         val json = JsonObject().apply {
             addProperty("applicationId", status.applicationId)
+            source.label?.let { addProperty("applicationIdFrom", it) }
             addProperty("device", status.serial)
             addProperty("flutterApp", status.build != null)
             val build = status.build

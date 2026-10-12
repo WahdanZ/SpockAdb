@@ -17,8 +17,8 @@ import javax.swing.ListSelectionModel
 
 /**
  * The Flutter routes in App Back Stack, listed as the activities are: one line per route, the root
- * at the top and the current route at the bottom, marked; then how sure Spock is, or why there is
- * no stack to show.
+ * at the top and the current route marked; a nested navigator's routes one level in, under a line
+ * saying whether it is hidden or showing; then how sure Spock is, or why there is no stack to show.
  */
 internal object FlutterRoutesSection {
 
@@ -39,12 +39,13 @@ internal object FlutterRoutesSection {
         foreground = UIUtil.getContextHelpForeground()
     }
 
-    /** Opens on the current route, the last line. */
+    /** Opens on the current route: the last line, or the one marked current when navigators are nested. */
     private class RouteList(rows: List<FlutterRouteText.Row>) : JBList<FlutterRouteText.Row>(rows) {
         init {
             selectionMode = ListSelectionModel.SINGLE_SELECTION
             cellRenderer = RouteRenderer()
-            selectedIndex = rows.lastIndex
+            selectedIndex = rows.indexOfLast { it.mark?.contains(FlutterRouteText.CURRENT) == true }
+                .takeIf { it >= 0 } ?: rows.lastIndex
         }
     }
 
@@ -68,12 +69,16 @@ internal object FlutterRoutesSection {
             val row = value ?: return panel
             val muted = if (isSelected) list.selectionForeground else UIUtil.getContextHelpForeground()
             panel.background = if (isSelected) list.selectionBackground else list.background
-            panel.border = JBUI.Borders.empty(ROW_PAD, PAD)
+            panel.border = JBUI.Borders.empty(ROW_PAD, PAD + row.depth * INDENT, ROW_PAD, PAD)
             text.text = row.text
-            text.font = if (row.unnamed) JBFont.label().asItalic() else JBFont.label()
+            text.font = when {
+                row.header -> JBFont.small()
+                row.unnamed -> JBFont.label().asItalic()
+                else -> JBFont.label()
+            }
             text.foreground = when {
                 isSelected -> list.selectionForeground
-                row.unnamed -> muted
+                row.unnamed || row.header -> muted
                 else -> list.foreground
             }
             mark.text = row.mark.orEmpty()
@@ -86,6 +91,7 @@ internal object FlutterRoutesSection {
     private const val GAP = 4
     private const val PAD = 10
     private const val ROW_PAD = 3
+    private const val INDENT = 16
     private const val NOTE_WIDTH = 300
     private const val HTML_DISABLE = "html.disable"
 }

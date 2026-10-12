@@ -229,7 +229,7 @@ class FlutterTimelineMapperTest {
         val text = TimelineExport.format(rows)
 
         assertTrue(text.contains("Navigator: /item/3"), text)
-        assertTrue(text.contains(" Flutter    Exception caught by rendering library"), text)
+        assertTrue(text.contains(" Flutter error Exception caught by rendering library"), text)
     }
 
     private fun frame(number: Int, buildUs: Long, rasterUs: Long = 2_000) = FlutterFixtures.event(

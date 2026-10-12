@@ -11,6 +11,7 @@ import spock.adb.device.DebugBridgeProvider
 import spock.adb.device.DeviceInfoReader
 import spock.adb.device.DeviceLister
 import spock.adb.device.DeviceTarget
+import spock.adb.mcp.tools.ConfirmationWording
 import spock.adb.mcp.tools.ToolContext
 import java.util.concurrent.atomic.AtomicReference
 
@@ -149,6 +150,7 @@ class McpToolContext(
         toolName: String,
         summary: String,
         target: DeviceTarget,
+        wording: ConfirmationWording,
     ): Boolean {
         // Any open frame will do: this dialog is about a device operation, not about a
         // project, so refusing to ask merely because two projects are open would deny a call
@@ -166,9 +168,9 @@ class McpToolContext(
 
             approved = MessageDialogBuilder
                 .yesNo(
-                    "AI Agent Requests a Destructive Action",
-                    "An MCP client wants to run $toolName on ${target.label}.\n\n" +
-                        "$summary\n\nThis cannot be undone.",
+                    wording.title,
+                    "An MCP client wants to run $toolName on ${target.label}.\n\n$summary" +
+                        wording.closingLine?.let { "\n\n$it" }.orEmpty(),
                 )
                 .yesText("Allow once")
                 .noText("Deny")

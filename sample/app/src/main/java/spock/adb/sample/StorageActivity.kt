@@ -23,6 +23,7 @@ val Context.userPrefs by preferencesDataStore(name = "user_prefs")
  * edit made in the plugin shows up here:
  *  - shared_prefs/settings.xml: boolean, int, long, float, string, string set
  *  - files/datastore/user_prefs.preferences_pb: the same, plus double
+ *  - shared_prefs/session.xml: a ~40 KB value and secret-looking keys, for the MCP read bounds
  *  - cache/ and code_cache/ files, for Clear Cache (only these go) versus Clear Data (all go)
  */
 class StorageActivity : SampleActivity() {
@@ -34,6 +35,7 @@ class StorageActivity : SampleActivity() {
         screen("Storage") {
             note("Seed, then open Spock ADB › Storage. Edit a value there and come back to see it here.")
             button("Seed SharedPreferences and DataStore") { seed() }
+            button("Write big + secret prefs") { writeBigAndSecret() }
             button("Write cache files") { writeCache() }
             button("Refresh") { refresh() }
             output = output()
@@ -67,6 +69,25 @@ class StorageActivity : SampleActivity() {
         }
     }
 
+    /**
+     * shared_prefs/session.xml: one ~40 KB cached JSON value, which android_read_app_storage cuts at
+     * maxValueChars, and three fake secrets it redacts until showSecrets is approved.
+     */
+    private fun writeBigAndSecret() {
+        val feed = (1..540).joinToString(",", """{"items":[""", "]}") {
+            """{"id":$it,"title":"Cached item $it","body":"Lorem ipsum dolor sit amet."}"""
+        }
+        getSharedPreferences("session", MODE_PRIVATE).edit()
+            .putString("cached_feed", feed)
+            .putString("auth_token", listOf(JWT_HEADER, JWT_PAYLOAD, "fake-signature").joinToString("."))
+            .putString("refreshToken", "rt-fake-0123456789abcdef")
+            .putString("user_password", "not-a-real-password")
+            .putBoolean("session_active", true)
+            .apply()
+        output.text = "shared_prefs/session.xml: cached_feed (${feed.length} chars), auth_token, refreshToken, " +
+            "user_password, session_active"
+    }
+
     private fun writeCache() {
         File(cacheDir, "images").mkdirs()
         File(cacheDir, "images/thumb_1.bin").writeBytes(ByteArray(64 * 1024))
@@ -90,5 +111,14 @@ class StorageActivity : SampleActivity() {
                 appendLine("files/keep_me.txt exists: ${File(filesDir, "keep_me.txt").exists()}")
             }
         }
+    }
+
+    private companion object {
+        /**
+         * Assembled rather than written out whole, as in LogcatActivity: a complete JWT literal in a
+         * tracked file trips secret scanners. Not a credential: the payload reads "fake-spock-token".
+         */
+        const val JWT_HEADER = "eyJhbGciOiJIUzI1NiJ9"
+        const val JWT_PAYLOAD = "ZmFrZS1zcG9jay10b2tlbg"
     }
 }

@@ -2,6 +2,7 @@ package spock.adb.mcp.tools
 
 import com.android.ddmlib.IDevice
 import com.google.gson.JsonObject
+import com.intellij.openapi.diagnostic.Logger
 import spock.adb.command.AppStorageUnverifiedWriteException
 import spock.adb.command.listAppStorage
 import spock.adb.command.readAppStorageFile
@@ -27,52 +28,115 @@ class ListAppStorageTool : AdbTool {
             "build. Read one with android_read_app_storage."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
-        string("packageName", "Package whose storage to list. Defaults to the open project's application ID.")
+        packageName("Package whose storage to list.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        return storageRead(device, packageName) {
-            val files = device.listAppStorage(packageName)
-            if (files.isEmpty()) {
-                "No SharedPreferences or DataStore files found for $packageName."
-            } else {
-                files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
+        return context.withPackage(arguments) { packageName ->
+            storageRead(device, packageName) {
+                val files = device.listAppStorage(packageName)
+                ToolResult.text(
+                    if (files.isEmpty()) {
+                        "No SharedPreferences or DataStore files found for $packageName."
+                    } else {
+                        files.joinToString("\n") { "${it.path}  (${it.kind.label})" }
+                    },
+                )
             }
         }
     }
 }
 
-/** `android_read_app_storage` — one file, as typed entries. */
+/**
+ * `android_read_app_storage` — one file, as typed entries.
+ *
+ * Read-only, but not unbounded and not unguarded: one cached JSON value made a single Flutter
+ * prefs file 40 000 characters, and the same files hold push and auth tokens. How the entries are
+ * cut, filtered and redacted is [StorageView]'s; revealing a redacted value is the developer's call.
+ */
 class ReadAppStorageTool : AdbTool {
     override val name = "android_read_app_storage"
     override val description =
         "Read one SharedPreferences or Preferences DataStore file as typed entries: key, type, value. " +
             "Use it to check an app's stored state — onboarding flags, feature toggles, a cached user — " +
-            "before or after reproducing a bug. Requires a debuggable build."
+            "before or after reproducing a bug. Requires a debuggable build. Each value is cut at " +
+            "maxValueChars (default ${StorageView.DEFAULT_MAX_VALUE_CHARS}); use key to read only the " +
+            "entries you need. Values that look secret are redacted — best-effort, by key name (token, " +
+            "secret, auth, password, session, api key, jwt, bearer, cookie, credential, private key) and " +
+            "value shape (a JWT, or JSON holding such a key); showSecrets asks the developer to reveal them."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         fileArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        string("key", "Only the entries whose key contains this text, ignoring case.")
+        integer(
+            "maxValueChars",
+            "Longest value shown before it is cut, ${StorageView.MIN_VALUE_CHARS}-${StorageView.MAX_VALUE_CHARS}. " +
+                "Defaults to ${StorageView.DEFAULT_MAX_VALUE_CHARS}.",
+        )
+        boolean(
+            "showSecrets",
+            "Show the values that are redacted because they look secret. The developer is asked " +
+                "first; if they decline, the values stay redacted. Defaults to false.",
+        )
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
-        val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
+        val target = context.requireDevice(arguments.optionalString("deviceSerial"))
+        val device = target.device
         val file = AppStoragePaths.parse(arguments.requiredString("file"))
-        return storageRead(device, packageName) {
-            val format = file.format
-            if (format == null) {
-                "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, which " +
-                    "cannot be decoded without that message's schema."
-            } else {
-                describeStorage(file, format.read(device.readAppStorageFile(packageName, file)))
-                    .truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
+        val view = StorageView.from(arguments).getOrElse { return ToolResult.error(it.message.orEmpty()) }
+        return context.withPackage(arguments) { packageName ->
+            storageRead(device, packageName) {
+                val format = file.format
+                if (format == null) {
+                    return@storageRead ToolResult.text(
+                        "${file.path} is a ${file.kind.label} file. It holds the app's own protobuf message, " +
+                            "which cannot be decoded without that message's schema.",
+                    )
+                }
+                val items = format.read(device.readAppStorageFile(packageName, file))
+                val secrets = view.secretKeys(items)
+                val where = "${file.path} of $packageName"
+                val reveal = when {
+                    !view.showSecrets || secrets.isEmpty() -> StorageView.Reveal.NOT_ASKED
+                    context.confirmDestructive(
+                        name,
+                        revealSummary(secrets, where),
+                        target,
+                        ConfirmationWording.REVEAL_SECRETS,
+                    ) -> StorageView.Reveal.ALLOWED
+                    else -> StorageView.Reveal.DECLINED
+                }
+                val text = view.describe(file, items, reveal).truncateForAgent(McpShell.DEFAULT_MAX_CHARS)
+                if (reveal != StorageView.Reveal.ALLOWED) return@storageRead ToolResult.text(text)
+
+                // The agent sees the values; the activity history, which is written to disk and shown in
+                // the panel, keeps the redacted rendering. idea.log records that it happened, by key.
+                val keys = secrets.joinToString { "'${plain(it)}'" }
+                val serial = target.serialNumber
+                LOG.info("MCP $name: secret values revealed with the developer's approval in $where on $serial: $keys")
+                ToolResult.text(text).copy(
+                    historyText = view.describe(file, items, StorageView.Reveal.RECORDED)
+                        .truncateForAgent(McpShell.DEFAULT_MAX_CHARS),
+                )
             }
         }
+    }
+
+    private fun revealSummary(keys: List<String>, where: String): String {
+        val named = keys.take(MAX_NAMED_KEYS).joinToString { "'${plain(it)}'" } +
+            if (keys.size > MAX_NAMED_KEYS) " and ${keys.size - MAX_NAMED_KEYS} more" else ""
+        return "Show the agent ${keys.size} value(s) from $where that are redacted because they look " +
+            "secret: $named."
+    }
+
+    private companion object {
+        const val MAX_NAMED_KEYS = 8
+        val LOG = Logger.getInstance(ReadAppStorageTool::class.java)
     }
 }
 
@@ -98,30 +162,36 @@ abstract class AppPreferenceEditTool : AdbTool {
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val packageName = context.resolvePackage(arguments)
-        val file = AppStoragePaths.parse(arguments.requiredString("file"))
-        val edit = Edit(target, packageName, file, changeFrom(arguments), arguments.optionalBoolean("restart", false))
+        return context.withResolvedPackage(arguments) { resolved ->
+            val packageName = resolved.name
+            val file = AppStoragePaths.parse(arguments.requiredString("file"))
+            val restart = arguments.optionalBoolean("restart", false)
+            val edit = Edit(target, resolved, file, changeFrom(arguments), restart)
 
-        if (!target.device.isAppInstall(packageName)) return ToolResult.error(notInstalled(packageName))
-        return try {
-            apply(edit, context)
-        } catch (e: AppStorageUnverifiedWriteException) {
-            // Not "could not change": the old content is gone, and an agent told otherwise would retry.
-            ToolResult.error("The change to ${edit.where} was written but not verified. ${e.message}")
-        } catch (e: IllegalArgumentException) {
-            ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
-        } catch (e: IllegalStateException) {
-            ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            if (!target.device.isAppInstall(packageName)) {
+                return@withResolvedPackage ToolResult.error(notInstalled(packageName))
+            }
+            try {
+                apply(edit, context)
+            } catch (e: AppStorageUnverifiedWriteException) {
+                // Not "could not change": the old content is gone, and an agent told otherwise would retry.
+                ToolResult.error("The change to ${edit.where} was written but not verified. ${e.message}")
+            } catch (e: IllegalArgumentException) {
+                ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            } catch (e: IllegalStateException) {
+                ToolResult.error(e.message ?: "Could not change ${file.path} in $packageName.")
+            }
         }
     }
 
     private class Edit(
         val target: ConnectedDevice,
-        val packageName: String,
+        val app: ResolvedPackage,
         val file: StorageFile,
         val change: PrefChange,
         val restart: Boolean,
     ) {
+        val packageName: String get() = app.name
         val where: String get() = "${file.path} of $packageName"
     }
 
@@ -139,7 +209,7 @@ abstract class AppPreferenceEditTool : AdbTool {
 
         val stopping = if (edit.restart) "stops the app and starts it again" else "stops the app"
         val summary = summary(edit.change, items.lastOrNull { it.key == edit.change.key }, edit.where)
-        if (!context.confirmDestructive(name, "$summary This $stopping.", edit.target)) {
+        if (!context.confirmDestructive(name, edit.app.confirming("$summary This $stopping."), edit.target)) {
             return ToolResult.error("The developer declined to change ${edit.where}.")
         }
 
@@ -186,7 +256,7 @@ class SetAppPreferenceTool : AppPreferenceEditTool() {
             required = true,
         )
         restartArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 
@@ -227,7 +297,7 @@ class DeleteAppPreferenceTool : AppPreferenceEditTool() {
         fileArgument()
         string("key", "Preference key to remove. May be empty.", required = true, mayBeEmpty = true)
         restartArgument()
-        string("packageName", "Package that owns the file. Defaults to the open project's application ID.")
+        packageName("Package that owns the file.")
         deviceSerial()
     }
 
@@ -239,25 +309,10 @@ class DeleteAppPreferenceTool : AppPreferenceEditTool() {
     override fun done(change: PrefChange, where: String): String = "Deleted '${plain(change.key)}' from $where."
 }
 
-/** Entries as text an agent can read back: `key (type) = value`, one per line. */
-internal fun describeStorage(file: StorageFile, items: List<PrefItem>): String = buildString {
-    append("${file.path} (${file.kind.label}, ${items.size} ${if (items.size == 1) "entry" else "entries"})")
-    if (items.isEncryptedPreferences()) {
-        append("\nEncrypted (EncryptedSharedPreferences): keys and values are ciphertext. Read-only.")
-    }
-    items.forEach { item ->
-        append('\n')
-        when (item) {
-            is PrefItem.Typed -> append("${item.key} (${item.value.type.argument}) = ${item.value.text()}")
-            is PrefItem.Opaque -> append("${item.key} (not editable: ${item.description})")
-        }
-    }
-}
-
-private fun storageRead(device: IDevice, packageName: String, read: () -> String): ToolResult {
+private fun storageRead(device: IDevice, packageName: String, read: () -> ToolResult): ToolResult {
     if (!device.isAppInstall(packageName)) return ToolResult.error(notInstalled(packageName))
     return runCatching(read).fold(
-        onSuccess = { ToolResult.text(it) },
+        onSuccess = { it },
         onFailure = { ToolResult.error(it.message ?: "Could not read the storage of $packageName.") },
     )
 }
@@ -279,18 +334,21 @@ private fun shown(value: PrefValue): String = "${plain(value.text())} (${value.t
  * length is capped, so the developer can read the whole sentence at a glance.
  */
 private fun plain(text: String): String {
-    val escaped = buildString {
-        text.forEach { char ->
-            when {
-                char == '\n' -> append("\\n")
-                char == '\r' -> append("\\r")
-                char == '\t' -> append("\\t")
-                char.isISOControl() -> append("\\u%04x".format(char.code))
-                else -> append(char)
-            }
+    val escaped = escapeControlChars(text)
+    return if (escaped.length > MAX_SHOWN_CHARS) escaped.take(MAX_SHOWN_CHARS) + "…" else escaped
+}
+
+/** Control characters as escapes, so text from the app's file stays on the one line it is given. */
+internal fun escapeControlChars(text: String): String = buildString {
+    text.forEach { char ->
+        when {
+            char == '\n' -> append("\\n")
+            char == '\r' -> append("\\r")
+            char == '\t' -> append("\\t")
+            char.isISOControl() -> append("\\u%04x".format(char.code))
+            else -> append(char)
         }
     }
-    return if (escaped.length > MAX_SHOWN_CHARS) escaped.take(MAX_SHOWN_CHARS) + "…" else escaped
 }
 
 private const val MAX_SHOWN_CHARS = 120

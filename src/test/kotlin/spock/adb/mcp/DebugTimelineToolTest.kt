@@ -80,6 +80,7 @@ class DebugTimelineToolTest {
         assertEquals(TimelineCategory.APP_LIFECYCLE, TimelineCategory.parse("app"))
         assertEquals(TimelineCategory.LOG, TimelineCategory.parse("LOG"))
         assertNull(TimelineCategory.parse("flutter"))
+        assertEquals(TimelineCategory.FLUTTER_ERROR, TimelineCategory.parse("Flutter error"))
 
         val arguments = JsonObject().apply { add("categories", JsonArray().apply { add("flutter") }) }
         val result = tool.answer(DebugTimeline(), "on", arguments, now)

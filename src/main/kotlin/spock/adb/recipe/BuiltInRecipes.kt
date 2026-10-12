@@ -19,7 +19,7 @@ object BuiltInRecipes {
 
     private val packageName = RecipeParam(
         "packageName",
-        "The app under test. Defaults to the open project's application ID.",
+        "The app under test. Defaults to the app selected in Spock, else the open project's.",
     )
 
     private val expectText = RecipeParam(

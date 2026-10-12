@@ -32,11 +32,18 @@ object Schema {
                 if (mayBeEmpty) addProperty("minLength", 0)
             }
 
+        /** `packageName` for a tool about one app: [what] it is, then what it defaults to. */
+        fun packageName(what: String) = string("packageName", "$what $PACKAGE_DEFAULT")
+
         fun integer(name: String, description: String, required: Boolean = false) =
             property(name, "integer", description, required)
 
         fun boolean(name: String, description: String, required: Boolean = false) =
             property(name, "boolean", description, required)
+
+        /** A number that may have a fraction, such as a scale factor. */
+        fun number(name: String, description: String, required: Boolean = false) =
+            property(name, "number", description, required)
 
         /**
      * An array of strings, optionally constrained to a fixed set.

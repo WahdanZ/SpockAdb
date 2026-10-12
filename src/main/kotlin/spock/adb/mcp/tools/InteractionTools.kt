@@ -12,13 +12,29 @@ class TakeScreenshotTool : AdbTool {
     override val description =
         "Capture the device screen and return it as an image. Use this to see what is " +
             "actually on screen rather than inferring it from logs, and to verify the " +
-            "result of an action you just performed."
+            "result of an action you just performed. By default it is a full-size PNG, about " +
+            "1.2 MB of base64 for a 1080x2400 screen; when you only need to see the layout, pass " +
+            "scale 0.5 and format jpeg for a far smaller image."
     override val safety = ToolSafety.READ_ONLY
-    override val inputSchema: JsonObject = Schema.obj { deviceSerial() }
+    override val inputSchema: JsonObject = Schema.obj {
+        number(
+            "scale",
+            "Shrink the image by this factor, ${ScreenshotEncoding.MIN_SCALE}-${ScreenshotEncoding.MAX_SCALE}. " +
+                "Defaults to 1.0 (full size). A scaled result says how to turn its coordinates back " +
+                "into screen pixels for android_tap.",
+        )
+        enumeration(
+            "format",
+            "Image format. Defaults to png; jpeg is several times smaller and fine for reading a screen.",
+            ScreenshotEncoding.Format.entries.map { it.argument },
+        )
+        deviceSerial()
+    }
 
     // The capture itself — and why it goes through the shell — is in ScreenshotOperations,
     // which the Diagnose tab shares.
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
+        val request = ScreenshotEncoding.request(arguments).getOrElse { return ToolResult.error(it.message.orEmpty()) }
         val device = context.requireIDevice(arguments.optionalString("deviceSerial"))
 
         val png = try {
@@ -26,7 +42,25 @@ class TakeScreenshotTool : AdbTool {
         } catch (e: IllegalStateException) {
             return ToolResult.error(e.message ?: "The screenshot could not be captured.")
         }
-        return ToolResult.image(Base64.getEncoder().encodeToString(png))
+        return when {
+            request.isPassThrough -> ToolResult.image(Base64.getEncoder().encodeToString(png))
+            else -> encoded(png, request)
+        }
+    }
+
+    private fun encoded(png: ByteArray, request: ScreenshotEncoding.Request): ToolResult {
+        val encoded = try {
+            ScreenshotEncoding.encode(png, request.scale, request.format)
+        } catch (e: IllegalStateException) {
+            return ToolResult.error(e.message ?: "The screenshot could not be re-encoded.")
+        }
+        val image = ToolResult.image(Base64.getEncoder().encodeToString(encoded.bytes), request.format.mimeType)
+        return when {
+            request.scale < ScreenshotEncoding.MAX_SCALE -> image.copy(
+                content = image.content + ToolContent.Text(ScreenshotEncoding.scaleNote(request.scale, encoded)),
+            )
+            else -> image
+        }
     }
 }
 

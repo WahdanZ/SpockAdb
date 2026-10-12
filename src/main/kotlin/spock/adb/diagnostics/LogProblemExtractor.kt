@@ -21,6 +21,8 @@ object LogProblemExtractor {
         val warningLines: Int,
         /** Lines that belonged to the app, after attribution. */
         val appLines: Int,
+        /** Of [errorLines] and [warningLines], those that are [LogNoise]. */
+        val noiseLines: Int = 0,
     )
 
     /**
@@ -46,11 +48,13 @@ object LogProblemExtractor {
                     it.lastSeen,
                     SECTION,
                     seenAt = it.seen.takeLast(MAX_OCCURRENCES),
+                    emulatorNoise = it.noise,
                 )
             },
             errorLines = relevant.count { it.level in ERROR_LEVELS },
             warningLines = relevant.count { it.level == 'W' },
             appLines = relevant.size,
+            noiseLines = relevant.count { it.level in NOISE_LEVELS && LogNoise.matches(it.tag, it.message) },
         )
     }
 
@@ -362,7 +366,8 @@ object LogProblemExtractor {
             val severity = if (line.level in ERROR_LEVELS) Severity.ERROR else Severity.WARNING
             val type = if (line.tag == STRICT_MODE) TYPE_STRICT_MODE else TYPE_LOG
             val key = "log:${line.level}:${line.tag}:${normalise(line.message)}"
-            report(key, type, severity, "${line.tag}: ${line.message.trim()}", line.time)
+            val acc = report(key, type, severity, "${line.tag}: ${line.message.trim()}", line.time)
+            acc.noise = LogNoise.matches(line.tag, line.message)
             rememberChannelFailure(line, line, null, key)
         }
     }
@@ -426,6 +431,9 @@ object LogProblemExtractor {
 
     private class Accumulator(val type: String, val severity: Severity, summary: String) {
         var summary: String = summary
+
+        /** Whether it is [LogNoise]: its key holds the tag and message, so every occurrence is. */
+        var noise = false
 
         /** When each occurrence was logged, in log order, so taking one back keeps the right last. */
         val seen = mutableListOf<String>()
@@ -510,6 +518,7 @@ object LogProblemExtractor {
     private const val MESSAGE = 5
 
     private val ERROR_LEVELS = setOf('E', 'F', 'A')
+    private val NOISE_LEVELS = ERROR_LEVELS + 'W'
 
     private val THREADTIME =
         Regex("""^(\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})\s+(\d+)\s+\d+\s+([VDIWEFA])\s+(.*?)\s*: ?(.*)$""")
