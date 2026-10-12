@@ -34,7 +34,12 @@ class WaitForElementTool : AdbTool {
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         elementSelector()
-        enumeration("until", "What to wait for. Defaults to visible.", UntilArgument.WORDS)
+        enumeration(
+            "until",
+            "What to wait for. Defaults to visible. 'gone' and 'hidden' wait for every match, and text matches " +
+                "content descriptions too, so give them exact: true or a testTag.",
+            UntilArgument.WORDS,
+        )
         integer(
             "timeoutMs",
             "How long to wait, in milliseconds, 0 to $MAX_TIMEOUT_MS. Defaults to $DEFAULT_TIMEOUT_MS. Over " +
@@ -66,7 +71,8 @@ class WaitForElementTool : AdbTool {
         var metrics: DisplayMetrics? = null
         val waiter = UiWaiter(
             capture = { seconds ->
-                UiTreeReader.read(device, metrics, seconds, signal).also { metrics = it.metrics }
+                UiTreeReader.read(device, metrics, seconds, signal, identifyFlutter = false)
+                    .also { metrics = it.metrics }
             },
             signal = signal,
         )

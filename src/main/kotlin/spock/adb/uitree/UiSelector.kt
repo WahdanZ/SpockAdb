@@ -16,6 +16,10 @@ import java.util.IdentityHashMap
  *  1. **testTag** — an identifier the developer chose, stable across copy changes.
  *  2. **content description** — stable, and meaningful for accessibility.
  *  3. **text** — visible, but changes with translations and copy edits.
+ *
+ * `text` matches a node's content description as well as its text: it is "the words on screen",
+ * and Flutter publishes every label, and Compose an icon's, as the content description, so an
+ * agent searching for what it reads found nothing. `contentDescription` matches only that field.
  */
 data class UiSelector(
     val testTag: String? = null,
@@ -50,10 +54,32 @@ data class UiSelector(
         }
     }
 
-    private fun textMatches(node: UiNode): Boolean = listOfNotNull(
-        contentDescription?.let { node.contentDescription to it },
-        text?.let { node.text to it },
-    ).all { (actual, expected) -> compare(actual, expected) }
+    private fun textMatches(node: UiNode): Boolean =
+        (contentDescription == null || compare(node.contentDescription, contentDescription)) &&
+            (text == null || compare(node.text, text) || compare(node.contentDescription, text))
+
+    /** [text] found [node] through its content description and not its text. */
+    fun matchedContentDescription(node: UiNode): Boolean {
+        val expected = text ?: return false
+        return !compare(node.text, expected) && compare(node.contentDescription, expected)
+    }
+
+    /**
+     * Since `text` matches content descriptions too, a field whose text is "Search" and an icon
+     * described as "Search" are both found by it. Neither exact matching nor a package tells them
+     * apart; which field each matched in does. Empty unless [matches] split that way.
+     */
+    internal fun splitAdvice(matches: List<UiNode>): String {
+        val expected = text ?: return ""
+        val (described, written) = matches.partition { matchedContentDescription(it) }
+        if (described.isEmpty() || written.isEmpty()) return ""
+        return " ${written.size} matched text='$expected' in their text and ${described.size} only in their " +
+            "content description: name the content-description one with contentDescription instead of text, " +
+            "and the text one with a testTag (exactTag: true) or containerTag."
+    }
+
+    /** " (matched content-desc)" after a match, so a result says which field the words were in. */
+    fun matchNote(node: UiNode): String = if (matchedContentDescription(node)) " (matched content-desc)" else ""
 
     private fun compare(actual: String, expected: String): Boolean = when {
         exact -> actual.equals(expected, ignoreCase = true)
@@ -85,7 +111,12 @@ object UiTreeSearch {
     fun findAll(tree: UiTree, selector: UiSelector): List<UiNode> =
         searchRoot(tree, selector).asSequence()
             .filter(selector::matches)
-            .sortedWith(matchRanking(selector))
+            .sortedWith(
+                compareByDescending<UiNode> { it.testTag != null && selector.testTag != null }
+                    .thenByDescending { it.isInteractive }
+                    .thenBy { it.bounds.top }
+                    .thenBy { it.bounds.left },
+            )
             .toList()
 
     private fun searchRoot(tree: UiTree, selector: UiSelector): List<UiNode> {
@@ -105,14 +136,46 @@ object UiTreeSearch {
      *
      * With an [action], matches are counted by the node that action would land on: a
      * clickable row and the icon inside it sharing a content description are one tap, not two.
+     * See [choose] for the one choice made, and said.
      */
-    fun findUnique(tree: UiTree, selector: UiSelector, action: Action? = null): UiNode? {
+    fun findUnique(tree: UiTree, selector: UiSelector, action: Action? = null): UiNode? =
+        choose(tree, selector, action)?.node
+
+    /**
+     * [findUnique], saying what it passed over. With an [action], several matches of which exactly
+     * one can take it are not ambiguous: `text` matches content descriptions too, so a search
+     * field whose hint is "Search" and the icon described as "Search" beside it both match, and
+     * only the field takes text. That one is chosen, and [Choice.note] says so. Two or more that
+     * can take it, or none, are refused as before; without an action nothing is chosen.
+     */
+    fun choose(tree: UiTree, selector: UiSelector, action: Action? = null): Choice? {
         val targets = Collections.newSetFromMap(IdentityHashMap<UiNode, Boolean>())
         val matches = findAll(tree, selector).filter { match ->
             targets.add(action?.let { eligibleTarget(tree, match, it) } ?: match)
         }
-        require(matches.size <= 1) { ambiguityMessage(selector, matches) }
-        return matches.singleOrNull()
+        if (matches.size <= 1) return matches.singleOrNull()?.let { Choice(it) }
+        val able = action?.let { taken -> matches.filter { eligibleTarget(tree, it, taken) != null } }.orEmpty()
+        require(able.size == 1) { ambiguityMessage(selector, matches) }
+        val chosen = able.single()
+        return Choice(chosen, matches.filterNot { it === chosen })
+    }
+
+    /** The match an action lands on, and the other matches it could not have landed on. */
+    data class Choice(val node: UiNode, val ignored: List<UiNode> = emptyList()) {
+
+        /**
+         * `2 matched; acted on the only one that accepts input (EditText 'Search'); ignored:
+         * ImageView content-desc 'Search'`, so an agent sees that a choice was made. Null when
+         * there was nothing to choose between.
+         */
+        fun note(selector: UiSelector, action: Action): String? {
+            if (ignored.isEmpty()) return null
+            fun name(node: UiNode): String = node.className.substringAfterLast('.') +
+                (if (selector.matchedContentDescription(node)) " content-desc" else "") +
+                " '${node.printableLabel}'"
+            return "${ignored.size + 1} matched; acted on the only one that ${action.accepts} " +
+                "(${name(node)}); ignored: ${ignored.joinToString { name(it) }}"
+        }
     }
 
     private fun ambiguityMessage(selector: UiSelector, matches: List<UiNode>): String {
@@ -129,10 +192,11 @@ object UiTreeSearch {
                 "packageName, or containerTag."
         }
         val candidates = matches.take(MAX_CANDIDATES).joinToString("; ") {
-            "'${it.label}' ${it.className.substringAfterLast('.')} " +
+            "'${it.printableLabel}'${selector.matchNote(it)} ${it.className.substringAfterLast('.')} " +
                 "id='${it.resourceId}' package='${it.packageName}' at ${it.bounds}"
         }
-        return "Ambiguous selector ${selector.describe()}: ${matches.size} matches. $advice Candidates: $candidates"
+        return "Ambiguous selector ${selector.describe()}: ${matches.size} matches. $advice" +
+            selector.splitAdvice(matches) + " Candidates: $candidates"
     }
 
     /**
@@ -161,7 +225,12 @@ object UiTreeSearch {
 
     private fun isDescendant(node: UiNode, of: UiNode): Boolean = of.flatten().drop(1).any { it === node }
 
-    enum class Action { TAP, LONG_PRESS, TEXT_INPUT }
+    /** @property accepts finishes "the only one that …". */
+    enum class Action(val accepts: String) {
+        TAP("can be tapped"),
+        LONG_PRESS("can be long-pressed"),
+        TEXT_INPUT("accepts input"),
+    }
 
     /**
      * The nearest ancestor-or-self that [action] can land on, before any policy checks.
@@ -202,18 +271,12 @@ object UiTreeSearch {
         selector: UiSelector = UiSelector(),
     ): UiNode {
         val target = eligibleTarget(tree, node, action)
-        requireNotNull(target) { "Matched '${node.label}' has no eligible target for $action." }
+        requireNotNull(target) { "Matched '${node.printableLabel}' has no eligible target for $action." }
         require(searchRoot(tree, selector).any { it === target }) { "Action target is outside the selected container." }
-        require(target.enabled && node.enabled) { "Matched '${node.label}' is disabled." }
+        require(target.enabled && node.enabled) { "Matched '${node.printableLabel}' is disabled." }
         require(target.packageName == node.packageName) { "Action target belongs to a different package." }
         return target
     }
-
-    private fun matchRanking(selector: UiSelector): Comparator<UiNode> =
-        compareByDescending<UiNode> { it.testTag != null && selector.testTag != null }
-            .thenByDescending { it.isInteractive }
-            .thenBy { it.bounds.top }
-            .thenBy { it.bounds.left }
 
     fun findOne(tree: UiTree, selector: UiSelector): UiNode? = findAll(tree, selector).firstOrNull()
 

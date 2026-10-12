@@ -99,7 +99,9 @@ internal object ElementActions {
         }
         val before = expectation?.condition?.evaluate(resolved.observation)
 
-        val dispatched = "${spec.noun} dispatched once to '${resolved.target.label}' ${resolved.where}${spec.details}"
+        val dispatched = "${spec.noun} dispatched once to '${resolved.target.printableLabel}'" +
+            "${resolved.matchNote} " +
+            "${resolved.where}${spec.details}" + resolved.choiceNote?.let { "; $it" }.orEmpty()
         Dispatch(connected, signal, resolved, spec).send()?.let { return it }
 
         if (expectation == null || before == null) {
@@ -150,18 +152,20 @@ internal object ElementActions {
     fun Schema.ObjectBuilder.expectation() {
         string(
             TEST_TAG,
-            "Optional check after the action: the test tag or resource id of an element that should then be in " +
-                "the state $UNTIL names. Any $TEST_TAG, $TEXT or $DESCRIPTION turns the check on. It is matched " +
+            "Optional check after the action: the test tag, resource id or Flutter Semantics(identifier:) of an " +
+                "element that should then be in the state $UNTIL names. Any $TEST_TAG, $TEXT or $DESCRIPTION " +
+                "turns the check on. It is matched " +
                 "over the whole screen: packageName and containerTag scope only the element acted on.",
         )
-        string(TEXT, "Optional check after the action: text of the element expected.")
+        string(TEXT, "Optional check after the action: text or content description of the element expected.")
         string(DESCRIPTION, "Optional check after the action: content description of the element expected.")
         boolean(EXACT, "Whole-value match for $TEXT and $DESCRIPTION. Defaults to false.")
         boolean(EXACT_TAG, "Case-sensitive whole match for $TEST_TAG. Defaults to false.")
         enumeration(
             UNTIL,
             "What the expected element should be after the action, in android_wait_for_element's words. " +
-                "Defaults to $DEFAULT_UNTIL.",
+                "Defaults to $DEFAULT_UNTIL. 'gone' and 'hidden' wait for every match, and $TEXT matches content " +
+                "descriptions too, so give them $EXACT: true or $TEST_TAG.",
             UntilArgument.WORDS,
         )
         integer(
@@ -179,6 +183,8 @@ internal object ElementActions {
         private val resolved: Resolved,
         private val spec: Spec,
     ) {
+        private val label = resolved.target.printableLabel
+
         private val shell = UiCaptureShell(
             connected.device,
             McpShell.DEFAULT_TIMEOUT_SECONDS,
@@ -196,7 +202,8 @@ internal object ElementActions {
                     val sent = steps.take(index)
                     return error(
                         if (sent.isEmpty()) {
-                            "CANCELLED before anything was sent to '${resolved.target.label}'; nothing was dispatched."
+                            "CANCELLED before anything was sent to '$label'; nothing " +
+                                "was dispatched."
                         } else {
                             "CANCELLED after ${sent.joinToString { it.name }} was dispatched once, and not " +
                                 "repeated.${unsentNote(steps.drop(index))}"
@@ -208,10 +215,10 @@ internal object ElementActions {
                 } catch (e: UiCaptureException) {
                     return error(
                         if (e.kind == UiCaptureException.Kind.CANCELLED) {
-                            "CANCELLED during ${step.name} to '${resolved.target.label}'; the input may or may not " +
+                            "CANCELLED during ${step.name} to '$label'; the input may or may not " +
                                 "have reached the device, and it was not repeated.$unsent"
                         } else {
-                            "Dispatch uncertain at ${step.name} to '${resolved.target.label}': ${e.message} The " +
+                            "Dispatch uncertain at ${step.name} to '$label': ${e.message} The " +
                                 "input may have reached the device and was not repeated.$unsent Check with " +
                                 "android_find_ui_element or android_wait_for_element before retrying."
                         },
@@ -242,7 +249,9 @@ internal object ElementActions {
         fun verify(connected: ConnectedDevice, signal: CancellationSignal, heldBefore: UiCondition.Check): ToolResult {
             val waiter = UiWaiter(
                 // The display does not change because of a tap, so the pre-action metrics are reused.
-                capture = { seconds -> UiTreeReader.read(connected, before.metrics, seconds, signal) },
+                capture = { seconds ->
+                    UiTreeReader.read(connected, before.metrics, seconds, signal, identifyFlutter = false)
+                },
                 signal = signal,
             )
             val outcome = waiter.await(condition, expectation.timeoutMs.toLong(), POLL_INTERVAL_MS)
@@ -337,12 +346,13 @@ private fun resolveElement(
     val observation = UiTreeReader.read(device, cancellation = signal)
     val tree = observation.tree
     // Ambiguity is decided over the whole tree: an off-screen duplicate still makes a selector ambiguous.
-    val match = observation.refusing { UiTreeSearch.findUnique(tree, selector, action) }
+    val choice = observation.refusing { UiTreeSearch.choose(tree, selector, action) }
         ?: throw IllegalStateException(
             observation.summary() + "\nNo element matched ${selector.describe()}. " + tree.frameworkNote() +
                 " Call android_get_ui_tree to see what is actually on screen. An element scrolled out of " +
                 "view is often left out of the capture entirely; android_scroll_to_element brings it in.",
         )
+    val match = choice.node
 
     // Compose usually puts text on a child and the click handler on its parent, so the node
     // carrying the text is often not the one that can be tapped.
@@ -350,14 +360,23 @@ private fun resolveElement(
     val visibility = ViewportVisibility.of(observation, target)
     observation.refusing {
         require(visibility.presence != Presence.OUTSIDE_VIEWPORT && visibility.presence != Presence.ZERO_AREA) {
-            "'${target.label}' at ${target.bounds} is ${visibility.describe()}. Nothing was dispatched: " +
+            "'${target.printableLabel}' at ${target.bounds} is ${visibility.describe()}. Nothing was " +
+                "dispatched: " +
                 "call android_scroll_to_element with the same selector first."
         }
     }
-    return Resolved(observation, target, visibility)
+    return Resolved(observation, target, visibility, selector.matchNote(match), choice.note(selector, action))
 }
 
-private class Resolved(val observation: UiObservation, val target: UiNode, val visibility: NodeVisibility) {
+private class Resolved(
+    val observation: UiObservation,
+    val target: UiNode,
+    val visibility: NodeVisibility,
+    /** Which field the selector's text was found in, when it was the content description. */
+    val matchNote: String,
+    /** What was passed over to land on [target], when several matched; see [UiTreeSearch.choose]. */
+    val choiceNote: String?,
+) {
 
     /**
      * The centre of the part in view, so a partly scrolled-out control is pressed where it can be

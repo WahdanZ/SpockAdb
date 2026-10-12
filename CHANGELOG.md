@@ -208,6 +208,13 @@
     `scale: 0.5` and `format: jpeg` return an image several times smaller, with a line telling the
     agent to multiply its coordinates back for `android_tap`.
   - Both sample apps' *Storage* screens have a *Write big + secret prefs* button to try it on.
+- **An element action goes to the one match it can act on.** Since `text` also matches content
+  descriptions, `android_input_text_into_element {"text":"Search"}` matched both a search field
+  whose hint reads "Search" and the search icon beside it, and was refused as ambiguous. When a
+  selector matches several elements but exactly one of them can take the tap, long press or text,
+  the action now goes to that one, and the result says so: "2 matched; acted on the only one that
+  accepts input (EditText 'Search'); ignored: ImageView content-desc 'Search'". Two or more that
+  could take it, or none, are refused as before, and checks that act on nothing still refuse.
 
 ### Fixed
 
@@ -249,6 +256,32 @@
   tool window the field shared one line with its label and both buttons, which left it about 90 px:
   an address did not fit, and the dropdown arrow that lists every proxy set before barely showed.
   The field now has its own line across the panel, with **Set** and **Remove proxy** beneath it.
+- **Agents find a Flutter element by the words they see.** Flutter publishes every label as the
+  content description, never as text, so `android_find_ui_element {"text":"Suche"}` found nothing
+  on a Flutter app while `android_assert_text` found the same words. The `text` selector of every
+  element tool — find, tap, long press, scroll, type, wait and the assertions — now matches a node's
+  text or its content description, through one matcher, and the result says "matched content-desc"
+  when that is where the words were. `contentDescription` still matches only the content
+  description, and two elements with the same words are still refused rather than guessed between.
+- **A Flutter app is reported as Flutter.** `android_get_ui_tree`, the accessibility audit, the
+  *ui* section of `android_get_debug_context` and the UI Inspector's badge called a Flutter app
+  "Traditional Android Views", because its semantics bridge reports `Button` and `View` like any
+  View screen. Spock now asks whether the app on screen is a Flutter build — the same check
+  `flutter_app_status` makes, once per install — and says `Flutter (semantics bridge)`, with a note
+  that its words are content descriptions and `Semantics(identifier:)` is what `testTag` matches.
+- **The accessibility audit gives Flutter fixes, and prints Flutter labels whole.** On a Flutter app
+  it suggested `android:contentDescription`; it now suggests `Semantics(label:)`,
+  `ExcludeSemantics`, `MaterialTapTargetSize.padded` or a 48x48 `SizedBox`. Flutter merges a
+  card's words into one content description, a line each, and a finding printed it as it was, so
+  a card whose first line is a badge's "GRATIS E-SIM" read as a finding about the badge; labels
+  are now printed on one line (`GRATIS E-SIM / Tarif M`). On a Flutter screen, a touch-target
+  finding on a carousel page that looks cut at the carousel's edge — an offer banner that does not
+  scroll by touch reports its neighbouring offers as slivers — is now a note rather than a
+  warning, saying the bounds may be cut by a parent clip and should be checked on the device. The
+  review's report of non-clickable badges flagged as small targets is not yet explained: the
+  check only looks at clickable nodes, and the sample did not reproduce it.
+- **The proxy tool warns that Flutter ignores the system proxy.** `android_set_http_proxy` now says
+  that Flutter's `dart:io` `HttpClient` does not use it unless the app opts in.
 
 ## [4.0.7] - 2026-09-29
 

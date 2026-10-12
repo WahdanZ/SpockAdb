@@ -116,13 +116,15 @@ class UiSelectorTest {
         )
         val dialog = tree.copy(root = nodeWithText("").copy(children = listOf(title, button)))
 
+        // Without an action nothing is chosen; a tap would go to the button, the only one it lands on.
         val error = assertThrows(IllegalArgumentException::class.java) {
-            UiTreeSearch.findUnique(dialog, UiSelector(text = "Save"), UiTreeSearch.Action.TAP)
+            UiTreeSearch.findUnique(dialog, UiSelector(text = "Save"))
         }.message!!
         assertTrue(error.contains("'Save changes?' TextView"), error)
         assertTrue(error.contains("'Save' Button"), error)
         assertTrue(error.contains("exact: true"), error)
         assertEquals(button, UiTreeSearch.findUnique(dialog, UiSelector(text = "Save", exact = true)))
+        assertEquals(button, UiTreeSearch.findUnique(dialog, UiSelector(text = "Save"), UiTreeSearch.Action.TAP))
     }
 
     @Test
@@ -293,6 +295,139 @@ class UiSelectorTest {
         assertThrows(IllegalArgumentException::class.java) {
             UiTreeSearch.actionTarget(flutterLogin, content, UiTreeSearch.Action.TAP)
         }
+    }
+
+    /** Captured from sample/flutter_app's Element targeting screen: Flutter 3.47, Android 14. */
+    private val flutterTargeting = UiTreeParser.parse(
+        checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-targeting.xml")).bufferedReader().readText(),
+    )
+
+    @Test
+    fun `text matches a content description, which is where Flutter puts every label`() {
+        val tab = UiTreeSearch.findUnique(flutterTargeting, UiSelector(text = "Suche"), UiTreeSearch.Action.TAP)!!
+
+        assertEquals("Suche", tab.contentDescription)
+        assertEquals("", tab.text)
+        assertTrue(UiSelector(text = "Suche").matchedContentDescription(tab))
+        assertEquals(" (matched content-desc)", UiSelector(text = "Suche").matchNote(tab))
+    }
+
+    @Test
+    fun `visible text that matches says nothing about the content description`() {
+        val node = nodeWithText("Save").copy(contentDescription = "Save the draft")
+
+        assertFalse(UiSelector(text = "Save").matchedContentDescription(node))
+        assertEquals("", UiSelector(contentDescription = "Save").matchNote(node))
+    }
+
+    @Test
+    fun `text matches either field, contentDescription only its own`() {
+        val described = nodeWithText("").copy(contentDescription = "Suche")
+        val written = nodeWithText("Suche")
+
+        assertTrue(UiSelector(text = "Suche").matches(described))
+        assertTrue(UiSelector(text = "Suche").matches(written))
+        assertTrue(UiSelector(contentDescription = "Suche").matches(described))
+        assertFalse(UiSelector(contentDescription = "Suche").matches(written))
+        assertTrue(UiSelector(text = "suche", exact = true).matches(described))
+        assertFalse(UiSelector(text = "Such", exact = true).matches(described))
+    }
+
+    @Test
+    fun `text and contentDescription together must both hold`() {
+        val node = nodeWithText("").copy(contentDescription = "Suche")
+
+        assertTrue(UiSelector(text = "Suche", contentDescription = "Suche").matches(node))
+        assertFalse(UiSelector(text = "Suche", contentDescription = "Start").matches(node))
+    }
+
+    @Test
+    fun `a substring of a merged Flutter label finds its card`() {
+        val card = UiTreeSearch.findUnique(flutterTargeting, UiSelector(text = "Tarif S"), UiTreeSearch.Action.TAP)!!
+
+        assertEquals("GRATIS E-SIM\nTarif S", card.contentDescription)
+        assertTrue(card.clickable)
+    }
+
+    @Test
+    fun `two Flutter buttons with one label are ambiguous by text as by content description`() {
+        for (selector in listOf(UiSelector(text = "Details"), UiSelector(contentDescription = "Details"))) {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                UiTreeSearch.findUnique(flutterTargeting, selector, UiTreeSearch.Action.TAP)
+            }
+            assertTrue(error.message!!.contains("2 matches"), error.message)
+        }
+    }
+
+    /** A search field whose hint reads "Search", beside an icon described as "Search". */
+    private fun searchRow(iconClickable: Boolean = true): UiTree {
+        val field = nodeWithText("Search").copy(
+            className = "android.widget.EditText",
+            clickable = true,
+            focusable = true,
+            bounds = UiNode.Bounds(0, 0, 800, 100),
+        )
+        val icon = nodeWithText("").copy(
+            className = "android.widget.ImageView",
+            contentDescription = "Search",
+            clickable = iconClickable,
+            bounds = UiNode.Bounds(800, 0, 900, 100),
+        )
+        val row = nodeWithText("").copy(bounds = UiNode.Bounds(0, 0, 900, 100), children = listOf(field, icon))
+        return tree.copy(root = row)
+    }
+
+    @Test
+    fun `a refusal says which candidates matched in their text and which only in their content description`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(searchRow(), UiSelector(text = "Search"), UiTreeSearch.Action.TAP)
+        }
+
+        val message = error.message!!
+        assertTrue(message.contains("1 matched text='Search' in their text and 1 only in their content"), message)
+        assertTrue(message.contains("contentDescription instead of text"), message)
+        assertTrue(message.contains("testTag (exactTag: true) or containerTag"), message)
+        assertTrue(message.contains("'Search' (matched content-desc) ImageView"), message)
+    }
+
+    @Test
+    fun `input goes to the only match that takes text, and says what it passed over`() {
+        val choice = UiTreeSearch.choose(searchRow(), UiSelector(text = "Search"), UiTreeSearch.Action.TEXT_INPUT)!!
+
+        assertEquals("android.widget.EditText", choice.node.className)
+        assertEquals(
+            "2 matched; acted on the only one that accepts input (EditText 'Search'); ignored: " +
+                "ImageView content-desc 'Search'",
+            choice.note(UiSelector(text = "Search"), UiTreeSearch.Action.TEXT_INPUT),
+        )
+    }
+
+    @Test
+    fun `a tap goes to the only clickable match, and is refused when both are`() {
+        val selector = UiSelector(text = "Search")
+        val choice = UiTreeSearch.choose(searchRow(iconClickable = false), selector, UiTreeSearch.Action.TAP)!!
+
+        assertEquals("android.widget.EditText", choice.node.className)
+        assertTrue(choice.note(selector, UiTreeSearch.Action.TAP)!!.contains("the only one that can be tapped"))
+        assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.choose(searchRow(), selector, UiTreeSearch.Action.TAP)
+        }
+    }
+
+    @Test
+    fun `without an action several matches are still refused`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(searchRow(iconClickable = false), UiSelector(text = "Search"))
+        }
+    }
+
+    @Test
+    fun `candidates that all matched in one field get no split advice`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(flutterTargeting, UiSelector(text = "Details"), UiTreeSearch.Action.TAP)
+        }
+
+        assertFalse(error.message!!.contains("only in their content description"), error.message)
     }
 
     private val button = nodeWithText("").copy(clickable = true, bounds = UiNode.Bounds(10, 10, 90, 90))

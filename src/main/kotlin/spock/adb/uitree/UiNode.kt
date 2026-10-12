@@ -49,6 +49,13 @@ data class UiNode(
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
 
+    /**
+     * [label] for a line of a result. Flutter merges a card's words into one content description, a
+     * line each, so printed as they are the first line — often a badge's — reads as the whole label.
+     */
+    val printableLabel: String
+        get() = label.oneLine()
+
     /** Text exposed for announcement; automation identifiers are deliberately excluded. */
     val accessibleLabel: String
         get() = contentDescription.takeIf { it.isNotBlank() }
@@ -171,5 +178,15 @@ enum class UiFramework(val description: String) {
     VIEWS("Traditional Android Views"),
     COMPOSE("Jetpack Compose"),
     HYBRID("Mixed Views and Jetpack Compose"),
+
+    /**
+     * A Flutter app, read through the accessibility bridge Flutter's engine publishes its semantics
+     * on. Its node classes are `Button`, `EditText` and `View` like any View screen's, so the dump
+     * alone rarely tells; see [FlutterScreen].
+     */
+    FLUTTER("Flutter (semantics bridge)"),
     UNKNOWN("Could not be determined"),
 }
+
+/** Several lines as one, ` / ` between them, for a label quoted inside a line of text. */
+internal fun String.oneLine(): String = lines().map(String::trim).filter(String::isNotEmpty).joinToString(" / ")

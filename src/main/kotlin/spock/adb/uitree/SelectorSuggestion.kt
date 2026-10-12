@@ -13,7 +13,7 @@ internal data class SelectorSuggestion(
     val selector: UiSelector,
     /** Arguments for the `android_*_ui_element` MCP tools. */
     val mcpJson: String,
-    /** A `composeTestRule` finder; null on a Views-only screen, where Compose tests find nothing. */
+    /** A `composeTestRule` finder; null on a Views-only or Flutter screen, where Compose tests find nothing. */
     val composeTest: String?,
     /** A UI Automator `BySelector`. */
     val uiAutomator: String,
@@ -33,7 +33,7 @@ internal data class SelectorSuggestion(
         /** Null when the node has no test tag, text or content description to select it by. */
         fun forNode(node: UiNode, framework: UiFramework): SelectorSuggestion? {
             val tag = node.testTag
-            val compose = framework != UiFramework.VIEWS
+            val compose = framework != UiFramework.VIEWS && framework != UiFramework.FLUTTER
             return when {
                 tag != null -> SelectorSuggestion(
                     basis = Basis.TEST_TAG,

@@ -2,6 +2,7 @@ package spock.adb.uitree
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -204,8 +205,246 @@ class AccessibilityAuditTest {
         assertTrue(AccessibilityAudit.audit(auditTab, viewport).any { it.node.bounds == row5 })
     }
 
+    /**
+     * The sample's *Element targeting* screen as an API 34 emulator dumped it at 480dpi. Its offer
+     * banner is a `PageView` that does not scroll by touch, so it publishes no scroll action, but
+     * Flutter still cuts the neighbouring offers' bounds at its edge: 74px wide slivers of cards that
+     * are 836px wide. Each card's content-desc starts with its badge, "GRATIS E-SIM".
+     */
+    private val flutterTargeting = UiTreeParser.parse(
+        checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-targeting.xml")).bufferedReader().readText(),
+    ).copy(framework = UiFramework.FLUTTER, densityDpi = 480)
+
+    @Test
+    fun `offers cut at a banner's edge are reported at INFO as possibly cut, the shrink-wrapped button as small`() {
+        val small = AccessibilityAudit.audit(flutterTargeting).filter { it.issue.contains("smaller than") }
+
+        val warned = small.filter { it.severity == AccessibilityAudit.Severity.WARNING }
+        assertEquals(listOf("Roaming info"), warned.map { it.node.label }, small.joinToString("\n") { it.issue })
+        val noted = small.filter { it.severity == AccessibilityAudit.Severity.INFO }
+        assertEquals(listOf("GRATIS E-SIM\nTarif M", "GRATIS E-SIM\nTarif XL"), noted.map { it.node.label })
+        val note = "bounds may be cut by a parent clip (e.g. a carousel edge); verify on device"
+        assertTrue(noted.all { it.issue.endsWith(note) }, noted.joinToString("\n") { it.issue })
+        assertFalse(AccessibilityAudit.coverageNote(flutterTargeting).contains("Skipped"), "reported, not skipped")
+    }
+
+    @Test
+    fun `a cut page is still checked for a label`() {
+        val offer = flutterTargeting.nodes().first { it.contentDescription == "GRATIS E-SIM\nTarif M" }
+        val unlabelled = offer.copy(contentDescription = "")
+        val tree = flutterTargeting.copy(root = replace(flutterTargeting.root!!, offer, unlabelled))
+
+        val findings = AccessibilityAudit.audit(tree).filter { it.node === unlabelled }
+        assertTrue(findings.any { it.issue.contains("no accessible text") }, findings.toString())
+    }
+
+    @Test
+    fun `the same carousel outside a Flutter screen is checked as usual`() {
+        val views = flutterTargeting.copy(framework = UiFramework.VIEWS)
+        val small = AccessibilityAudit.audit(views).filter { it.issue.contains("smaller than") }
+
+        assertEquals(3, small.size, small.joinToString("\n") { it.node.label })
+        assertTrue(small.all { it.severity == AccessibilityAudit.Severity.WARNING })
+    }
+
+    @Test
+    fun `pages that tile a row evenly are not taken for a cut banner`() {
+        val banner = flutterTargeting.nodes().first { node ->
+            node.children.size == BANNER_PAGES && node.children.all { it.children.singleOrNull()?.clickable == true }
+        }
+        val width = banner.bounds.width / BANNER_PAGES
+        val even = banner.copy(
+            children = banner.children.mapIndexed { i, page ->
+                val left = banner.bounds.left + i * width
+                val bounds = page.bounds.copy(left = left, right = left + width)
+                page.copy(bounds = bounds, children = page.children.map { it.copy(bounds = bounds) })
+            },
+        )
+        // At this density 48dp is 600px, so every one of the three 328px offers is too small.
+        val tree = flutterTargeting.copy(root = replace(flutterTargeting.root!!, banner, even), densityDpi = 2000)
+        val offers = AccessibilityAudit.audit(tree)
+            .filter { it.issue.contains("smaller than") && it.node.bounds.top == banner.bounds.top }
+
+        assertEquals(BANNER_PAGES, offers.size, offers.joinToString("\n") { it.node.label })
+        assertTrue(offers.all { it.severity == AccessibilityAudit.Severity.WARNING })
+    }
+
+    /**
+     * A Views scaffold, top to bottom: a toolbar with an unlabelled navigation button, the content,
+     * and a bottom navigation bar with an unlabelled item. Three children tiling the window with
+     * equal ends, which a carousel rule that ran everywhere took for a cut banner.
+     */
+    private fun scaffold(framework: UiFramework): UiTree {
+        val nav = node("android.widget.ImageButton", UiNode.Bounds(0, 0, 147, 147), clickable = true)
+        val item = node("android.view.View", UiNode.Bounds(0, 2253, 270, 2400), clickable = true)
+        val root = node(
+            "android.widget.FrameLayout",
+            UiNode.Bounds(0, 0, 1080, 2400),
+            children = listOf(
+                node("android.view.ViewGroup", UiNode.Bounds(0, 0, 1080, 147), children = listOf(nav)),
+                node("android.widget.FrameLayout", UiNode.Bounds(0, 147, 1080, 2253)),
+                node("android.view.ViewGroup", UiNode.Bounds(0, 2253, 1080, 2400), children = listOf(item)),
+            ),
+        )
+        return UiTree(root, framework, UiTree.TestTagSupport.NOT_APPLICABLE, densityDpi = 420)
+    }
+
+    /**
+     * A chat composer, `[ImageButton 25dp][EditText][ImageButton 25dp]`, each button inside a
+     * wrapper of its own size, as a Flutter `Semantics` wrapper publishes it: the closest a real
+     * control row comes to a cut carousel's shape. Laid along [vertical] or across.
+     */
+    private fun composer(framework: UiFramework, vertical: Boolean = false): UiTree {
+        fun box(start: Int, end: Int) =
+            if (vertical) UiNode.Bounds(0, start, 147, end) else UiNode.Bounds(start, 2000, end, 2147)
+        fun wrapped(bounds: UiNode.Bounds) = node(
+            "android.view.View",
+            bounds,
+            children = listOf(node("android.widget.ImageButton", bounds, clickable = true)),
+        )
+        val root = node(
+            "android.view.View",
+            box(0, 1080),
+            children = listOf(
+                wrapped(box(0, 66)),
+                node("android.widget.EditText", box(66, 1014), clickable = true, description = "Message"),
+                wrapped(box(1014, 1080)),
+            ),
+        )
+        return UiTree(root, framework, UiTree.TestTagSupport.NOT_APPLICABLE, densityDpi = 420)
+    }
+
+    @Test
+    fun `a Views scaffold reports its unlabelled toolbar and bottom bar controls`() {
+        for (framework in listOf(UiFramework.VIEWS, UiFramework.FLUTTER)) {
+            val tree = scaffold(framework)
+            val unlabelled = AccessibilityAudit.audit(tree).filter { it.issue.contains("no accessible text") }
+
+            assertEquals(2, unlabelled.size, "$framework: $unlabelled")
+            assertFalse(AccessibilityAudit.coverageNote(tree).contains("Skipped"), "$framework")
+        }
+    }
+
+    @Test
+    fun `a composer row reports its unlabelled small buttons along either axis`() {
+        for (framework in listOf(UiFramework.VIEWS, UiFramework.FLUTTER)) {
+            for (vertical in listOf(false, true)) {
+                val findings = AccessibilityAudit.audit(composer(framework, vertical))
+                val buttons = findings.filter { it.node.className.endsWith("ImageButton") }
+                val case = "$framework vertical=$vertical: ${findings.map { it.severity to it.issue }}"
+
+                assertEquals(2, buttons.count { it.issue.contains("no accessible text") }, case)
+                assertEquals(2, buttons.count { it.issue.contains("smaller than") }, case)
+                // On Flutter the shape is a cut carousel's, so the size finding is noted rather than warned.
+                if (framework == UiFramework.VIEWS) {
+                    assertTrue(buttons.none { it.severity == AccessibilityAudit.Severity.INFO }, case)
+                }
+            }
+        }
+    }
+
+    private fun node(
+        className: String,
+        bounds: UiNode.Bounds,
+        clickable: Boolean = false,
+        description: String = "",
+        children: List<UiNode> = emptyList(),
+    ) = UiNode(
+        className = className,
+        packageName = "p",
+        text = "",
+        contentDescription = description,
+        resourceId = "",
+        bounds = bounds,
+        clickable = clickable,
+        longClickable = false,
+        enabled = true,
+        focused = false,
+        focusable = clickable,
+        scrollable = false,
+        checkable = false,
+        checked = false,
+        selected = false,
+        password = false,
+        children = children,
+    )
+
+    @Test
+    fun `a badge inside a tappable card is no finding of its own`() {
+        val findings = AccessibilityAudit.audit(flutterTargeting)
+
+        assertTrue(flutterTargeting.nodes().none { it.contentDescription == "GRATIS E-SIM" }, "merged into the card")
+        assertTrue(findings.none { it.node.accessibleLabel == "GRATIS E-SIM" }, findings.toString())
+    }
+
+    @Test
+    fun `a finding prints a merged Flutter label on one line`() {
+        val card = flutterTargeting.nodes().first { it.contentDescription == "GRATIS E-SIM\nTarif S" }
+        val finding = AccessibilityAudit.Finding(
+            AccessibilityAudit.Severity.WARNING,
+            "issue",
+            card,
+            composeFix = "compose",
+            viewFix = "view",
+            flutterFix = "flutter",
+        )
+
+        val label = finding.describe(UiFramework.FLUTTER).lines().single { it.trim().startsWith("label:") }
+        assertTrue(label.endsWith("GRATIS E-SIM / Tarif S"), label)
+        assertTrue(finding.describe(UiFramework.FLUTTER).endsWith("fix:    flutter"))
+    }
+
+    @Test
+    fun `a shared merged label is quoted on one line, and so is an ambiguous match`() {
+        val card = node("android.view.View", UiNode.Bounds(0, 0, 500, 300), clickable = true, description = "A\nB")
+        val other = card.copy(bounds = UiNode.Bounds(0, 300, 500, 600))
+        val root = node("android.view.View", UiNode.Bounds(0, 0, 500, 600), children = listOf(card, other))
+        val tree = UiTree(root, UiFramework.FLUTTER, UiTree.TestTagSupport.NOT_APPLICABLE, densityDpi = 160)
+
+        val shared = AccessibilityAudit.audit(tree).filter { it.issue.contains("share the label") }
+        assertEquals(2, shared.size, shared.toString())
+        assertTrue(shared.all { it.issue.endsWith("share the label 'A / B'") }, shared.toString())
+
+        val refusal = assertThrows(IllegalArgumentException::class.java) {
+            UiTreeSearch.findUnique(tree, UiSelector(text = "A"), UiTreeSearch.Action.TAP)
+        }.message!!
+        assertFalse(refusal.contains('\n'), refusal)
+        assertTrue(refusal.contains("'A / B' (matched content-desc)"), refusal)
+    }
+
+    @Test
+    fun `a Flutter screen gets Flutter fixes`() {
+        val findings = AccessibilityAudit.audit(flutterTargeting)
+        val small = findings.first { it.issue.contains("smaller than") }.describe(UiFramework.FLUTTER)
+        val duplicate = findings.first { it.issue.contains("share the label") }.describe(UiFramework.FLUTTER)
+
+        assertTrue(small.contains("MaterialTapTargetSize.padded") && small.contains("SizedBox"), small)
+        assertTrue(duplicate.contains("Semantics(label:"), duplicate)
+        assertFalse(small.contains("Modifier") || small.contains("android:"), small)
+    }
+
+    @Test
+    fun `the unlabelled control and image checks have Flutter fixes too`() {
+        val unlabelled = composeTree.nodes().first { it.clickable }.copy(
+            text = "",
+            contentDescription = "",
+            resourceId = "",
+            children = emptyList(),
+        )
+        val image = unlabelled.copy(className = "android.widget.ImageView", clickable = false)
+        val screen = unlabelled.copy(clickable = false, children = listOf(unlabelled, image))
+        val findings = AccessibilityAudit.audit(composeTree.copy(root = screen))
+
+        assertTrue(findings.any { it.flutterFix.contains("Semantics(label:") }, findings.toString())
+        assertTrue(findings.any { it.flutterFix.contains("ExcludeSemantics") }, findings.toString())
+    }
+
     private fun replace(node: UiNode, old: UiNode, new: UiNode): UiNode = when {
         node === old -> new
         else -> node.copy(children = node.children.map { replace(it, old, new) })
+    }
+
+    private companion object {
+        const val BANNER_PAGES = 3
     }
 }

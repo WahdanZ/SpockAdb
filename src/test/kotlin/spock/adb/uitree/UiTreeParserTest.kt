@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import spock.adb.flutter.FlutterBuild
+import spock.adb.flutter.FlutterBuildCache
+import java.util.UUID
 
 class UiTreeParserTest {
 
@@ -187,6 +190,90 @@ class UiTreeParserTest {
             checkNotNull(javaClass.getResourceAsStream("/uidumps/flutter-login.xml")).bufferedReader().readText(),
         )
         assertFalse(login.isOpaqueSurface)
+    }
+
+    @Test
+    fun `a Flutter dump with Semantics identifiers is read as Flutter`() {
+        for (name in listOf("flutter-login.xml", "flutter-targeting.xml")) {
+            val tree = UiTreeParser.parse(dump(name))
+            assertEquals(UiFramework.FLUTTER, tree.framework, name)
+            assertEquals(UiTree.TestTagSupport.NOT_APPLICABLE, tree.testTagSupport, name)
+        }
+    }
+
+    @Test
+    fun `a Flutter dump without an identifier cannot be told from Views by the dump alone`() {
+        val anonymous = dump("flutter-targeting.xml")
+            .replace("resource-id=\"targeting_save\"", "resource-id=\"\"")
+            .replace("resource-id=\"result\"", "resource-id=\"\"")
+
+        assertEquals(UiFramework.VIEWS, UiTreeParser.parse(anonymous).framework)
+    }
+
+    @Test
+    fun `bare ids beside visible text are not Flutter's`() {
+        // React Native's testID is a bare resource id too, but its words are text.
+        val reactNative = UiTreeParser.parse(
+            """
+            <hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][500,500]">
+              <node class="android.widget.TextView" resource-id="login" text="Log in" bounds="[0,0][100,100]" />
+              <node class="android.view.ViewGroup" resource-id="row" bounds="[0,100][100,200]" />
+            </node></hierarchy>
+            """.trimIndent(),
+        )
+
+        assertEquals(UiFramework.VIEWS, reactNative.framework)
+    }
+
+    @Test
+    fun `the app on the device decides, over what the dump looked like`() {
+        val targeting = UiTreeParser.parse(dump("flutter-targeting.xml"))
+        val anonymous = targeting.copy(framework = UiFramework.VIEWS)
+        val asked = mutableListOf<String>()
+
+        assertEquals(
+            UiFramework.FLUTTER,
+            FlutterScreen.classify(anonymous) {
+                asked += it
+                true
+            }.framework,
+        )
+        assertEquals(listOf("spock.adb.spock_flutter_sample"), asked)
+        assertEquals(UiFramework.VIEWS, FlutterScreen.classify(targeting) { false }.framework)
+        assertEquals(UiFramework.FLUTTER, FlutterScreen.classify(targeting) { null }.framework, "adb failed")
+        assertEquals(UiFramework.VIEWS, FlutterScreen.classify(anonymous) { null }.framework)
+    }
+
+    @Test
+    fun `a failed Flutter check is not repeated for ten seconds`() {
+        val targeting = UiTreeParser.parse(dump("flutter-targeting.xml")).copy(framework = UiFramework.VIEWS)
+        val serial = "emulator-${UUID.randomUUID()}"
+        var now = 0L
+        var answer: FlutterBuildCache.Detection = FlutterBuildCache.Detection.AdbFailed
+        var reads = 0
+        fun classify() = FlutterScreen.classifyOn(targeting, serial, clock = { now }) {
+            reads++
+            answer
+        }.framework
+
+        assertEquals(UiFramework.VIEWS, classify(), "adb failed: the dump's reading stays")
+        now = 9_999L
+        assertEquals(UiFramework.VIEWS, classify())
+        assertEquals(1, reads, "not asked again within ten seconds")
+
+        now = 10_000L
+        answer = FlutterBuildCache.Detection.Listed(FlutterBuild.DEBUG)
+        assertEquals(UiFramework.FLUTTER, classify())
+        assertEquals(2, reads)
+        now = 10_001L
+        assertEquals(UiFramework.FLUTTER, classify())
+        assertEquals(3, reads, "an answer is the build cache's to remember, not this memo's")
+    }
+
+    @Test
+    fun `a native screen inside a Flutter app stays Views, and Compose stays Compose`() {
+        assertEquals(UiFramework.VIEWS, FlutterScreen.classify(viewsTree) { true }.framework)
+        assertEquals(UiFramework.COMPOSE, FlutterScreen.classify(composeTree) { true }.framework)
     }
 
     private fun hierarchy(root: String) =

@@ -369,6 +369,7 @@ and means the plugin needs **no Compose artifact and pins no Compose version**.
 | `Traditional Android Views` | No Compose host on screen |
 | `Jetpack Compose` | An `AndroidComposeView` is hosting the content |
 | `Mixed Views and Jetpack Compose` | Both, with real View *content* widgets present |
+| `Flutter (semantics bridge)` | The app on screen is a Flutter app, asked of its installed APK once per install; without a device, a dump whose ids are bare `Semantics(identifier:)` values and whose words are all content descriptions |
 
 The detection deliberately ignores layout containers: every Compose app still has an
 `android.widget.FrameLayout` decor view, so counting any `android.widget.*` class as "Views"
@@ -379,7 +380,10 @@ would report every pure-Compose screen as hybrid.
 Element selectors accept optional `packageName` and `containerTag` scopes. A container tag
 must identify exactly one subtree; `exactTag: true` matches a complete case-sensitive tag or
 raw resource ID. Existing substring matching remains the default for compatibility.
-Taps, long presses, and text entry reject multiple matches and disabled or ineligible targets.
+Taps, long presses, and text entry reject multiple matches and disabled or ineligible targets. When
+several elements match but exactly one can take the action — a search field and the "Search" icon
+beside it, for text entry — the action goes to that one, and the result names it and what it
+ignored.
 Matches that resolve to the same control count once. A refusal lists the candidates and names
 what can separate them: often `exact: true`. An action result reports that the input was
 dispatched, not that the app changed, unless the call names an expected result — see
@@ -397,6 +401,10 @@ accessibility, and a clean result says only "No issues detected by these checks.
 by **testTag → content description → text**. Only then does an action derive a point to press, from
 the resolved target's own bounds: the centre of its part in view, as described in
 [In the tree, in the viewport, and in view](#in-the-tree-in-the-viewport-and-in-view).
+`text` matches a node's text **or** its content description, since Flutter publishes every label,
+and Compose an icon's, as the content description; results say "matched content-desc" when that is
+where the words were. `contentDescription` matches only the content description. A Flutter
+`Semantics(identifier:)` is the node's resource id, so `testTag` finds it.
 
 A coordinate guessed from a screenshot breaks on a different screen size, density, font scale
 or after any layout change, and is the single biggest cause of flaky AI-driven UI automation.
@@ -520,7 +528,16 @@ it either, the error says why for both.
 the 48dp minimum, ambiguous duplicate labels and unlabelled images — each with a **code-level
 fix appropriate to the framework**. On a Compose screen it suggests
 `Modifier.semantics { contentDescription = "…" }`, not `android:contentDescription`, because
-the View-level fix does not exist there.
+the View-level fix does not exist there. On a Flutter screen it suggests `Semantics(label:)` or a
+tooltip, `ExcludeSemantics` for a decorative image, and `MaterialTapTargetSize.padded` or a 48x48
+`SizedBox` for a small target.
+
+Flutter cuts a node's bounds at every clip above it, not only at scroll containers. On a Flutter
+screen, a small target in an end page of a carousel that looks cut at its edge — pages laid edge
+to edge, the two end pages narrower wrappers of one child — is reported as a note (`i`), not a
+warning, ending "bounds may be cut by a parent clip (e.g. a carousel edge); verify on device".
+It is never left out, and its label is checked as usual. A merged Flutter label is quoted on one
+line, its lines joined by ` / `.
 
 ## UI automation
 

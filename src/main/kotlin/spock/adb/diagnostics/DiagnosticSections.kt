@@ -17,6 +17,7 @@ import spock.adb.diagnostics.LikelyProblem.Severity
 import spock.adb.flutter.FlutterBuild
 import spock.adb.flutter.FlutterBuildCache
 import spock.adb.uitree.AccessibilityAudit
+import spock.adb.uitree.FlutterScreen
 import spock.adb.uitree.OPAQUE_SURFACE_NOTE
 import spock.adb.uitree.UiTree
 
@@ -233,7 +234,18 @@ object UiSection : DiagnosticSection<AndroidProbe> {
     override val id = "ui"
     override val detail = DetailRef("android_get_ui_tree")
 
-    override fun collect(probe: AndroidProbe): SectionReport = summarise(UiTreeOperations(probe.device).read())
+    override fun collect(probe: AndroidProbe): SectionReport {
+        val tree = UiTreeOperations(probe.device).read()
+        // A Flutter build the report already knows of saves asking adb again.
+        val knownFlutter = probe.flutter?.build?.let { probe.packageName }
+        return summarise(
+            if (knownFlutter != null && tree.root?.packageName == knownFlutter) {
+                FlutterScreen.classify(tree) { true }
+            } else {
+                FlutterScreen.classifyOn(tree, probe.device, probe.serialNumber)
+            },
+        )
+    }
 
     fun summarise(tree: UiTree): SectionReport {
         val nodes = tree.nodes().filter { it.bounds.hasArea }.toList()
@@ -264,6 +276,7 @@ object UiSection : DiagnosticSection<AndroidProbe> {
                 JsonObject().apply {
                     addProperty("errors", findings.count { it.severity == AccessibilityAudit.Severity.ERROR })
                     addProperty("warnings", findings.count { it.severity == AccessibilityAudit.Severity.WARNING })
+                    addProperty("notes", findings.count { it.severity == AccessibilityAudit.Severity.INFO })
                 },
             )
         }
