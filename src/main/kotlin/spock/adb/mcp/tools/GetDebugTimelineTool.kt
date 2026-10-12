@@ -23,7 +23,9 @@ class GetDebugTimelineTool : AdbTool {
     override val description =
         "Spock's Debug Timeline on one clock: lifecycle, process deaths, crashes, app errors, Spock " +
             "actions and MCP calls, to see what came before a bug. Device events need a device and app " +
-            "selected in the tool window. The Flutter categories are empty in this version."
+            "selected in the tool window. Flutter categories (flutter_error, navigation, http; " +
+            "flutter_frame in profile builds) come from Spock's session with the selected app run with " +
+            "flutter run; flutter_app_status says why they are empty."
     override val safety = ToolSafety.READ_ONLY
     override val inputSchema: JsonObject = Schema.obj {
         integer("sinceSeconds", "Only the last this many seconds. Default $DEFAULT_SECONDS.", SECONDS)

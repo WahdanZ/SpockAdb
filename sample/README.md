@@ -74,7 +74,7 @@ PROPS="<AS config>/spock-adb/mcp-stdio.properties"
 |---|---|
 | Response `1` | `"protocolVersion":"2025-06-18"`, the version asked for. Ask for `2025-03-26` or `2024-11-05` and get that back; ask for `2099-01-01` and get `2025-06-18` |
 | `serverInfo.version` in response `1` | The plugin version, `4.1.0` for this build, not `1.0.0` |
-| Response `2`, size | Under 43,000 characters on 2025-06-18, and under 40,000 when initialized with `2024-11-05` (save it to a file and `wc -c`) |
+| Response `2`, size | Under 44,500 characters on 2025-06-18, and under 41,500 when initialized with `2024-11-05` (save it to a file and `wc -c`) |
 | Response `2`: `android_set_battery_level`, `android_unplug_battery`, `android_set_charger`, `android_set_standby_bucket` | `"destructiveHint":true` and `"idempotentHint":true`; calling them still opens no dialog |
 | Response `2`: `android_run_recipe` | `"destructiveHint":true` and `"openWorldHint":true` |
 | Response `2`: `android_get_debug_context`, `android_diagnose_current_screen`, `flutter_app_status` | An `outputSchema`; no other tool has one. Every tool has a top-level `title` |

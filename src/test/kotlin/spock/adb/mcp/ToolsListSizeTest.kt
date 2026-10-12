@@ -25,7 +25,7 @@ class ToolsListSizeTest {
     }
 
     @Test
-    fun `the list a 2024-11-05 client sees, the shape the review measured, stays within 40,000 characters`() {
+    fun `the list a 2024-11-05 client sees, the shape the review measured, stays within 41,500 characters`() {
         val size = size("2024-11-05")
 
         assertTrue(size <= LEGACY_BUDGET, "tools/list is $size characters; the budget is $LEGACY_BUDGET")
@@ -42,7 +42,9 @@ class ToolsListSizeTest {
     }
 
     private companion object {
-        const val LEGACY_BUDGET = 40_000
-        const val CURRENT_BUDGET = 43_000
+        // 40,000 at first; #188 (verbose and expectRoute on six tools) added about 1.1K that only cutting
+        // those options would win back. Still 42% under the 71,680 the #182 review measured.
+        const val LEGACY_BUDGET = 41_500
+        const val CURRENT_BUDGET = 44_500
     }
 }

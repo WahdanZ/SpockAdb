@@ -12,6 +12,8 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.util.xmlb.annotations.OptionTag
 import spock.adb.mcp.stdio.McpBridgeServer
 import spock.adb.mcp.stdio.SpockAdbStdioLauncher
+import spock.adb.mcp.tools.ToolSafety
+import spock.adb.mcp.tools.UiDumpCache
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -379,6 +381,9 @@ class McpServerService : PersistentStateComponent<McpSettings>, Disposable {
      * as an external agent's.
      */
     fun record(call: McpCall) {
+        // Any call that may have changed the screen — a tap, a deep link, a restart — ends the
+        // reuse of the last capture, before its answer reaches the agent that will read next.
+        if (call.safety != ToolSafety.READ_ONLY) UiDumpCache.shared.invalidate()
         history.record(call)
         historyWriter.record(call)
 

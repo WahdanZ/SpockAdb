@@ -4,6 +4,8 @@ import com.google.gson.JsonObject
 import spock.adb.mcp.tools.UiTreeReader.elementSelector
 import spock.adb.mcp.tools.UiTreeReader.preface
 import spock.adb.mcp.tools.UiTreeReader.toSelector
+import spock.adb.mcp.tools.UiTreeReader.verbose
+import spock.adb.mcp.tools.UiTreeReader.verboseOption
 import spock.adb.mcp.tools.WaitReport.withNote
 import spock.adb.uitree.DisplayMetrics
 import spock.adb.uitree.StateProperty
@@ -42,6 +44,7 @@ class WaitForElementTool : AdbTool {
             TIMEOUTS,
         )
         integer("pollIntervalMs", "Pause between captures, in ms. Defaults to $DEFAULT_POLL_MS.", POLL_INTERVALS)
+        verboseOption()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
@@ -59,17 +62,24 @@ class WaitForElementTool : AdbTool {
         val pollMs = arguments.optionalInt("pollIntervalMs", DEFAULT_POLL_MS, POLL_INTERVALS)
         val device = context.requireDevice(arguments.optionalString("deviceSerial"))
 
-        // Measured by the first capture that works and reused: the display does not change while we wait.
+        // Measured by the first capture that works and reused: the display does not change while we
+        // wait. Every capture is new, the first too: a wait is for a change.
         var metrics: DisplayMetrics? = null
         val waiter = UiWaiter(
             capture = { seconds ->
-                UiTreeReader.read(device, metrics, seconds, signal, identifyFlutter = false)
+                UiTreeReader.read(device, metrics, seconds, signal, poll = true)
                     .also { metrics = it.metrics }
             },
             signal = signal,
         )
         val outcome = waiter.await(condition, timeoutMs.toLong(), pollMs.toLong())
-        val result = WaitReport.report(outcome, condition, device.serialNumber, timeoutMs.toLong())
+        val result = WaitReport.report(
+            outcome,
+            condition,
+            device.serialNumber,
+            timeoutMs.toLong(),
+            verbose = arguments.verbose(),
+        )
         return if (timeoutMs < requestedMs) result.withNote(WaitReport.cappedNote("timeoutMs", requestedMs)) else result
     }
 
@@ -102,20 +112,29 @@ class WaitForElementTool : AdbTool {
  */
 internal object WaitReport {
 
-    /** [timeoutMs] is the limit the wait was given, which the first capture may have run past. */
-    fun report(outcome: WaitOutcome, condition: UiCondition, serial: String, timeoutMs: Long): ToolResult {
+    /**
+     * [timeoutMs] is the limit the wait was given, which the first capture may have run past. Not
+     * [verbose], each capture is described in one short line.
+     */
+    fun report(
+        outcome: WaitOutcome,
+        condition: UiCondition,
+        serial: String,
+        timeoutMs: Long,
+        verbose: Boolean = true,
+    ): ToolResult {
         val what = "${condition.selector.describe()} to be ${condition.expected}"
         val took = took(outcome)
         val overran = firstCaptureNote(outcome, timeoutMs)
         return when (outcome) {
             is WaitOutcome.Satisfied -> ToolResult.text(
-                outcome.observation.preface() +
+                outcome.observation.preface(verbose = verbose) +
                     "\nPASS: ${condition.selector.describe()} is ${condition.expected} after $took. " +
                     outcome.reason + "." + overran +
                     refusedNote(outcome.refusedCaptures),
             )
             is WaitOutcome.TimedOut -> ToolResult.error(
-                (outcome.lastObservation?.preface()?.plus("\n") ?: "No capture worked.\n") +
+                (outcome.lastObservation?.preface(verbose = verbose)?.plus("\n") ?: "No capture worked.\n") +
                     "FAIL: timed out waiting for $what; $took. Last: ${outcome.lastReason}." + overran +
                     refusedNote(outcome.refusedCaptures),
             )
@@ -128,7 +147,7 @@ internal object WaitReport {
                         "FAIL: device $serial became unavailable while waiting for $what, after $took. " +
                             outcome.message
                     else ->
-                        (outcome.lastObservation?.preface()?.plus("\n") ?: "") +
+                        (outcome.lastObservation?.preface(verbose = verbose)?.plus("\n") ?: "") +
                             "FAIL: timed out waiting for $what; $took, ${outOfTime(outcome)} " +
                             "${outcome.message} Before it: ${outcome.lastReason}." + overran +
                             refusedNote(outcome.refusedCaptures)
