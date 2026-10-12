@@ -28,14 +28,14 @@ class GetDeviceConditionsTool : AdbTool {
         string(
             "packageName",
             "App whose bucket to read. Defaults to the app selected in Spock, else the open project's; " +
-                "with neither, the bucket is left out.",
+                "with neither, the bucket is left out. Pass an empty string for the device alone.",
         )
         deviceSerial()
     }
 
     override fun execute(arguments: JsonObject, context: ToolContext): ToolResult {
         val target = context.requireDevice(arguments.optionalString("deviceSerial"))
-        val resolved = context.packageOrNull(arguments)
+        val (resolved, note) = scope(arguments, context)
         val packageName = resolved?.name
         val conditions = target.device.deviceConditions(packageName)
         DeviceConditionTracker.reconcile(target.serialNumber, conditions)
@@ -59,7 +59,17 @@ class GetDeviceConditionsTool : AdbTool {
                     },
                 )
             }.joinToString("\n"),
-        ).noting(if (resolved == null) NO_BUCKET else resolved.note)
+        ).noting(note)
+    }
+
+    /**
+     * The app whose bucket to read, and the line that says where it came from. An explicit `""`
+     * asks for the device alone, as it does for logcat: no app, so no bucket and no note.
+     */
+    private fun scope(arguments: JsonObject, context: ToolContext): Pair<ResolvedPackage?, String?> {
+        if (arguments.has("packageName") && arguments.optionalString("packageName") == null) return null to null
+        val resolved = context.packageOrNull(arguments) ?: return null to NO_BUCKET
+        return resolved to resolved.note
     }
 
     private companion object {

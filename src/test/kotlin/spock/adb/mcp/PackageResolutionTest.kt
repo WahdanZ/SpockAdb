@@ -230,6 +230,16 @@ class PackageResolutionTest {
         assertTrue(result.text().lines().first().startsWith("Standby bucket: not read."), result.text())
     }
 
+    @Test
+    fun `device conditions asked for the device alone read no bucket and add no note`() {
+        val result = GetDeviceConditionsTool().execute(args(""), context(selected = SELECTED, project = PROJECT))
+
+        assertFalse(result.isError, result.text())
+        assertTrue(result.text().startsWith("Deep Doze:"), result.text())
+        assertFalse(result.text().contains("Standby bucket"), result.text())
+        assertFalse(issued.any { it.contains(SELECTED) || it.contains(PROJECT) }, "$issued")
+    }
+
     private companion object {
         const val ASKED = "com.example.asked"
         const val SELECTED = "com.example.app.dev"

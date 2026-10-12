@@ -731,10 +731,13 @@ not name the app, the answer starts with one line saying which it got, e.g.
 refuses and names all three ways to give it one. The tools that can look at the whole device —
 `android_get_logcat`, `android_get_debug_context`, `android_diagnose_current_screen` and
 `android_get_device_conditions` — do so instead, and say so: logcat's first line reads
-`Whole-device log: …`. An explicit `""` asks for the whole device and adds no note.
+`Whole-device log: …`, and device conditions leave out the standby bucket and say why. An explicit
+`""` asks for the whole device (for device conditions, no bucket) and adds no note.
 
 This includes the destructive app tools: `android_clear_app_data`, `android_uninstall_app` and the
-rest default to the app selected in Spock, and still ask the developer before they run.
+rest default to the app selected in Spock, and still ask the developer before they run. The
+confirmation then opens with `<app> is the app selected in Spock; the agent did not name one.`, so
+the developer knows before approving that the agent did not choose it.
 
 ### `android_get_debug_context`
 
