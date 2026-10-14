@@ -6,7 +6,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -32,6 +31,7 @@ import spock.adb.timeline.DebugTimelineService
 import spock.adb.timeline.TimelineCategory
 import spock.adb.timeline.TimelineSeverity
 import spock.adb.ui.WrapLayout
+import spock.adb.ui.renderWith
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.MouseAdapter
@@ -117,7 +117,7 @@ internal class DeviceConditionsRow(
             "and buckets alone."
     }
     private val bucketCombo = ComboBox(StandbyBucket.SETTABLE.toTypedArray()).apply {
-        renderer = SimpleListCellRenderer.create("") { it.label }
+        renderWith { it.label }
         toolTipText = "Put the app in an App Standby bucket. The bucket is read back: Android may keep it higher."
     }
     private val bucketButton = JButton("Set bucket")

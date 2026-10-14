@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **No scheduled-for-removal or internal API left for IntelliJ IDEA 2026.2.** The Marketplace
+  verifier reported 4 usages of `SimpleListCellRenderer.create`, which IntelliJ IDEA is removing,
+  and 1 of the internal `PluginManagerCore.getPlugin`. The combo boxes and the source chooser now
+  render through a `SimpleListCellRenderer` subclass, stable back to 2023.2, and the MCP server
+  reads its version from the resource Gradle writes from `pluginVersion` instead of asking the
+  platform. Verified against IntelliJ IDEA Ultimate 2026.2.3: Compatible, deprecated API only.
+
 ## [4.1.0] - 2026-10-12
 
 ### Added

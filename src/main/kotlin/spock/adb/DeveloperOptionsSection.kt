@@ -3,13 +3,13 @@ package spock.adb
 import com.android.ddmlib.IDevice
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import spock.adb.command.DontKeepActivitiesState
 import spock.adb.command.ShowLayoutBoundsState
 import spock.adb.command.ShowTapsState
 import spock.adb.device.ConnectedDevice
+import spock.adb.ui.renderWith
 import java.awt.Dimension
 import java.awt.Font
 import java.awt.GridBagConstraints
@@ -218,7 +218,7 @@ class DeveloperOptionsSection(private val gap: Int) : JPanel() {
 
     private fun scaleCombo(): JComboBox<String> = JComboBox(SCALES.toTypedArray()).apply {
         // "1×" and "Off" rather than "1.0" and "0.0": the list holds what the device is sent.
-        renderer = SimpleListCellRenderer.create { label, value, _ -> label.text = scaleText(value) }
+        renderWith(::scaleText)
         // One width for all three, so the three rows read as one form.
         val width = JBUI.scale(SCALE_WIDTH)
         preferredSize = Dimension(width, preferredSize.height)
