@@ -13,9 +13,8 @@ internal object PluginVersion {
 }
 
 /**
- * `serverInfo.version` said `1.0.0` whatever the plugin was. Outside an IDE the plugin descriptor
- * cannot be read, so these run the fallback — the resource processResources writes — which is what
- * the stdio path and every test would otherwise report wrongly.
+ * `serverInfo.version` said `1.0.0` whatever the plugin was. It now comes from the resource
+ * processResources writes, the same in the IDE, on the stdio path and in every test.
  */
 class McpServerVersionTest {
 
@@ -30,15 +29,5 @@ class McpServerVersionTest {
     @Test
     fun `processResources filled in the resource rather than shipping the placeholder`() {
         assertEquals(PluginVersion.fromGradleProperties(), McpServerVersion.fromResource())
-    }
-
-    @Test
-    fun `the plugin id looked up is the one plugin xml declares`() {
-        // A drifted id would make the descriptor lookup return null in the IDE, silently falling
-        // back to the resource — which would hide the drift until the two versions disagreed.
-        val pluginXml = File("src/main/resources/META-INF/plugin.xml").readText()
-        val declared = Regex("<id>([^<]+)</id>").find(pluginXml)?.groupValues?.get(1)
-
-        assertEquals(declared, McpServerVersion.PLUGIN_ID)
     }
 }

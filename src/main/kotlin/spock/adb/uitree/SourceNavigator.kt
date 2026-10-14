@@ -23,10 +23,10 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.ui.DoubleClickListener
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.concurrency.AppExecutorUtil
 import org.jetbrains.concurrency.CancellablePromise
+import spock.adb.ui.EnumRenderers
 import java.awt.Component
 import java.awt.Point
 import java.awt.event.KeyAdapter
@@ -257,7 +257,7 @@ internal class SourceNavigator(
             else -> JBPopupFactory.getInstance()
                 .createPopupChooserBuilder(result.hits)
                 .setTitle("Found by ${SourceStatus.how(result)} — best first")
-                .setRenderer(SimpleListCellRenderer.create("") { it.presentation })
+                .setRenderer(EnumRenderers.labelled { it.presentation })
                 .setItemChosenCallback { open(it, requestFocus = true) }
                 .createPopup()
                 .let(showPopup)
