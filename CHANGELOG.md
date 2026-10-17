@@ -2,15 +2,324 @@
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-10-14
+
+### Added
+
+- **Flutter: Spock connects to your app by itself, and Diagnose and the Timeline read it.**
+  Flutter's own errors — a layout overflow, an exception in `build()` or a tap handler — do not
+  reach logcat in a debug build: Flutter sends them to the Dart VM Service. Now, for the Flutter
+  app selected in Spock and run with `flutter run`, Spock finds its debugger session, checks it is
+  that app's process on that device, and connects — when you select the app, when its process
+  starts, and when you press Diagnose. Nothing to copy or paste.
+  - **Diagnose** has a *flutter* section: the app's framework errors since Spock connected (those
+    from before are counted apart and said to be), each with the log problems logged within two
+    seconds of one of its occurrences beside it, so the overflow and the warning it caused are read
+    together, and an overflow seen at the start and again ten minutes later does not claim every
+    warning in between; frame times (a verdict only in a profile build); failed `dart:io`
+    requests; the last routes. The log problems beside an error are listed right after it, so a
+    warning the app logged a second before is not pushed out of the report by the platform's
+    start-up noise. When it cannot connect it says why in words — the app is still starting, it
+    runs without a debugger session, it is a release build — and it never reads silence as
+    "no errors". Telling whether the app is Flutter at all gives adb five seconds per read before
+    the report starts, so a hung adb costs the *flutter* section rather than holding back every
+    other one.
+  - **Timeline** records the session: errors, routes, bursts of slow frames in profile builds,
+    failed requests, and the session starting and ending — including the Flutter engine going away
+    when Back leaves the root screen. Device and log times are lined up with the device's measured
+    clock and time zone, which logcat and the Dart VM do not share.
+  - Spock never connects to the app's VM while `flutter run` or `flutter attach` may be starting
+    its debugger session — a client there first would make it fail. On Flutter 3.22, which has no
+    Dart Tooling Daemon to name the session, Spock therefore connects about 10–15 seconds after the
+    app's Dart VM starts; Diagnose says a Flutter tool is attaching meanwhile. An app started
+    without a debugger session is checked again now and then, so a later `flutter attach` is found.
+    An app Android has frozen in the background is reported as such, not as a failure, and Spock
+    connects as soon as it comes back to the foreground.
+  - When `flutter run` loses the device — Android Studio restarting adb, or closing its last
+    project window, does that — the app runs on with no debugger session, and nothing on the
+    device may say when it is started again. Spock keeps an eye on it: for ten minutes after a
+    session ends without a new one, it checks every 30 seconds, and connects to the next process a
+    new `flutter run` starts, with nothing pressed. An app reinstalled as a non-Flutter app, or
+    uninstalled, is let go of rather than polled.
+  - To see failed requests, Spock switches on Dart's HTTP recording for the session — only through
+    `flutter run`'s debugger service, only in debug and profile builds — and switches it back off
+    when it disconnects, leaving it alone if something else turned it on. If the connection ends
+    before it can (`flutter run` stopped), the next session on the same app process takes that
+    over. **Settings → Tools → Spock ADB → Record Flutter HTTP traffic automatically** turns that
+    off.
+  - **`android_get_debug_context`** and **`android_diagnose_current_screen`** return the same
+    *flutter* section; each `likelyProblems` entry now has an `id`, which the section's errors point
+    at. VM Service addresses and their tokens, which let whoever holds them run code in the app, are
+    kept out of every report, row and log line — and out of raw logcat, where a debug build prints
+    its address: `android_get_logcat`, the `full` format of `android_get_debug_context` and
+    `android_run_adb_command` return it with the token as `<redacted>`.
+- **Flutter: errors from logcat, one problem for two layers, a rebuild window, and a status tool.**
+  - **Diagnose** reads Flutter's framework errors from logcat when they are not sent to the
+    debugger: with structured errors off (`--dart-define=flutter.inspector.structuredErrors=false`,
+    a no-debug launch, an IDE toggle) and in profile builds. In a debug build the first error is
+    read in full; a profile build prints only its message and stack, and that is read too. The
+    `Another exception was thrown: …` repeats join the error they repeat, so one fault is one
+    entry, and errors printed before Spock connected say so. A profile build prints those repeats
+    without their message, so they could be any error: they are one entry of their own that says
+    so, rather than added to whichever error came before, and the report says the message shows
+    only in a debug build or through an app's own `FlutterError.onError`. The section says where
+    the errors it lists came from — the debugger, logcat, or both. When neither has any error, it
+    says that an app that replaced `FlutterError.onError` (Crashlytics, Sentry) hides errors from
+    both. It still never reads silence as "no errors".
+  - **Diagnose** lists a Dart error and the native crash, `MissingPluginException` or failed
+    channel handler a moment beside it as **one** problem, naming both layers, rather than two
+    unrelated entries an agent would have to line up by their timestamps. Each layer's own problem
+    is kept inside it. The moment is measured between single occurrences, so an error that repeats
+    over ten minutes is not tied to a crash somewhere in between.
+  - **`android_get_recomposition_counts`** and the UI Inspector's **Recompositions** tab record
+    Flutter widget rebuilds for a Flutter app run with `flutter run` in a debug build, in their
+    usual shape. Spock switches the inspector's rebuild tracking on for the window only if it was
+    off, and off again afterwards only if it switched it on and nothing else (the IDE's rebuild
+    counts, DevTools) wrote it meanwhile, so the IDE's own counts are left as they were. Switching
+    it on rebuilds the whole widget tree once; that frame is not counted, so an idle screen reads
+    0 frames. If Spock closes the session mid-recording, it switches tracking off as it
+    disconnects. If the connection is lost instead while the app runs on, Spock remembers that it
+    switched tracking on in that process, and its next session there switches it off only when it
+    can prove the flag is still Spock's: the debugger session (DDS) outlived Spock's connection and
+    its history shows Spock's switch-on with no write after it. When `flutter run` itself died, the
+    next `flutter attach` starts a new DDS with no history, so what the IDE or DevTools wrote in
+    between cannot be seen: Spock leaves tracking on and says so, in the Timeline and
+    `flutter_app_status`, rather than switch off a flag another tool may be using. A hot restart
+    resets the flag anyway, and Spock forgets it. Double-clicking a widget row opens its source at
+    the line, also when Android Studio has only the app's `android` folder open and `lib/` is
+    outside the project: Spock finds the file under the app's `pubspec.yaml` — in the project's
+    folder, a module's folder, or the folder above one named `android` — and opens it, outside the
+    project or not, even while the IDE indexes. A file outside that app (a path dependency, a second
+    app) is looked up by name, never opened as a same-named file of the app. A Compose app that
+    embeds a Flutter module, with no Flutter session, is recorded as Compose. Diagnose never
+    records.
+  - **`flutter_app_status`**, a new read-only MCP tool, says whether Spock has a Flutter session on
+    the app and why not: how the attach went, how the session was found and verified, DDS or a
+    read-only direct connection, the build mode, the UI isolate, the Dart version, HTTP recording
+    and the device clock. Like Diagnose, it is about the app selected in Spock unless told
+    otherwise, and an attach it makes switches on HTTP recording as Diagnose's does. It never
+    returns a VM Service address or token.
+- **Flutter apps in App Storage, Home, Diagnose, Logcat, the Timeline and the element tools.** Spock
+  now understands what a Flutter app puts on the device:
+  - **App Storage** reads `FlutterSharedPreferences.xml` the way Dart does: doubles and lists
+    show as a double and a new *string list* type instead of encoded strings, and edits are
+    written back in the plugin's own encoding.
+  - **App Storage** shows a Hive box (`*.hive`) as a key/type/value table and a SQLite database
+    as its tables, row counts and first rows (read on the device with `sqlite3`, where it
+    exists, so a database of any size is shown without downloading it, and a table that cannot
+    be read says why). Any other binary file is a hex dump instead of garbled text. All read-only.
+  - **Home** shows *Flutter debug*, *profile* or *release* beside the version.
+  - **Diagnose** reports each unhandled Dart exception once and tells a missing plugin and a
+    platform channel error apart. When a native channel handler threw, it says so rather than
+    blaming a missing plugin: a checked exception in a handler (Kotlin throws them undeclared)
+    makes Android's `DartMessenger` reply with nothing, which Dart reads as
+    `MissingPluginException` though the plugin is there, so the report names the method, the
+    channel and the exception the handler threw, and the fix is looked for in the handler rather
+    than in plugin registration. Nothing in the log links the two lines, so the pairing is kept
+    narrow — same process, within half a second, nothing else logged in between — and the report
+    says it is inferred.
+  - **Timeline** titles drop the engine's source prefix, and **`android_get_debug_timeline`** takes
+    four new categories, `flutter_error`, `flutter_frame`, `navigation` and `http`, so an agent can
+    ask for a Flutter app's errors, bursts of slow frames, routes and failed requests on their own,
+    recorded while Spock holds the app's Flutter session (above). `flutter` on its own is refused
+    rather than guessed at, since it could mean either Flutter category.
+  - **Logcat** has a *Flutter* view.
+  - **Element tools** tap a Flutter button by its `Semantics(identifier:)`, and say so when a
+    screen is one drawn surface with nothing to find.
+  - `sample/flutter_app` is a Flutter fixture app for all of it.
+- **Home: current Flutter route, and Flutter routes in App back stack.** An already connected
+  Flutter session supplies the root navigator’s current route. For a Flutter app, App back stack
+  lists its Flutter routes in their own section under its activities, after checking for nested
+  navigators before claiming an exact stack; if one half cannot be read, the other is still shown
+  and the popup says what failed. Unnamed routes show their class, and ambiguous or transitional
+  navigation is unavailable, never guessed. The check briefly pauses the app; Home never attaches
+  a session, and for any other app App back stack is unchanged.
+  Apps with several navigators — go_router's `ShellRoute` and `StatefulShellRoute`, auto_route's
+  tabs and nested routers, a keyed `Navigator` in a page — are read as a tree: each navigator
+  listed under the route that holds it and marked hidden or showing by Flutter's own flags, and
+  the current route followed down to the navigator on screen. Where a route holds several
+  navigators none of which is hidden, current stops at that route and says why.
+- **A guide for Flutter apps, and a Flutter section in the agent skill.** What Spock does for a
+  Flutter app was spread across the MCP reference and release notes, so it was hard to tell what
+  needs `flutter run`, what works in a profile or release build, and what is still unchecked.
+  [docs/FLUTTER.md](docs/FLUTTER.md) puts it on one page — the automatic session, Diagnose's
+  *flutter* section, the Timeline, HTTP recording, rebuilds, the Flutter route, the limits and how
+  VM Service tokens are kept out of everything — and says where Spock stops and the Flutter plugin
+  and the Dart MCP server take over, with a configuration that runs Spock's and Dart's MCP servers
+  side by side. The `spock-adb` skill now tells an agent to call `flutter_app_status` first, to read
+  silence in the *flutter* section as unknown rather than healthy, and to handle a permission dialog
+  over a Flutter app with Spock's element tools, since it is native and the widget tools cannot see it.
+- **`android_set_animations`: animations off for agents, without a confirmation.** It sets the
+  window, transition and animator-duration scales together, reads them back, and reports the
+  previous values so they can be restored. Before this, agents had to ask for `settings put`
+  through `android_run_adb_command`, which needs approval every call. It is the same as the
+  Developer options dropdowns. The sample app's **Animations** screen shows what the app sees.
+  (Part of [#149](https://github.com/WahdanZ/SpockAdb/issues/149).)
+- **See when a permission won't be asked again, and reset it without clearing data.** Home ›
+  Permissions › **Manage…** now shows each runtime permission as granted, *denied — will ask*, or
+  *denied — won't ask again* (the `USER_FIXED` flag Android sets after two denials, or "Don't ask
+  again" before Android 11). Right-click a denied permission and choose **Ask again** to clear the
+  flag with `pm clear-permission-flags`; Spock reads the package back and reports success only
+  when the flag is actually gone, and the app's data is left alone. The summary line counts the
+  ones that won't be asked again, and `android_diagnose_current_screen` lists them in its
+  `permissions` section. The sample app's **Permissions** screen has a CAMERA-only request for
+  trying the whole cycle ([#146](https://github.com/WahdanZ/SpockAdb/issues/146)).
+- **Agents can check which Flutter screen an action opened: `expectRoute`
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** A Flutter app's activity is always
+  `MainActivity`, so the `deep_link` recipe's `expectActivity` passed whichever screen a link
+  opened. `android_tap_element`, `android_long_press_element`, `android_input_text_into_element` and
+  `android_open_deep_link` now take `expectRoute`, the route name that should be current afterwards,
+  read from the app's own Navigator through Spock's session with it, as Home reads it; the
+  `deep_link` recipe passes it to the link. It answers like the other expectations: `VERIFIED` when
+  the route was something else before and is that one after, `NOT OBSERVED` only when a final check
+  proves every navigator in the app was read and another route is showing, and `INCONCLUSIVE` — with
+  the reason, and `expectText` as the way to check without a session — when it was already current,
+  or whenever the route cannot be read: no session (a release build, or the app not run with
+  `flutter run`), a navigation still moving, or a navigator without a key that could hide it. A
+  route that could not be read is never reported as the wrong one. The name is matched exactly; one
+  without a query also matches it with one, so `/item/42` matches the `/item/42?ref=spock` a link
+  pushes. On the emulator, taps into the sample's *Navigation* screen and a deep link to *Item 42*
+  were verified, and a wrong route reported as not observed.
+
+### Changed
+
+- **Spock remembers the selected app per project.** A project reopened whose Gradle sync names no
+  app — the sync failed, or the project is a Flutter app's `android` folder — came back with no
+  app selected, so nothing worked on it, and a Flutter app was not connected to, until the app was
+  chosen again. Now the app chosen last time is selected again if the device has it installed;
+  once Gradle sync names the project's own app, that one takes its place unless you chose another.
+- **`android_get_ui_tree` gives each control a tap point and can keep its labels.** Every
+  enabled clickable node now ends in `center=[x,y]`: the point `android_tap_element` taps, which
+  is the centre of the part in view, so a row half scrolled out of its list is not tapped under
+  the list's edge. A node outside the viewport, or disabled, gets none. The new `meaningfulOnly`
+  option lists what can be acted on plus anything with text or a content description, in screen
+  order, so a switch keeps the "Ticking" label beside it that `interactiveOnly` drops
+  ([#144](https://github.com/WahdanZ/SpockAdb/issues/144)). Both lists now show each element
+  once; `interactiveOnly` used to repeat a clickable row nested inside another match. The sample
+  app's Recomposition screen and fixture 15 show both.
+- **MCP tools agree on which app a call is about, and say which.** Left without a `packageName`,
+  the tools used to choose differently: with a Flutter project open, whose application ID Spock
+  cannot resolve, `android_get_package_info` refused, `android_get_logcat` quietly returned every
+  process's lines, and `android_get_debug_context` used the app selected in Spock. Every tool now
+  takes the app the call names, else the app selected in Spock, else the open project's, and its
+  answer starts with a line such as `package: com.example.app (app selected in Spock)` whenever
+  the call did not name it. With none of the three, a tool about one app names all three ways to
+  give it one, and logcat, debug context and device conditions say they cover the whole device
+  instead of passing it off as the app's. This includes the destructive app tools: clearing data,
+  uninstalling and revoking a permission now default to the app selected in Spock, and still ask
+  you before they run ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
+- **MCP answers that used to run to tens of thousands of characters are bounded
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** An agent pays for every character a
+  tool returns, and three tools returned far more than was asked.
+  - **`android_get_package_info` returns a summary**: version, UID, min and target SDK, install and
+    update time, the launcher activity, component counts, and which runtime permissions are granted
+    and which denied — about 1 KB where Settings' raw dump is 190 KB and a Flutter app's 30 KB, and
+    it no longer stops at the 40 000-character cap before reaching the version. `raw: true` returns
+    the dump as before.
+  - **`android_read_app_storage` cuts each value at 500 characters** (`maxValueChars`, 50–40000),
+    ending it with the value's full length, and `key` reads only the entries you name; one cached
+    JSON value had made a single prefs file 40 000 characters. Values that look secret are
+    redacted, since these files hold push and auth tokens: best-effort, by key name (token, secret,
+    password, api key, cookie and the like) and by value shape (a JWT, or cached JSON holding a
+    token). `showSecrets: true` asks you with Allow once / Deny, and Deny keeps them redacted.
+  - **`android_take_screenshot` takes `scale` and `format`.** A full-size PNG stays the default;
+    `scale: 0.5` and `format: jpeg` return an image several times smaller, with a line telling the
+    agent to multiply its coordinates back for `android_tap`.
+  - Both sample apps' *Storage* screens have a *Write big + secret prefs* button to try it on.
+- **An element action goes to the one match it can act on.** Since `text` also matches content
+  descriptions, `android_input_text_into_element {"text":"Search"}` matched both a search field
+  whose hint reads "Search" and the search icon beside it, and was refused as ambiguous. When a
+  selector matches several elements but exactly one of them can take the tap, long press or text,
+  the action now goes to that one, and the result says so: "2 matched; acted on the only one that
+  accepts input (EditText 'Search'); ignored: ImageView content-desc 'Search'". Two or more that
+  could take it, or none, are refused as before, and checks that act on nothing still refuse.
+- **A tap right after a find no longer dumps the screen twice
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).** Every UI read paid for a fresh
+  `uiautomator` dump, 2–3 s each, so finding a button and then tapping it took five seconds. A
+  capture is now reused for half a second by the next read of the same device: on the emulator the
+  tap after a find went from 2.3–2.5 s to under 0.1 s. The reuse is said on the summary line
+  (`reused: the screen was read 2.7 s ago`, the age of the screen it shows), and never happens where it could mislead — a wait's polls, an action's
+  check after the input, and any read after a tap, swipe, key, text, deep link or other call that is
+  not read-only always capture anew. The UI read tools (`android_get_ui_tree`,
+  `android_find_ui_element`, `android_wait_for_element` and the assertions) also take
+  `verbose: false`, which shortens the two-line "Observed on … / Limits: …" preamble to one short
+  line for an agent that has read it once.
+
 ### Fixed
 
-- **No scheduled-for-removal or internal API left for IntelliJ IDEA 2026.2.** The Marketplace
-  verifier reported 4 usages of `SimpleListCellRenderer.create`, which IntelliJ IDEA is removing,
-  and 1 of the internal `PluginManagerCore.getPlugin`. The combo boxes and the source chooser now
-  render through a `SimpleListCellRenderer` subclass, stable back to 2023.2, and the MCP server
-  reads its version from the resource Gradle writes from `pluginVersion` instead of asking the
-  platform. Verified against IntelliJ IDEA Ultimate 2026.2.3: Compatible, deprecated API only.
+- **Emulator noise no longer tops debug context's likely problems.** On an emulator the graphics
+  stack logs the same error — `mapper.ranchu: getStandardMetadataImpl … UNSUPPORTED` — dozens of
+  times from inside the app's own process, and `WindowOnBackDispatcher` warns about predictive back
+  on every window, so by sheer count they outranked the one error the app actually logged. Spock
+  now knows these lines (and a few more, each listed with an example in `LogNoise.kt`), tags them
+  `emulatorNoise`, and ranks them after every other problem, counts kept; the Timeline marks them
+  too. The sample app's Logcat screen reproduces it
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
+- **`android_get_device_conditions` no longer reads as the opposite of the Doze state.** It printed
+  `Deep Doze: ACTIVE`, which reads as "Doze is active" when `ACTIVE` is the device awake. It now
+  answers first and gives the device's state after: `Deep Doze: no (state ACTIVE)`,
+  `yes (state IDLE)`.
+- **`android_get_network_info` no longer prints backslashes in interface names.** `ip -o` marks
+  where its multi-line form would wrap with `\` and padding (`scope host lo\ valid_lft forever`),
+  which an agent read as part of the name; each is now one space.
+- **The device and app popup tells two emulators apart and keeps underscores.** Devices that would
+  read the same — two emulators booted from one system image — now show their serial
+  (`… · Android 14 · emulator-5556`), and names such as `sdk_gphone64_arm64` or
+  `spock.adb.spock_flutter_sample` no longer lose an underscore to a menu mnemonic.
+- **Animation scale changes report what the device holds.** Choosing a scale in Developer options
+  used to announce it as set without checking; it is now read back, a device that did not take
+  it is reported as an error, and the dropdown re-reads so a refused value does not stay on show.
+  **Reset animation scales** now re-reads after its writes finish, so
+  the dropdowns no longer show the values from before the reset.
+- **The grant and revoke balloons name the permission.** Granting or revoking one permission from
+  **Manage…** reported `permission ListItem(name=android.permission.CAMERA, isSelected=false)
+  revoked` instead of the permission's name.
+- **The Timeline's Flutter filter is called "Flutter error".** It lists Flutter framework errors only;
+  "Flutter" read as if it held every Flutter row, so an empty list looked broken. Routes, slow
+  frames and failed requests keep their own filters: Navigation, Frame and HTTP.
+- **Choosing a device or app says so.** Picking one in the device and app chooser changed only the
+  line's text, so it was easy to wonder whether the click had landed. The tool window now shows a
+  short balloon under the line — "Spock now acts on `<app>` on `<device>`" — and the status bar
+  widget says the same in the status bar.
+- **The HTTP proxy field is wide enough for an address, and its history is in reach.** In a docked
+  tool window the field shared one line with its label and both buttons, which left it about 90 px:
+  an address did not fit, and the dropdown arrow that lists every proxy set before barely showed.
+  The field now has its own line across the panel, with **Set** and **Remove proxy** beneath it.
+- **Agents find a Flutter element by the words they see.** Flutter publishes every label as the
+  content description, never as text, so `android_find_ui_element {"text":"Suche"}` found nothing
+  on a Flutter app while `android_assert_text` found the same words. The `text` selector of every
+  element tool — find, tap, long press, scroll, type, wait and the assertions — now matches a node's
+  text or its content description, through one matcher, and the result says "matched content-desc"
+  when that is where the words were. `contentDescription` still matches only the content
+  description, and two elements with the same words are still refused rather than guessed between.
+- **A Flutter app is reported as Flutter.** `android_get_ui_tree`, the accessibility audit, the
+  *ui* section of `android_get_debug_context` and the UI Inspector's badge called a Flutter app
+  "Traditional Android Views", because its semantics bridge reports `Button` and `View` like any
+  View screen. Spock now asks whether the app on screen is a Flutter build — the same check
+  `flutter_app_status` makes, once per install — and says `Flutter (semantics bridge)`, with a note
+  that its words are content descriptions and `Semantics(identifier:)` is what `testTag` matches.
+- **The accessibility audit gives Flutter fixes, and prints Flutter labels whole.** On a Flutter app
+  it suggested `android:contentDescription`; it now suggests `Semantics(label:)`,
+  `ExcludeSemantics`, `MaterialTapTargetSize.padded` or a 48x48 `SizedBox`. Flutter merges a
+  card's words into one content description, a line each, and a finding printed it as it was, so
+  a card whose first line is a badge's "GRATIS E-SIM" read as a finding about the badge; labels
+  are now printed on one line (`GRATIS E-SIM / Tarif M`). On a Flutter screen, a touch-target
+  finding on a carousel page that looks cut at the carousel's edge — an offer banner that does not
+  scroll by touch reports its neighbouring offers as slivers — is now a note rather than a
+  warning, saying the bounds may be cut by a parent clip and should be checked on the device. The
+  review's report of non-clickable badges flagged as small targets is not yet explained: the
+  check only looks at clickable nodes, and the sample did not reproduce it.
+- **The proxy tool warns that Flutter ignores the system proxy.** `android_set_http_proxy` now says
+  that Flutter's `dart:io` `HttpClient` does not use it unless the app opts in.
+- **`android_get_debug_timeline` no longer tells agents its Flutter rows are always empty.** Its
+  description still said Spock "does not open" a Flutter session "in this version", so an agent
+  skipped the flutter_error, navigation and http categories, although the Timeline has recorded
+  them from the session since this release. It now says where they come from — Spock's session
+  with the selected app run with `flutter run`, slow frames in profile builds only — and that
+  `flutter_app_status` explains an empty one
+  ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
 
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.1.0...HEAD
 ## [4.1.0] - 2026-10-12
 
 ### Added
@@ -328,7 +637,6 @@
   `flutter_app_status` explains an empty one
   ([#182](https://github.com/WahdanZ/SpockAdb/issues/182)).
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.7...HEAD
 ## [4.0.7] - 2026-09-29
 
 ### Added
@@ -1581,7 +1889,8 @@
 - Enable and Disable Permissions of your application
 - Kill or Restart Application
 
-[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.1.0...HEAD
+[Unreleased]: https://github.com/WahdanZ/SpockAdb/compare/v4.1.1...HEAD
+[4.1.1]: https://github.com/WahdanZ/SpockAdb/compare/v4.1.0...v4.1.1
 [4.1.0]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.7...v4.1.0
 [4.0.7]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.6...v4.0.7
 [4.0.6]: https://github.com/WahdanZ/SpockAdb/compare/v4.0.5...v4.0.6
